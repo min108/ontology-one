@@ -1,0 +1,17 @@
+node_modules/
+__pycache__/
+*.pyc
+.env*
+!.env.example
+.venv/
+data/mysql-workspace.json
+data/uploads/
+data/runtime/
+work/
+frontend/dist/
+
+*.tsbuildinfo
+
+# All workspace data is generated locally.
+data/
+.DS_Store

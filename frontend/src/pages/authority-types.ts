@@ -1,0 +1,9 @@
+export type AuthorityOrganization={id:string;title:string;[key:string]:any};
+export type AuthorityPerson={id:string;title:string;org_id:string;payload?:Record<string,any>;[key:string]:any};
+export type AuthorityNode={id:string;kind:'start'|'step'|'decision'|'end'|'unit';title:string;org_id?:string;role?:string;person_id?:string;responsibility?:string;authority?:string;control?:string;evidence?:string;time_limit?:string;x:number;y:number};
+export type AuthorityEdge={id:string;source:string;target:string;label?:string};
+export type AuthoritySpec={type:'workflow'|'position';subtype:string;purpose:string;basis:string;scope:string;effective_from?:string;effective_to?:string;org_ids:string[];person_ids:string[];nodes:AuthorityNode[];edges:AuthorityEdge[];sections:{id:string;title:string;content:string}[];source_refs:{material_id:string;quote:string}[];notes?:string;[key:string]:any};
+export type AuthorityEntity={id:string;title:string;summary:string;domain:string;org_id:string;status:string;source_kind:string;version:number;updated_at:string;payload:{authority_spec:AuthoritySpec;[key:string]:any};[key:string]:any};
+export type AuthorityCatalog={items:AuthorityEntity[];organizations:AuthorityOrganization[];people:AuthorityPerson[];stats:Record<string,number>};
+export const AUTHORITY_SUBTYPES={workflow:['文件审批','采购审批','费用报销','投资决策','组织职责方案','其他业务审批流程'],position:['管理岗位权责','财务岗位权责','人事岗位权责','采购岗位权责','其他岗位权责']};
+export function blankAuthoritySpec(type:'workflow'|'position',subtype=''):AuthoritySpec{return {type,subtype:subtype||AUTHORITY_SUBTYPES[type][0],purpose:'',basis:'',scope:'',effective_from:'',effective_to:'',org_ids:[],person_ids:[],nodes:[],edges:[],sections:type==='position'?[{id:'duties',title:'主要职责',content:''},{id:'authority',title:'行权范围与权限边界',content:''},{id:'control',title:'行权程序与控制要求',content:''},{id:'accountability',title:'责任落实与履职记录',content:''}]:[],source_refs:[],notes:''}}
