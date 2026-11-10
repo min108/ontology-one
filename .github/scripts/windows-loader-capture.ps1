@@ -10,6 +10,8 @@ $report = Join-Path $Reports 'loader-capture.json'
 $private = Join-Path $env:RUNNER_TEMP ('ontology-loader-private-' + [Guid]::NewGuid().ToString('N'))
 $procmon = $null
 $capturing = $false
+$probe = $null
+$startSignal = $null
 $phase = 'private_directory'
 $script:commandExitCode = $null
 $script:commandTimedOut = $false
@@ -86,17 +88,41 @@ try {
     if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'COLLECTOR_SIGNATURE_INVALID' }
     $pml = Join-Path $private 'capture.pml'
     $csv = Join-Path $private 'capture.csv'
+    # First logon/profile initialization may take tens of seconds. Complete it
+    # before the short capture; the standard-user fixture waits for our signal.
+    $phase = 'probe_readiness'
+    $receipt = Join-Path $Reports 'lpac-probe-receipt.json'
+    $startSignal = Join-Path $Reports 'lpac-probe-start.signal'
+    Remove-Item -LiteralPath $startSignal -Force -ErrorAction SilentlyContinue
+    $python = Join-Path $Package 'runtime/python/python.exe'
+    $entry = Join-Path $Package 'tests/windows_lpac_probe.py'
+    $arguments = @('-I','-X','utf8','-B',"`"$entry`"",'--receipt',"`"$receipt`"",'--start-signal',"`"$startSignal`"")
+    $probe = Start-Process -FilePath $python -ArgumentList $arguments -Credential $Credential -LoadUserProfile -WorkingDirectory $Package -PassThru -RedirectStandardOutput (Join-Path $private 'probe.stdout') -RedirectStandardError (Join-Path $private 'probe.stderr')
+    $null = $probe.Handle
+    $readinessDeadline = [datetime]::UtcNow.AddSeconds(60)
+    $ready = $null
+    while ([datetime]::UtcNow -lt $readinessDeadline) {
+        if (Test-Path -LiteralPath $receipt) {
+            try { $candidate = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json } catch { $candidate=$null }
+            if ($candidate.stage -eq 'awaiting_capture') { $ready=$candidate; break }
+        }
+        if ($probe.HasExited) { throw 'PROBE_EXITED_BEFORE_CAPTURE' }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $ready) { throw 'PROBE_READINESS_TIMEOUT' }
     $phase = 'capture_start'
     $captureStart = [datetime]::UtcNow
     $capture = Start-Process -FilePath $procmon -ArgumentList @('/AcceptEula','/Quiet','/Minimized','/NoFilter','/BackingFile',"`"$pml`"",'/Runtime','20') -PassThru -RedirectStandardOutput (Join-Path $private 'capture.stdout') -RedirectStandardError (Join-Path $private 'capture.stderr')
+    $null = $capture.Handle
     $capturing = $true
     Run-Bounded $procmon @('/WaitForIdle','/Quiet') 8
+    $capture.Refresh()
+    $goTime = [datetime]::UtcNow
+    # Leave at least ten seconds for the two bounded benign markers. A late
+    # recorder never causes the fixture to run outside its intended window.
+    if ($capture.HasExited -or ($goTime - $captureStart).TotalSeconds -ge 10) { throw 'CAPTURE_WINDOW_MISSED' }
+    [IO.File]::WriteAllBytes($startSignal, [byte[]](103,111))
     $phase = 'fixed_probe'
-    $receipt = Join-Path $Reports 'lpac-probe-receipt.json'
-    $python = Join-Path $Package 'runtime/python/python.exe'
-    $entry = Join-Path $Package 'tests/windows_lpac_probe.py'
-    $arguments = @('-I','-X','utf8','-B',"`"$entry`"",'--receipt',"`"$receipt`"")
-    $probe = Start-Process -FilePath $python -ArgumentList $arguments -Credential $Credential -LoadUserProfile -WorkingDirectory $Package -PassThru -RedirectStandardOutput (Join-Path $private 'probe.stdout') -RedirectStandardError (Join-Path $private 'probe.stderr')
     if (-not $probe.WaitForExit(30000)) {
         # Only this owned probe handle is affected; its Job kills descendants.
         $probe.Kill(); $probe.WaitForExit(); throw 'PROBE_TIMEOUT'
@@ -124,6 +150,8 @@ try {
     $outcome.collector_version = '4.13'
     $outcome.collector_capture_exit_code = $captureExitCode
     $outcome.capture_started_at_utc = $captureStart.ToString('o')
+    $outcome.probe_ready_at_utc = $ready.ready_at_utc
+    $outcome.capture_go_at_utc = $goTime.ToString('o')
     $outcome.capture_exited_at_utc = $captureEnd.ToString('o')
     $outcome.capture_duration_ms = [int]($captureEnd - $captureStart).TotalMilliseconds
     $outcome.pml_bytes = (Get-Item -LiteralPath $pml).Length
@@ -133,13 +161,20 @@ try {
     # Never output exception text: Windows exceptions can contain raw paths.
     $knownFailures = @('ADMIN_REQUIRED','PREEXISTING_COLLECTOR','COLLECTOR_HASH_MISMATCH',
         'COLLECTOR_SIGNATURE_INVALID','COLLECTOR_COMMAND_TIMEOUT','COLLECTOR_COMMAND_FAILED',
-        'PROBE_TIMEOUT','CAPTURE_EXIT_TIMEOUT','SUMMARY_FAILED')
+        'PROBE_TIMEOUT','PROBE_EXITED_BEFORE_CAPTURE','PROBE_READINESS_TIMEOUT',
+        'CAPTURE_WINDOW_MISSED','CAPTURE_EXIT_TIMEOUT','SUMMARY_FAILED')
     $failureCode = if ($_.Exception.Message -in $knownFailures) { $_.Exception.Message } else { 'COLLECTOR_OPERATION_FAILED' }
     $outcome = @{ schema_version = 1; status = 'collector_unavailable'; phase = $phase;
         error = $failureCode;
         command_exit_code = $script:commandExitCode; command_timed_out = $script:commandTimedOut;
         raw_content_retained = $false }
 } finally {
+    if ($probe -and -not $probe.HasExited) {
+        # This exact owned fixed fixture has no user instructions. Its Job
+        # owner closes on process termination; no process-name selection.
+        try { $probe.Kill(); $probe.WaitForExit(5000) | Out-Null } catch { }
+    }
+    if ($startSignal) { Remove-Item -LiteralPath $startSignal -Force -ErrorAction SilentlyContinue }
     if ($capturing -and $procmon) {
         try { Run-Bounded $procmon @('/Terminate','/Quiet') 10 } catch { }
     }

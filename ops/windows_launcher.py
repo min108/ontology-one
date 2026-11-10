@@ -39,6 +39,10 @@ MAX_CONTROL = 8192
 START_TIMEOUT = 900
 MIGRATION_TIMEOUT = 600
 MIGRATION_STALL_TIMEOUT = 180
+# The supervisor validates this wire contract locally. Never import executable
+# migration worker code in the parent process, including during cancellation.
+_MIGRATION_PHASES = ('received', 'control', 'federation', 'queue', 'tenants',
+                     'runtime_account', 'provisioned', 'bootstrap', 'completed')
 _ERRORS = {
     'WINDOWS_REQUIRED': '需要 Windows 10 1903（内部版本18362）及以上或 Windows 11 的64位系统，并使用交付包内的64位Python。平台不会修改系统区域或代码页设置。',
     'RUNTIME_MISSING': '运行包不完整，请重新解压完整的Windows运行包。',
@@ -119,7 +123,6 @@ class MigrationWatch:
         self.error = None
 
     def cancelled(self):
-        from ops.windows_initialize import PROGRESS_PHASES
         now = self.clock()
         if self.stop_event.is_set():
             return True
@@ -128,11 +131,11 @@ class MigrationWatch:
             try:
                 value = self.reader()
                 if (not isinstance(value, dict) or set(value) != {'run_id', 'phase', 'completed', 'total'}
-                        or value['run_id'] != self.run_id or value['phase'] not in PROGRESS_PHASES
+                        or value['run_id'] != self.run_id or value['phase'] not in _MIGRATION_PHASES
                         or type(value['completed']) is not int or type(value['total']) is not int
                         or not 0 <= value['completed'] <= value['total'] <= 10000):
                     raise ValueError('Invalid migration progress')
-                rank = PROGRESS_PHASES.index(value['phase'])
+                rank = _MIGRATION_PHASES.index(value['phase'])
                 if (rank >= self.rank and value['completed'] >= self.completed
                         and (self.total == 0 or value['total'] == self.total)
                         and (rank > self.rank or value['completed'] > self.completed)):

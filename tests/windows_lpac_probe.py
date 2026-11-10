@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 import uuid
 
 from backend import windows_process as native
@@ -46,6 +47,29 @@ def _write_receipt(path, receipt):
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _await_start_signal(path, receipt_path, receipt):
+    if path is None:
+        return
+    path = native._plain_path(path)
+    if path.parent != receipt_path.parent or path.suffix != '.signal':
+        raise ValueError('Invalid capture signal destination')
+    receipt.update(stage='awaiting_capture', ready_at_utc=_utc())
+    _write_receipt(receipt_path, receipt)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        try:
+            # This fixed two-byte signal only releases the benign probe. It is
+            # never interpreted as instructions, a command, or a pathname.
+            with native._plain_path(path).open('rb') as stream:
+                if stream.read(3) == b'go':
+                    receipt['capture_signal_at_utc'] = _utc()
+                    return
+        except FileNotFoundError:
+            pass
+        time.sleep(0.1)
+    raise TimeoutError('Capture signal did not arrive')
 
 
 @contextmanager
@@ -91,6 +115,7 @@ def _probe_environment(receipt_path):
 def main():
     parser = argparse.ArgumentParser(description='Run only the fixed Windows LPAC loader diagnostic.')
     parser.add_argument('--receipt', required=True, type=Path)
+    parser.add_argument('--start-signal', type=Path)
     arguments = parser.parse_args()
     if os.name != 'nt' or _elevated():
         raise SystemExit('Loader probe requires a standard Windows user')
@@ -106,6 +131,7 @@ def main():
         with _probe_environment(arguments.receipt):
             WindowsSandboxNativeTests.setUpClass()
             probe = WindowsSandboxNativeTests(methodName='test_01_lpac_runtime_early_entry_marker')
+            _await_start_signal(arguments.start_signal, arguments.receipt, receipt)
             # This ordinary-Job control runs the exact same fixed marker and
             # runtime files. It proves the collector observes an owned working
             # process; it is never a sandbox fallback or acceptance result.

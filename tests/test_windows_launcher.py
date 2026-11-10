@@ -1,5 +1,6 @@
 """Portable launcher policy tests; native process/MySQL checks run on Windows."""
 import json
+import builtins
 import os
 from pathlib import Path
 import socket
@@ -155,6 +156,17 @@ class LauncherTests(unittest.TestCase):
         stop.set()
         self.assertTrue(watch.cancelled())
         self.assertIsNone(watch.error)
+
+    def test_migration_watch_never_imports_executable_worker_code(self):
+        original_import = builtins.__import__
+        def reject_worker_import(name, *args, **kwargs):
+            if name == 'ops.windows_initialize':
+                raise SystemExit(19)
+            return original_import(name, *args, **kwargs)
+        watch = launcher.MigrationWatch('a' * 32, threading.Event(),
+            reader=lambda: {'run_id': 'a' * 32, 'phase': 'received', 'completed': 0, 'total': 0})
+        with patch('builtins.__import__', side_effect=reject_worker_import):
+            self.assertFalse(watch.cancelled())
 
     def test_control_channel_authenticates_token_and_installation(self):
         settings = launcher.get_installation()
