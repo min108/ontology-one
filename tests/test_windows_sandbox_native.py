@@ -491,26 +491,13 @@ print(json.dumps({'own_read':own,'other_denied':denied}))
         import _winapi
         script = '''import json,sys
 args=json.load(sys.stdin)
-result={'stage':'import','queried':False,'file_type':None,'read_attempted':False,
-        'read_error':None,'sentinel_match':False,'error_kind':None,'winerror':0}
-try:
-    import _winapi
-    result['stage']='get_file_type';result['queried']=True
-    result['file_type']=int(_winapi.GetFileType(args['handle']))
-    if result['file_type']==1:
-        result['stage']='read_file';result['read_attempted']=True
-        data,error=_winapi.ReadFile(args['handle'],128)
-        result['read_error']=int(error)
-        result['sentinel_match']=data==args['synthetic_value'].encode('ascii')
-    result['stage']='complete'
-except OSError as exc:
-    result['error_kind']='OSError';result['winerror']=getattr(exc,'winerror',0) or 0
-except (ImportError,AttributeError,TypeError,ValueError) as exc:
-    result['error_kind']=type(exc).__name__
-# Never adopt or close an unknown handle, and never read a pipe/character handle:
-# the numeric value may have been reused for a different child object.
-print(json.dumps(result))
+print(json.dumps({'marker':args['marker']}))
 '''
+        kernel = native._api()[0]
+        kernel.GetProcessId.restype, kernel.GetProcessId.argtypes = native.DWORD, [native.HANDLE]
+        kernel.GetFileInformationByHandle.restype = native.BOOL
+        kernel.GetFileInformationByHandle.argtypes = [native.HANDLE, native.LPVOID]
+        current_process = kernel.GetCurrentProcess()
         with tempfile.TemporaryDirectory(prefix='Ontology inherited handle ') as host:
             private = ensure_private_directory(Path(host))
             sentinel = private / 'handle-sentinel.txt'
@@ -518,32 +505,77 @@ print(json.dumps(result))
             sentinel.write_text(synthetic, encoding='ascii')
             with sentinel.open('rb', buffering=0) as unrelated:
                 handle = msvcrt.get_osfhandle(unrelated.fileno())
-                # Use the same bundled CPython Win32 wrappers as the child.
-                # Prove this is a readable disk file, then reset its shared
-                # kernel file offset. Inherited handles share that offset.
-                self.assertEqual(_winapi.GetFileType(handle), 1)
-                self.assertEqual(_winapi.ReadFile(handle, 128), (synthetic.encode('ascii'), 0))
+                source_info = (native.DWORD * 13)()
+                native._check(kernel.GetFileInformationByHandle(native.HANDLE(handle), source_info))
+                source_identity = tuple(int(source_info[index]) for index in (7, 11, 12))
+
+                def inspect_from(process):
+                    # DuplicateHandle queries the exact source process from the
+                    # trusted parent. The LPAC never touches an unknown HANDLE:
+                    # its strict invalid-handle policy can terminate the target.
+                    copied = native.HANDLE()
+                    result = {'duplicate_error': 0, 'file_type': None, 'type_error': None,
+                              'source_identity': False, 'sentinel_match': False,
+                              'read_attempted': False, 'directory': False}
+                    if not kernel.DuplicateHandle(process, native.HANDLE(handle), current_process,
+                                                   ctypes.byref(copied), 0, False, 2):
+                        result['duplicate_error'] = ctypes.get_last_error()
+                        return result
+                    try:
+                        try:
+                            result['file_type'] = int(_winapi.GetFileType(copied.value))
+                        except OSError as failure:
+                            # A valid copied event/process/etc. is not a file.
+                            # Only the exact invalid-file-type error is allowed.
+                            self.assertEqual(failure.winerror, 6)
+                            result['type_error'] = 6
+                            return result
+                        if result['file_type'] == 1:
+                            info = (native.DWORD * 13)()
+                            native._check(kernel.GetFileInformationByHandle(copied, info))
+                            result['source_identity'] = tuple(int(info[index]) for index in (7, 11, 12)) == source_identity
+                            result['directory'] = bool(info[0] & 0x10)
+                            if not result['directory']:
+                                result['read_attempted'] = True
+                                data, error = _winapi.ReadFile(copied.value, 128)
+                                self.assertEqual(error, 0)
+                                result['sentinel_match'] = data == synthetic.encode('ascii')
+                        # Never read pipe/character/directory handles. A reused
+                        # number is acceptable only when it is a different object.
+                        return result
+                    finally:
+                        native._check(kernel.CloseHandle(copied))  # Only our successfully owned copy.
+
+                # Positive control proves the same DuplicateHandle path detects
+                # the source file by both identity and independent sentinel.
+                positive = inspect_from(current_process)
+                self.assertEqual(positive['duplicate_error'], 0, positive)
+                self.assertTrue(positive['source_identity'], positive)
+                self.assertTrue(positive['sentinel_match'], positive)
                 unrelated.seek(0)
                 self.assertEqual(unrelated.tell(), 0)
+                observed = []
+                original_verifier = native._verify_appcontainer_token
+                def verify_and_inspect(process, sid):
+                    original_verifier(process, sid)  # Real proof, after Job assignment and before ResumeThread.
+                    child_pid = int(native._check(kernel.GetProcessId(process)))
+                    result = inspect_from(process)
+                    result['child_pid'] = child_pid
+                    observed.append(result)
+                    if result['duplicate_error']:
+                        self.assertEqual(result['duplicate_error'], 6, result)
+                    else:
+                        self.assertFalse(result['source_identity'], result)
+                        self.assertFalse(result['sentinel_match'], result)
                 os.set_handle_inheritable(handle, True)
                 try:
-                    with self.sandbox(script) as (owner, *_):
-                        result = self.communicate_json(owner, {'handle': handle, 'synthetic_value': synthetic})
-                        self.assertTrue(result['queried'], result)
-                        self.assertFalse(result['sentinel_match'], result)
-                        self.assertEqual(unrelated.tell(), 0, 'Unrelated source handle was inherited and read')
-                        if result['error_kind'] is not None:
-                            self.assertEqual(result['error_kind'], 'OSError', result)
-                            self.assertEqual(result['stage'], 'get_file_type', result)
-                            self.assertEqual(result['winerror'], 6, result)
-                            self.assertFalse(result['read_attempted'], result)
-                        else:
-                            self.assertEqual(result['stage'], 'complete', result)
-                            if result['file_type'] == 1:
-                                self.assertTrue(result['read_attempted'], result)
-                                self.assertEqual(result['read_error'], 0, result)
-                            else:
-                                self.assertFalse(result['read_attempted'], result)
+                    with patch.object(native, '_verify_appcontainer_token', side_effect=verify_and_inspect):
+                        with self.sandbox(script) as (owner, *_):
+                            self.assertEqual(len(observed), 1)
+                            self.assertEqual(observed[0]['child_pid'], owner.pid)
+                            marker = uuid.uuid4().hex
+                            self.assertEqual(self.communicate_json(owner, {'marker': marker}), {'marker': marker})
+                            self.assertEqual(unrelated.tell(), 0, 'Unrelated source handle was inherited and read')
                 finally:
                     os.set_handle_inheritable(handle, False)
 
