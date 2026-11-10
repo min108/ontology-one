@@ -110,6 +110,19 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(error.diagnostic, {'phase': 'initializing_database', 'process_exit': 1,
             'mysql_codes': ['MY-010119', 'MY-013236']})
 
+    def test_mysql_console_drain_keeps_only_bounded_codes_across_pipe_chunks(self):
+        class Stream:
+            chunks = iter((b'private path password [MY-010', b'119] ERROR 10',
+                           b'45 (28000): private secret\n', b''))
+            def read(self, count): return next(self.chunks)
+        diagnostics = launcher.MysqlDiagnostics()
+        launcher.drain(Stream(), diagnostics)
+        self.assertEqual(diagnostics.snapshot(), {'mysql_codes': ['MY-010119'], 'mysql_client_codes': [1045]})
+        self.assertEqual(set(vars(diagnostics)), {'_lock', '_server', '_client'})
+        diagnostics.observe(b' '.join(f'[MY-{index:06d}] ERROR {index} '.encode() for index in range(1, 30)))
+        self.assertEqual(len(diagnostics.snapshot()['mysql_codes']), 12)
+        self.assertEqual(len(diagnostics.snapshot()['mysql_client_codes']), 12)
+
     def test_control_channel_authenticates_token_and_installation(self):
         settings = launcher.get_installation()
         supervisor = object.__new__(launcher.Supervisor)

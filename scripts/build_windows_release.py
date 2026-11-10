@@ -271,6 +271,12 @@ def build(args):
     assets=[output,args.output/mysql_source.name]
     if any(path.stat().st_size >= 2*1024**3 for path in assets):raise ValueError('A release asset exceeds GitHub individual asset limit')
     (args.output/'SHA256SUMS.txt').write_text(''.join(digest(path)+'  '+path.name+'\n' for path in assets),encoding='ascii')
+    provenance={'schema_version':1,'application_version':VERSION,'source_commit':manifest['source_commit'],
+        'dependency_lock_complete':not args.bootstrap_lock,'python':manifest['python'],'mysql':manifest['mysql'],
+        'harness':manifest['harness'],'vc_runtime':manifest['vc_runtime'],
+        'corresponding_source':{'filename':mysql_source.name,'sha256':digest(mysql_source)},
+        'package':{'filename':output.name,'sha256':digest(output),'bytes':output.stat().st_size}}
+    (args.output/'windows-build-provenance.json').write_text(json.dumps(provenance,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     return {'package':str(output),'bytes':output.stat().st_size,'release_ready':manifest['release_ready'],'assets':[path.name for path in assets]}
 
 

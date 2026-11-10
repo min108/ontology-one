@@ -79,15 +79,35 @@ def safe_diagnostic(exception, phase):
     return result
 
 
-def mysql_failure(child, phase, *, code='DATABASE_INIT_FAILED', output=b''):
+class MysqlDiagnostics:
+    """Retain bounded numeric identifiers only, never database process text."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._server, self._client = set(), set()
+
+    def observe(self, chunk):
+        with self._lock:
+            self._server.update(item.decode('ascii') for item in re.findall(rb'\bMY-[0-9]{6}\b', chunk))
+            self._client.update(int(item) for item in re.findall(rb'\bERROR ([0-9]{1,5})(?=[ \t(])', chunk)
+                                if 0 < int(item) < 65536)
+            self._server = set(sorted(self._server)[:12])
+            self._client = set(sorted(self._client)[:12])
+
+    def snapshot(self):
+        with self._lock:
+            return {key: sorted(value) for key, value in
+                    (('mysql_codes', self._server), ('mysql_client_codes', self._client)) if value}
+
+
+def mysql_failure(child, phase, *, code='DATABASE_INIT_FAILED', output=b'', diagnostics=None):
     """Report only the owned process exit and MySQL's stable numeric IDs."""
     diagnostic = {'phase': phase}
     status = child.poll()
     if type(status) is int:
         diagnostic['process_exit'] = status & 0xffffffff
-    identifiers = sorted(set(re.findall(rb'\bMY-[0-9]{6}\b', output)))[:12]
-    if identifiers:
-        diagnostic['mysql_codes'] = [item.decode('ascii') for item in identifiers]
+    diagnostics = diagnostics or MysqlDiagnostics()
+    diagnostics.observe(output)
+    diagnostic.update(diagnostics.snapshot())
     return LaunchError(code, diagnostic=diagnostic)
 
 
@@ -285,12 +305,18 @@ def control(operation, *, timeout=2):
     return None
 
 
-def drain(stream):
-    # No process stdout/stderr is retained. Platform audits are stored through
-    # their normal structured channels; startup errors use fixed safe codes.
+def drain(stream, diagnostics=None):
+    # No process stdout/stderr is retained. The optional collector keeps only
+    # fixed numeric MySQL identifiers; overlap is transient parser memory.
+    overlap = b''
     try:
-        while stream.read(16384):
-            pass
+        while True:
+            chunk = stream.read(16384)
+            if not chunk:
+                break
+            if diagnostics is not None:
+                diagnostics.observe(overlap + chunk)
+                overlap = chunk[-16:]
     except (OSError, ValueError):
         pass
 
@@ -301,6 +327,7 @@ class Supervisor:
         self.root = str(ROOT)
         self.children, self.state_lock = {}, threading.Lock()
         self.drain_threads = []
+        self.mysql_diagnostics, self.mysql_drain_threads = {}, {}
         self.stop_event, self.finished = threading.Event(), threading.Event()
         self.phase, self.error = 'starting', None
         self.failure_diagnostic = None
@@ -360,14 +387,27 @@ class Supervisor:
 
     def persistent(self, name, args, environment):
         child = self.spawn(name, args, environment)
+        diagnostics = None
+        if name in ('mysql', 'mysql_secure'):
+            diagnostics = self.mysql_diagnostics[name] = MysqlDiagnostics()
+            self.mysql_drain_threads[name] = []
         # PIPEs must never fill while long-running services wait for shutdown.
         for stream in (child.stdout, child.stderr):
-            thread = threading.Thread(target=drain, args=(stream,), daemon=True)
+            thread = threading.Thread(target=drain, args=(stream, diagnostics), daemon=True)
             thread.start()
             self.drain_threads.append(thread)
+            if diagnostics is not None:
+                self.mysql_drain_threads[name].append(thread)
         with suppress(OSError):
             child.stdin.close()
         return child
+
+    def database_failure(self, name, *, code='DATABASE_INIT_FAILED'):
+        child = self.children[name]
+        if child.poll() is not None:
+            for thread in self.mysql_drain_threads.get(name, ()):
+                thread.join(timeout=1)
+        return mysql_failure(child, self.phase, code=code, diagnostics=self.mysql_diagnostics.get(name))
 
     def finish_child(self, name):
         with self.state_lock:
@@ -377,6 +417,7 @@ class Supervisor:
 
     def secure_new_database(self, mysql_root, staging, environment):
         """Set and verify root credentials while TCP networking is disabled."""
+        self.phase_to('securing_database')
         init, defaults = LOCAL / 'mysql-init.sql', LOCAL / 'mysql-client.cnf'
         shared_name = 'OntologyBootstrap' + self.settings['installation_id']
         sql = "ALTER USER 'root'@'localhost' IDENTIFIED BY '" + self.settings['root_password'] + "';\n"
@@ -390,22 +431,29 @@ class Supervisor:
                 '--local-infile=OFF', '--secure-file-priv=NULL', '--skip-log-bin', '--init-file=' + str(init)], environment)
             def authenticated():
                 if server.poll() is not None:
-                    raise mysql_failure(server, 'securing_database')
+                    raise self.database_failure('mysql_secure')
                 probe = self.spawn('mysql_bootstrap_probe', [self.runtime['mysql'], '--defaults-file=' + str(defaults),
                     '--protocol=MEMORY', '--shared-memory-base-name=' + shared_name, '--connect-timeout=1',
                     '--batch', '--skip-column-names', '--execute=SELECT 1'], environment)
                 try:
-                    output, _ = probe.communicate(timeout=3, cancelled=self.stop_event, max_stdout=1024, max_stderr=4096)
+                    output, errors = probe.communicate(timeout=3, cancelled=self.stop_event, max_stdout=1024, max_stderr=4096)
+                    self.mysql_diagnostics['mysql_secure'].observe(errors)
                     return probe.wait(timeout=1) == 0 and output.strip() == b'1'
                 finally:
                     self.finish_child('mysql_bootstrap_probe')
-            self.wait_until(authenticated, 60, 'DATABASE_INIT_FAILED')
+            try:
+                self.wait_until(authenticated, 60, 'DATABASE_INIT_FAILED')
+            except LaunchError as exc:
+                if exc.code == 'DATABASE_INIT_FAILED':
+                    raise self.database_failure('mysql_secure') from None
+                raise
             shutdown = self.spawn('mysql_bootstrap_shutdown', [self.runtime['mysqladmin'], '--defaults-file=' + str(defaults),
                 '--protocol=MEMORY', '--shared-memory-base-name=' + shared_name, '--connect-timeout=2', 'shutdown'], environment)
             try:
-                shutdown.communicate(timeout=20, cancelled=self.stop_event, max_stdout=1024, max_stderr=4096)
+                _, errors = shutdown.communicate(timeout=20, cancelled=self.stop_event, max_stdout=1024, max_stderr=4096)
+                self.mysql_diagnostics['mysql_secure'].observe(errors)
                 if shutdown.wait(timeout=1) != 0 or server.wait(timeout=20) != 0:
-                    raise LaunchError('DATABASE_INIT_FAILED')
+                    raise self.database_failure('mysql_secure')
             finally:
                 self.finish_child('mysql_bootstrap_shutdown')
         finally:
@@ -431,7 +479,7 @@ class Supervisor:
 
     def database_ready(self):
         if self.children['mysql'].poll() is not None:
-            raise mysql_failure(self.children['mysql'], self.phase, code='DATABASE_START_FAILED')
+            raise self.database_failure('mysql', code='DATABASE_START_FAILED')
         try:
             with self.database_connection() as connection, connection.cursor() as cursor:
                 cursor.execute('SELECT 1')

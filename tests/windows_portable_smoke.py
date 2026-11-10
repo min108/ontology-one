@@ -175,6 +175,11 @@ class Acceptance:
                                    and item.startswith('MY-') and item[3:].isascii() and item[3:].isdigit()]
                     if valid_codes:
                         safe['mysql_codes'] = valid_codes
+                client_codes = diagnostic.get('mysql_client_codes')
+                if isinstance(client_codes, list) and len(client_codes) <= 12:
+                    valid_codes = [item for item in client_codes if type(item) is int and 0 < item < 65536]
+                    if valid_codes:
+                        safe['mysql_client_codes'] = valid_codes
                 if safe:
                     self.last_launch_failure['diagnostic'] = safe
         require((result.returncode == 0) == success, 'UNEXPECTED_LAUNCH_EXIT_' + str(result.returncode) + ('_' + safe_code if safe_code else ''))

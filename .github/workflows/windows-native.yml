@@ -110,6 +110,7 @@ jobs:
           path: |
             out/reports
             out/resolved-windows-runtime.lock.json
+            out/windows-build-provenance.json
           if-no-files-found: warn
           retention-days: 7
       - name: Retain verified distribution assets

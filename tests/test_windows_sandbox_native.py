@@ -11,7 +11,7 @@ standard-user deployment claim. No accounts, privileges, network exemptions,
 external model requests, or administrator installation are created here.
 """
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager, ExitStack
+from contextlib import contextmanager, ExitStack, nullcontext
 import ctypes
 import json
 import os
@@ -65,7 +65,7 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         cls.system_root = os.environ.get('SystemRoot', r'C:\Windows')
 
     @contextmanager
-    def sandbox(self, script, *, limits=None, diagnose=True, contained=True):
+    def sandbox(self, script, *, limits=None, diagnose=True, contained=True, audit=False, profile_readonly=True):
         temporary = tempfile.TemporaryDirectory(prefix='Ontology native 沙盒 ! ')
         root = ensure_private_directory(Path(temporary.name))
         runtime = root / 'runtime'
@@ -78,15 +78,31 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         script_path.write_text(script, encoding='utf-8')
         (work / 'own-sentinel.txt').write_text('synthetic-private-content', encoding='utf-8')
         profile = native.AppContainerProfile()
+        if not profile_readonly:
+            # Only the fixed trusted marker diagnostic selects this branch.
+            # Production and every isolation acceptance case retain the
+            # original read-only profile policy. No source package runs here.
+            grant = profile.grant_read_tree
+            def keep_os_profile_acl(path, **kwargs):
+                if profile.folder is not None and Path(path) == profile.folder:
+                    return
+                return grant(path, **kwargs)
+            profile.grant_read_tree = keep_os_profile_acl
         owner = None
         try:
             profile.__enter__()
             profile.grant_read_tree(root)
             profile.grant_read_tree(runtime, executable=True)
             environment = runner._sandbox_environment(runtime, work, self.system_root)
-            owner = native.spawn_job_process(
-                [str(runtime / 'python.exe'), '-I', '-X', 'utf8', '-B', '-u', str(script_path)],
-                cwd=str(work), env=environment, limits=LIMITS if limits is None else limits, appcontainer=profile if contained else None)
+            original = native._verify_appcontainer_token
+            def verify_and_audit(process, sid):
+                original(process, sid)
+                from tests.windows_loader_diagnostics import audit_loader_access
+                audit_loader_access(process, runtime, work, self.system_root)
+            with patch.object(native, '_verify_appcontainer_token', side_effect=verify_and_audit) if audit else nullcontext():
+                owner = native.spawn_job_process(
+                    [str(runtime / 'python.exe'), '-I', '-X', 'utf8', '-B', '-u', str(script_path)],
+                    cwd=str(work), env=environment, limits=LIMITS if limits is None else limits, appcontainer=profile if contained else None)
             yield owner, root, runtime, work, profile
         except native.WindowsProcessError as exc:
             if diagnose:
@@ -131,10 +147,24 @@ class WindowsSandboxNativeTests(unittest.TestCase):
             self.assertEqual(owner.returncode, 0); self.assertEqual(output, b'ONTOLOGY_NATIVE_READY\n'); self.assertEqual(error, b'')
 
     def test_01_lpac_runtime_early_entry_marker(self):
-        with self.sandbox('import os\nos.write(1,b"ONTOLOGY_NATIVE_READY\\n")\n') as (owner, *_):
+        with self.sandbox('import os\nos.write(1,b"ONTOLOGY_NATIVE_READY\\n")\n', audit=True) as (owner, *_):
             output, error = owner.communicate(b'', timeout=5, max_stdout=128, max_stderr=1024)
             print(json.dumps({'native_lpac_marker': owner.diagnostic_counters()}), flush=True)
             self.assertEqual(owner.returncode, 0); self.assertEqual(output, b'ONTOLOGY_NATIVE_READY\n'); self.assertEqual(error, b'')
+
+    def test_02_trusted_marker_profile_initialization_diagnostic(self):
+        # A/B diagnostic, not a security acceptance or fallback. All strong
+        # LPAC/private-file/network/resource tests remain mandatory and retain
+        # read-only profiles. Only an OS-created, unique disposable profile's
+        # default ACL differs for this fixed no-input/no-file-write marker.
+        try:
+            with self.sandbox('import os\nos.write(1,b"ONTOLOGY_NATIVE_READY\\n")\n',
+                              profile_readonly=False) as (owner, *_):
+                output, _ = owner.communicate(b'', timeout=5, max_stdout=128, max_stderr=1024)
+                print(json.dumps({'native_default_profile_diagnostic': {'early_marker': output == b'ONTOLOGY_NATIVE_READY\n',
+                    **owner.diagnostic_counters()}}), flush=True)
+        except native.WindowsProcessError as failure:
+            print(json.dumps({'native_default_profile_diagnostic': failure.diagnostic()}), flush=True)
 
     def test_lpac_proof_rejects_an_ordinary_appcontainer_before_resume(self):
         # Negative control only: create an actual ordinary AC, while retaining
