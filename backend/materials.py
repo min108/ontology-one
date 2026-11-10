@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -23,11 +23,15 @@ from .provenance import (initialize_provenance, ensure_source_version, get_sourc
                          get_active_chunks, ensure_chunk_anchor, register_chunk_anchor, normalize_source_ref)
 
 router = APIRouter()
-ROOT = Path(__file__).resolve().parent.parent
-UPLOADS = ROOT / "data" / "uploads"
+from .storage import upload_path, scoped_path, uploads_dir, write_bytes, read_bytes, ScopedActivitySet, download_response
+from .security.context import require_context
 KINDS = {"data", "rule", "algorithm", "knowledge"}
 KIND_NAMES = {"data": "数据", "rule": "规则", "algorithm": "算法", "knowledge": "知识"}
-_active: set[str] = set()
+_active = ScopedActivitySet()
+from .jobs import enqueue, active_for, queue_status, display_job
+
+def _material_busy(material_id):
+    return material_id in _active or active_for('material_extract', material_id)
 
 
 def now() -> str:
@@ -58,7 +62,7 @@ def material(conn, material_id: str) -> dict:
 def activity(conn, entity_id: str, action: str, detail: str) -> None:
     action = {"upload": "上传材料", "extract": "识读与拆解", "candidate_review": "核对候选成果", "candidate_merge": "合并候选成果", "candidate_adopt": "采纳为资产草稿", "create": "形成资产草稿"}.get(action, action)
     conn.execute("INSERT INTO activities(entity_id,action,detail,actor,created_at) VALUES(?,?,?,?,?)",
-                 (entity_id, action, detail, "本地体验用户", now()))
+                 (entity_id, action, detail, require_context().user_id, now()))
 
 
 def save_payload(conn, item: dict, payload: dict, reason: str | None = None) -> None:
@@ -181,6 +185,14 @@ def validate_context(conn, project_id: str, task_id: str) -> str:
     return validate_work_context(conn, project_id, task_id)[0]
 
 
+def _upload_receipt(row, digest, material_id):
+    saved = entity_dict(row)
+    if saved['kind'] != 'material' or saved['payload'].get('sha256') != digest:
+        raise HTTPException(409, '同一上传标识的文件内容发生变化，请重新选择文件')
+    return {'entity': saved, 'id': material_id, 'chunks': saved['payload'].get('chunk_count', 0),
+            'warnings': saved['payload'].get('parse_warnings', []), 'already_uploaded': True}
+
+
 @router.post("/materials/upload")
 async def upload_material(file: UploadFile = File(...), org_id: str = Form(""), domain: str = Form("综合管理"), project_id: str = Form(""), task_id: str = Form(""), matter_id: str = Form(""), upload_token: str = Form("")):
     filename = Path((file.filename or "未命名材料").replace("\\", "/")).name
@@ -195,27 +207,25 @@ async def upload_material(file: UploadFile = File(...), org_id: str = Form(""), 
     if upload_token and not re.fullmatch(r"[a-zA-Z0-9_-]{16,80}", upload_token):
         raise HTTPException(422, "上传标识无效，请重新选择文件")
     material_id = "material_" + hashlib.sha256(upload_token.encode()).hexdigest()[:24] if upload_token else uid("material")
+    digest = hashlib.sha256(data).hexdigest()
     if upload_token:
         with closing(connect()) as conn:
             previous = conn.execute("SELECT * FROM entities WHERE id=?", (material_id,)).fetchone()
             if previous:
-                saved = entity_dict(previous)
-                if saved["payload"].get("sha256") != hashlib.sha256(data).hexdigest():
-                    raise HTTPException(409, "同一上传标识的文件内容发生变化，请重新选择文件")
-                return {"entity": saved, "id": material_id, "chunks": saved["payload"].get("chunk_count", 0), "warnings": saved["payload"].get("parse_warnings", []), "already_uploaded": True}
+                return _upload_receipt(previous, digest, material_id)
     try:
         original_text, physical_blocks, warnings = await asyncio.to_thread(read_source, data, suffix)
     except (ValueError, UnicodeError) as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(422, "文件未能解析，请检查文件是否完整，或另存为 PDF / UTF-8 文本后重试") from exc
-    UPLOADS.mkdir(parents=True, exist_ok=True)
-    stored_name = material_id + suffix
-    path = UPLOADS / stored_name
+    # Concurrent requests share the entity id, but never share a file they may clean up.
+    stored_name = material_id + '-' + uuid.uuid4().hex + suffix
+    path = upload_path(stored_name, create_parent=True)
     written = False
     stamp = now()
     payload = {"filename": filename, "stored_name": stored_name, "file_size": len(data), "format": suffix[1:].upper(),
-               "sha256": hashlib.sha256(data).hexdigest(), "chunk_count": 0, "parse_warnings": warnings,
+               "sha256": digest, "chunk_count": 0, "parse_warnings": warnings,
                "original_text": original_text, "source_blocks": physical_blocks,
                "segmentation_status": "unsegmented", "segmentation_mode": None,
                "project_id": project_id, "task_id": task_id, "matter_id": matter_id,
@@ -225,16 +235,13 @@ async def upload_material(file: UploadFile = File(...), org_id: str = Form(""), 
             conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute("SELECT * FROM entities WHERE id=?", (material_id,)).fetchone()
             if existing:
-                saved = entity_dict(existing)
-                if saved["payload"].get("sha256") != payload["sha256"]:
-                    raise HTTPException(409, "同一上传标识的文件内容发生变化，请重新选择文件")
-                return {"entity": saved, "id": material_id, "chunks": saved["payload"].get("chunk_count", 0), "warnings": saved["payload"].get("parse_warnings", []), "already_uploaded": True}
+                return _upload_receipt(existing, digest, material_id)
             from .work_context import validate_matter_context
             project_id, task_id, matter_id = validate_matter_context(conn, project_id, task_id, matter_id)
             if org_id and not conn.execute("SELECT 1 FROM entities WHERE id=? AND kind='organization'", (org_id,)).fetchone():
                 raise HTTPException(422, "归属单位不存在，请重新选择")
             payload.update(project_id=project_id, task_id=task_id, matter_id=matter_id)
-            path.write_bytes(data)
+            write_bytes(path, data, overwrite=False)
             written = True
             conn.execute("INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                          (material_id, "material", Path(filename).stem, f"已保存原件与 {len(original_text):,} 字连续原文，待选择分段方式", domain, org_id, "draft", "user", dump(payload), stamp, stamp, 1))
@@ -243,9 +250,14 @@ async def upload_material(file: UploadFile = File(...), org_id: str = Form(""), 
             attach_matter_context(conn, material_id, project_id, task_id, matter_id, role="source_material")
             activity(conn, material_id, "upload", f"上传 {filename}，保存原件与连续原文，尚未分段")
             item = material(conn, material_id)
-    except Exception:
+    except Exception as exc:
         if written:
             path.unlink(missing_ok=True)
+        if upload_token and getattr(exc, 'args', (None,))[0] == 1062:
+            with closing(connect()) as conn:
+                existing = conn.execute('SELECT * FROM entities WHERE id=?', (material_id,)).fetchone()
+                if existing:
+                    return _upload_receipt(existing, digest, material_id)
         raise
     return {"entity": item, "id": material_id, "chunks": 0, "warnings": warnings}
 
@@ -307,10 +319,9 @@ def _segments_valid(segments, text):
         raise HTTPException(422, "分段尚未覆盖完整原文")
 
 
-def _reading_draft(conn, material_id):
-    initialize_provenance(conn)
+def _reading_draft(conn, material_id, *, persist=True):
     item = material(conn, material_id)
-    source = ensure_source_version(conn, material_id)
+    source = get_source_version(conn, material_id)
     if not source["text"].strip():
         raise HTTPException(422, "这份材料尚无可整理原文")
     row = conn.execute("SELECT * FROM reading_drafts WHERE material_id=?", (material_id,)).fetchone()
@@ -326,7 +337,7 @@ def _reading_draft(conn, material_id):
         segments = json.loads(current["segments"])
     else:
         chunks = get_active_chunks(conn, material_id)
-        refs = [ensure_chunk_anchor(conn, material_id, c["id"]) for c in chunks]
+        refs = [ensure_chunk_anchor(conn, material_id, c['id']) for c in chunks] if persist else [{'source_version':'', 'start':0} for c in chunks]
         # Historical source offsets belong to their own immutable version.
         # Re-locate existing text in the current source before using it as a
         # reading hint; never transfer old offsets onto changed source text.
@@ -340,7 +351,7 @@ def _reading_draft(conn, material_id):
         segments = [{"id": uid("seg"), "start": start, "end": starts[i+1] if i+1 < len(starts) else len(source["text"]), "heading": chunks[i].get("heading") or "原文" if chunks else "完整原文", "locked_after": False} for i,start in enumerate(starts)]
     _segments_valid(segments, source["text"])
     draft = {"material_id": material_id, "id": uid("reading"), "source_version": source["id"], "base_version": current["id"] if current else "", "revision": 1, "segments": segments, "history": [], "future": [], "pending_ai": {}, "chat": [], "updated_at": now()}
-    _write_draft(conn, draft)
+    if persist:_write_draft(conn, draft)
     return draft, source
 
 
@@ -352,7 +363,7 @@ def _write_draft(conn, draft):
 def _draft_response(conn, draft, source):
     segments = [{**part, "content": source["text"][part["start"]:part["end"]]} for part in draft["segments"]]
     latest=ensure_source_version(conn,draft['material_id'])
-    return {"id": draft["id"], "revision": draft["revision"], "base_version": draft["base_version"], "source_version": draft["source_version"], "source_number":source['version'], "source_update_available":latest['id']!=source['id'], "archived_drafts":[dict(r) for r in conn.execute('SELECT d.id,d.created_at,s.version AS source_number FROM archived_reading_drafts d JOIN source_versions s ON s.id=d.source_version WHERE d.material_id=? ORDER BY d.created_at DESC',(draft['material_id'],))], "source_sha256": source["sha256"], "characters": len(source["text"]), "segments": segments, "can_undo": bool(draft["history"]), "can_redo": bool(draft["future"]), "pending_ai": draft["pending_ai"], "chat": draft["chat"][-30:], "updated_at": draft["updated_at"], "ai_running": draft["material_id"] in _active, "versions": [dict(r) for r in conn.execute("SELECT id,version,source_version,reason,created_at FROM reading_versions WHERE material_id=? ORDER BY version DESC", (draft["material_id"],))]}
+    return {"id": draft["id"], "revision": draft["revision"], "base_version": draft["base_version"], "source_version": draft["source_version"], "source_number":source['version'], "source_update_available":latest['id']!=source['id'], "archived_drafts":[dict(r) for r in conn.execute('SELECT d.id,d.created_at,s.version AS source_number FROM archived_reading_drafts d JOIN source_versions s ON s.id=d.source_version WHERE d.material_id=? ORDER BY d.created_at DESC',(draft['material_id'],))], "source_sha256": source["sha256"], "characters": len(source["text"]), "segments": segments, "can_undo": bool(draft["history"]), "can_redo": bool(draft["future"]), "pending_ai": draft["pending_ai"], "chat": draft["chat"][-30:], "updated_at": draft["updated_at"], "ai_running": _material_busy(draft["material_id"]), "versions": [dict(r) for r in conn.execute("SELECT id,version,source_version,reason,created_at FROM reading_versions WHERE material_id=? ORDER BY version DESC", (draft["material_id"],))]}
 
 
 def _before_change(draft, reason):
@@ -382,7 +393,7 @@ class ReadingOperation(BaseModel):
 @router.get("/materials/{material_id}/reading")
 def reading_workspace(material_id: str):
     with closing(connect()) as conn, conn:
-        draft, source = _reading_draft(conn, material_id)
+        draft, source = _reading_draft(conn, material_id, persist=False)
         return _draft_response(conn, draft, source)
 
 
@@ -393,7 +404,7 @@ def reading_operation(material_id: str, body: ReadingOperation):
         draft, source = _reading_draft(conn, material_id)
         _check_revision(draft, body.revision)
         if body.action in {'latest_source','archived_draft'}:
-            if material_id in _active:raise HTTPException(409,'请待当前 AI 分析完成后切换原文草稿')
+            if _material_busy(material_id):raise HTTPException(409,'请待当前 AI 分析完成后切换原文草稿')
             snapshot=None
             if body.action=='archived_draft':
                 saved=conn.execute('SELECT * FROM archived_reading_drafts WHERE id=? AND material_id=?',(body.version_id,material_id)).fetchone()
@@ -474,7 +485,7 @@ def _diff_groups(before, after, text):
 @router.post("/materials/{material_id}/reading/ai")
 async def reading_ai(material_id: str, body: ReadingAI):
     if body.mode not in {"online", "default"}: raise HTTPException(422, "请选择 AI 或默认结构")
-    if material_id in _active: raise HTTPException(409, "这份材料已有 AI 任务正在进行，人工草稿仍可查看")
+    if _material_busy(material_id): raise HTTPException(409, "这份材料已有 AI 任务正在进行，人工草稿仍可查看")
     with closing(connect()) as conn, conn:
         draft, source = _reading_draft(conn, material_id)
         _check_revision(draft, body.revision)
@@ -693,7 +704,7 @@ async def propose_segments(item: dict, text: str, mode: str) -> list[dict]:
 async def segment_preview(material_id: str, request: SegmentRequest):
     if request.mode not in {"default", "online"}:
         raise HTTPException(400, "请选择默认分段或 AI 在线分段")
-    if material_id in _active:
+    if _material_busy(material_id):
         raise HTTPException(409, "该材料正在处理，请等待当前任务完成")
     with closing(connect()) as conn, conn:
         item = material(conn, material_id)
@@ -792,16 +803,12 @@ def download_material(material_id: str, source_version: str = ''):
             payload=source['metadata']
         stored = payload.get("stored_name")
         if stored:
-            path = (UPLOADS / Path(stored).name).resolve()
-            if path.parent != UPLOADS.resolve() or not path.is_file():
-                raise HTTPException(404, "原始附件不在当前资料库中，可继续查看已保存的原文")
-            return FileResponse(path, filename=payload.get("filename", path.name))
+            path = upload_path(stored, must_exist=True)
+            return download_response(path, payload.get("filename", path.name))
         source_path = payload.get("source_path")
         if source_path:
-            path = (ROOT / source_path).resolve()
-            source_root = (ROOT / "data" / "source").resolve()
-            if path.is_relative_to(source_root) and path.is_file():
-                return FileResponse(path, filename=payload.get("original_filename") or payload.get("source_file") or path.name)
+            path = scoped_path(source_path, must_exist=True)
+            return download_response(path, payload.get("original_filename") or payload.get("source_file") or path.name)
         if not source['text']:
             raise HTTPException(404, "这份资料没有可下载的正文")
         from fastapi.responses import Response
@@ -814,10 +821,8 @@ def download_material(material_id: str, source_version: str = ''):
 def material_detail(material_id: str, chunk_id: str = ""):
     with closing(connect()) as conn, conn:
         item = material(conn, material_id)
-        if material_id not in _active:
-            conn.execute("UPDATE jobs SET status='failed',message='上次整理运行已中断，原文和已完成结果仍保留，可重试未完成部分',updated_at=? WHERE entity_id=? AND kind='material_extract' AND status IN ('queued','running')", (now(), material_id))
         chunks = get_active_chunks(conn, material_id)
-        jobs = [dict(r) for r in conn.execute("SELECT * FROM jobs WHERE entity_id=? ORDER BY created_at DESC LIMIT 8", (material_id,))]
+        jobs = [display_job(dict(r)) for r in conn.execute("SELECT * FROM jobs WHERE entity_id=? ORDER BY created_at DESC LIMIT 8", (material_id,))]
         for job in jobs:
             try:
                 job["result"] = json.loads(job.get("result") or "{}")
@@ -1016,14 +1021,14 @@ async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
 
 
 @router.post("/materials/{material_id}/extract")
-def extract_material(material_id: str, request: ExtractRequest, background: BackgroundTasks):
+def extract_material(material_id: str, request: ExtractRequest):
     if request.mode not in {"online", "local"}:
         raise HTTPException(400, "请选择AI在线识读或本地规则识别")
-    if material_id in _active:
+    if _material_busy(material_id):
         raise HTTPException(409, "该材料已有整理任务正在进行，请稍后查看进度")
     with closing(connect()) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
-        if material_id in _active:
+        if _material_busy(material_id):
             raise HTTPException(409, "该材料已有整理任务正在进行，请稍后查看进度")
         material(conn, material_id)
         count = len(get_active_chunks(conn, material_id))
@@ -1034,8 +1039,7 @@ def extract_material(material_id: str, request: ExtractRequest, background: Back
         stamp = now()
         conn.execute("INSERT INTO jobs(id,kind,entity_id,status,progress,message,result,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
                      (job_id, "material_extract", material_id, "queued", 0, "已提交整理任务", dump({"mode": request.mode}), stamp, stamp))
-        _active.add(material_id)
-    background.add_task(run_extraction, material_id, job_id, request.mode, request.retry)
+        enqueue(job_id, 'material_extract', material_id, [material_id, job_id, request.mode, request.retry])
     return {"id": job_id, "status": "queued", "progress": 0, "message": "已提交整理任务", "mode": request.mode}
 
 
@@ -1046,11 +1050,14 @@ def get_job(job_id: str):
         if not row:
             raise HTTPException(404, "未找到整理任务")
         value = dict(row)
-        if value["kind"] == "material_extract" and value["status"] in ("queued", "running") and value["entity_id"] not in _active:
-            value["status"] = "failed"
-            value["message"] = "上次整理运行已中断，原文和已完成结果仍保留，可重试未完成部分"
-            conn.execute("UPDATE jobs SET status=?,message=?,updated_at=? WHERE id=?", (value["status"], value["message"], now(), job_id))
         value["result"] = json.loads(value.get("result") or "{}")
+        queued = queue_status(job_id)
+        if queued:
+            value['queue'] = queued
+            if queued['status'] in ('queued','retry','running'):
+                value['status'] = 'queued' if queued['status'] in ('queued','retry') else 'running'
+            elif queued['status'] in ('failed','cancelled'):
+                value['status']='failed';value['message']=queued['last_error']
         return value
 
 
@@ -1166,7 +1173,7 @@ def adopt_candidate(material_id: str, candidate_id: str):
         conn.execute("INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                      (asset_id, candidate["kind"], candidate["title"], candidate.get("summary", ""), item["domain"], item["org_id"], "draft", item["source_kind"], dump(payload), stamp, stamp, 1))
         conn.execute("INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
-                     (uid("rel"), asset_id, material_id, "derived_from", "来源依据", "confirmed", dump({"source_chunk_ids": source_ids, "locators": [c["locator"] for c in chunks], "confirmed_by": "本地体验用户"})))
+                     (uid("rel"), asset_id, material_id, "derived_from", "来源依据", "confirmed", dump({"source_chunk_ids": source_ids, "locators": [c["locator"] for c in chunks], "confirmed_by": require_context().user_id})))
         from .work_context import attach_matter_context
         attach_matter_context(conn, asset_id, item["payload"].get("project_id", ""), item["payload"].get("task_id", ""), item["payload"].get("matter_id", ""), role="produced_asset")
         candidate["status"] = "adopted"

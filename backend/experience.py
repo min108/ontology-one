@@ -7,7 +7,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 from typing import Literal
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from .db import connect, entity_json, log, now
 from .ai import complete, config
@@ -15,7 +15,12 @@ from .work_context import validate_matter_context, attach_matter_context
 from .provenance import ensure_source_version, normalize_source_ref, register_chunk_anchor, get_active_chunks
 
 router = APIRouter()
-_analysis_active: set[str] = set()
+from .storage import upload_path, write_bytes, ScopedActivitySet
+_analysis_active = ScopedActivitySet()
+from .jobs import enqueue, active_for, display_analysis, display_job
+
+def _analysis_busy(session_id):
+    return session_id in _analysis_active or active_for('experience_analysis', session_id)
 DIMENSIONS = [
     {"id": "context", "name": "事项情境", "short": "发生了什么", "question": "这次工作发生在什么事项和期间？你的职责是什么？当时能够取得哪些材料，又有什么限制？", "hint": "说明事项、主体、期间、工作角色及材料条件。"},
     {"id": "signals", "name": "初始信号", "short": "为什么关注", "question": "最初是哪一项具体信息让你关注这个事项？请区分原始记载、直觉判断，以及当时尚未核实的疑点。", "hint": "写出最初看到的记录及当时的疑问，避免倒推结论。"},
@@ -210,10 +215,7 @@ async def create_session(body: CreateSession):
 def get_session(session_id: str):
     with closing(connect()) as c, c:
         e = session(c,session_id); p=e['payload']
-        a=p.get('analysis',{})
-        if a.get('status')=='running' and session_id not in _analysis_active:
-            a.update(status='interrupted',message='上次处理已中断，已保存的批次与经验点可以继续查看；可重试未完成部分。')
-            c.execute('UPDATE entities SET payload=? WHERE id=?',(dump(p),session_id))
+        a=display_analysis(p.get('analysis',{}));p['analysis']=a
         for item in p.get('knowledge_candidates',[]):
             if item.get('adopted_entity_id'):
                 row=c.execute('SELECT version,status FROM entities WHERE id=?',(item['adopted_entity_id'],)).fetchone()
@@ -224,10 +226,7 @@ def get_session(session_id: str):
 @router.get('/experience/{session_id}/progress')
 def progress(session_id: str):
     with closing(connect()) as c,c:
-        e=session(c,session_id); a=e['payload'].get('analysis',{})
-        if a.get('status')=='running' and session_id not in _analysis_active:
-            a.update(status='interrupted',message='上次处理已中断，已完成批次保留，可以继续处理。')
-            c.execute('UPDATE entities SET payload=? WHERE id=?',(dump(e['payload']),session_id))
+        e=session(c,session_id); a=display_analysis(e['payload'].get('analysis',{}))
         return {'analysis':a,'version':e['version'],'candidate_count':len(e['payload'].get('knowledge_candidates',[]))}
 
 
@@ -265,7 +264,7 @@ async def retry_question(session_id:str,body:QuestionRequest):
 
 @router.post('/experience/import')
 async def import_record(file:UploadFile=File(...),title:str=Form(''),domain:str=Form('数据治理'),org_id:str=Form(''),case_id:str=Form(''),project_id:str=Form(''),task_id:str=Form(''),matter_id:str=Form(''),source_kind:str=Form('user')):
-    from .materials import read_source,UPLOADS
+    from .materials import read_source
     filename=Path((file.filename or '经验记录.txt').replace('\\','/')).name;suffix=Path(filename).suffix.lower()
     if suffix not in {'.txt','.md','.docx','.pdf','.html','.htm'}:raise HTTPException(422,'支持 Word、可检索 PDF、TXT、Markdown 和 HTML')
     raw=await file.read(25*1024*1024+1)
@@ -275,10 +274,10 @@ async def import_record(file:UploadFile=File(...),title:str=Form(''),domain:str=
     sid,stamp=uid('EXP-'),now();title=(title.strip() or Path(filename).stem)[:250]
     p={'record_type':'experience_session','entry_mode':'record','origin_type':'expert_record','filename':filename,'stored_name':sid+suffix,'format':suffix[1:].upper(),'file_size':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'material_type':'经验原始记录','turns':[],'candidates':[],'knowledge_candidates':[],'proposals':[],'parse_warnings':warnings,'chunk_count':len(source),'segmentation_status':'confirmed','segmentation_mode':'source_blocks','project_id':project_id,'task_id':task_id,'matter_id':matter_id,'case_id':case_id,'analysis':{'status':'pending','message':'原件已保留，尚未分析'}}
     p.update(original_text=original_text,source_blocks=source)
-    e={'id':sid,'title':title,'summary':'由经验记录稿导入；保留原话，从自由语境发现可复用的经验点。','domain':domain,'org_id':org_id,'status':'draft','source_kind':'demo' if source_kind=='demo' else 'user','payload':p};path=UPLOADS/p['stored_name']
+    e={'id':sid,'title':title,'summary':'由经验记录稿导入；保留原话，从自由语境发现可复用的经验点。','domain':domain,'org_id':org_id,'status':'draft','source_kind':'demo' if source_kind=='demo' else 'user','payload':p};path=upload_path(p['stored_name'], create_parent=True)
     try:
         with closing(connect()) as c,c:
-            validate_session_context(c,p,org_id);UPLOADS.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+            validate_session_context(c,p,org_id);write_bytes(path,raw)
             c.execute('INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(sid,'material',title,e['summary'],domain,org_id,'draft',e['source_kind'],dump(p),stamp,stamp,1))
             for ch in source:
                 cid=f"{sid}::source-{ch['position']:04d}"
@@ -508,11 +507,11 @@ class AnalysisRequest(BaseModel):
 
 
 @router.post('/experience/{session_id}/analyze')
-def analyze_record(session_id:str,background:BackgroundTasks,body:AnalysisRequest=AnalysisRequest()):
+def analyze_record(session_id:str,body:AnalysisRequest=AnalysisRequest()):
     if not config()['api_key']:raise HTTPException(422,'请先配置并测试在线AI；原始记录已保存')
     with closing(connect()) as c,c:
         c.execute('BEGIN IMMEDIATE')
-        if session_id in _analysis_active:raise HTTPException(409,'正在处理这份记录，请等待本轮完成')
+        if _analysis_busy(session_id):raise HTTPException(409,'正在处理这份记录，请等待本轮完成')
         e=session(c,session_id);chunks=chunks_for(c,session_id)
         if not chunks:raise HTTPException(422,'缺少可分析的原始叙述')
         if sum(len(ch['content']) for ch in chunks)>240000 or len(chunks)>1000:raise HTTPException(422,'单次支持24万字、1000个原文块，请按事项分卷；不会静默截断原文')
@@ -525,8 +524,8 @@ def analyze_record(session_id:str,background:BackgroundTasks,body:AnalysisReques
         if state is None:
             rid=uid('EXPRUN-');state={'id':rid,'session_id':session_id,'status':'running','source_signature':signature,'source_version':e['payload'].get('source_version'),'source_snapshot':chunks,'started_at':now(),'batches':[{'id':f'{rid}-{i+1}','index':i,'chunk_ids':[ch['id'] for ch in batch],'status':'pending','pages':0,'candidate_ids':[]} for i,batch in enumerate(analysis_batches(chunks))],'message':'已保存原文范围，正在逐组理解语境'}
             stamp=now();c.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?)',(rid,'experience_analysis',session_id,'running',0,state['message'],dump(state),stamp,stamp))
-        write_job(c,state);sync_summary(c,e,state);_analysis_active.add(session_id)
-    background.add_task(run_record_analysis,session_id,state['id'])
+        write_job(c,state);sync_summary(c,e,state)
+        enqueue(state['id'],'experience_analysis',session_id,[session_id,state['id']],retry=body.retry_failed)
     return {'status':'running','session_id':session_id,'run_id':state['id']}
 
 
@@ -534,7 +533,7 @@ def analyze_record(session_id:str,background:BackgroundTasks,body:AnalysisReques
 def list_runs(session_id:str):
     with closing(connect()) as c:
         session(c,session_id)
-        return {'items':[{**dict(r),'result':analysis_summary(json.loads(r['result']))} for r in c.execute("SELECT * FROM jobs WHERE entity_id=? AND kind='experience_analysis' ORDER BY created_at DESC LIMIT 30",(session_id,))]}
+        return {'items':[{**display_job(dict(r)),'result':analysis_summary(json.loads(r['result']))} for r in c.execute("SELECT * FROM jobs WHERE entity_id=? AND kind='experience_analysis' ORDER BY created_at DESC LIMIT 30",(session_id,))]}
 
 
 def candidate_item(e,cid):

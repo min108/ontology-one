@@ -1,0 +1,12 @@
+.git
+.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+frontend/dist
+work
+data
+.env*
+*.zip
+
+!.env.example

@@ -7,6 +7,7 @@ import json
 import uuid
 from fastapi import HTTPException
 from .db import entity_json, now, log
+from .security.context import require_context
 
 EDITABLE_TASK_STATES = {'draft', 'active', 'pending', 'returned'}
 CLOSED_PROJECT_STATES = {'completed', 'published', 'archived'}
@@ -37,6 +38,7 @@ def validate_context(conn, project_id='', task_id=''):
 
 
 def attach_context(conn, target_id, project_id='', task_id='', role='source_material', label='', actor='本地业务人员'):
+    principal=require_context();actor=principal.username
     project_id,task_id=validate_context(conn,project_id,task_id)
     if role not in ROLES:raise HTTPException(422,'工作清单用途不正确。')
     target=entity_json(conn.execute('SELECT * FROM entities WHERE id=?',(target_id,)).fetchone())
@@ -52,7 +54,7 @@ def attach_context(conn, target_id, project_id='', task_id='', role='source_mate
         original=dict(parent);original['workspace_relation_change']=event
         conn.execute('INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)',(parent_id,parent['version'],json.dumps(original,ensure_ascii=False),stamp,label+'：'+target['title']))
         conn.execute('UPDATE entities SET version=version+1,updated_at=? WHERE id=?',(stamp,parent_id))
-        conn.execute('INSERT INTO relations VALUES(?,?,?,?,?,?,?)',('rel-work-'+uuid.uuid4().hex,parent_id,target_id,relation_type,label,'confirmed',json.dumps({'role':role,'managed_by':'content_ingress','confirmed_by':actor,'target_version':target['version'],'created_at':stamp},ensure_ascii=False)))
+        conn.execute('INSERT INTO relations VALUES(?,?,?,?,?,?,?)',('rel-work-'+uuid.uuid4().hex,parent_id,target_id,relation_type,label,'confirmed',json.dumps({'role':role,'managed_by':'content_ingress','confirmed_by':principal.user_id,'confirmed_by_name':actor,'target_version':target['version'],'created_at':stamp},ensure_ascii=False)))
         log(conn,parent_id,label,target['title']+'（'+target_id+'）',actor)
     return project_id,task_id
 
@@ -71,6 +73,7 @@ def validate_matter_context(conn, project_id='', task_id='', matter_id=''):
 
 
 def attach_matter_context(conn,target_id,project_id='',task_id='',matter_id='',role='source_material',label='',actor='本地业务人员',*,source_changed=False):
+    actor=require_context().username
     project_id,task_id,matter_id=validate_matter_context(conn,project_id,task_id,matter_id)
     attach_context(conn,target_id,project_id,task_id,role,label,actor)
     if matter_id:

@@ -2,12 +2,20 @@ import json,os,re
 from pathlib import Path
 import httpx
 from fastapi import APIRouter,Request,HTTPException
-from .db import ROOT,connect,entity_json,log,now
-router=APIRouter();CONFIG=ROOT/'data/runtime/ai.json'
+from .db import connect,entity_json,log,now
+from .storage import scoped_path, read_bytes, write_bytes, assert_storage_write
+from .security.context import require_context
+router=APIRouter()
+def config_path(*, create=False):
+    return scoped_path('data/runtime/ai.json', allowed=('data/runtime',), create_parent=create)
+def require_admin():
+    p=assert_storage_write()
+    if p.role!='admin':raise HTTPException(403,'仅机构管理员可管理模型配置。')
+    return p
 def config():
-    try:c=json.loads(CONFIG.read_text(encoding='utf-8'))
-    except:c={}
-    return {'api_key':os.getenv('DEEPSEEK_API_KEY') or c.get('api_key',''),'base_url':c.get('base_url','https://api.deepseek.com'),'model':c.get('model','deepseek-chat'),'online_verified':c.get('online_verified',False)}
+    path=config_path()
+    c=json.loads(read_bytes(path).decode('utf-8')) if path.is_file() else {}
+    return {'api_key':c.get('api_key',''),'base_url':c.get('base_url','https://api.deepseek.com'),'model':c.get('model','deepseek-chat'),'online_verified':c.get('online_verified',False)}
 async def complete(messages,json_mode=False):
     c=config()
     if not c['api_key']:raise RuntimeError('尚未配置模型密钥，请在系统设置中配置。')
@@ -27,18 +35,19 @@ def status():
     c=config();return {'configured':bool(c['api_key']),'model':c['model'],'base_url':c['base_url'],'online_verified':c['online_verified'],'mode':'online_available' if c['api_key'] else 'retrieval_only'}
 @router.post('/ai/config')
 async def save(request:Request):
-    b=await request.json();c=config()
+    require_admin();b=await request.json();c=config()
     if b.get('api_key'):c['api_key']=str(b['api_key']).strip()
     for key in ['model','base_url']:
         if b.get(key):c[key]=str(b[key]).strip()
     if not c['base_url'].startswith('https://'):raise HTTPException(400,'模型地址须使用 HTTPS。')
-    c['online_verified']=False;CONFIG.parent.mkdir(parents=True,exist_ok=True);CONFIG.write_text(json.dumps(c,ensure_ascii=False),encoding='utf-8');CONFIG.chmod(0o600)
+    c['online_verified']=False;write_bytes(config_path(create=True),json.dumps(c,ensure_ascii=False).encode('utf-8'))
     return status()
 @router.post('/ai/test')
 async def test():
+    require_admin()
     try:
         await complete([{'role':'user','content':'请仅回复：连接成功。'}])
-        c=config();c['online_verified']=True;CONFIG.parent.mkdir(parents=True,exist_ok=True);CONFIG.write_text(json.dumps(c,ensure_ascii=False),encoding='utf-8');CONFIG.chmod(0o600)
+        c=config();c['online_verified']=True;write_bytes(config_path(create=True),json.dumps(c,ensure_ascii=False).encode('utf-8'))
         return {'ok':True,'message':'已验证模型接口可用。'}
     except Exception as e:raise HTTPException(502,str(e))
 # Search complete business content before selecting results.  Chinese adjacent
@@ -52,8 +61,10 @@ from time import monotonic
 from urllib.parse import quote
 import asyncio
 
-_SEARCH_CACHE = {'signature': None, 'records': [], 'loaded_at': 0.0}
+_SEARCH_CACHE = {}
 _SEARCH_LOCK = RLock()
+_SEARCH_LOAD_LOCKS = [RLock() for _ in range(32)]
+_SEARCH_GENERATIONS = {}
 _SEARCH_KINDS = ('rule', 'knowledge', 'algorithm', 'data')
 _SOURCE_LABELS = {'regulation': '法规原文（上传来源）', 'imported': '导入资产', 'demo': '演示业务（虚构）', 'user': '用户提供'}
 _STATUS_LABELS = {'published': '已发布', 'approved': '已审核', 'review': '待审核', 'draft': '草稿待核', 'returned': '待补充', 'archived': '已归档'}
@@ -150,17 +161,32 @@ def _source_location(payload):
             payload.get('source_locator') or ref.get('locator') or first_location.get('locator', ''))
 
 
-def _search_records():
+def invalidate_search_cache(tenant_id=None):
     with _SEARCH_LOCK:
+        for tenant in ({tenant_id} if tenant_id is not None else set(_SEARCH_GENERATIONS)):
+            _SEARCH_GENERATIONS[tenant] = _SEARCH_GENERATIONS.get(tenant, 0) + 1
+        for key in list(_SEARCH_CACHE):
+            if tenant_id is None or key[0] == tenant_id:
+                _SEARCH_CACHE.pop(key, None)
+
+
+def _search_records():
+    principal=require_context()
+    key=(principal.tenant_id, principal.database_name, principal.user_id, principal.auth_version, principal.role, principal.readonly, principal.visibility)
+    with _SEARCH_LOAD_LOCKS[hash((principal.tenant_id, principal.database_name)) % len(_SEARCH_LOAD_LOCKS)]:
+        with _SEARCH_LOCK:
+            generation=_SEARCH_GENERATIONS.setdefault(principal.tenant_id,0)
+            cache=_SEARCH_CACHE.get(key, {'signature':None,'records':[],'loaded_at':0.0})
         with closing(connect()) as c:
             state = c.execute("SELECT COUNT(*),COALESCE(MAX(updated_at),''),COALESCE(SUM(version),0) FROM entities").fetchone()
             chunk_state = c.execute("SELECT COUNT(*),COALESCE(MAX(id),'') FROM chunks").fetchone()
             signature = tuple(state) + tuple(chunk_state)
-            if _SEARCH_CACHE['signature'] == signature and monotonic() - _SEARCH_CACHE['loaded_at'] < 60:
-                return _SEARCH_CACHE['records']
+            if cache['signature'] == signature and monotonic() - cache['loaded_at'] < 60:
+                return cache['records']
             records = []
             materials = {}
-            for row in c.execute("SELECT * FROM entities WHERE kind IN ('rule','knowledge','algorithm','data','material') AND status NOT IN ('archived','rejected') AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0"):
+            visible = " AND status='published' AND kind!='material'" if principal.visibility=='published' else ''
+            for row in c.execute("SELECT * FROM entities WHERE kind IN ('rule','knowledge','algorithm','data','material') AND status NOT IN ('archived','rejected') AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0" + visible):
                 entity = entity_json(row)
                 p = entity['payload']
                 if entity['kind'] == 'material':
@@ -189,7 +215,13 @@ def _search_records():
                     '_text': text, '_body': text.lower(), '_summary': '', '_title': str(m['title']).lower() + ' ' + str(row['heading'] or '').lower(),
                     '_material_id': m['id'], '_chunk_id': row['id'], '_locator': locator,
                     'payload': {**m['payload'], 'content': text}})
-        _SEARCH_CACHE.update(signature=signature, records=records, loaded_at=monotonic())
+        with _SEARCH_LOCK:
+            # A concurrent business commit invalidates this in-flight snapshot too.
+            if _SEARCH_GENERATIONS.get(principal.tenant_id)==generation:
+                _SEARCH_CACHE[key]={'signature':signature, 'records':records, 'loaded_at':monotonic()}
+            if len(_SEARCH_CACHE)>128:
+                oldest=min(_SEARCH_CACHE,key=lambda k:_SEARCH_CACHE[k]['loaded_at'])
+                _SEARCH_CACHE.pop(oldest,None)
         return records
 
 

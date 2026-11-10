@@ -1,4 +1,4 @@
-"""Create a portable, fresh-workspace DEMO release without credentials or personal data."""
+"""Create a portable, fresh-workspace 0.2.0 release without credentials or personal data."""
 from pathlib import Path
 import argparse
 import json
@@ -6,7 +6,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED = {'node_modules', '.git', '.venv', '__pycache__', 'work', 'runtime', 'uploads'}
-TOP_FILES = ['README.md', 'requirements.txt', 'docker-compose.yml', '启动平台.bat', 'start.sh', '.gitignore']
+TOP_FILES = ['README.md', 'requirements.txt', 'docker-compose.yml', '启动平台.bat', 'start.sh', '.gitignore', 'Dockerfile', '.dockerignore', '.env.example']
 
 
 def create_release(destination: Path):
@@ -14,7 +14,7 @@ def create_release(destination: Path):
         raise RuntimeError('请先编译前端页面，再导出本地安装包。')
     destination.parent.mkdir(parents=True, exist_ok=True)
     files = [ROOT / name for name in TOP_FILES if (ROOT / name).is_file()]
-    for folder in ['backend', 'frontend', 'scripts']:
+    for folder in ['backend', 'frontend', 'scripts', 'ops', 'tests']:
         for path in (ROOT / folder).rglob('*'):
             if not path.is_file() or path.is_symlink():
                 continue
@@ -24,7 +24,7 @@ def create_release(destination: Path):
             if path.name.startswith('.env') or path.suffix in {'.pyc', '.tsbuildinfo', '.db', '.log'}:
                 continue
             files.append(path)
-    prefix = 'Ontology One-DEMO-本地演示平台/'
+    prefix = 'Ontology-One-0.2.0/'
     with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in sorted(set(files)):
             archive.write(path, prefix + path.relative_to(ROOT).as_posix())

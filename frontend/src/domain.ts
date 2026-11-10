@@ -1,5 +1,5 @@
 /** Shared business vocabulary. Source documents retain their original wording. */
-export const MODULES={overview:'总览驾驶舱',work:'我的工作台',projects:'专题工作室',experience:'经验萃取室',materials:'素材整理',assets:'业务资产',datasets:'数据导入',graph:'本体图谱',applications:'本体应用',impact:'变更复核',maintenance:'审核维护',settings:'系统设置',briefing:'业务汇报导览',knowledge:'知识专栏',authority:'权责规范'} as const;
+export const MODULES={overview:'机构总览',group:'集团成果',security:'账号安全',administration:'账号与权限',work:'我的工作台',projects:'专题工作室',experience:'经验萃取室',materials:'素材整理',assets:'业务资产',datasets:'数据导入',graph:'本体图谱',applications:'本体应用',impact:'变更复核',maintenance:'审核维护',settings:'系统设置',briefing:'业务汇报导览',knowledge:'知识专栏',authority:'权责规范'} as const;
 export function entityHref(id:string,kind?:string):string{
  const encoded=encodeURIComponent(id);
  if(kind==='person'||id.startsWith('PERSON-AUTH-'))return '/authority?person='+encoded;

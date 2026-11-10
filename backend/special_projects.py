@@ -3,13 +3,19 @@ from contextlib import closing
 from collections import Counter
 import hashlib,html,json,uuid
 from datetime import date
-from fastapi import APIRouter,HTTPException,Request,BackgroundTasks
+from fastapi import APIRouter,HTTPException,Request
 from fastapi.responses import Response
 from .db import connect,entity_json,now,log
 from .work_context import validate_context,attach_context,attach_matter_context
 from .projects import _save,_get
 
-router=APIRouter();_running=set()
+from .storage import ScopedActivitySet
+from .security.context import require_context
+router=APIRouter();_running=ScopedActivitySet()
+from .jobs import enqueue, active_for, display_job
+
+def _refinement_busy(pid):
+    return pid in _running or active_for('special_refinement',pid)
 CATEGORIES={'report':'正式报告','working_paper':'工作底稿','inquiry':'访谈记录','explanation':'单位说明','policy':'制度依据','ledger':'原始台账','delivery':'交付反馈','other':'其他资料'}
 DISPOSITIONS={'pending':'待核阅','usable':'纳入提炼','background':'背景参考','duplicate':'重复材料','superseded':'已被更正'}
 STANCES={'supports':'支持陈述','explains':'合理解释','contradicts':'存在矛盾','gap':'材料缺口'}
@@ -113,7 +119,7 @@ def audit(c,p):
     for x in candidates:
         if x.get('status') not in ('adopted','rejected','merged','deferred'):missing.append('资产候选尚未处置：'+x['title'])
         if x.get('status')=='deferred' and not (x.get('followup_owner') and x.get('review_note')):missing.append('暂缓候选缺少跟进责任人与原因：'+x['title'])
-    active=c.execute("SELECT count(*) FROM jobs WHERE entity_id=? AND kind='special_refinement' AND status IN ('queued','running')",(p['id'],)).fetchone()[0]
+    active=active_for('special_refinement',p['id'])
     if active:missing.append('跨材料提炼仍在处理中')
     tasks=c.execute("SELECT title,status FROM entities WHERE kind='task' AND json_extract(payload,'$.project_id')=?",(p['id'],)).fetchall()
     for t in tasks:
@@ -122,14 +128,12 @@ def audit(c,p):
 
 def workspace(pid):
     with closing(connect()) as c,c:
-        init_special_schema(c);p=project(c,pid);all_p=p['payload'];candidates=all_p.get('asset_candidates',[])
+        p=project(c,pid);all_p=p['payload'];candidates=all_p.get('asset_candidates',[])
         p['payload']={k:v for k,v in all_p.items() if k not in ('asset_candidates','material_register')}
-        if pid not in _running:
-            c.execute("UPDATE jobs SET status='failed',message='服务重启中断了上次提炼；已处理覆盖记录保留，请重新发起。',updated_at=? WHERE entity_id=? AND kind='special_refinement' AND status IN ('queued','running')",(now(),pid))
         mats=materials(c,dict(p,payload=all_p));matters=scoped(c,pid,'matter');ev=scoped(c,pid,'evidence');outputs=[]
         for r in c.execute("SELECT DISTINCT e.* FROM relations r JOIN entities e ON e.id=r.target WHERE r.source=? AND r.type IN ('produces','uses_asset') AND e.kind IN ('data','rule','algorithm','knowledge')",(pid,)):
             item=entity_json(r);item['payload']={k:v for k,v in item['payload'].items() if k in ('knowledge_form','origin_type','matter_ids','active_asset','source_refs','topic_label')};outputs.append(item)
-        jobs=[dict(r) for r in c.execute("SELECT * FROM jobs WHERE entity_id=? AND kind='special_refinement' ORDER BY created_at DESC LIMIT 25",(pid,))]
+        jobs=[display_job(dict(r)) for r in c.execute("SELECT * FROM jobs WHERE entity_id=? AND kind='special_refinement' ORDER BY created_at DESC LIMIT 25",(pid,))]
         for j in jobs:j['result']=json.loads(j['result'] or '{}')
         deliveries=[{k:r[k] for k in ('id','version','created_at','reviewer','note')} for r in c.execute('SELECT * FROM special_deliveries WHERE project_id=? ORDER BY version DESC',(pid,))]
         collections=[entity_json(r) for r in c.execute("SELECT * FROM entities WHERE kind='collection' AND json_extract(payload,'$.project_id')=?",(pid,))]
@@ -204,6 +208,8 @@ async def update_matter(pid:str,mid:str,request:Request):
         if b.get('version') and b['version']!=m['version']:raise HTTPException(409,'事项已有新版本，请刷新。')
         for key in ('description','original_finding','original_conclusion','original_source_note','review_note','review_state'):
             if key in b:m['payload'][key]=str(b[key]).strip()
+        if require_context().role not in ('reviewer', 'admin') and any(key in b for key in ('description','original_finding','original_conclusion','original_source_note','title')):
+            m['payload'].update(review_state='pending',review_note='')
         if m['payload'].get('review_state') not in ('pending','needs_more','checked','excluded'):raise HTTPException(422,'事项整理状态无效。')
         if m['payload'].get('review_state') in ('checked','excluded') and not m['payload'].get('review_note'):raise HTTPException(422,'请填写核对意见或不纳入理由。')
         if m['payload'].get('review_state')=='checked' and not c.execute("SELECT 1 FROM entities WHERE kind='evidence' AND json_extract(payload,'$.matter_id')=? AND json_extract(payload,'$.review_state')='confirmed'",(mid,)).fetchone():raise HTTPException(422,'事项核对完成前至少需要一条经人工确认的依据引用。')
@@ -433,10 +439,10 @@ async def run_refinement(pid,jid,matter_ids,material_ids):
     finally:_running.discard(pid)
 
 @router.post('/special-projects/{pid}/refinements')
-async def start_refinement(pid:str,request:Request,background:BackgroundTasks):
+async def start_refinement(pid:str,request:Request):
     b=await request.json();mids=list(dict.fromkeys(b.get('matter_ids',[])));sids=list(dict.fromkeys(b.get('material_ids',[])))
     if not mids or not sids or len(sids)>40:raise HTTPException(422,'请选择事项和1至40份原文材料；较大专项可按事项分批提炼。')
-    if pid in _running:raise HTTPException(409,'本专项已有提炼任务进行中。')
+    if _refinement_busy(pid):raise HTTPException(409,'本专项已有提炼任务进行中。')
     from .ai import config
     if not config()['api_key']:raise HTTPException(422,'请先配置在线模型；也可以人工整理候选，系统不会将本地模板冒充AI结果。')
     with closing(connect()) as c,c:
@@ -449,13 +455,13 @@ async def start_refinement(pid:str,request:Request,background:BackgroundTasks):
             if not c.execute("SELECT 1 FROM relations WHERE source=? AND target=?",(pid,sid)).fetchone():raise HTTPException(422,'材料不属于本专项。')
             total+=len(ensure_source_version(c,sid)['text'])
         if total>160000:raise HTTPException(422,'本轮原文超过16万字，请分批整理；系统不会截断或跳过未处理部分。')
-        jid=uid('SP-RUN');stamp=now();c.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?)',(jid,'special_refinement',pid,'queued',0,'等待跨材料提炼',jd({'material_ids':sids,'matter_ids':mids,'characters':total}),stamp,stamp));_running.add(pid)
-    background.add_task(run_refinement,pid,jid,mids,sids)
+        jid=uid('SP-RUN');stamp=now();c.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?)',(jid,'special_refinement',pid,'queued',0,'等待跨材料提炼',jd({'material_ids':sids,'matter_ids':mids,'characters':total}),stamp,stamp))
+        enqueue(jid,'special_refinement',pid,[pid,jid,mids,sids])
     return {'id':jid,'status':'queued'}
 
 @router.post('/special-projects/{pid}/deliveries')
 async def create_delivery(pid:str,request:Request):
-    b=await request.json();reviewer=str(b.get('reviewer','')).strip();note=str(b.get('note','')).strip()
+    b=await request.json();reviewer=require_context().user_id;note=str(b.get('note','')).strip()
     if not reviewer or len(note)<6:raise HTTPException(422,'请填写交付复核人和具体交付说明。')
     with closing(connect()) as c,c:
         c.execute('BEGIN IMMEDIATE');init_special_schema(c);p=project(c,pid,True);check=audit(c,p)

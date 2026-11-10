@@ -29,8 +29,8 @@ def initialize_provenance(conn):
 
 
 def _schema(conn):
-    try: conn.execute('SELECT 1 FROM source_versions LIMIT 1')
-    except Exception: initialize_provenance(conn)
+    # Schema is provisioned before a workspace can be selected.
+    return None
 
 
 def get_active_chunks(conn,material_id):
@@ -73,6 +73,7 @@ def ensure_source_version(conn,material_id,text=None,*,metadata=None):
     sha=hashlib.sha256(text.encode()).hexdigest()
     row=conn.execute('SELECT * FROM source_versions WHERE material_id=? AND sha256=?',(material_id,sha)).fetchone()
     if not row:
+        if getattr(conn, 'readonly', False):raise HTTPException(409,'原文版本索引尚未初始化，请先保存材料。')
         version=conn.execute('SELECT coalesce(max(version),0)+1 FROM source_versions WHERE material_id=?',(material_id,)).fetchone()[0]
         sid=_id('source');conn.execute('INSERT INTO source_versions VALUES(?,?,?,?,?,?,?)',(sid,material_id,version,text,sha,_json(metadata or {}),now()))
         row=conn.execute('SELECT * FROM source_versions WHERE id=?',(sid,)).fetchone()
@@ -93,6 +94,7 @@ def _anchor(conn,material_id,source_version,start,end,locator=''):
     quote=source['text'][start:end]
     row=conn.execute('SELECT * FROM source_anchors WHERE source_version=? AND start=? AND end=?',(source_version,start,end)).fetchone()
     if not row:
+        if getattr(conn, 'readonly', False):raise HTTPException(409,'该出处尚未保存，请先在材料工作面确认引用。')
         aid=_id('anchor');loc=locator or f'原文第 {start+1}–{end} 字'
         conn.execute('INSERT INTO source_anchors VALUES(?,?,?,?,?,?,?,?)',(aid,material_id,source_version,start,end,hashlib.sha256(quote.encode()).hexdigest(),loc,now()))
         row=conn.execute('SELECT * FROM source_anchors WHERE id=?',(aid,)).fetchone()
@@ -114,6 +116,7 @@ def register_chunk_anchor(conn,material_id,chunk_id,source_version,start,end,loc
         source=get_source_version(conn,material_id,existing['source_version']);return _ref({**dict(existing),'quote':source['text'][existing['start']:existing['end']]},chunk_id)
     anchor=_anchor(conn,material_id,source_version,start,end,locator or row['locator'])
     if anchor['quote']!=row['content']:raise HTTPException(422,'片段正文与原文范围不一致，未建立出处锚点')
+    if getattr(conn, 'readonly', False):raise HTTPException(409,'片段出处尚未确认，请先保存材料分段。')
     conn.execute('INSERT INTO chunk_anchors VALUES(?,?)',(chunk_id,anchor['id']))
     return _ref(anchor,chunk_id)
 

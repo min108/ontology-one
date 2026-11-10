@@ -20,14 +20,27 @@ router = APIRouter(tags=['本体图谱'])
 KINDS = {'data':'数据资产','rule':'规则资产','algorithm':'算法资产','knowledge':'知识资产','material':'原始材料','dataset':'单位数据台账','organization':'组织单位','person':'任职人员','project':'本体专题','task':'工作任务','case':'案例档案','matter':'业务事项','evidence':'证据引用','issue':'核对事项','collection':'知识专栏','analysis':'分析记录'}
 ASSETS = {'data','rule','algorithm','knowledge'}
 EDGE = namedtuple('GraphRelation', 'id source target type label status')
-_CACHE = {'signature':None,'at':0,'value':None};_LOCK=RLock()
+_CACHES = {}; _LOCKS = {}; _LOCK=RLock()
 ORDER={'material':0,'dataset':1,'evidence':2,'data':3,'rule':4,'algorithm':5,'knowledge':6,'collection':7,'project':8,'task':9,'matter':10,'case':11,'issue':12,'organization':13,'person':14}
 
 
+def invalidate_graph_cache(tenant_id):
+    with _LOCK:
+        for key in list(_CACHES):
+            if key[0] == tenant_id:
+                _CACHES.pop(key, None)
+
+
 def _snapshot():
-    with _LOCK, closing(connect()) as db:
+    from .security.context import require_context
+    principal = require_context()
+    key = (principal.tenant_id, principal.database_name, principal.user_id, principal.auth_version, principal.role, principal.readonly)
+    with _LOCK:
+        lock = _LOCKS.setdefault(principal.tenant_id, RLock())
+    with lock, closing(connect()) as db:
+        cache = _CACHES.setdefault(key, {'signature': None, 'at': 0, 'value': None})
         sig=tuple(db.execute("SELECT count(*),coalesce(sum(version),0),coalesce(max(updated_at),'') FROM entities").fetchone())+tuple(db.execute("SELECT count(*),coalesce(max(id),'') FROM relations").fetchone())+(db.execute('SELECT coalesce(max(id),0) FROM activities').fetchone()[0],)
-        if _CACHE['signature']==sig and time.monotonic()-_CACHE['at']<20:return _CACHE['value']
+        if cache['signature']==sig and time.monotonic()-cache['at']<20:return cache['value']
         nodes={}
         for row in db.execute("""SELECT id,kind,title,summary,domain,org_id,status,source_kind,version,updated_at,
           json_extract(payload,'$.category') category,json_extract(payload,'$.subcategory') subcategory,
@@ -35,8 +48,10 @@ def _snapshot():
           json_extract(payload,'$.active_asset') active_asset,json_extract(payload,'$.record_role') record_role,
           json_extract(payload,'$.merged_into') merged_into,json_extract(payload,'$.type') org_type,
           json_extract(payload,'$.group') org_group,json_extract(payload,'$.shared') shared,
-          json_extract(payload,'$.is_demo') is_demo,json_extract(payload,'$.collection_scope') collection_scope
+          json_extract(payload,'$.is_demo') is_demo,json_extract(payload,'$.collection_scope') collection_scope,json_extract(payload,'$.hide_in_graph') hide_in_graph
           FROM entities"""):
+            if row.get('hide_in_graph') in (True, 1, 'true', '1'):
+                continue
             d=dict(row);d['label']=d.pop('title');d['active']=d.get('active_asset')!=0 and d.get('record_role') not in ('historical_alias','procedure_reference')
             d['is_demo']=d.get('source_kind')=='demo' or bool(d.get('is_demo'));d['aggregate']=False
             for key in ('category','subcategory','topic_label','domain','org_id'):d[key]=str(d.get(key) or '')
@@ -86,7 +101,7 @@ def _snapshot():
             edges.append(edge);adj[edge.source].append(edge)
             if edge.target!=edge.source:adj[edge.target].append(edge)
         value={'nodes':nodes,'edges':edges,'adj':adj,'signature':str(sig),'mapping_review':mapping_review,'mapping_confirmation':mapping_confirmation}
-        _CACHE.update(signature=sig,value=value,at=time.monotonic());return value
+        cache.update(signature=sig,value=value,at=time.monotonic());return value
 
 
 def _active(node,history=False):return history or node['active']

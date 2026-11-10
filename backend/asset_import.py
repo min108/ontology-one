@@ -17,10 +17,10 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .db import ROOT, connect, entity_json, log, now
+from .db import connect, entity_json, log, now
 
 router = APIRouter()
-STORAGE = ROOT / 'data' / 'uploads' / 'asset-imports'
+from .storage import upload_path, stored_path, open_file, read_bytes
 MAX_UPLOAD = 30 * 1024 * 1024
 KIND_NAMES = {'data': '数据资产', 'rule': '规则资产', 'algorithm': '算法资产'}
 
@@ -121,7 +121,7 @@ def sheet_rows(workbook, kind):
 
 def parse_workbook(path, kind):
     try:
-        workbook = load_workbook(path, read_only=True, data_only=False)
+        workbook = load_workbook(io.BytesIO(read_bytes(path)), read_only=True, data_only=False)
     except Exception as exc:
         raise HTTPException(422, '无法读取工作簿，请上传未加密、有效的 .xlsx 文件。') from exc
     try:
@@ -195,7 +195,7 @@ def build_asset(kind, record, material_id, material_title, chunk_id, batch):
                    'content': content, 'source_id': material_id, 'maturity': '标准数据元目录，非已接入业务数据',
                    'reference_status': '分类级候选关联'}
         return {'id': code, 'kind': kind, 'title': text(v.get('数据项名称')), 'summary': text(v.get('业务含义'), True),
-                'domain': domain_from_sheet(sheet, code), 'status': 'published', 'payload': payload}
+                'domain': domain_from_sheet(sheet, code), 'status': 'draft', 'payload': payload}
     if kind == 'algorithm':
         content = '\n\n'.join(f'{label}\n{text(v.get(field), True)}' for label, field in
                               [('适用场景', '适用场景'), ('数据需求', '数据需求'), ('分析方法', '分析方法'),
@@ -224,7 +224,7 @@ def build_asset(kind, record, material_id, material_title, chunk_id, batch):
                'source_id': text(v.get('法规编号')) or material_id, 'review_note': '导入内容保留原文；关联与适用条件须结合原文逐项复核。',
                'maturity': '原文条款资产', 'reference_status': 'candidate'}
     return {'id': code, 'kind': kind, 'title': title or code, 'summary': original[:240],
-            'domain': domain_from_sheet(sheet, code), 'status': 'review', 'payload': payload}
+            'domain': domain_from_sheet(sheet, code), 'status': 'draft', 'payload': payload}
 
 
 def relation_id(source, target, typ, batch):
@@ -351,7 +351,7 @@ def download_template(kind: str):
         ['文本保留', '编码按文本保存；长文本可保留单元格内换行，导入不会把换行拆成多条记录。'],
         ['关联清单', '多个关联编码使用中文分号“；”分隔；没有关联时可留空，不要编造编码。'],
         ['导入范围', '也可上传符合字段规范的多工作表台账；算法存在“总表”时仅读取总表，避免与领域表重复。'],
-        ['写入方式', '整批校验通过后一次写入；同编号资产更新时保留原版本快照。'],
+        ['写入方式', '整批校验通过后以草稿写入，提交审核后才能发布；同编号资产更新时保留原版本快照并重新审核。'],
     ]
     if kind == 'rule':
         guide_rows.insert(3, ['资产来源', '必须区分“外部法规”与“内部制度”。上传不含此列的法规台账时按外部法规导入。'])
@@ -371,7 +371,7 @@ def download_template(kind: str):
     output = io.BytesIO()
     workbook.save(output)
     output.seek(0)
-    filename = f'Ontology-One-DEMO-{KIND_NAMES[kind]}-标准导入模板.xlsx'
+    filename = f'Ontology-One-0.2.0-{KIND_NAMES[kind]}-标准导入模板.xlsx'
     return StreamingResponse(output, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                              headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"})
 
@@ -384,11 +384,10 @@ def import_assets(kind: str, file: UploadFile = File(...)):
     if Path(original_name).suffix.lower() != '.xlsx':
         raise HTTPException(422, '请上传 .xlsx 文件；旧版 .xls 请先另存为 .xlsx。')
     batch = 'ASSET-IMPORT-' + uuid.uuid4().hex[:16].upper()
-    STORAGE.mkdir(parents=True, exist_ok=True)
-    path = STORAGE / f'{batch}.xlsx'
+    path = upload_path(f'{batch}.xlsx', 'asset-imports', create_parent=True)
     hasher, size = hashlib.sha256(), 0
     try:
-        with path.open('wb') as output:
+        with open_file(path, 'wb') as output:
             while chunk := file.file.read(1024 * 1024):
                 size += len(chunk)
                 if size > MAX_UPLOAD:
@@ -404,7 +403,7 @@ def import_assets(kind: str, file: UploadFile = File(...)):
             ensure_schema(conn)
             assets = []
             material_payload = {'material_type': '原始资产工作簿', 'source_file': original_name,
-                                'original_filename': original_name, 'source_path': path.relative_to(ROOT).as_posix(),
+                                'original_filename': original_name, 'source_path': stored_path(path),
                                 'sha256': hasher.hexdigest(), 'batch': batch, 'asset_kind': kind,
                                 'content': '系统内一键导入的原始工作簿。每项资产保留工作表、行号和原文片段。',
                                 'chunk_count': len(records), 'version_info': {'batch': batch, 'source_sha256': hasher.hexdigest()}}

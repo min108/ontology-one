@@ -8,7 +8,12 @@ from __future__ import annotations
 import json
 import os
 import re
-from contextlib import closing
+import time
+import hashlib
+from collections import OrderedDict
+import threading
+from contextlib import closing, contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -31,7 +36,7 @@ def mysql_config():
         'port': int(os.environ.get('MYSQL_PORT', '3306')),
         'user': os.environ.get('MYSQL_USER', 'root'),
         'password': os.environ.get('MYSQL_PASSWORD', ''),
-        'database': os.environ.get('MYSQL_DATABASE', 'ontology_one'),
+        'database': os.environ.get('MYSQL_DATABASE', 'ontology_one_v020'),
     }
     url = os.environ.get('ONTOLOGY_MYSQL_URL', '').strip()
     if url:
@@ -110,10 +115,29 @@ class Cursor:
 
 
 class Connection:
-    def __init__(self, raw):
+    def __init__(self, raw, principal=None, readonly=False, release=None):
         self.raw = raw
+        self.principal = principal
+        self.readonly = readonly
+        self._release = release
+        self._closed = False
+        self._dirty = False
+
+    def _guard(self, sql, params):
+        command = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ''
+        writes = command not in ('SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'SET', 'BEGIN', 'START')
+        if writes:
+            if self.readonly:
+                from fastapi import HTTPException
+                raise HTTPException(403, '当前连接只允许读取。')
+            if self.principal and not self._dirty:
+                from .jobs import assert_execution_principal_current
+                assert_execution_principal_current(self.principal, require_write=True)
+            self._dirty = True
+        return tuple(params or ())
 
     def execute(self, sql, params=()):
+        params = self._guard(sql, params)
         cursor = Cursor(self.raw.cursor())
         try:
             return cursor.execute(sql, params)
@@ -124,6 +148,7 @@ class Connection:
             raise
 
     def executemany(self, sql, params):
+        self._guard(sql, ())
         cursor = Cursor(self.raw.cursor())
         try:
             return cursor.executemany(sql, params)
@@ -136,7 +161,20 @@ class Connection:
             self.execute(statement)
 
     def commit(self):
+        if self._dirty and self.principal:
+            from .jobs import assert_job_lease_current, assert_execution_principal_current
+            assert_execution_principal_current(self.principal, require_write=True)
+            assert_job_lease_current()
         self.raw.commit()
+        if self._dirty and self.principal:
+            import sys
+            module = sys.modules.get('backend.ai')
+            if module and hasattr(module, 'invalidate_search_cache'):
+                module.invalidate_search_cache(self.principal.tenant_id)
+            module = sys.modules.get('backend.graph')
+            if module and hasattr(module, 'invalidate_graph_cache'):
+                module.invalidate_graph_cache(self.principal.tenant_id)
+        self._dirty = False
 
     def rollback(self):
         self.raw.rollback()
@@ -145,7 +183,16 @@ class Connection:
         self.raw.begin()
 
     def close(self):
-        self.raw.close()
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self.raw.rollback()
+        finally:
+            if self._release:
+                self._release(self.raw)
+            else:
+                self.raw.close()
 
     def __enter__(self):
         return self
@@ -272,25 +319,159 @@ def translate(sql):
     return _literal_percents(_parameters(value))
 
 
-def connect():
+_REQUEST_READONLY = ContextVar('ontology_request_readonly', default=False)
+
+
+@contextmanager
+def business_readonly(enabled=True):
+    token = _REQUEST_READONLY.set(enabled)
+    try:
+        yield
+    finally:
+        _REQUEST_READONLY.reset(token)
+
+
+# A process-wide bound covers active AND idle connections across all tenants.
+# Idle connections retain only physical database identity and are evicted LRU.
+_POOL_IDLE = OrderedDict()
+_POOL_CONDITION = threading.Condition()
+_POOL_TOTAL = 0
+_READY = set()
+
+
+def _raw_connection(database, *, create=False, timeout=15):
     settings = mysql_config()
     options = dict(host=settings['host'], port=settings['port'], user=settings['user'],
                    password=settings['password'], charset='utf8mb4', cursorclass=DictCursor,
-                   autocommit=False, connect_timeout=15, read_timeout=120, write_timeout=120)
-    try:
-        raw = pymysql.connect(database=settings['database'], **options)
-    except pymysql.err.OperationalError as exc:
-        if not exc.args or exc.args[0] != 1049:
-            raise
+                   autocommit=False, connect_timeout=timeout, read_timeout=120, write_timeout=120)
+    if not re.fullmatch(r'[A-Za-z0-9_]{1,64}', database):
+        raise ValueError('Invalid server-side database identifier')
+    if create:
         with closing(pymysql.connect(**options)) as server:
             with server.cursor() as cursor:
-                cursor.execute(f"CREATE DATABASE `{settings['database']}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+                cursor.execute(f'CREATE DATABASE IF NOT EXISTS `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
             server.commit()
-        raw = pymysql.connect(database=settings['database'], **options)
+    raw = pymysql.connect(database=database, **options)
     with raw.cursor() as cursor:
         cursor.execute("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci")
-        cursor.execute("SET SESSION time_zone='+00:00', lock_wait_timeout=60")
-    return Connection(raw)
+        cursor.execute("SET SESSION time_zone='+00:00', lock_wait_timeout=10")
+    return raw
+
+
+def _borrow(database):
+    global _POOL_TOTAL
+    from fastapi import HTTPException
+    settings = mysql_config()
+    key = (settings['host'], settings['port'], settings['user'], database,
+           hashlib.sha256(settings['password'].encode()).digest())
+    capacity = max(1, min(64, int(os.getenv('ONTOLOGY_DB_POOL_SIZE', '16'))))
+    deadline = time.monotonic() + 10
+    raw, evicted = None, None
+    with _POOL_CONDITION:
+        while True:
+            matching = next((ident for ident in reversed(_POOL_IDLE) if _POOL_IDLE[ident][0] == key), None)
+            if matching is not None:
+                _, raw = _POOL_IDLE.pop(matching)
+                break
+            if _POOL_TOTAL < capacity:
+                _POOL_TOTAL += 1
+                break
+            if _POOL_IDLE:
+                _, (_, evicted) = _POOL_IDLE.popitem(last=False)
+                break  # Replace one idle slot; total stays bounded.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise HTTPException(503, '业务连接池繁忙，请稍后重试。')
+            _POOL_CONDITION.wait(remaining)
+    try:
+        if evicted is not None:
+            try:
+                evicted.close()
+            except Exception:
+                pass  # The server may already have disconnected an idle socket.
+        if raw is not None:
+            try:
+                raw.ping(reconnect=False)
+            except pymysql.MySQLError:
+                raw.close()
+                raw = None
+        if raw is None:
+            raw = _raw_connection(database)
+    except Exception:
+        with _POOL_CONDITION:
+            _POOL_TOTAL -= 1
+            _POOL_CONDITION.notify()
+        raise
+
+    def release(connection):
+        global _POOL_TOTAL
+        healthy = False
+        try:
+            connection.rollback()
+            with connection.cursor() as cursor:
+                cursor.execute('SET SESSION TRANSACTION READ WRITE')
+            healthy = True
+        except Exception:
+            connection.close()
+        with _POOL_CONDITION:
+            if healthy:
+                _POOL_IDLE[id(connection)] = (key, connection)
+            else:
+                _POOL_TOTAL -= 1
+            _POOL_CONDITION.notify()
+    return raw, release
+
+
+def connect():
+    from .security.context import require_context
+    from .jobs import assert_execution_principal_current
+    principal = require_context()
+    assert_execution_principal_current(principal)
+    raw, release = _borrow(principal.database_name)
+    readonly = principal.readonly or _REQUEST_READONLY.get()
+    try:
+        if readonly:
+            with raw.cursor() as cursor:
+                cursor.execute('SET SESSION TRANSACTION READ ONLY')
+        return Connection(raw, principal, readonly, release)
+    except Exception:
+        release(raw)
+        raise
+
+
+@contextmanager
+def tenant_connection(tenant_id, readonly=True):
+    from .security.context import require_context
+    from .security.store import can_read_tenant
+    from fastapi import HTTPException
+    principal = require_context()
+    # can_read_tenant atomically validates the live session and its target grant.
+    access = can_read_tenant(principal, tenant_id)
+    if not access:
+        raise HTTPException(403, '未获该机构的访问授权。')
+    if not readonly:
+        raise HTTPException(403, '跨机构聚合连接仅用于读取。')
+    database = access.get('db_name') or access.get('database_name')
+    if not database:
+        tenant = access.get('tenant') or {}
+        database = tenant.get('db_name') or tenant.get('database_name')
+    raw, release = _borrow(database)
+    connection = None
+    try:
+        with raw.cursor() as cursor:
+            cursor.execute('SET SESSION TRANSACTION READ ONLY')
+        connection = Connection(raw, principal, True, release)
+        yield connection
+    finally:
+        if connection is not None:
+            connection.close()
+        else:
+            release(raw)
+
+
+def current_org_id():
+    from .security.context import require_context
+    return require_context().tenant_id
 
 
 def entity_json(row):
@@ -301,10 +482,23 @@ def entity_json(row):
         value['payload'] = json.loads(value.get('payload') or '{}')
     except (TypeError, ValueError):
         value['payload'] = {}
+    from .security.context import get_context
+    principal = get_context()
+    if principal:
+        value['owner_tenant_id'] = principal.tenant_id
+        value['owner_org_id'] = principal.tenant_id
     return value
 
 
 SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS entity_access(
+        entity_id VARCHAR(191) PRIMARY KEY,visibility VARCHAR(32) NOT NULL DEFAULT 'institution',
+        updated_by VARCHAR(191),updated_at VARCHAR(40)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
+    """CREATE TABLE IF NOT EXISTS entity_ownership(
+        entity_id VARCHAR(191) PRIMARY KEY,tenant_id VARCHAR(191) NOT NULL,created_by VARCHAR(191) NOT NULL,
+        created_at VARCHAR(40) NOT NULL,updated_by VARCHAR(191),updated_at VARCHAR(40)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
     """CREATE TABLE IF NOT EXISTS workspace_meta(
         meta_key VARCHAR(100) PRIMARY KEY,meta_value LONGTEXT,updated_at VARCHAR(40)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
@@ -376,27 +570,58 @@ def normalize_collations(conn):
             conn.execute(f'ALTER TABLE `{table}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
 
 
+def ensure_tenant_schema(tenant_id):
+    """Provision only directory-owned database names; never accept a client database."""
+    from .security.store import get_tenant
+    tenant = get_tenant(tenant_id)
+    if not tenant:
+        raise ValueError('Unknown tenant')
+    database = tenant.get('db_name') or tenant.get('database_name')
+    if database in _READY:
+        return
+    with closing(_raw_connection(database, create=True)) as raw:
+        conn = Connection(raw)
+        lock_name = 'ontology-schema-' + database[-40:]
+        if conn.execute('SELECT GET_LOCK(?,30)', (lock_name,)).fetchone()[0] != 1:
+            raise RuntimeError('租户初始化繁忙，请重试。')
+        try:
+            for statement in SCHEMA:
+                conn.execute(statement)
+            from .datasets import ensure_schema
+            ensure_schema(conn)
+            from .provenance import initialize_provenance
+            initialize_provenance(conn)
+            from .special_projects import init_special_schema
+            init_special_schema(conn)
+            name = tenant.get('name') or tenant.get('title')
+            category = tenant.get('category') or tenant.get('kind')
+            payload = {'type': category, 'group': '一级子公司' if category == 'subsidiary' else '总部职能部门',
+                       'tenant_id': tenant_id, 'hide_in_graph': category == 'headquarters', 'managed_directory': True}
+            timestamp = now()
+            conn.execute('INSERT IGNORE INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                         (tenant_id, 'organization', name, '机构根节点', '组织管理', tenant_id, 'published', 'directory',
+                          json.dumps(payload, ensure_ascii=False), timestamp, timestamp, 1))
+            conn.execute('REPLACE INTO workspace_meta(meta_key,meta_value,updated_at) VALUES(?,?,?)',
+                         ('schema_version', '0.2.0', timestamp))
+            normalize_collations(conn)
+            conn.commit()
+            _READY.add(database)
+        finally:
+            conn.execute('SELECT RELEASE_LOCK(?)', (lock_name,))
+
+
 def initialize():
-    fresh = False
-    with closing(connect()) as conn, conn:
-        for statement in SCHEMA:
-            conn.execute(statement)
-        if not conn.execute('SELECT 1 FROM entities LIMIT 1').fetchone():
-            fresh = True
-            from .seed import seed
-            seed(conn)
-        from .datasets import seed_datasets
-        seed_datasets(conn)
-        from .provenance import initialize_provenance
-        initialize_provenance(conn)
-        from .special_demo import seed_special_demo
-        seed_special_demo(conn)
-        from .authority_seed import seed_authority
-        seed_authority(conn)
-        normalize_collations(conn)
-    return fresh
+    from .security.context import require_context
+    ensure_tenant_schema(require_context().tenant_id)
+    return False
 
 
-def log(conn, entity_id, action, detail='', actor='本地体验用户'):
+def log(conn, entity_id, action, detail='', actor='系统'):
+    from .security.context import get_context
+    principal = get_context()
+    if principal:
+        actor = principal.username
+        conn.execute('INSERT INTO entity_ownership(entity_id,tenant_id,created_by,created_at,updated_by,updated_at) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE updated_by=VALUES(updated_by),updated_at=VALUES(updated_at)',
+                     (entity_id, principal.tenant_id, principal.user_id, now(), principal.user_id, now()))
     conn.execute('INSERT INTO activities(entity_id,action,detail,actor,created_at) VALUES(?,?,?,?,?)',
                  (entity_id, action, detail, actor, now()))

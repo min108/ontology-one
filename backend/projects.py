@@ -4,6 +4,7 @@ import json
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from .db import connect, entity_json, now, log
+from .security.context import require_context
 
 router = APIRouter()
 TASK_TYPES = [
@@ -28,6 +29,7 @@ def _get(c, eid, kind=None):
 
 
 def _save(c, e, reason, actor='本地业务人员', detail=''):
+    actor = require_context().username
     old = _get(c,e['id'])
     c.execute('INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)',(e['id'],old['version'],json.dumps(old,ensure_ascii=False),now(),reason))
     c.execute('UPDATE entities SET title=?,summary=?,status=?,domain=?,payload=?,version=version+1,updated_at=? WHERE id=?',(e['title'],e['summary'],e['status'],e['domain'],json.dumps(e['payload'],ensure_ascii=False),now(),e['id']))
@@ -133,7 +135,7 @@ async def create_task(pid:str,request:Request):
         if len(title)>150:raise HTTPException(400,'任务名称请控制在150字以内。')
         if p['status'] in DONE:raise HTTPException(400,'请先重新打开专题，再分解新任务。')
         tid='TASK-USER-'+uuid.uuid4().hex[:10];t=now()
-        payload={'task_type':tp['value'],'project_id':pid,'owner':str(b.get('owner','')).strip(),'due_date':str(b.get('due_date','')),'instruction':instruction,'priority':b.get('priority','normal'),'checklist':[{'item':x,'done':False,'required':True} for x in tp['checks']],'delivery_note':'','created_by':'本地业务人员'}
+        payload={'task_type':tp['value'],'project_id':pid,'owner':str(b.get('owner','')).strip(),'due_date':str(b.get('due_date','')),'instruction':instruction,'priority':b.get('priority','normal'),'checklist':[{'item':x,'done':False,'required':True} for x in tp['checks']],'delivery_note':'','created_by':require_context().user_id,'created_by_name':require_context().username}
         c.execute('INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(tid,'task',title,instruction,p['domain'],p['org_id'],'draft','user',json.dumps(payload,ensure_ascii=False),t,t,1))
         c.execute('INSERT INTO relations VALUES(?,?,?,?,?,?,?)',('rel-'+uuid.uuid4().hex,pid,tid,'contains','分解任务','confirmed','{}'));log(c,tid,'建立'+tp['label']+'任务',instruction);log(c,pid,'分解任务',title);_sync(c,pid)
     return workspace(tid,'task')
@@ -226,13 +228,14 @@ async def edit_object(eid:str,rid:str,request:Request):
 
 def task_action(tid,b):
     """Also used by the legacy entities action endpoint to prevent bypass."""
-    act=b.get('action');reason=str(b.get('reason','')).strip();actor=str(b.get('actor','本地业务人员')).strip()
+    principal=require_context();act=b.get('action');reason=str(b.get('reason','')).strip();actor=principal.username
+    if act=='approve' and 'delivery_note' in b:
+        raise HTTPException(403,'审核不能修改已提交的交付说明；请退回后由办理人员修订。')
     with closing(connect()) as c,c:
         e=_get(c,tid,'task');_expect(e,b);p=e['payload'];status=e['status']
         if act=='claim':
             if status not in EDITABLE:raise HTTPException(400,'此任务暂不能认领。')
-            if not actor:raise HTTPException(400,'请填写责任人姓名。')
-            p['owner']=actor;e['status']='active'
+            p['owner']=actor;p['owner_user_id']=principal.user_id;e['status']='active'
         elif act in ('submit','approve','complete'):
             if act=='submit' and status not in EDITABLE:raise HTTPException(400,'任务已提交，请等待复核。')
             if act=='approve' and status!='review':raise HTTPException(400,'请先提交成果复核。')
@@ -249,7 +252,7 @@ def task_action(tid,b):
                 if snapshot and set(current)!={x['id'] for x in snapshot}:changed.append('工作对象清单发生变化')
                 if changed:raise HTTPException(409,'提交后关联内容发生变化，请退回重新核对：'+'；'.join(changed[:3]))
             e['status']={'submit':'review','approve':'approved','complete':'completed'}[act]
-            if act=='approve':p['review_note']=reason;p['reviewer']=actor;p['reviewed_at']=now()
+            if act=='approve':p['review_note']=reason;p['reviewer']=actor;p['reviewer_id']=principal.user_id;p['reviewed_at']=now()
             if act=='complete':p['completed_at']=now()
         elif act=='return':
             if status not in ('review','approved'):raise HTTPException(400,'仅待审核或已审核任务可退回。')

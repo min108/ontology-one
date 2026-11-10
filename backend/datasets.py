@@ -23,8 +23,8 @@ from .field_matching import rank_candidates, semantic_checks, value_profile, sce
 from .work_context import validate_matter_context, attach_matter_context
 
 router = APIRouter()
-ROOT = Path(__file__).resolve().parents[1]
-STORAGE = ROOT / "data" / "uploads" / "datasets"
+from .storage import scoped_path, upload_path, stored_path, open_file, read_bytes, write_bytes, download_response
+from .security.context import require_context
 MAX_UPLOAD = 50 * 1024 * 1024
 
 
@@ -34,11 +34,6 @@ def jd(value):
 
 def now():
     return datetime.now().isoformat(timespec="seconds")
-
-
-def stored_path(path):
-    resolved = path.resolve()
-    return resolved.relative_to(ROOT).as_posix() if resolved.is_relative_to(ROOT) else str(resolved)
 
 
 def entity_json(row):
@@ -73,7 +68,6 @@ def ensure_schema(conn):
 def db():
     conn = connect()
     try:
-        ensure_schema(conn)
         yield conn
         conn.commit()
     except Exception:
@@ -174,7 +168,7 @@ def sync_mapping_relations(conn, dataset_id):
 
 
 def log(conn, dataset_id, action, detail):
-    conn.execute("INSERT INTO activities(entity_id,action,detail,actor,created_at) VALUES(?,?,?,?,?)", (dataset_id, action, detail, "台账管理员", now()))
+    conn.execute("INSERT INTO activities(entity_id,action,detail,actor,created_at) VALUES(?,?,?,?,?)", (dataset_id, action, detail, require_context().user_id, now()))
 
 
 def update_payload(conn, entity, payload, reason):
@@ -276,7 +270,7 @@ def parse_source(path, original_name):
     suffix = Path(original_name).suffix.lower()
     sheets = []
     if suffix == ".csv":
-        raw = path.read_bytes()
+        raw = read_bytes(path)
         try:
             content = raw.decode("utf-8-sig")
         except UnicodeDecodeError:
@@ -293,7 +287,7 @@ def parse_source(path, original_name):
     elif suffix == ".xlsx":
         from openpyxl import load_workbook
         try:
-            workbook = load_workbook(path, read_only=False, data_only=False)
+            workbook = load_workbook(io.BytesIO(read_bytes(path)), read_only=False, data_only=False)
             for worksheet in workbook.worksheets:
                 if worksheet.max_row > 300000 or worksheet.max_column > 500:
                     raise HTTPException(422, "单个工作表超过30万行或500列，请拆分后上传")
@@ -414,12 +408,11 @@ def upload_dataset(file: UploadFile = File(...), org_id: str = Form(...), title:
     if suffix not in (".xlsx", ".csv"):
         raise HTTPException(422, "请上传 .xlsx 或 .csv 文件")
     dataset_id = "DS-" + uuid.uuid4().hex[:12].upper()
-    STORAGE.mkdir(parents=True, exist_ok=True)
-    path = STORAGE / f"{dataset_id}{suffix}"
+    path = upload_path(f"{dataset_id}{suffix}", "datasets", create_parent=True)
     size = 0
     hasher = hashlib.sha256()
     try:
-        with path.open("wb") as output:
+        with open_file(path, "wb") as output:
             while chunk := file.file.read(1024 * 1024):
                 size += len(chunk)
                 if size > MAX_UPLOAD:
@@ -612,7 +605,7 @@ def save_mappings(dataset_id: str, body: MappingsBody):
             if item.payload.get("source_column") not in (None, payload.get("source_column")) or item.payload.get("sheet_names") not in (None, payload.get("sheet_names")):
                 raise HTTPException(422, "字段来源与工作表归属不可在对应时改写")
             payload.update({k: v for k, v in item.payload.items() if k not in ("source_column", "sheet_names")})
-            payload.update(confirmed_at=now() if item.status == "confirmed" else None, confirmed_by="台账管理员" if item.status == "confirmed" else None, confirmed_standard_version=standard["version"] if item.status == "confirmed" else None)
+            payload.update(confirmed_at=now() if item.status == "confirmed" else None, confirmed_by=require_context().user_id if item.status == "confirmed" else None, confirmed_standard_version=standard["version"] if item.status == "confirmed" else None)
             conn.execute("UPDATE mappings SET standard_id=?,transform=?,status=?,payload=? WHERE dataset_id=? AND column_name=?", (item.standard_id, item.transform, item.status, jd(payload), dataset_id, item.column_name))
         for review_id in {m.payload.get("ai_review_id") for m in body.mappings if m.payload.get("ai_review_id")}:
             review_row = conn.execute("SELECT payload FROM dataset_ai_reviews WHERE id=?", (review_id,)).fetchone()
@@ -1093,12 +1086,8 @@ def dataset_versions(dataset_id: str):
 def download_source(dataset_id: str):
     with db() as conn:
         entity = get_entity(conn, dataset_id)
-        path = Path(entity["payload"].get("source_path", ""))
-        if not path.is_absolute():
-            path = ROOT / path
-        if not path.is_file() or STORAGE.resolve() not in path.resolve().parents:
-            raise HTTPException(404, "原始文件不可用；可导出已保存的业务明细")
-        return FileResponse(path, filename=entity["payload"].get("original_name", path.name))
+        path = scoped_path(entity["payload"].get("source_path", ""), allowed=('data/uploads/datasets',), must_exist=True)
+        return download_response(path, entity["payload"].get("original_name", path.name))
 
 
 @router.get("/datasets/{dataset_id}/export")
@@ -1140,66 +1129,3 @@ def export_dataset(dataset_id: str, sheet: str = "", q: str = "", standardized: 
                 output.seek(0); output.truncate(0)
     from urllib.parse import quote
     return StreamingResponse(stream(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(entity['title'] + ('-标准取值' if standardized else '-原始明细') + '.csv')}"})
-
-
-def seed_datasets(conn):
-    """Generate two small, synthetic datasets without shipping source archives."""
-    ensure_schema(conn)
-    marker = 'ontology_demo_datasets_v1'
-    if conn.execute('SELECT 1 FROM workspace_meta WHERE meta_key=?', (marker,)).fetchone():
-        return
-    STORAGE.mkdir(parents=True, exist_ok=True)
-    task_rows, procurement_rows = [], []
-    for i in range(12):
-        task_rows.append({
-            '任务编号': f'TASK-{i + 1:03d}',
-            '要求完成日期': f'2026-10-{5 + i:02d}',
-            '实际完成日期': f'2026-10-{6 + i:02d}' if i < 4 else '',
-            '任务状态': '已完成' if i < 4 else '进行中',
-            '完成材料': '交付清单、验收记录' if i < 3 else '',
-        })
-        procurement_rows.append({
-            '项目编号': f'PROJECT-{i // 3 + 1:03d}',
-            '项目名称': f'示例设备采购项目{i // 3 + 1}',
-            '投标单位': f'示例供应商{i % 3 + 1}',
-            '付款账号': f'DEMO-PAYER-{i if i > 1 else 0:03d}',
-            '合同编号': f'CONTRACT-{i + 1:03d}',
-            '合同金额': 10000 + i * 1000,
-        })
-    specs = [
-        ('DS-GEN-TASK', '项目交付任务示例', '项目管理', 'deadline', task_rows,
-         {'任务编号': 'D-GEN-009', '要求完成日期': 'D-GEN-005', '实际完成日期': 'D-GEN-006', '任务状态': 'D-GEN-007', '完成材料': 'D-GEN-008'}),
-        ('DS-GEN-PROCUREMENT', '采购合同示例', '采购管理', 'deposit', procurement_rows,
-         {'项目编号': 'D-GEN-001', '项目名称': 'D-GEN-002', '投标单位': 'D-GEN-011', '付款账号': 'D-GEN-010', '合同编号': 'D-GEN-012', '合同金额': 'D-GEN-004'}),
-    ]
-    for dataset_id, title, domain, scenario, values, standards in specs:
-        if conn.execute('SELECT 1 FROM entities WHERE id=?', (dataset_id,)).fetchone():
-            continue
-        org_id = 'ORG-SUB-01'
-        names = list(values[0])
-        sheet = '演示明细'
-        path = STORAGE / f'{dataset_id}.csv'
-        with path.open('w', encoding='utf-8-sig', newline='') as out:
-            writer = csv.DictWriter(out, fieldnames=names)
-            writer.writeheader()
-            writer.writerows(values)
-        columns = [{'name': name, 'letter': xl_letter(i + 1), 'index': i, 'header_labels': [name]} for i, name in enumerate(names)]
-        grain = '一行代表一项交付任务' if scenario == 'deadline' else '一行代表一条虚构采购记录'
-        sheet_payload = {'columns': columns, 'header_start': 1, 'header_rows': 1, 'header_inferred': False, 'merged_ranges': [], 'raw_preview': [names] + [list(x.values()) for x in values[:8]], 'original_row_count': len(values) + 1, 'row_count': len(values), 'skipped_count': 0, 'skipped_rows': [], 'grain': grain, 'grain_confirmed': True}
-        conn.execute('INSERT INTO dataset_sheets(dataset_id,sheet_name,position,payload) VALUES(?,?,?,?)', (dataset_id, sheet, 0, jd(sheet_payload)))
-        conn.executemany('INSERT INTO dataset_rows(dataset_id,row_no,values_json,org_id) VALUES(?,?,?,?)', [(dataset_id, i + 1, jd(v), org_id) for i, v in enumerate(values)])
-        conn.executemany('INSERT INTO dataset_row_sources(dataset_id,row_no,sheet_name,source_row) VALUES(?,?,?,?)', [(dataset_id, i + 1, sheet, i + 2) for i in range(len(values))])
-        for name, standard_id in standards.items():
-            standard = conn.execute("SELECT version FROM entities WHERE id=? AND kind='data'", (standard_id,)).fetchone()
-            if not standard:
-                raise ValueError(f'Missing demo field {standard_id}')
-            payload = {'reason': '虚构示例字段已按标准定义确认。', 'sheet_names': [sheet], 'source_unit': '元' if name == '合同金额' else '原单位', 'confirmed_standard_version': standard['version'], 'confirmed_at': now(), 'confirmed_by': '演示数据管理员'}
-            conn.execute('INSERT INTO mappings(dataset_id,column_name,standard_id,transform,status,payload) VALUES(?,?,?,?,?,?)', (dataset_id, name, standard_id, 'identity', 'confirmed', jd(payload)))
-        timestamp = now()
-        payload = {'row_count': len(values), 'sheet_names': [sheet], 'grain': grain, 'seed_scenario': scenario, 'source_kind': 'demo', 'reporting_org_id': org_id, 'period': '2026年10月', 'original_name': path.name, 'source_path': stored_path(path), 'file_size': path.stat().st_size, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'mapping_version': 1, 'batch_number': 1, 'published_for_analysis': True, 'analysis_readiness': 'ready', 'snapshot_date': '2026-10-12', 'scope_note': '所有组织、人员、账户及记录均为虚构功能示例。', 'business_unit_label': '示例业务公司', 'is_demo': True, 'highlights': ['原表可下载', '字段映射可追溯']}
-        conn.execute('INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (dataset_id, 'dataset', title, f'{len(values)}条虚构记录 · {grain}', domain, org_id, 'published', 'demo', jd(payload), timestamp, timestamp, 1))
-        conn.execute('INSERT INTO dataset_mapping_versions(dataset_id,version,snapshot,reason,created_at) VALUES(?,?,?,?,?)', (dataset_id, 1, jd(mappings_for(conn, dataset_id)), '通用示例初始字段映射', timestamp))
-        sync_mapping_relations(conn, dataset_id)
-        conn.execute('INSERT OR IGNORE INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)', (f'REL-{dataset_id}-ORG', dataset_id, org_id, 'owned_by', '归属单位', 'confirmed', jd({'source_kind': 'demo'})))
-        log(conn, dataset_id, '演示台账接入', f'生成{len(values)}条虚构记录及原始CSV')
-    conn.execute('INSERT INTO workspace_meta(meta_key,meta_value,updated_at) VALUES(?,?,?)', (marker, '1', now()))

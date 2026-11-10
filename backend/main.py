@@ -4,21 +4,36 @@ from fastapi.responses import FileResponse,JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager,closing
 from pathlib import Path
-import json,uuid,os,hashlib
+import json,uuid,os,hashlib,asyncio
 import pymysql
-from .db import connect,initialize,entity_json,log,now,ROOT
+from .db import connect,initialize,entity_json,log,now,ROOT,current_org_id
 
 @asynccontextmanager
 async def lifespan(app):
-    initialize()
-    yield
-app=FastAPI(title='Ontology One · 集团本体平台',version='0.1.0-demo',lifespan=lifespan)
-app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173','http://localhost:8765','http://127.0.0.1:8765'],allow_methods=['*'],allow_headers=['*'])
+    from .security.store import initialize_control
+    from .federation import initialize_federation
+    from .jobs import ensure_queue, worker_loop
+    from .maintenance import runtime_guard
+    with runtime_guard(shared=True):
+        await asyncio.to_thread(initialize_control)
+        await asyncio.to_thread(initialize_federation)
+        await asyncio.to_thread(ensure_queue)
+        worker = asyncio.create_task(worker_loop()) if os.getenv('ONTOLOGY_WORKER_ENABLED', '1') == '1' else None
+        try:
+            yield
+        finally:
+            if worker:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
+app=FastAPI(title='Ontology One · 集团本体平台',version='0.2.0',lifespan=lifespan)
+from .security.middleware import SecurityMiddleware
+app.add_middleware(SecurityMiddleware)
+app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173','http://localhost:8765','http://127.0.0.1:8765'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 @app.exception_handler(pymysql.err.MySQLError)
 async def db_error(request,exc):return JSONResponse(status_code=503,content={'detail':'MySQL 数据服务暂时不可用或繁忙，请检查连接后重试。'})
 
 @app.get('/api/health')
-def health():return {'ok':True,'service':'集团本体平台','version':'0.1.0-demo','database':'MySQL','workspace_id':hashlib.sha256(str(ROOT.resolve()).encode()).hexdigest()[:16],'mode':'local-demo','time':now()}
+def health():return {'ok':True,'service':'集团本体平台','version':'0.2.0','database':'MySQL','mode':'enterprise-preview','time':now()}
 @app.get('/api/catalog')
 def catalog():
     with closing(connect()) as c, c:
@@ -58,8 +73,14 @@ def entity_facets(kind:str='',q:str='',domain:str='',org_id:str='',status:str=''
         return result
 @app.post('/api/entities')
 async def create(request:Request):
-    b=await request.json(); title=str(b.get('title','')).strip()
+    body = await request.json()
+    return await asyncio.to_thread(_create_entity, body)
+
+def _create_entity(b):
+    title=str(b.get('title','')).strip()
     if not title:raise HTTPException(400,'请填写名称。')
+    if b.get('kind')=='organization':raise HTTPException(403,'机构目录由集团账户管理统一维护。')
+    if b.get('org_id') and b['org_id']!=current_org_id():raise HTTPException(403,'不能伪造其他机构的数据归属。')
     if (b.get('payload') or {}).get('authority_spec') or b.get('kind')=='person':raise HTTPException(400,'请从权责规范工作面创建，确保归属、流程和审核状态一致。')
     if b.get('kind') in ['matter','evidence']:raise HTTPException(400,'请从专项事项与依据工作面创建，确保归属、原文引用和办理状态一致。')
     if b.get('kind')=='project' and (b.get('payload') or {}).get('project_mode')=='special_review':raise HTTPException(400,'请从专题工作室的新建专项成果梳理入口创建。')
@@ -70,7 +91,7 @@ async def create(request:Request):
     eid=b.get('id') or f"{b.get('kind','ASSET').upper()}-USER-{uuid.uuid4().hex[:10]}";t=now()
     with closing(connect()) as c, c:
         if c.execute('SELECT id FROM entities WHERE id=?',(eid,)).fetchone():raise HTTPException(409,'该编号已存在。')
-        c.execute('INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(eid,b.get('kind','knowledge'),title,b.get('summary',''),b.get('domain','综合管理'),b.get('org_id','ORG-HQ-13'),b.get('status','draft'),b.get('source_kind','user'),json.dumps(b.get('payload',{}),ensure_ascii=False),t,t,1))
+        c.execute('INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(eid,b.get('kind','knowledge'),title,b.get('summary',''),b.get('domain','综合管理'),current_org_id(),b.get('status','draft'),b.get('source_kind','user'),json.dumps(b.get('payload',{}),ensure_ascii=False),t,t,1))
         log(c,eid,'创建',title,b.get('actor','本地体验用户'))
         for parent_key in ['project_id','case_id','related_asset_id']:
             parent=b.get('payload',{}).get(parent_key)
@@ -115,6 +136,8 @@ async def edit(eid:str,request:Request):
     with closing(connect()) as c, c:
         old=entity_json(c.execute('SELECT * FROM entities WHERE id=?',(eid,)).fetchone())
         if not old:raise HTTPException(404,'未找到内容。')
+        if old['kind']=='organization':raise HTTPException(403,'机构根节点不能通过业务编辑修改。')
+        if b.get('org_id') and b['org_id']!=current_org_id():raise HTTPException(403,'不能变更数据的机构归属。')
         if old['payload'].get('authority_spec') or (b.get('payload') or {}).get('authority_spec') or old['kind']=='person':raise HTTPException(400,'请从权责规范工作面编辑，保留版本、组织人员归属和流程校验。')
         if old['kind'] in ['matter','evidence']:raise HTTPException(400,'请从专项事项与依据工作面修改，确保归属、原文引用和办理状态一致。')
         if old['payload'].get('active_asset') is False:raise HTTPException(409,'这是保留追溯的历史条目。请打开整合后的成果开展修订。')
@@ -138,9 +161,14 @@ async def edit(eid:str,request:Request):
     return detail(eid)
 @app.post('/api/entities/{eid}/action')
 async def action(eid:str,request:Request):
-    b=await request.json();act=b.get('action');targets={'submit':'review','approve':'approved','return':'returned','publish':'published','revise':'draft','archive':'archived','complete':'completed'}
+    body = await request.json()
+    return await asyncio.to_thread(_entity_action, eid, body)
+
+def _entity_action(eid, b):
+    act=b.get('action');targets={'submit':'review','approve':'approved','return':'returned','publish':'published','revise':'draft','archive':'archived','complete':'completed'}
     with closing(connect()) as c:
         existing=entity_json(c.execute('SELECT * FROM entities WHERE id=?',(eid,)).fetchone())
+    if existing and existing['kind']=='organization':raise HTTPException(403,'机构根节点不能通过业务操作修改状态。')
     if existing and existing['kind']=='person':raise HTTPException(400,'任职人员属于组织归属对象，不通过资产审核流程变更状态。')
     if existing and existing['kind'] in ['matter','evidence']:raise HTTPException(400,'请从专项事项与依据工作面办理，不可通过资产审核改变专项工作状态。')
     if existing and existing['kind']=='task':
@@ -186,6 +214,40 @@ async def action(eid:str,request:Request):
             c.execute('INSERT INTO relations VALUES(?,?,?,?,?,?,?)',('rel-'+uuid.uuid4().hex,eid,tid,'requires','需要补充','confirmed','{}'))
         c.commit()
     return detail(eid)
+@app.post('/api/entities/{eid}/restore')
+async def restore_entity(eid: str, request: Request):
+    body = await request.json()
+    return await asyncio.to_thread(_restore_entity, eid, body)
+
+def _restore_entity(eid, body):
+    from .security.context import require_context
+    principal = require_context()
+    if principal.role != 'admin':
+        raise HTTPException(403, '仅管理员可还原历史版本。')
+    reason = str(body.get('reason', '')).strip()
+    if not reason:
+        raise HTTPException(422, '请填写还原原因。')
+    try:
+        version = int(body.get('version', 0))
+    except (TypeError, ValueError):
+        raise HTTPException(422, '请选择有效历史版本。')
+    with closing(connect()) as conn, conn:
+        old = entity_json(conn.execute('SELECT * FROM entities WHERE id=? FOR UPDATE', (eid,)).fetchone())
+        previous = conn.execute('SELECT snapshot FROM versions WHERE entity_id=? AND version=? ORDER BY id DESC LIMIT 1', (eid, version)).fetchone()
+        if not old or not previous:
+            raise HTTPException(404, '历史版本不存在。')
+        if old['kind'] in ('organization', 'person'):
+            raise HTTPException(403, '组织与人员请通过专用管理入口维护。')
+        snapshot = json.loads(previous['snapshot'])
+        payload = snapshot.get('payload', {})
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        conn.execute('INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)', (eid, old['version'], json.dumps(old, ensure_ascii=False), now(), '还原前快照：' + reason))
+        conn.execute('UPDATE entities SET title=?,summary=?,domain=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?',
+                     (snapshot.get('title', old['title']), snapshot.get('summary', ''), snapshot.get('domain', ''), json.dumps(payload, ensure_ascii=False), 'draft', now(), eid))
+        log(conn, eid, '还原历史版本', f'还原版本{version}为草稿：{reason}')
+    return detail(eid)
+
 @app.get('/api/activity')
 def activity(entity_id:str='',limit:int=50):
     with closing(connect()) as c, c:
@@ -223,7 +285,10 @@ def relation_work_entry(c,row):
 
 @app.patch('/api/relations/{rid}')
 async def confirm_relation(rid:str,request:Request):
-    b=await request.json()
+    body = await request.json()
+    return await asyncio.to_thread(_confirm_relation, rid, body)
+
+def _confirm_relation(rid, b):
     if b.get('status') not in ['candidate','confirmed','rejected']:raise HTTPException(400,'无效状态')
     if b.get('status') in ['confirmed','rejected'] and not str(b.get('reason','')).strip():raise HTTPException(400,'请说明本次核对的依据或不采纳原因。')
     with closing(connect()) as c, c:
@@ -278,6 +343,15 @@ from .data_instances import router as data_instances_router
 from .authority import router as authority_router
 from .asset_import import router as asset_import_router
 for router in [material_router,dataset_router,graph_router,ai_router,applications_router,system_router,experience_router,impact_router,projects_router,placement_router,asset_catalog_router,special_projects_router,data_instances_router,authority_router,asset_import_router]:app.include_router(router,prefix='/api')
+from .identity import router as identity_router
+from .federation import router as federation_router
+from .jobs import router as jobs_router
+app.include_router(identity_router, prefix='/api')
+app.include_router(federation_router, prefix='/api')
+app.include_router(jobs_router, prefix='/api')
+from .integrations import router as integration_router
+app.include_router(integration_router, prefix='/api')
+
 dist=ROOT/'frontend/dist'
 if dist.exists():
     app.mount('/static',StaticFiles(directory=dist/'static'),name='static')

@@ -9,7 +9,8 @@ type Visit={id:string;path:string;label:string;parent?:string;scroll:number;at:n
 const KEY='ontology-one-navigation';
 const TOKEN='via';
 const cache:Record<string,Visit>={};
-try{Object.assign(cache,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch{}
+let navigationScope=0;
+window.addEventListener('ontology:scope-cleared',()=>{navigationScope++;for(const key of Object.keys(cache))delete cache[key]});
 function persist(){try{const records=Object.values(cache).sort((a,b)=>b.at-a.at).slice(0,250);localStorage.setItem(KEY,JSON.stringify(Object.fromEntries(records.map(r=>[r.id,r]))))}catch{}}
 function uid(){return 'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
 function clean(path:string){const u=new URL(path,window.location.origin);u.searchParams.delete(TOKEN);return u.pathname+u.search+u.hash}
@@ -36,6 +37,7 @@ export function useSessionValue<T>(key:string,initial:T):[T,React.Dispatch<React
 /** Capture where a visit came from without interrupting its business handlers. */
 export function NavigationProvider({children}:{children:ReactNode}){
  const location=useLocation(),navigate=useNavigate();
+ const enteredScope=useRef(navigationScope).current;
  const active=useRef<Visit|null>(null),pending=useRef<{target:string;parent?:string}|null>(null),restoring=useRef(false);
  const scrollVisit=useRef<{id:string;mode:'new'|'return';interacted:boolean;focused:Set<string>;cancel:Set<()=>void>}|null>(null);
  const [visit,setVisit]=useState<Visit|null>(null);
@@ -70,7 +72,7 @@ export function NavigationProvider({children}:{children:ReactNode}){
  useEffect(()=>{
   mounted.current=true;
   const previousRestoration=window.history.scrollRestoration;window.history.scrollRestoration='manual';
-  const remember=()=>{const v=active.current;if(!v||restoring.current)return;v.scroll=window.scrollY;v.label=title()||v.label;v.at=Date.now();cache[v.id]=v;persist()};
+  const remember=()=>{if(enteredScope!==navigationScope)return;const v=active.current;if(!v||restoring.current)return;v.scroll=window.scrollY;v.label=title()||v.label;v.at=Date.now();cache[v.id]=v;persist()};
   let tick:number|undefined;
   const onScroll=()=>{const v=active.current;if(v&&!restoring.current)v.scroll=window.scrollY;window.clearTimeout(tick);tick=window.setTimeout(remember,120)};
   const interrupt=(e:Event)=>{if(e instanceof KeyboardEvent&&!['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(e.key))return;stopAutomatic()};

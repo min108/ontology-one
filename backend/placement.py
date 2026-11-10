@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from . import ai
 from .db import connect, entity_json, log, now
+from .security.context import require_context
 
 router = APIRouter()
 ASSETS = {"data", "rule", "algorithm", "knowledge"}
@@ -133,7 +134,8 @@ class ReviewedLink(BaseModel):
 class ConfirmRequest(BaseModel):
     job_id: str
     expected_version: int = Field(ge=1)
-    reviewer: str = Field(min_length=1, max_length=100)
+    # Accepted for older clients, but identity always comes from the session.
+    reviewer: str = Field(default='', max_length=100)
     review_note: str = Field(min_length=6, max_length=2000)
     links: list[ReviewedLink] = Field(min_length=1, max_length=20)
 
@@ -216,9 +218,11 @@ async def suggest(asset_id: str, body: SuggestRequest):
 
 @router.post("/placement/{asset_id}/confirm")
 def confirm(asset_id: str, body: ConfirmRequest):
-    if not body.reviewer.strip() or len(body.review_note.strip()) < 6 or any(not v.reviewed or len(v.reason.strip()) < 6 for v in body.links):
-        raise HTTPException(400, "请逐项勾选审定，并填写审核人、关联理由和审定意见。")
-    fingerprint = hashlib.sha256(dump(body.model_dump()).encode()).hexdigest()
+    principal = require_context()
+    reviewer = principal.username
+    if len(body.review_note.strip()) < 6 or any(not v.reviewed or len(v.reason.strip()) < 6 for v in body.links):
+        raise HTTPException(400, "请逐项勾选审定，并填写关联理由和审定意见。")
+    fingerprint = hashlib.sha256(dump({**body.model_dump(exclude={'reviewer'}), 'reviewer_id': principal.user_id}).encode()).hexdigest()
     with closing(connect()) as c, c:
         c.execute("BEGIN IMMEDIATE")
         job = c.execute("SELECT * FROM jobs WHERE id=? AND entity_id=? AND kind='asset_placement'", (body.job_id, asset_id)).fetchone()
@@ -264,19 +268,19 @@ def confirm(asset_id: str, body: ConfirmRequest):
         for link, start, end, target, original in audited:
             prior = c.execute("SELECT id FROM relations WHERE source=? AND target=? AND type=? AND status='confirmed' LIMIT 1", (start["id"], end["id"], link.relation_type)).fetchone()
             rid = prior["id"] if prior else "rel-placement-" + uuid.uuid4().hex
-            audit = {"proposal_job_id": body.job_id, "proposal_mode": result["mode"], "original_suggestion": original, "reviewed_link": link.model_dump(), "reviewer": body.reviewer.strip(), "review_reason": link.reason.strip(), "review_note": body.review_note.strip(), "reviewed_at": now(), "source_snapshot": snapshot(start), "target_snapshot": snapshot(end), "manual_endpoint_change": link.target_id != original["target_id"], "confirmed_from": "human_review", "source_refs": target["payload"].get("source_refs") or []}
+            audit = {"proposal_job_id": body.job_id, "proposal_mode": result["mode"], "original_suggestion": original, "reviewed_link": link.model_dump(), "reviewer": reviewer, "reviewer_id": principal.user_id, "review_reason": link.reason.strip(), "review_note": body.review_note.strip(), "reviewed_at": now(), "source_snapshot": snapshot(start), "target_snapshot": snapshot(end), "manual_endpoint_change": link.target_id != original["target_id"], "confirmed_from": "human_review", "source_refs": target["payload"].get("source_refs") or []}
             if not prior:
                 c.execute("INSERT INTO relations VALUES(?,?,?,?,?,?,?)", (rid, start["id"], end["id"], link.relation_type, RELATIONS[link.relation_type]["label"], "confirmed", dump(audit)))
                 created += 1
-                log(c, target["id"], "关联审定", f"与{e['title']}建立{RELATIONS[link.relation_type]['label']}；{link.reason.strip()}", body.reviewer.strip())
+                log(c, target["id"], "关联审定", f"与{e['title']}建立{RELATIONS[link.relation_type]['label']}；{link.reason.strip()}", reviewer)
             ids.append(rid)
             reviews.append({"relation_id": rid, "reused_existing": bool(prior), **audit})
         if created:
             old = {**snapshot(e), "placement_audit": {"job_id": body.job_id, "relations_before": before_relations}}
             c.execute("INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)", (asset_id, e["version"], dump(old), now(), "人工审定图谱关联前的内容与关系快照"))
             c.execute("UPDATE entities SET version=version+1,updated_at=? WHERE id=?", (now(), asset_id))
-        confirmation = {"fingerprint": fingerprint, "created": created, "reused": len(ids) - created, "relation_ids": ids, "asset_version": e["version"] + bool(created), "reviewer": body.reviewer.strip(), "reviewed_at": now(), "reviews": reviews}
+        confirmation = {"fingerprint": fingerprint, "created": created, "reused": len(ids) - created, "relation_ids": ids, "asset_version": e["version"] + bool(created), "reviewer": reviewer, "reviewer_id": principal.user_id, "reviewed_at": now(), "reviews": reviews}
         result["confirmation"] = confirmation
         c.execute("UPDATE jobs SET status='completed',message='人工审定完成',result=?,updated_at=? WHERE id=?", (dump(result), now(), body.job_id))
-        log(c, asset_id, "审定图谱关联", f"新增{created}条、复用已确认{len(ids)-created}条；{body.review_note.strip()}", body.reviewer.strip())
+        log(c, asset_id, "审定图谱关联", f"新增{created}条、复用已确认{len(ids)-created}条；{body.review_note.strip()}", reviewer)
     return confirmation

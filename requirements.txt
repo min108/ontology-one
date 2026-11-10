@@ -1,4 +1,4 @@
-# Versions verified for this local demo release. Python 3.10+
+# Pinned runtime dependencies. Python 3.10+ (container: 3.12).
 fastapi==0.141.1
 uvicorn==0.52.1
 python-multipart==0.0.32
