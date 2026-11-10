@@ -88,6 +88,7 @@ class LauncherTests(unittest.TestCase):
         settings = launcher.get_installation()
         supervisor = object.__new__(launcher.Supervisor)
         supervisor.settings, supervisor.token = settings, 'a' * 64
+        supervisor.root = str(self.root)
         supervisor.state_lock, supervisor.children = threading.Lock(), {}
         supervisor.phase, supervisor.error = 'ready', None
         supervisor.finished, supervisor.stop_event = threading.Event(), threading.Event()
@@ -98,15 +99,29 @@ class LauncherTests(unittest.TestCase):
         launcher.write_json(launcher.STATE, {'root': str(self.root), 'installation_id': settings['installation_id'],
             'token': supervisor.token, 'control_port': supervisor.channel.getsockname()[1]})
         try:
-            for token, identity in (('wrong', settings['installation_id']), (supervisor.token, 'foreign')):
+            for token, identity, root in (('wrong', settings['installation_id'], str(self.root)),
+                    (supervisor.token, 'foreign', str(self.root)),
+                    (supervisor.token, settings['installation_id'], str(self.root / 'copied'))):
                 with socket.create_connection(supervisor.channel.getsockname(), timeout=2) as client:
-                    client.sendall(json.dumps({'token': token, 'installation_id': identity, 'operation': 'stop'}).encode() + b'\n')
+                    client.sendall(json.dumps({'token': token, 'installation_id': identity, 'root': root,
+                                               'operation': 'stop'}).encode() + b'\n')
                     self.assertEqual(client.recv(1024), b'')
                 self.assertFalse(supervisor.stop_event.is_set())
             status = launcher.control('status')
             self.assertTrue(status['ready'])
             self.assertNotIn('token', status)
             self.assertNotIn('root_password', status)
+            # Even copied settings/state with the client root edited cannot
+            # authenticate against the live supervisor's captured root.
+            copied = self.root / 'copied'
+            state = launcher.read_json(launcher.STATE)
+            state['root'] = str(copied)
+            launcher.write_json(launcher.STATE, state)
+            with patch.object(launcher, 'ROOT', copied):
+                self.assertIsNone(launcher.control('stop'))
+            self.assertFalse(supervisor.stop_event.is_set())
+            state['root'] = str(self.root)
+            launcher.write_json(launcher.STATE, state)
             self.assertTrue(launcher.control('stop')['ready'])
             self.assertTrue(supervisor.stop_event.is_set())
         finally:
@@ -120,6 +135,33 @@ class LauncherTests(unittest.TestCase):
         with patch.object(socket, 'create_connection') as connect:
             self.assertIsNone(launcher.control('stop'))
             connect.assert_not_called()
+
+    def test_initialized_marker_must_be_private_and_match_this_installation(self):
+        settings = launcher.get_installation()
+        for marker in ({'installation_id': 'foreign', 'version': '0.5.0'},
+                       {'installation_id': settings['installation_id'], 'version': '0.4.0'}, {}, []):
+            launcher.write_json(launcher.READY, marker)
+            with self.assertRaises(launcher.LaunchError) as failure:
+                launcher.bootstrap_input(True)
+            self.assertEqual(failure.exception.code, 'LOCAL_STATE_INVALID')
+        launcher.write_json(launcher.READY, {'installation_id': settings['installation_id'], 'version': '0.5.0'})
+        with patch.object(launcher, 'secure_open', wraps=launcher.secure_open) as opened:
+            self.assertEqual(launcher.bootstrap_input(True), {})
+            self.assertTrue(all(call.kwargs.get('require_private') for call in opened.call_args_list))
+        with patch.object(launcher, 'secure_open', side_effect=PermissionError):
+            with self.assertRaises(launcher.LaunchError) as failure:
+                launcher.bootstrap_input(True)
+            self.assertEqual(failure.exception.code, 'LOCAL_STATE_INVALID')
+
+    def test_bootstrap_username_matches_account_policy(self):
+        for username in ('_admin', '.admin', '@admin', '-admin'):
+            with patch.dict(os.environ, {'ONTOLOGY_BOOTSTRAP_USERNAME': username,
+                                       'ONTOLOGY_BOOTSTRAP_PASSWORD': 'Synthetic9-Password'}):
+                with self.assertRaises(launcher.LaunchError):
+                    launcher.bootstrap_input(True)
+        with patch.dict(os.environ, {'ONTOLOGY_BOOTSTRAP_USERNAME': 'Group.Admin',
+                                   'ONTOLOGY_BOOTSTRAP_PASSWORD': 'Synthetic9-Password'}):
+            self.assertEqual(launcher.bootstrap_input(True)['username'], 'Group.Admin')
 
 
 class WindowsEntryEncodingTests(unittest.TestCase):

@@ -27,14 +27,15 @@ def main():
         directory.mkdir(parents=True,exist_ok=True)
     os.environ.update(USERPROFILE=str(profile),TEMP=str(temporary),TMP=str(temporary),
         LOCALAPPDATA=str(profile/'AppData/Local'),APPDATA=str(profile/'AppData/Roaming'))
-    allowed=('SYSTEMROOT','SystemRoot','WINDIR','COMSPEC','PATHEXT','TEMP','TMP','USERPROFILE','APPDATA','LOCALAPPDATA')
+    allowed=('SYSTEMROOT','WINDIR','COMSPEC','PATHEXT','TEMP','TMP','USERPROFILE','APPDATA','LOCALAPPDATA')
     env={key:os.environ[key] for key in allowed if key in os.environ}
     env.update(PATH=str(Path(os.environ['SystemRoot'])/'System32')+';'+os.environ['SystemRoot'],
         RUN_HARNESS_SDK_TESTS='1',RUN_WINDOWS_SANDBOX_TESTS='1',ONTOLOGY_REQUIRE_STANDARD_USER='1',
         ONTOLOGY_SKILL_PYTHON_ROOT=str(package/'runtime/skill-python'),
         PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1')
     modules=['tests.test_platform_io','tests.test_windows_process','tests.test_windows_async_process',
-        'tests.test_mcp_transport','tests.test_skill_harness','tests.test_windows_sandbox_native','tests.test_windows_launcher']
+        'tests.test_mcp_transport','tests.test_skill_harness','tests.test_windows_sandbox_native',
+        'tests.test_windows_launcher','tests.test_windows_initialize','tests.test_windows_distribution']
     manifest=json.loads((package/'runtime/manifest.json').read_text(encoding='utf-8'))
     results={'source_commit':manifest['source_commit'],'standard_user':True,'delivered_python':True,
              'system_python_required':False,'model':'synthetic_fixture_only','checks':[]}

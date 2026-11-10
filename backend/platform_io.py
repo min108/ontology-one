@@ -205,7 +205,8 @@ if WINDOWS:
     @contextmanager
     def _private_descriptor(directory):
         inheritance = 'OICI' if directory else ''
-        sddl = f'D:P(A;{inheritance};FA;;;{current_user_sid()})(A;{inheritance};FA;;;SY)'
+        sid = current_user_sid()
+        sddl = f'O:{sid}D:P(A;{inheritance};FA;;;{sid})(A;{inheritance};FA;;;SY)'
         descriptor = wintypes.LPVOID()
         if not _Descriptor(sddl, 1, ctypes.byref(descriptor), None):
             _win_error()
@@ -215,6 +216,7 @@ if WINDOWS:
             _Free(descriptor)
 
     def _set_private(handle, directory):
+        _assert_owner(handle)
         with _private_descriptor(directory) as descriptor:
             present, defaulted, acl = wintypes.BOOL(), wintypes.BOOL(), wintypes.LPVOID()
             if not _DescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(acl), ctypes.byref(defaulted)) or not present:
@@ -223,12 +225,26 @@ if WINDOWS:
             if error:
                 _win_error(error)
 
-    def _assert_private_handle(handle):
-        acl, descriptor = wintypes.LPVOID(), wintypes.LPVOID()
-        error = _GetSecurity(handle, 1, 0x4, None, None, ctypes.byref(acl), None, ctypes.byref(descriptor))
+    def _assert_owner(handle):
+        owner, descriptor = wintypes.LPVOID(), wintypes.LPVOID()
+        error = _GetSecurity(handle, 1, 0x1, ctypes.byref(owner), None, None, None, ctypes.byref(descriptor))
         if error:
             _win_error(error)
         try:
+            if not owner or _sid_string(owner) != current_user_sid():
+                raise PermissionError(errno.EACCES, 'Private storage must be owned by the current user')
+        finally:
+            _Free(descriptor)
+
+    def _assert_private_handle(handle):
+        owner, acl, descriptor = wintypes.LPVOID(), wintypes.LPVOID(), wintypes.LPVOID()
+        error = _GetSecurity(handle, 1, 0x1 | 0x4, ctypes.byref(owner), None, ctypes.byref(acl), None, ctypes.byref(descriptor))
+        if error:
+            _win_error(error)
+        try:
+            current = current_user_sid()
+            if not owner or _sid_string(owner) != current:
+                raise PermissionError(errno.EACCES, 'Private storage must be owned by the current user')
             control, revision = wintypes.WORD(), wintypes.DWORD()
             if not _DescriptorControl(descriptor, ctypes.byref(control), ctypes.byref(revision)):
                 _win_error()
@@ -237,7 +253,7 @@ if WINDOWS:
             size = _AclSize()
             if not _AclInfo(acl, ctypes.byref(size), ctypes.sizeof(size), 2):
                 _win_error()
-            allowed = {current_user_sid(), 'S-1-5-18'}
+            allowed = {current, 'S-1-5-18'}
             found = set()
             for index in range(size.AceCount):
                 address = wintypes.LPVOID()

@@ -24,11 +24,12 @@ usage returned by the worker. Missing usage stays unknown,
 including failed requests that may already have incurred charges. Model
 text, proposed package contents and keys are never printed or saved by this CLI;
 the executor uses platform-specific isolated sessions and cleans them on exit.
-Generated scripts run only through the existing isolated runner when configured
-via ONTOLOGY_SKILL_RUNNER_SOCKET. Without it, behavior remains unverified and
-requires manual review; scripts are never executed on this CLI host.
+Generated scripts run only through the existing isolated runner: native Windows
+AppContainer, or the Linux runner configured via ONTOLOGY_SKILL_RUNNER_SOCKET.
+Without an available runner, behavior remains unverified and requires manual
+review; scripts are never executed as ordinary processes on this CLI host.
 These are model-quality probes, not a replacement for the real account/tenant,
-source-authorization, Docker execution and HTTP integration acceptance suites.
+source-authorization, isolated execution and HTTP integration acceptance suites.
 """
 from __future__ import annotations
 

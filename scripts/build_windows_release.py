@@ -175,7 +175,8 @@ def build(args):
             raise ValueError('Build provenance differs from checked-out source commit')
     runtime=copy.deepcopy(json.loads(args.runtime_lock.read_text(encoding='utf-8')))
     wheels=json.loads(args.wheels_lock.read_text(encoding='utf-8'))
-    if wheels.get('requirements_sha256') != digest(ROOT/'requirements.txt'):
+    requirements_hash=hashlib.sha256((ROOT/'requirements.txt').read_bytes().replace(b'\r\n',b'\n')).hexdigest()
+    if wheels.get('requirements_sha256') != requirements_hash:
         raise ValueError('Windows wheel lock does not match requirements.txt')
     args.output.mkdir(parents=True,exist_ok=True);args.cache.mkdir(parents=True,exist_ok=True)
     package=args.output/f'Ontology-One-{VERSION}-windows-x64'

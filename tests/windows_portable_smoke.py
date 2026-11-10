@@ -198,6 +198,33 @@ class Acceptance:
             helper.write_bytes(original)
         self.stopped()
 
+    def interrupted_bootstrap(self):
+        """The committed admin survives a crash before the ready receipt."""
+        helper = self.package / 'ops' / 'windows_initialize.py'
+        original = helper.read_bytes()
+        injected = original.replace(b'        main()\n', b'        main()\n        raise SystemExit(19)\n', 1)
+        require(injected != original, 'BOOTSTRAP_FAILURE_INJECTION_MISSING')
+        try:
+            helper.write_bytes(injected)
+            result = self.command('start', '--no-browser', '--non-interactive', '--port', str(self.api_port),
+                                  '--mysql-port', str(self.mysql_port), success=False)
+            require(result.get('error') == 'MIGRATION_FAILED', 'COMMITTED_BOOTSTRAP_FAILURE_NOT_REPORTED')
+            require(not (self.package / 'data' / 'local' / 'initialized.json').exists(), 'FAILED_BOOTSTRAP_MARKED_READY')
+        finally:
+            helper.write_bytes(original)
+        self.stopped()
+        # A retry must reject a newly supplied password instead of silently
+        # claiming that the existing administrator has been reset.
+        self.environment['ONTOLOGY_BOOTSTRAP_PASSWORD'] = 'Different9-' + secrets.token_hex(18)
+        try:
+            result = self.command('start', '--no-browser', '--non-interactive', '--port', str(self.api_port),
+                                  '--mysql-port', str(self.mysql_port), success=False)
+            require(result.get('error') == 'MIGRATION_FAILED', 'BOOTSTRAP_PASSWORD_MISMATCH_ACCEPTED')
+            require(not (self.package / 'data' / 'local' / 'initialized.json').exists(), 'MISMATCH_MARKED_READY')
+        finally:
+            self.environment['ONTOLOGY_BOOTSTRAP_PASSWORD'] = self.password
+        self.stopped()
+
     def app_local_crt(self):
         status = self.command('status')
         observed = set()
@@ -258,6 +285,7 @@ class Acceptance:
                 cwd=self.package, env=self.environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.record('port_conflict_preserves_other_listener', self.port_conflict)
             self.record('first_migration_failure_reaps_only_owned_jobs', self.first_failure)
+            self.record('interrupted_bootstrap_preserves_original_credentials', self.interrupted_bootstrap)
             self.record('recover_first_start_and_health', self.start)
             self.record('crt_modules_resolve_app_local', self.app_local_crt)
             self.record('headquarters_login_password_change_asset_lifecycle', self.account_and_crud)

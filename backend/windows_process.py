@@ -102,6 +102,11 @@ class JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(C.Structure):
     _fields_ = [('ControlFlags', DWORD), ('CpuRate', DWORD)]
 
 
+class SERVICE_STATUS_PROCESS(C.Structure):
+    _fields_ = [(name, DWORD) for name in ('dwServiceType', 'dwCurrentState', 'dwControlsAccepted',
+        'dwWin32ExitCode', 'dwServiceSpecificExitCode', 'dwCheckPoint', 'dwWaitHint', 'dwProcessId', 'dwServiceFlags')]
+
+
 @lru_cache(maxsize=1)
 def _api():
     if os.name != 'nt' or C.sizeof(LPVOID) != 8:
@@ -140,6 +145,10 @@ def _api():
         ('OpenProcessToken', BOOL, [HANDLE, DWORD, C.POINTER(HANDLE)]),
         ('GetTokenInformation', BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
         ('EqualSid', BOOL, [LPVOID, LPVOID]),
+        ('OpenSCManagerW', HANDLE, [C.c_wchar_p, C.c_wchar_p, DWORD]),
+        ('OpenServiceW', HANDLE, [HANDLE, C.c_wchar_p, DWORD]),
+        ('QueryServiceStatusEx', BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
+        ('CloseServiceHandle', BOOL, [HANDLE]),
     ):
         function = getattr(advapi, name); function.restype, function.argtypes = result, args
     for name, args in (
@@ -211,6 +220,29 @@ def _verify_appcontainer_token(process, expected_sid):
             raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
     finally:
         kernel.CloseHandle(token)
+
+
+def assert_network_isolation_services():
+    """Require the Windows services that enforce network isolation, read-only.
+
+    AppContainer capability checks rely on Windows network isolation/WFP. A
+    token flag alone is not a substitute for an operational filtering stack.
+    This does not change firewall profiles, start services or request elevation.
+    """
+    _, advapi, _, _ = _api()
+    manager = _check(advapi.OpenSCManagerW(None, None, 0x1), 'NETWORK_ISOLATION_UNAVAILABLE')
+    try:
+        for name in ('BFE', 'MpsSvc'):
+            service = _check(advapi.OpenServiceW(manager, name, 0x4), 'NETWORK_ISOLATION_UNAVAILABLE')
+            try:
+                status, size = SERVICE_STATUS_PROCESS(), DWORD()
+                _check(advapi.QueryServiceStatusEx(service, 0, C.byref(status), C.sizeof(status), C.byref(size)), 'NETWORK_ISOLATION_UNAVAILABLE')
+                if status.dwCurrentState != 4:  # SERVICE_RUNNING, not START_PENDING.
+                    raise WindowsProcessError('NETWORK_ISOLATION_UNAVAILABLE')
+            finally:
+                advapi.CloseServiceHandle(service)
+    finally:
+        advapi.CloseServiceHandle(manager)
 
 
 def current_process_in_job():
@@ -408,6 +440,8 @@ class WindowsProcess:
 def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=PIPE, stdout=PIPE, stderr=PIPE):
     """Create one owned job and a suspended child; resume only after assignment."""
     kernel, _, _, _ = _api()
+    if appcontainer is not None:
+        assert_network_isolation_services()
     import msvcrt
     if (not isinstance(argv, (list, tuple)) or not argv or any(not isinstance(arg, str) or '\0' in arg for arg in argv)
             or not Path(argv[0]).is_absolute() or not Path(cwd).is_absolute()):
@@ -545,6 +579,7 @@ class AppContainerProfile:
 
     def __enter__(self):
         kernel, advapi, userenv, ole = _api()
+        assert_network_isolation_services()
         sid = LPVOID()
         if userenv.CreateAppContainerProfile(self.name, 'Ontology One isolated skill', 'Ephemeral synthetic skill test', None, 0, C.byref(sid)) < 0:
             raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
