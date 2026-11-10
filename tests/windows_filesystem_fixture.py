@@ -12,20 +12,25 @@ def make_junction(link, target):
     if handle == fs._INVALID:
         fs._win_error()
     try:
-        substitute, printed = ('\\??\\' + str(target)).encode('utf-16-le'), str(target).encode('utf-16-le')
-        names = substitute + b'\0\0' + printed + b'\0\0'
-        fields = struct.pack('<HHHH', 0, len(substitute), len(substitute) + 2, len(printed))
-        data = struct.pack('<IHH', 0xA0000003, len(fields) + len(names), 0) + fields + names
-        buffer, returned = ctypes.create_string_buffer(data), fs.wintypes.DWORD()
-        call = fs._kernel.DeviceIoControl
-        call.restype = fs.wintypes.BOOL
-        call.argtypes = [fs.wintypes.HANDLE, fs.wintypes.DWORD, fs.wintypes.LPVOID,
-                         fs.wintypes.DWORD, fs.wintypes.LPVOID, fs.wintypes.DWORD,
-                         ctypes.POINTER(fs.wintypes.DWORD), fs.wintypes.LPVOID]
-        if not call(handle, 0x900A4, buffer, len(data), None, 0, ctypes.byref(returned), None):
-            fs._win_error()
+        set_junction_on_handle(handle, target)
     finally:
         fs._Close(handle)
+
+
+def set_junction_on_handle(handle, target):
+    """Issue the actual FSCTL through a caller-owned handle without reopening."""
+    substitute, printed = ('\\??\\' + str(target)).encode('utf-16-le'), str(target).encode('utf-16-le')
+    names = substitute + b'\0\0' + printed + b'\0\0'
+    fields = struct.pack('<HHHH', 0, len(substitute), len(substitute) + 2, len(printed))
+    data = struct.pack('<IHH', 0xA0000003, len(fields) + len(names), 0) + fields + names
+    buffer, returned = ctypes.create_string_buffer(data), fs.wintypes.DWORD()
+    call = fs._kernel.DeviceIoControl
+    call.restype = fs.wintypes.BOOL
+    call.argtypes = [fs.wintypes.HANDLE, fs.wintypes.DWORD, fs.wintypes.LPVOID,
+                     fs.wintypes.DWORD, fs.wintypes.LPVOID, fs.wintypes.DWORD,
+                     ctypes.POINTER(fs.wintypes.DWORD), fs.wintypes.LPVOID]
+    if not call(handle, 0x900A4, buffer, len(data), None, 0, ctypes.byref(returned), None):
+        fs._win_error(operation='FSCTL_SET_REPARSE_POINT')
 
 
 def make_world_accessible(path):

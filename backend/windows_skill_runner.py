@@ -131,6 +131,15 @@ def _session_root():
     return ensure_private_directory(Path(tempfile.mkdtemp(prefix='request-', dir=root)))
 
 
+def _sandbox_environment(runtime, work, system_root=None):
+    # LOCALAPPDATA must be present for CreateProcessW's AppContainer startup.
+    # Map it to the already read-only sandbox, never the host user profile.
+    return {'SystemRoot': system_root or os.environ.get('SystemRoot', r'C:\Windows'),
+            'PATH': str(runtime), 'HOME': str(work), 'USERPROFILE': str(work),
+            'LOCALAPPDATA': str(work), 'TEMP': str(work), 'TMP': str(work),
+            'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1', 'PYTHONUTF8': '1'}
+
+
 def _result(cases, codes, began, unavailable=False):
     rows = [{'name': case['name'], 'status': 'passed' if code == 'PASSED' else 'failed', 'code': code, 'duration_ms': duration}
             for case, (code, duration) in zip(cases, codes)]
@@ -169,9 +178,7 @@ def execute_tests(files, entrypoint, test_cases, timeout_seconds=30, cancelled=N
         for name, content in files.items():
             path = work.joinpath(*name.split('/')); path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding='utf-8')
-        environment = {'SystemRoot': os.environ.get('SystemRoot', r'C:\Windows'), 'PATH': str(runtime),
-                       'HOME': str(work), 'USERPROFILE': str(work), 'TEMP': str(work), 'TMP': str(work),
-                       'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1', 'PYTHONUTF8': '1'}
+        environment = _sandbox_environment(runtime, work)
         for case in test_cases:
             start = time.monotonic()
             if halted or _cancelled(cancelled) or start >= deadline:

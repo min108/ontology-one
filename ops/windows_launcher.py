@@ -59,9 +59,36 @@ _ERRORS = {
 
 
 class LaunchError(Exception):
-    def __init__(self, code):
+    def __init__(self, code, *, diagnostic=None):
         self.code = code
+        self.diagnostic = diagnostic
         super().__init__(_ERRORS.get(code, _ERRORS['INTERNAL_ERROR']))
+
+
+def safe_diagnostic(exception, phase):
+    """Fixed operation metadata only: never exception text, paths or output."""
+    result = {'phase': phase, 'exception': type(exception).__name__}
+    for name in ('code', 'operation'):
+        value = getattr(exception, name, None)
+        if isinstance(value, str) and re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]{0,63}', value):
+            result[name] = value
+    for name in ('native_error', 'winerror', 'errno'):
+        value = getattr(exception, name, None)
+        if type(value) is int and 0 <= value < 2**32:
+            result[name] = value
+    return result
+
+
+def mysql_failure(child, phase, *, code='DATABASE_INIT_FAILED', output=b''):
+    """Report only the owned process exit and MySQL's stable numeric IDs."""
+    diagnostic = {'phase': phase}
+    status = child.poll()
+    if type(status) is int:
+        diagnostic['process_exit'] = status & 0xffffffff
+    identifiers = sorted(set(re.findall(rb'\bMY-[0-9]{6}\b', output)))[:12]
+    if identifiers:
+        diagnostic['mysql_codes'] = [item.decode('ascii') for item in identifiers]
+    return LaunchError(code, diagnostic=diagnostic)
 
 
 def read_json(path):
@@ -267,6 +294,7 @@ class Supervisor:
         self.drain_threads = []
         self.stop_event, self.finished = threading.Event(), threading.Event()
         self.phase, self.error = 'starting', None
+        self.failure_diagnostic = None
         self.token = secrets.token_hex(32)
         self.channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.channel.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -353,7 +381,7 @@ class Supervisor:
                 '--local-infile=OFF', '--secure-file-priv=NULL', '--skip-log-bin', '--init-file=' + str(init)], environment)
             def authenticated():
                 if server.poll() is not None:
-                    raise LaunchError('DATABASE_INIT_FAILED')
+                    raise mysql_failure(server, 'securing_database')
                 probe = self.spawn('mysql_bootstrap_probe', [self.runtime['mysql'], '--defaults-file=' + str(defaults),
                     '--protocol=MEMORY', '--shared-memory-base-name=' + shared_name, '--connect-timeout=1',
                     '--batch', '--skip-column-names', '--execute=SELECT 1'], environment)
@@ -394,7 +422,7 @@ class Supervisor:
 
     def database_ready(self):
         if self.children['mysql'].poll() is not None:
-            raise LaunchError('DATABASE_START_FAILED')
+            raise mysql_failure(self.children['mysql'], self.phase, code='DATABASE_START_FAILED')
         try:
             with self.database_connection() as connection, connection.cursor() as cursor:
                 cursor.execute('SELECT 1')
@@ -417,9 +445,9 @@ class Supervisor:
             child = self.spawn('mysql_initialize', [self.runtime['mysqld'], '--no-defaults', '--initialize-insecure',
                 '--basedir=' + str(mysql_root), '--datadir=' + str(staging)], environment)
             try:
-                child.communicate(timeout=120, cancelled=self.stop_event, max_stdout=65536, max_stderr=65536)
+                output, errors = child.communicate(timeout=120, cancelled=self.stop_event, max_stdout=65536, max_stderr=65536)
                 if child.wait(timeout=1) != 0:
-                    raise LaunchError('DATABASE_INIT_FAILED')
+                    raise mysql_failure(child, self.phase, output=output + errors)
                 self.finish_child('mysql_initialize')
                 self.secure_new_database(mysql_root, staging, environment)
                 staging.rename(mysql_data)
@@ -495,7 +523,7 @@ class Supervisor:
         # Leave a non-secret failure receipt. The live control token is removed.
         with suppress(Exception):
             write_json(LOCAL / 'last-result.json', {'installation_id': self.settings['installation_id'],
-                       'phase': self.phase, 'error': self.error, 'finished_at': time.time()})
+                       'phase': self.phase, 'error': self.error, 'diagnostic': self.failure_diagnostic, 'finished_at': time.time()})
         with suppress(OSError): STATE.unlink()
         self.finished.set(); self.channel.close()
 
@@ -507,8 +535,10 @@ class Supervisor:
             self.start_services(bootstrap)
         except LaunchError as exc:
             self.error = exc.code
-        except BaseException:
+            self.failure_diagnostic = exc.diagnostic or safe_diagnostic(exc, self.phase)
+        except BaseException as exc:
             self.error = 'START_CANCELLED' if self.stop_event.is_set() else 'INTERNAL_ERROR'
+            self.failure_diagnostic = safe_diagnostic(exc, self.phase)
         finally:
             bootstrap.clear()
             self.cleanup()
@@ -577,7 +607,7 @@ def start(args, runtime):
         if supervisor.poll() is not None:
             if (LOCAL / 'last-result.json').exists():
                 receipt = read_json(LOCAL / 'last-result.json')
-                raise LaunchError(receipt.get('error') or 'INTERNAL_ERROR')
+                raise LaunchError(receipt.get('error') or 'INTERNAL_ERROR', diagnostic=receipt.get('diagnostic'))
             raise LaunchError('INTERNAL_ERROR')
         time.sleep(.3)
     with suppress(Exception): stop()
@@ -666,7 +696,8 @@ def main():
         return 130
     except Exception as exc:
         code = exc.code if isinstance(exc, LaunchError) else 'INTERNAL_ERROR'
-        print(json.dumps({'error': code, 'message': _ERRORS.get(code, _ERRORS['INTERNAL_ERROR'])}, ensure_ascii=False)
+        diagnostic = getattr(exc, 'diagnostic', None) or safe_diagnostic(exc, 'launcher')
+        print(json.dumps({'error': code, 'message': _ERRORS.get(code, _ERRORS['INTERNAL_ERROR']), 'diagnostic': diagnostic}, ensure_ascii=False)
               if args.json else _ERRORS.get(code, _ERRORS['INTERNAL_ERROR']), file=sys.stderr)
         return 1
 

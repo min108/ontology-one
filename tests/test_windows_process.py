@@ -86,8 +86,17 @@ class WindowsProcessContractTests(unittest.TestCase):
     def spawn(self, kernel, **kwargs):
         with patch.object(win, '_api', return_value=(kernel, None, None, None)), \
              patch.object(win, 'assert_network_isolation_services'), patch.dict(sys.modules, {'msvcrt': types.SimpleNamespace()}):
-            return win.spawn_job_process([str(Path(sys.executable).absolute()), '-I'], cwd=str(Path(__file__).absolute().parent), env={},
+            environment = {'SystemRoot': 'C:\\Windows', 'LOCALAPPDATA': 'C:\\readonly-work'} if kwargs.get('appcontainer') else {}
+            return win.spawn_job_process([str(Path(sys.executable).absolute()), '-I'], cwd=str(Path(__file__).absolute().parent), env=environment,
                 stdin=win.DEVNULL, stdout=win.DEVNULL, stderr=win.DEVNULL, **kwargs)
+
+    def test_appcontainer_minimal_environment_requires_localappdata_without_inheritance(self):
+        with self.assertRaises(win.WindowsProcessError) as caught:
+            win._validate_appcontainer_environment({'SystemRoot': 'C:\\Windows'})
+        self.assertEqual(caught.exception.code, 'APPCONTAINER_ENVIRONMENT_REQUIRED')
+        with self.assertRaises(win.WindowsProcessError):
+            win._validate_appcontainer_environment({'LOCALAPPDATA': 'C:\\readonly-work'})
+        win._validate_appcontainer_environment({'systemroot': 'C:\\Windows', 'localappdata': 'C:\\readonly-work'})
 
     def test_network_isolation_requires_both_running_services_and_query_permission(self):
         states, closed = {'BFE': 4, 'MpsSvc': 4}, []

@@ -62,6 +62,7 @@ if WINDOWS:
     _advapi = ctypes.WinDLL('advapi32', use_last_error=True)
     _ntdll = ctypes.WinDLL('ntdll')
     _INVALID = ctypes.c_void_p(-1).value
+    _LIST_DIRECTORY = 0x1
     _READ_ATTRIBUTES, _READ_CONTROL, _WRITE_DAC, _DELETE = 0x80, 0x20000, 0x40000, 0x10000
     _GENERIC_READ, _GENERIC_WRITE = 0x80000000, 0x40000000
     _OPEN_REPARSE, _BACKUP_SEMANTICS = 0x00200000, 0x02000000
@@ -313,6 +314,13 @@ if WINDOWS:
         # write-only handle. GENERIC_WRITE does not include it on Windows.
         # This grants metadata inspection only, never FILE_READ_DATA.
         access |= _READ_ATTRIBUTES
+        if directory:
+            # Metadata-only directory handles do not participate in Windows
+            # read/write sharing accounting. FILE_LIST_DIRECTORY supplies the
+            # minimum read access that makes our no-WRITE/no-DELETE sharing
+            # exclude pre-existing and subsequent reparse-capable write handles.
+            # No directory contents are enumerated by this helper.
+            access |= _LIST_DIRECTORY
         # WRITE sharing on a directory would permit FSCTL_SET_REPARSE_POINT.
         sharing = 1 if directory else 1 | 2 | (4 if delete_share else 0)
         flags = _OPEN_REPARSE | _BACKUP_SEMANTICS

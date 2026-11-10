@@ -128,16 +128,21 @@ class Acceptance:
         self.environment.update(ONTOLOGY_BOOTSTRAP_USERNAME=self.username, ONTOLOGY_BOOTSTRAP_PASSWORD=self.password)
         self.rows = []
         self.sentinel = None
+        self.last_launch_failure = None
         self.initial_processes = owned_process_ids(self.package) if os.name == 'nt' else set()
 
     def record(self, name, action):
         began = time.monotonic()
+        self.last_launch_failure = None
         try:
             action()
             self.rows.append({'name': name, 'status': 'passed', 'duration_ms': round((time.monotonic() - began) * 1000)})
         except Exception as exc:
-            self.rows.append({'name': name, 'status': 'failed', 'code': str(exc) if isinstance(exc, CheckFailure) else type(exc).__name__,
-                              'duration_ms': round((time.monotonic() - began) * 1000)})
+            row = {'name': name, 'status': 'failed', 'code': str(exc) if isinstance(exc, CheckFailure) else type(exc).__name__,
+                   'duration_ms': round((time.monotonic() - began) * 1000)}
+            if self.last_launch_failure:
+                row['launcher_failure'] = self.last_launch_failure
+            self.rows.append(row)
             raise
 
     def command(self, *arguments, success=True, timeout=420):
@@ -151,6 +156,27 @@ class Acceptance:
             raise CheckFailure('LAUNCH_SAFE_JSON_REQUIRED') from None
         code = value.get('error', '') if isinstance(value, dict) else ''
         safe_code = code if isinstance(code, str) and all(character in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789' for character in code) else ''
+        if result.returncode:
+            self.last_launch_failure = {'error': safe_code or 'UNKNOWN'}
+            diagnostic = value.get('diagnostic') if isinstance(value, dict) else None
+            if isinstance(diagnostic, dict):
+                safe = {}
+                for name in ('phase', 'exception', 'operation', 'code'):
+                    item = diagnostic.get(name)
+                    if isinstance(item, str) and 0 < len(item) <= 64 and all(c.isascii() and (c.isalnum() or c == '_') for c in item):
+                        safe[name] = item
+                for name in ('native_error', 'winerror', 'errno', 'process_exit'):
+                    item = diagnostic.get(name)
+                    if type(item) is int and 0 <= item < 2**32:
+                        safe[name] = item
+                mysql_codes = diagnostic.get('mysql_codes')
+                if isinstance(mysql_codes, list) and len(mysql_codes) <= 12:
+                    valid_codes = [item for item in mysql_codes if isinstance(item, str) and len(item) == 9
+                                   and item.startswith('MY-') and item[3:].isascii() and item[3:].isdigit()]
+                    if valid_codes:
+                        safe['mysql_codes'] = valid_codes
+                if safe:
+                    self.last_launch_failure['diagnostic'] = safe
         require((result.returncode == 0) == success, 'UNEXPECTED_LAUNCH_EXIT_' + str(result.returncode) + ('_' + safe_code if safe_code else ''))
         return value
 
@@ -291,6 +317,39 @@ class Acceptance:
             require(data['summary'] == '修改后仍应保留' and data['version'] == 3 and data['status'] == 'archived'
                     and data['payload'].get('portable_acceptance') is True, 'ASSET_CONTENT_NOT_PRESERVED')
 
+    def batch_entrypoints(self):
+        """Exercise the exact double-click entry chain after first-run setup."""
+        system = Path(os.environ.get('SystemRoot', r'C:\Windows'))
+        powershell = system / 'System32' / 'WindowsPowerShell' / 'v1.0' / 'powershell.exe'
+        probe = subprocess.run([str(powershell), '-NoLogo', '-NoProfile', '-NonInteractive',
+            '-Command', '[Console]::Write($PSVersionTable.PSVersion.ToString())'],
+            cwd=self.package, env=self.environment, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+        require(probe.returncode == 0 and probe.stdout.decode('ascii').startswith('5.1.'), 'SYSTEM_POWERSHELL51_REQUIRED')
+        cmd = system / 'System32' / 'cmd.exe'
+        # Keep the command grammar fixed. The sole expanded variable is the
+        # quoted absolute BAT path. /d disables AutoRun, /v:off protects literal
+        # exclamation marks, and there is no CALL or second expansion of paths.
+        command_line = 'cmd.exe /d /v:off /s /c ""%ONTOLOGY_QA_BATCH_ENTRY%""'
+        for filename, expected in (('启动平台.bat', '平台已就绪'), ('关闭平台.bat', '本安装实例已关闭')):
+            environment = dict(self.environment, ONTOLOGY_QA_BATCH_ENTRY=str(self.package / filename))
+            result = subprocess.run(command_line, executable=str(cmd), shell=False,
+                cwd=self.package, env=environment, input=b'\r\n', stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, timeout=420 if filename == '启动平台.bat' else 90)
+            require(result.returncode == 0, 'BATCH_ENTRY_FAILED_' + ('START' if filename == '启动平台.bat' else 'STOP'))
+            require(len(result.stdout) <= 16384 and len(result.stderr) <= 16384, 'BATCH_OUTPUT_LIMIT')
+            try:
+                output = result.stdout.decode('utf-8')
+                result.stderr.decode('utf-8')
+            except UnicodeError:
+                raise CheckFailure('BATCH_CHINESE_OUTPUT_NOT_UTF8') from None
+            require(expected in output, 'BATCH_ENTRY_RESULT_NOT_CONFIRMED')
+            state = self.command('status')
+            require(state.get('ready') is (filename == '启动平台.bat'), 'BATCH_STATE_NOT_CONFIRMED')
+        # This additionally proves both ports are released, no owned jobs remain,
+        # and the unrelated process with the same python.exe is still alive.
+        self.stopped()
+
     def run(self):
         require(os.name == 'nt' and ctypes.sizeof(ctypes.c_void_p) == 8, 'WINDOWS_X64_REQUIRED')
         require(not ctypes.windll.shell32.IsUserAnAdmin(), 'STANDARD_USER_REQUIRED')
@@ -311,6 +370,7 @@ class Acceptance:
             self.record('restart_preserves_account_and_asset', self.persistence)
             self.record('duplicate_start_reuses_instance', self.start)
             self.record('stop_reaps_jobs_preserves_unrelated_process', self.stopped)
+            self.record('powershell51_chinese_batch_start_and_stop', self.batch_entrypoints)
             self.record('duplicate_stop_is_idempotent', self.stopped)
         finally:
             with suppress(Exception): self.stopped()

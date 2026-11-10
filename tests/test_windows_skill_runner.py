@@ -106,5 +106,14 @@ class WindowsSkillRunnerTests(unittest.TestCase):
         self.assertTrue(runner._equal({'result': 1.0}, {'result': 1}))
         with self.assertRaises(ValueError): runner._strict_json(b'{"x":1,"x":2}')
 
+    def test_sandbox_localappdata_is_private_readonly_work_not_inherited_profile(self):
+        with patch.dict(runner.os.environ, {'LOCALAPPDATA': 'host-private-location', 'DEEPSEEK_API_KEY': 'synthetic-secret',
+                                           'MYSQL_PASSWORD': 'synthetic-db-secret', 'HTTP_PROXY': 'host-proxy'}):
+            environment = runner._sandbox_environment(self.root / 'runtime', self.root / 'work', 'C:\\Windows')
+        self.assertEqual(environment['LOCALAPPDATA'], str(self.root / 'work'))
+        self.assertEqual(environment['SystemRoot'], 'C:\\Windows')
+        self.assertFalse({'DEEPSEEK_API_KEY', 'MYSQL_PASSWORD', 'HTTP_PROXY'} & environment.keys())
+        self.assertNotIn('host-private-location', environment.values())
+
 
 if __name__ == '__main__': unittest.main()

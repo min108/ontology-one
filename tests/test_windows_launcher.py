@@ -55,11 +55,12 @@ class LauncherTests(unittest.TestCase):
             'NODE_TLS_REJECT_UNAUTHORIZED': '0', 'NODE_OPTIONS': '--require untrusted.js'}
         with patch.dict(os.environ, configured, clear=True):
             env = launcher.base_environment()
+        normalized = {key.upper(): value for key, value in env.items()}
         for key in configured:
             if key in ('NODE_TLS_REJECT_UNAUTHORIZED', 'NODE_OPTIONS'):
-                self.assertNotIn(key, env)
+                self.assertNotIn(key.upper(), normalized)
             else:
-                self.assertEqual(env[key], configured[key])
+                self.assertEqual(normalized[key.upper()], configured[key])
 
     def test_application_uses_the_packaged_skill_python_without_root_database_secret(self):
         settings = launcher.get_installation()
@@ -83,6 +84,14 @@ class LauncherTests(unittest.TestCase):
                 launcher.assert_port_free(listener.getsockname()[1])
             self.assertEqual(error.exception.code, 'PORT_BUSY')
             self.assertNotEqual(listener.fileno(), -1)
+
+    def test_mysql_failure_diagnostics_keep_only_exit_and_numeric_error_ids(self):
+        class Child:
+            def poll(self): return 1
+        error = launcher.mysql_failure(Child(), 'initializing_database',
+            output=b'[MY-010119] Abort fake-secret C:/private/path [MY-013236] password=fake-value')
+        self.assertEqual(error.diagnostic, {'phase': 'initializing_database', 'process_exit': 1,
+            'mysql_codes': ['MY-010119', 'MY-013236']})
 
     def test_control_channel_authenticates_token_and_installation(self):
         settings = launcher.get_installation()

@@ -220,6 +220,43 @@ class WindowsNativeTests(_FileFixture):
         finally:
             fs._Close(handle)
 
+    def test_metadata_only_handle_cannot_retag_a_pinned_empty_directory(self):
+        from tests.windows_filesystem_fixture import set_junction_on_handle
+        outside = fs.ensure_private_directory(self.root / 'retag-target')
+        fs.atomic_write(outside / 'marker', b'foreign-unchanged')
+        for preopened in (False, True):
+            with self.subTest(preopened=preopened):
+                folder = fs.ensure_private_directory(self.root / ('retag-before' if preopened else 'retag-after'))
+                handle = None
+                def metadata_handle():
+                    # FILE_WRITE_ATTRIBUTES is deliberately excluded from
+                    # read/write sharing accounting, so its open may succeed.
+                    opened = fs._CreateFile(fs._extended(folder), 0x100, 1 | 2 | 4, None,
+                                            fs._OPEN_EXISTING, fs._OPEN_REPARSE | fs._BACKUP_SEMANTICS, None)
+                    self.assertNotEqual(opened, fs._INVALID)
+                    return opened
+                try:
+                    if preopened:
+                        handle = metadata_handle()
+                    with fs._directory(folder) as pinned:
+                        if handle is None:
+                            handle = metadata_handle()
+                        # The folder is empty: success cannot be prevented only
+                        # by NTFS's non-empty-directory junction restriction.
+                        with self.assertRaises(PermissionError) as failure:
+                            set_junction_on_handle(handle, outside)
+                        self.assertEqual(failure.exception.winerror, 5)
+                        info = fs._FileInfo()
+                        self.assertTrue(fs._Info(pinned, ctypes.byref(info)))
+                        self.assertFalse(info.attributes & fs._REPARSE)
+                finally:
+                    if handle is not None:
+                        fs._Close(handle)
+                    # On regression remove the junction itself, never its target.
+                    if getattr(os.lstat(folder), 'st_file_attributes', 0) & fs._REPARSE:
+                        folder.rmdir()
+                self.assertEqual((outside / 'marker').read_bytes(), b'foreign-unchanged')
+
     def test_windows_aliases_ads_and_non_acl_volumes_fail_closed(self):
         for name in ('NUL', 'con.txt', 'COM1', 'value:stream', 'trailing.', 'trailing '):
             with self.subTest(name=name), self.assertRaises(OSError):

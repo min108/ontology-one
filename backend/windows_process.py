@@ -189,6 +189,16 @@ def _environment_block(env):
     return '\0'.join(entries) + '\0\0'
 
 
+def _validate_appcontainer_environment(env):
+    # Windows' AppContainer process creation requires these two entries even
+    # with an explicit environment block. Missing LOCALAPPDATA raises Win32
+    # 203 before the executable starts (Microsoft/mxc regression #1158).
+    # Their presence does not grant directory access; the LPAC DACL still does.
+    entries = {key.upper(): value for key, value in env.items()}
+    if not all(entries.get(key) for key in ('SYSTEMROOT', 'LOCALAPPDATA')):
+        raise WindowsProcessError('APPCONTAINER_ENVIRONMENT_REQUIRED')
+
+
 def _job_limits(limits):
     info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
     # KILL_ON_JOB_CLOSE; neither BREAKAWAY_OK nor SILENT_BREAKAWAY_OK is set.
@@ -471,6 +481,8 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
     limits = ProcessLimits() if limits is None else limits
     if not isinstance(limits, ProcessLimits): raise ValueError('Invalid limits')
     environment = C.create_unicode_buffer(_environment_block(env))
+    if appcontainer is not None:
+        _validate_appcontainer_environment(env)
     command = C.create_unicode_buffer(subprocess.list2cmdline(argv))
     job, process, attrs = None, PROCESS_INFORMATION(), None
     attrs_ready = False

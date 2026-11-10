@@ -81,12 +81,7 @@ class WindowsSandboxNativeTests(unittest.TestCase):
             profile.__enter__()
             profile.grant_read_tree(root)
             profile.grant_read_tree(runtime, executable=True)
-            environment = {
-                'SystemRoot': self.system_root, 'PATH': str(runtime),
-                'HOME': str(work), 'USERPROFILE': str(work),
-                'TEMP': str(work), 'TMP': str(work),
-                'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1', 'PYTHONUTF8': '1',
-            }
+            environment = runner._sandbox_environment(runtime, work, self.system_root)
             owner = native.spawn_job_process(
                 [str(runtime / 'python.exe'), '-I', '-X', 'utf8', '-B', '-u', str(script_path)],
                 cwd=str(work), env=environment, limits=LIMITS if limits is None else limits, appcontainer=profile)
