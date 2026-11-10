@@ -38,6 +38,10 @@ def main():
         'tests.test_windows_launcher','tests.test_windows_initialize','tests.test_windows_distribution',
         'tests.test_source_adapters']
     manifest=json.loads((package/'runtime/manifest.json').read_text(encoding='utf-8'))
+    diagnostics={'source_commit':manifest['source_commit'],'sys_path':sys.path,'prefix':sys.prefix,
+        'backend_exists':(package/'backend/__init__.py').is_file(),
+        'pth':(package/'runtime/python/python312._pth').read_text(encoding='utf-8')}
+    (reports/'embedded-paths.json').write_text(json.dumps(diagnostics,ensure_ascii=True,indent=2)+'\n',encoding='utf-8')
     results={'source_commit':manifest['source_commit'],'standard_user':True,'delivered_python':True,
              'system_python_required':False,'model':'synthetic_fixture_only','checks':[]}
     commands=[('native_units',[str(python),'-I','-B','-m','unittest',*modules,'-v'],600),

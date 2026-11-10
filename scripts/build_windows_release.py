@@ -197,6 +197,14 @@ def build(args):
     subprocess.run([sys.executable,'-m','pip','install','--no-index','--no-deps','--no-compile','--target',str(site),*[str(path) for path in wheel_paths]],env=env,check=True)
     (package/'runtime/python/python312._pth').write_text('python312.zip\n.\nLib/site-packages\n../..\nimport site\n',encoding='utf-8')
     (package/'runtime/skill-python/python312._pth').write_text('python312.zip\n.\n',encoding='utf-8')
+    # Validate application resolution from outside the checkout/package before
+    # spending time signing/copying redistributables or compressing a release.
+    python=(package/'runtime/python/python.exe').resolve()
+    diagnostic=("import sys,json,importlib.util; from pathlib import Path; root=Path(sys.argv[1]); "
+        "print(json.dumps({'phase':'embedded_application_import','sys_path':sys.path,'prefix':sys.prefix,"
+        "'backend_exists':(root/'backend/__init__.py').is_file(),'pth':(root/'runtime/python/python312._pth').read_text()}),flush=True); "
+        "import backend; assert Path(backend.__file__).resolve().is_relative_to(root/'backend')")
+    subprocess.run([str(python),'-I','-B','-c',diagnostic,str(package.resolve())],cwd=args.cache.resolve(),env=env,check=True)
     harness=package/runtime['harness']['executable']
     if not harness.is_file() or digest(harness)!=runtime['harness']['sha256']: raise ValueError('Official Windows Harness executable digest differs')
     install_vc(runtime['vc_runtime'],package,harness.parent,args.vc_directory,args.bootstrap_lock)
