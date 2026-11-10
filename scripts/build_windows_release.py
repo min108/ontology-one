@@ -84,9 +84,11 @@ def download(item, cache, *, bootstrap=False):
 
 
 def safe_member(member):
-    name = member.filename
+    # ZipInfo normalizes OS separators on Windows. Inspect the original ZIP
+    # spelling so traversal/alias policy is identical on every build machine.
+    name = member.orig_filename
     posix = PurePosixPath(name)
-    if not name or '\\' in name or posix.is_absolute() or '..' in posix.parts or any(':' in part for part in posix.parts):
+    if not name or '\0' in name or '\\' in name or posix.is_absolute() or '..' in posix.parts or any(':' in part for part in posix.parts):
         raise ValueError('Unsafe dependency archive path')
     if stat.S_ISLNK(member.external_attr >> 16): raise ValueError('Dependency archive links are not accepted')
     return posix
@@ -207,13 +209,13 @@ def build(args):
         "print(json.dumps({'phase':'embedded_application_import','sys_path':sys.path,'prefix':sys.prefix,"
         "'backend_exists':(root/'backend/__init__.py').is_file(),'pth':(root/'runtime/python/python312._pth').read_text()}),flush=True); "
         "import backend; assert Path(backend.__file__).resolve().is_relative_to(root/'backend')")
-    subprocess.run([str(python),'-I','-B','-c',diagnostic,str(package.resolve())],cwd=args.cache.resolve(),env=env,check=True)
+    subprocess.run([str(python),'-I','-X','utf8','-B','-c',diagnostic,str(package.resolve())],cwd=args.cache.resolve(),env=env,check=True)
     harness=package/runtime['harness']['executable']
     if not harness.is_file() or digest(harness)!=runtime['harness']['sha256']: raise ValueError('Official Windows Harness executable digest differs')
     install_vc(runtime['vc_runtime'],package,harness.parent,args.vc_directory,args.bootstrap_lock)
     resolved()
     python=package/'runtime/python/python.exe'
-    subprocess.run([str(python),'-I','-c','import fastapi,pymysql,cryptography,deepseek_harness,deepseek_harness_runtime,mcp,win32api,pywintypes,pythoncom,lxml.etree,yaml,pydantic_core,_cffi_backend; import sys; assert sys.version_info[:3]==(3,12,10)'],check=True,env=env)
+    subprocess.run([str(python),'-I','-X','utf8','-c','import fastapi,pymysql,cryptography,deepseek_harness,deepseek_harness_runtime,mcp,win32api,pywintypes,pythoncom,lxml.etree,yaml,pydantic_core,_cffi_backend; import sys; assert sys.version_info[:3]==(3,12,10)'],check=True,env=env)
     licenses=package/'runtime/licenses';licenses.mkdir()
     shutil.copy2(args.wheels_lock,licenses/'windows-wheels.lock.json')
     shutil.copy2(artifacts['vc_license'],licenses/runtime['vc_license']['filename'])

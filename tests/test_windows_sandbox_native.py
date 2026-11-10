@@ -88,9 +88,12 @@ class WindowsSandboxNativeTests(unittest.TestCase):
                 'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1', 'PYTHONUTF8': '1',
             }
             owner = native.spawn_job_process(
-                [str(runtime / 'python.exe'), '-I', '-B', '-u', str(script_path)],
+                [str(runtime / 'python.exe'), '-I', '-X', 'utf8', '-B', '-u', str(script_path)],
                 cwd=str(work), env=environment, limits=LIMITS if limits is None else limits, appcontainer=profile)
             yield owner, root, runtime, work, profile
+        except native.WindowsProcessError as exc:
+            print(json.dumps({'windows_sandbox_failure': exc.diagnostic()}, ensure_ascii=True), flush=True)
+            raise
         finally:
             try:
                 if owner is not None:
@@ -102,7 +105,7 @@ class WindowsSandboxNativeTests(unittest.TestCase):
                     temporary.cleanup()
 
     def communicate_json(self, owner, payload, *, timeout=5):
-        output, error = owner.communicate(json.dumps(payload).encode('utf-8'),
+        output, error = owner.communicate(json.dumps(payload, ensure_ascii=False).encode('utf-8'),
                                            timeout=timeout, max_stdout=65536, max_stderr=16384)
         self.assertEqual(owner.returncode, 0, 'Contained Python did not exit successfully')
         self.assertEqual(error, b'', 'Contained Python wrote unexpected diagnostics')
@@ -116,6 +119,15 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         with self.sandbox(script) as (owner, *_):
             self.assertEqual(self.communicate_json(owner, {'number': 7, 'text': '中文'}),
                              {'value': {'number': 7, 'text': '中文'}, 'ok': True})
+
+    def test_unicode_json_pipes_use_utf8_despite_isolated_mode_and_windows_acp(self):
+        script = ('import json,sys\nvalue=json.load(sys.stdin)\n'
+                  'json.dump({"value":value,"stdin":sys.stdin.encoding,"stdout":sys.stdout.encoding},'
+                  'sys.stdout,ensure_ascii=False)\n')
+        value = {'organization': '集团总部·科技与数字化部', 'note': '中文标点：“甲、乙”；金额¥123，📚'}
+        with self.sandbox(script) as (owner, *_):
+            self.assertEqual(self.communicate_json(owner, value),
+                             {'value': value, 'stdin': 'utf-8', 'stdout': 'utf-8'})
 
     def test_private_host_read_and_all_ungranted_writes_are_denied(self):
         script = '''import json,pathlib,sys

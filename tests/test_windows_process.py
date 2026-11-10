@@ -51,6 +51,16 @@ class Kernel:
 
 
 class WindowsProcessContractTests(unittest.TestCase):
+    def test_native_diagnostic_preserves_only_numeric_error_and_fixed_operation(self):
+        with patch.object(win.C, 'get_last_error', return_value=5, create=True):
+            with self.assertRaises(win.WindowsProcessError) as caught:
+                win._check(False, 'APPCONTAINER_UNAVAILABLE', operation='CreateProcessW')
+        self.assertEqual(str(caught.exception), 'APPCONTAINER_UNAVAILABLE')
+        self.assertEqual(caught.exception.diagnostic(),
+                         {'code': 'APPCONTAINER_UNAVAILABLE', 'operation': 'CreateProcessW', 'win32_error': 5})
+        unsafe = win.WindowsProcessError(native_error='private input', operation='C:\\private\\secret')
+        self.assertIsNone(unsafe.diagnostic()['operation']); self.assertIsNone(unsafe.diagnostic()['win32_error'])
+
     def test_windows_x64_abi_sizes_are_explicit_even_when_host_long_is_64bit(self):
         if C.sizeof(C.c_void_p) != 8: self.skipTest('x64 layout test')
         for kind, expected in [(win.SECURITY_ATTRIBUTES, 24), (win.STARTUPINFOW, 104), (win.STARTUPINFOEXW, 112),

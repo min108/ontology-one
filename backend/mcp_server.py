@@ -70,7 +70,7 @@ class ProcessExecutor:
         environment = dict(os.environ)
         environment['PYTHONDONTWRITEBYTECODE'] = '1'
         environment['PYTHONUNBUFFERED'] = '1'
-        return await self._spawn_command([sys.executable, '-m', 'backend.mcp_worker'], environment)
+        return await self._spawn_command([sys.executable, '-X', 'utf8', '-m', 'backend.mcp_worker'], environment)
 
     async def _spawn_command(self, command, environment=None):
         if os.name == 'nt':

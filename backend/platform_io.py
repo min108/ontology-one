@@ -166,14 +166,21 @@ if WINDOWS:
     _GetAce = _declare(_advapi, 'GetAce', wintypes.BOOL, wintypes.LPVOID, wintypes.DWORD,
                        ctypes.POINTER(wintypes.LPVOID))
 
-    def _win_error(code=None):
+    def _win_error(code=None, *, operation=None):
         code = ctypes.get_last_error() if code is None else code
         if code in (80, 183):
             raise FileExistsError(errno.EEXIST, 'File already exists')
         if code in (2, 3):
             raise FileNotFoundError(errno.ENOENT, 'File does not exist')
         if code in (5, 32):
-            raise PermissionError(errno.EACCES, 'File access or sharing was denied')
+            # Fixed operation names and numeric codes distinguish an access-mask
+            # error from sharing contention without exposing a path or content.
+            detail = f'File access or sharing was denied (winerror={code}'
+            if operation:
+                detail += f', operation={operation}'
+            error = PermissionError(errno.EACCES, detail + ')')
+            error.winerror = code
+            raise error
         raise ctypes.WinError(code)
 
     def _sid_string(sid):
@@ -298,10 +305,14 @@ if WINDOWS:
                                ctypes.byref(status), None, 0x10 if directory else 0x80,
                                sharing, create, options, None, 0)
         if result < 0:
-            _win_error(_NtError(result))
+            _win_error(_NtError(result), operation='NtCreateFile')
         return handle.value
 
     def _open_handle(path, access, disposition=_OPEN_EXISTING, *, directory=False, private=False, delete_share=False, parent=None):
+        # GetFileInformationByHandle requires FILE_READ_ATTRIBUTES even for a
+        # write-only handle. GENERIC_WRITE does not include it on Windows.
+        # This grants metadata inspection only, never FILE_READ_DATA.
+        access |= _READ_ATTRIBUTES
         # WRITE sharing on a directory would permit FSCTL_SET_REPARSE_POINT.
         sharing = 1 if directory else 1 | 2 | (4 if delete_share else 0)
         flags = _OPEN_REPARSE | _BACKUP_SEMANTICS
@@ -312,7 +323,7 @@ if WINDOWS:
             handle = _CreateFile(_extended(path), access, sharing, ctypes.byref(attributes) if descriptor else None,
                                  disposition, flags, None)
             if handle == _INVALID:
-                _win_error()
+                _win_error(operation='CreateFileW')
             return handle
         if private:
             with _private_descriptor(directory) as descriptor:
@@ -322,7 +333,7 @@ if WINDOWS:
         try:
             info = _FileInfo()
             if not _Info(handle, ctypes.byref(info)):
-                _win_error()
+                _win_error(operation='GetFileInformationByHandle')
             if info.attributes & _REPARSE:
                 raise PermissionError(errno.EACCES, 'Reparse points are not allowed')
             if bool(info.attributes & _DIRECTORY) != directory:

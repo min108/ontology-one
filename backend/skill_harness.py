@@ -323,7 +323,7 @@ class HarnessExecutor:
                        USERPROFILE=str(directory / 'home'), LOCALAPPDATA=str(directory / 'home'),
                        TEMP=str(directory / 'tmp'), TMP=str(directory / 'tmp'))
             return await asyncio.to_thread(
-                spawn_job_process, [sys.executable, '-I', '-B', str(Path(__file__).with_name('skill_harness_worker.py'))],
+                spawn_job_process, [sys.executable, '-I', '-X', 'utf8', '-B', str(Path(__file__).with_name('skill_harness_worker.py'))],
                 cwd=str(directory), env=env,
                 limits=ProcessLimits(memory_bytes=1024**3, active_processes=4, cpu_time_seconds=25),
             )

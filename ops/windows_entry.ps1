@@ -11,7 +11,7 @@ try {
     Set-Location -LiteralPath $Root
     $env:PYTHONUTF8 = '1'
     $env:PYTHONIOENCODING = 'utf-8'
-    & $Python '-I' '-B' $Launcher $Action
+    & $Python '-I' '-X' 'utf8' '-B' $Launcher $Action
     $Result = $LASTEXITCODE
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red

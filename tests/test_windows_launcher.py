@@ -176,6 +176,7 @@ class WindowsEntryEncodingTests(unittest.TestCase):
         raw = (root / 'ops' / 'windows_entry.ps1').read_bytes()
         self.assertTrue(raw.startswith(b'\xef\xbb\xbf'))
         self.assertIn('Set-Location -LiteralPath', raw.decode('utf-8-sig'))
+        self.assertIn("'-I' '-X' 'utf8' '-B'", raw.decode('utf-8-sig'))
 
 
 if __name__ == '__main__':

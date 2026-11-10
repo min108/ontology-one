@@ -27,9 +27,17 @@ PIPE, DEVNULL, STDOUT = subprocess.PIPE, subprocess.DEVNULL, subprocess.STDOUT
 
 class WindowsProcessError(OSError):
     """Safe fixed diagnostic: never embeds command lines, paths or child output."""
-    def __init__(self, code='PROCESS_UNAVAILABLE'):
+    def __init__(self, code='PROCESS_UNAVAILABLE', *, native_error=None, operation=None):
         self.code = code
+        self.native_error = native_error if type(native_error) is int and 0 <= native_error <= 0xFFFFFFFF else None
+        self.operation = operation if operation in {'CreateProcessW', 'AssignProcessToJobObject',
+            'UpdateProcThreadAttribute', 'ResumeThread', 'OpenProcessToken', 'GetTokenInformation'} else None
         super().__init__(code)
+
+    def diagnostic(self):
+        # Opt-in native acceptance logging only; ordinary API reports still use
+        # the fixed code. Numeric errors avoid FormatMessage/path disclosure.
+        return {'code': self.code, 'operation': self.operation, 'win32_error': self.native_error}
 
 
 @dataclass(frozen=True)
@@ -161,9 +169,11 @@ def _api():
     return kernel, advapi, userenv, ole
 
 
-def _check(value, code='PROCESS_UNAVAILABLE'):
+def _check(value, code='PROCESS_UNAVAILABLE', *, operation=None):
     if not value:
-        raise WindowsProcessError(code)
+        # Cleanup Win32 calls can overwrite the thread-local last error.
+        native_error = C.get_last_error() if hasattr(C, 'get_last_error') else None
+        raise WindowsProcessError(code, native_error=native_error, operation=operation)
     return value
 
 
@@ -516,8 +526,8 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x2000F, C.byref(policy), C.sizeof(policy), None, None), 'APPCONTAINER_UNAVAILABLE')
         flags = 0x4 | 0x80000 | 0x400 | 0x08000000
         _check(kernel.CreateProcessW(argv[0], command, None, None, True, flags, environment, str(cwd), C.byref(si), C.byref(process)),
-               'APPCONTAINER_UNAVAILABLE' if appcontainer is not None else 'PROCESS_UNAVAILABLE')
-        _check(kernel.AssignProcessToJobObject(job, process.hProcess))
+               'APPCONTAINER_UNAVAILABLE' if appcontainer is not None else 'PROCESS_UNAVAILABLE', operation='CreateProcessW')
+        _check(kernel.AssignProcessToJobObject(job, process.hProcess), operation='AssignProcessToJobObject')
         if appcontainer is not None:
             _verify_appcontainer_token(process.hProcess, appcontainer.sid)
         # Convert only parent ends. The child ends and job handle are never

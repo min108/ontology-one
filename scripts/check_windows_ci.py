@@ -44,10 +44,13 @@ def main():
     (reports/'embedded-paths.json').write_text(json.dumps(diagnostics,ensure_ascii=True,indent=2)+'\n',encoding='utf-8')
     results={'source_commit':manifest['source_commit'],'standard_user':True,'delivered_python':True,
              'system_python_required':False,'model':'synthetic_fixture_only','checks':[]}
-    commands=[('native_units',[str(python),'-I','-B','-m','unittest',*modules,'-v'],600),
-              ('portable_smoke',[str(python),'-I','-B',str(package/'tests/windows_portable_smoke.py'),
+    commands=[('native_units',[str(python),'-I','-X','utf8','-B','-m','unittest',*modules,'-v'],600),
+              ('portable_smoke',[str(python),'-I','-X','utf8','-B',str(package/'tests/windows_portable_smoke.py'),
                 '--package',str(package),'--report',str(reports/'windows-portable-smoke.json')],900)]
     try:
+        import backend
+        if not Path(backend.__file__).resolve().is_relative_to(package/'backend'):
+            raise SystemExit('Relocated application import escaped the delivered package')
         from backend.windows_process import spawn_job_process, DEVNULL, STDOUT
         for name,command,timeout in commands:
             with (reports/(name+'.log')).open('wb') as log:
@@ -59,7 +62,7 @@ def main():
     finally:
         # This uses the instance's authenticated stop API; it never selects PIDs.
         try:
-            subprocess.run([str(python),'-I','-B',str(package/'ops/windows_launcher.py'),'stop','--json'],
+            subprocess.run([str(python),'-I','-X','utf8','-B',str(package/'ops/windows_launcher.py'),'stop','--json'],
                            cwd=package,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=60)
         except (OSError,subprocess.TimeoutExpired):
             results['checks'].append({'name':'final_cleanup','exit_code':124,'passed':False})

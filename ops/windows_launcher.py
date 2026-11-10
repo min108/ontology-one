@@ -440,7 +440,7 @@ class Supervisor:
             '--pid-file=' + str(mysql_data / 'server.pid')], environment)
         self.wait_until(self.database_ready, 90, 'DATABASE_START_FAILED')
         self.phase_to('migrating')
-        migration = self.spawn('migration', [self.runtime['python'], '-I', '-B', ROOT / 'ops' / 'windows_initialize.py'],
+        migration = self.spawn('migration', [self.runtime['python'], '-I', '-X', 'utf8', '-B', ROOT / 'ops' / 'windows_initialize.py'],
                                application_environment(self.settings, root=True))
         migration.communicate(json.dumps(bootstrap).encode('utf-8'), timeout=180,
                               cancelled=self.stop_event, max_stdout=65536, max_stderr=65536)
@@ -450,10 +450,10 @@ class Supervisor:
         write_json(READY, {'installation_id': self.settings['installation_id'], 'version': '0.5.0'})
         self.phase_to('starting_api')
         environment = application_environment(self.settings)
-        api = self.persistent('api', [self.runtime['python'], '-I', '-B', '-m', 'uvicorn', 'backend.main:app',
+        api = self.persistent('api', [self.runtime['python'], '-I', '-X', 'utf8', '-B', '-m', 'uvicorn', 'backend.main:app',
             '--app-dir', str(ROOT), '--host', '127.0.0.1', '--port', str(self.settings['api_port']),
             '--workers', '2', '--no-access-log'], environment)
-        self.persistent('worker', [self.runtime['python'], '-I', '-B', ROOT / 'scripts' / 'run_worker.py'], environment)
+        self.persistent('worker', [self.runtime['python'], '-I', '-X', 'utf8', '-B', ROOT / 'scripts' / 'run_worker.py'], environment)
         def ready():
             if api.poll() is not None or self.children['worker'].poll() is not None:
                 raise LaunchError('API_START_FAILED')
@@ -557,7 +557,7 @@ def start(args, runtime):
         assert_port_free(port)
     bootstrap = bootstrap_input(args.non_interactive)
     with suppress(OSError): (LOCAL / 'last-result.json').unlink()
-    supervisor = subprocess.Popen([str(runtime['python']), '-I', '-B', str(Path(__file__).resolve()), 'supervise'],
+    supervisor = subprocess.Popen([str(runtime['python']), '-I', '-X', 'utf8', '-B', str(Path(__file__).resolve()), 'supervise'],
         cwd=str(ROOT), env=base_environment(), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
     supervisor.stdin.write(json.dumps(bootstrap).encode('utf-8')); supervisor.stdin.close(); bootstrap.clear()

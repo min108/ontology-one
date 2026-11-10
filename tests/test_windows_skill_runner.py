@@ -47,6 +47,8 @@ class WindowsSkillRunnerTests(unittest.TestCase):
         self.assertEqual(len(profiles), 2); self.assertIsNot(profiles[0], profiles[1])
         for item in profiles: item.close.assert_called_once()
         self.assertEqual(spawn.call_count, 2); self.assertEqual(process.close.call_count, 2)
+        for invocation in spawn.call_args_list:
+            self.assertEqual(invocation.args[0][1:6], ['-I', '-X', 'utf8', '-B', '-u'])
         self.assertFalse(self.session.exists())
 
     def test_profile_cleanup_failure_marks_runner_unhealthy(self):

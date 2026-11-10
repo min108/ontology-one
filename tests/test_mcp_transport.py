@@ -47,7 +47,7 @@ else:
     result={'contract_version':'1.0','request_id':payload['request_id'],'status':'ok',
             'data':{'tenant':payload['principal']['tenant_id']},'error':None,'warnings':[],
             'provenance':[],'retention':{'result':'response_only','cache':'disabled','audit':'metadata_only'}}
-    print(json.dumps(result),flush=True)
+    print(json.dumps(result,ensure_ascii=False),flush=True)
 '''
 
 
@@ -61,7 +61,7 @@ class ProbeExecutor(mcp_server.ProcessExecutor):
         self.audit_events = []
 
     async def _spawn(self):
-        process = await self._spawn_command([sys.executable, '-c', CHILD, self.mode])
+        process = await self._spawn_command([sys.executable, '-X', 'utf8', '-c', CHILD, self.mode])
         self.spawned.append(process)
         self.started.set()
         if self.barrier is not None:

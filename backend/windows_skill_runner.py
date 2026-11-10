@@ -183,7 +183,9 @@ def execute_tests(files, entrypoint, test_cases, timeout_seconds=30, cancelled=N
                     profile = AppContainerProfile().__enter__()
                     profile.grant_read_tree(root)
                     profile.grant_read_tree(runtime, executable=True)
-                    owner = spawn_job_process([str(runtime / 'python.exe'), '-I', '-B', '-u', str(work / entrypoint)],
+                    # -I ignores PYTHONUTF8; use an explicit interpreter option
+                    # so JSON pipes are UTF-8 even on a non-UTF-8 Windows ACP.
+                    owner = spawn_job_process([str(runtime / 'python.exe'), '-I', '-X', 'utf8', '-B', '-u', str(work / entrypoint)],
                         cwd=str(work), env=environment, limits=LIMITS, appcontainer=profile)
                     output, _ = owner.communicate(_json(case['input']), timeout=max(.01, min(5, deadline - time.monotonic())),
                         cancelled=cancelled, max_stdout=MAX_OUTPUT, max_stderr=MAX_OUTPUT)

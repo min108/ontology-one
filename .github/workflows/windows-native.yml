@@ -46,7 +46,7 @@ jobs:
       - name: Build self-contained package from fixed official dependencies
         shell: pwsh
         run: |
-          $arguments = @('scripts/build_windows_release.py', '--output', 'out', '--cache', "$env:RUNNER_TEMP/ontology-downloads")
+          $arguments = @('-X', 'utf8', 'scripts/build_windows_release.py', '--output', 'out', '--cache', "$env:RUNNER_TEMP/ontology-downloads")
           $lock = Get-Content -Raw ops/windows-runtime.lock.json | ConvertFrom-Json
           $unresolved = (-not $lock.mysql.sha256) -or (-not $lock.mysql_source.sha256) -or (-not $lock.vc_license.sha256) -or (-not $lock.vc_runtime.version)
           if ('${{ github.event_name }}' -eq 'pull_request' -and $unresolved) { $arguments += '--bootstrap-lock' }
@@ -82,7 +82,7 @@ jobs:
             $package = Join-Path $qaRoot 'Ontology-One-0.5.0-windows-x64'
             $python = Join-Path $package 'runtime/python/python.exe'
             $entry = Join-Path $package 'scripts/check_windows_ci.py'
-            $arguments = @('-I', '-B', "`"$entry`"", '--package', "`"$package`"", '--report-dir', "`"$reports`"")
+            $arguments = @('-I', '-X', 'utf8', '-B', "`"$entry`"", '--package', "`"$package`"", '--report-dir', "`"$reports`"")
             $process = Start-Process -FilePath $python -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -RedirectStandardOutput (Join-Path $reports 'ci-entry.stdout.log') -RedirectStandardError (Join-Path $reports 'ci-entry.stderr.log') -PassThru
             if (-not $process.WaitForExit(1800000)) { throw 'Native acceptance exceeded its time budget' }
             $process.Refresh()
@@ -96,7 +96,7 @@ jobs:
               Copy-Item -Path (Join-Path $reports '*') -Destination 'out/reports' -Force -ErrorAction SilentlyContinue
             }
             if ($package -and (Test-Path $python)) {
-              $stopArgs = @('-I', '-B', "`"$(Join-Path $package 'ops/windows_launcher.py')`"", 'stop', '--json')
+              $stopArgs = @('-I', '-X', 'utf8', '-B', "`"$(Join-Path $package 'ops/windows_launcher.py')`"", 'stop', '--json')
               Start-Process -FilePath $python -ArgumentList $stopArgs -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -Wait -ErrorAction SilentlyContinue | Out-Null
             }
             Remove-LocalUser -Name $qaUser -ErrorAction SilentlyContinue

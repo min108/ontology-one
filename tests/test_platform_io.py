@@ -158,6 +158,24 @@ class WindowsNativeTests(_FileFixture):
         self.assertEqual(ctypes.sizeof(fs._IoStatus), 16)
         self.assertEqual(fs._RenameInfo.FileName.offset, 20)
 
+    def test_write_only_handle_can_validate_metadata_but_cannot_read_file_data(self):
+        path = self.root / 'write-only.json'
+        with fs._directory(path.parent) as parent:
+            handle = fs._open_handle(path, fs._GENERIC_WRITE, fs._CREATE_NEW, private=True, parent=parent)
+            try:
+                info = fs._FileInfo()
+                self.assertTrue(fs._Info(handle, ctypes.byref(info)))
+                # The minimum metadata right must not become GENERIC_READ.
+                read = fs._kernel.ReadFile
+                read.restype = fs.wintypes.BOOL
+                read.argtypes = [fs.wintypes.HANDLE, fs.wintypes.LPVOID, fs.wintypes.DWORD,
+                                 ctypes.POINTER(fs.wintypes.DWORD), fs.wintypes.LPVOID]
+                value, received = ctypes.create_string_buffer(1), fs.wintypes.DWORD()
+                self.assertFalse(read(handle, value, 1, ctypes.byref(received), None))
+                self.assertEqual(ctypes.get_last_error(), 5)
+            finally:
+                fs._Close(handle)
+
     def test_junctions_are_rejected_without_following_foreign_tree(self):
         outside = fs.ensure_private_directory(self.root / 'foreign')
         fs.atomic_write(outside / 'secret', b'foreign')

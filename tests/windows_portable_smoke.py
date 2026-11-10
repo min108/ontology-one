@@ -141,7 +141,7 @@ class Acceptance:
             raise
 
     def command(self, *arguments, success=True, timeout=420):
-        result = subprocess.run([str(self.python), '-I', '-B', str(self.launcher), *arguments, '--json'],
+        result = subprocess.run([str(self.python), '-I', '-X', 'utf8', '-B', str(self.launcher), *arguments, '--json'],
                                 cwd=self.package, env=self.environment, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         require(len(result.stdout) <= 16384 and len(result.stderr) <= 16384, 'LAUNCH_OUTPUT_LIMIT')
@@ -181,9 +181,27 @@ class Acceptance:
             result = self.command('start', '--no-browser', '--non-interactive', '--port', str(self.api_port),
                                   '--mysql-port', str(self.mysql_port), success=False)
             require(result.get('error') == 'PORT_BUSY', 'PORT_CONFLICT_NOT_REJECTED')
+            require('端口已被占用' in result.get('message', ''), 'CHINESE_ERROR_JSON_NOT_UTF8')
             with socket.create_connection(('127.0.0.1', self.api_port), timeout=2):
                 connected, _ = listener.accept(); connected.close()
             require(not (self.package / 'data' / 'mysql').exists(), 'CONFLICT_STARTED_DATABASE')
+
+    def redirected_utf8(self):
+        # Deliberately conflicting environment settings prove the explicit
+        # command-line mode works with -I and redirected Windows streams.
+        environment = dict(self.environment, PYTHONUTF8='0', PYTHONIOENCODING='ascii')
+        source = ("import json,sys;value={'text':'中文 空格 !','utf8':sys.flags.utf8_mode};"
+                  "print(json.dumps(value,ensure_ascii=False));"
+                  "sys.stderr.write(json.dumps({'message':'端口已被占用'},ensure_ascii=False))")
+        result = subprocess.run([str(self.python), '-I', '-X', 'utf8', '-B', '-c', source],
+            cwd=self.package, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, timeout=15)
+        require(result.returncode == 0, 'UTF8_CHILD_FAILED')
+        try:
+            output, error = json.loads(result.stdout.decode('utf-8')), json.loads(result.stderr.decode('utf-8'))
+        except (UnicodeError, ValueError):
+            raise CheckFailure('REDIRECTED_JSON_NOT_UTF8') from None
+        require(output == {'text': '中文 空格 !', 'utf8': 1} and error == {'message': '端口已被占用'}, 'UTF8_MODE_NOT_ENFORCED')
 
     def first_failure(self):
         helper = self.package / 'ops' / 'windows_initialize.py'
@@ -281,7 +299,8 @@ class Acceptance:
         began = time.monotonic()
         try:
             self.record('offline_runtime_check', lambda: require(self.command('--check').get('runtime_valid'), 'RUNTIME_INVALID'))
-            self.sentinel = subprocess.Popen([str(self.python), '-I', '-B', '-c', 'import time;time.sleep(900)'],
+            self.record('explicit_utf8_redirected_chinese_json', self.redirected_utf8)
+            self.sentinel = subprocess.Popen([str(self.python), '-I', '-X', 'utf8', '-B', '-c', 'import time;time.sleep(900)'],
                 cwd=self.package, env=self.environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.record('port_conflict_preserves_other_listener', self.port_conflict)
             self.record('first_migration_failure_reaps_only_owned_jobs', self.first_failure)
