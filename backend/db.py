@@ -15,6 +15,7 @@ import threading
 from contextlib import closing, contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -54,16 +55,21 @@ def mysql_config():
 class Row(dict):
     """A dict row that also supports the numeric indexing used by the application."""
     def __init__(self, value):
-        super().__init__(value)
+        dict.__init__(self, value)
         self._values = list(value.values())
 
     def __getitem__(self, key):
         if isinstance(key, (int, slice)):
             return self._values[key]
-        return super().__getitem__(key)
+        return dict.__getitem__(self, key)
 
     def __iter__(self):
         return iter(self._values)
+
+    def copy(self):
+        # dict.copy/constructor use Python __getitem__ for this subclass because
+        # its legacy iterator yields values. The item view copies in C instead.
+        return dict(dict.items(self))
 
 
 def _wrap(value):
@@ -104,11 +110,12 @@ class Cursor:
         return [_wrap(x) for x in self._cursor.fetchall()]
 
     def __iter__(self):
+        fetchone = self._cursor.fetchone
         while True:
-            row = self.fetchone()
+            row = fetchone()
             if row is None:
                 return
-            yield row
+            yield _wrap(row)
 
     def close(self):
         self._cursor.close()
@@ -308,6 +315,7 @@ def _json_value(match):
     return f'JSON_UNQUOTE(JSON_EXTRACT({arguments})) COLLATE utf8mb4_unicode_ci'
 
 
+@lru_cache(maxsize=2048)
 def translate(sql):
     """Translate the small, deliberate legacy SQL vocabulary to MySQL 8."""
     value = re.sub(r'(?i)\bjson_extract\(([^()]+)\)', _json_value, sql)
@@ -477,7 +485,7 @@ def current_org_id():
 def entity_json(row):
     if row is None:
         return None
-    value = dict(row)
+    value = row.copy() if isinstance(row, dict) else dict(row)
     try:
         value['payload'] = json.loads(value.get('payload') or '{}')
     except (TypeError, ValueError):
@@ -505,7 +513,7 @@ SCHEMA = (
     """CREATE TABLE IF NOT EXISTS entities(
         id VARCHAR(191) PRIMARY KEY,kind VARCHAR(64) NOT NULL,title TEXT,summary LONGTEXT,
         domain VARCHAR(255),org_id VARCHAR(191),status VARCHAR(64),source_kind VARCHAR(64),
-        payload LONGTEXT,created_at VARCHAR(40),updated_at VARCHAR(40),version INT DEFAULT 1
+        payload JSON,created_at VARCHAR(40),updated_at VARCHAR(40),version INT DEFAULT 1
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
     """CREATE TABLE IF NOT EXISTS relations(
         id VARCHAR(191) PRIMARY KEY,source VARCHAR(191),target VARCHAR(191),type VARCHAR(100),
@@ -548,6 +556,8 @@ SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_entities_domain ON entities(domain)",
     "CREATE INDEX IF NOT EXISTS idx_entities_org ON entities(org_id)",
     "CREATE INDEX IF NOT EXISTS idx_entities_status ON entities(status)",
+    "CREATE INDEX IF NOT EXISTS idx_entities_recent ON entities(updated_at DESC,id)",
+    "CREATE INDEX IF NOT EXISTS idx_entities_kind_recent ON entities(kind,updated_at DESC,id)",
     "CREATE INDEX IF NOT EXISTS idx_relation_source ON relations(source)",
     "CREATE INDEX IF NOT EXISTS idx_relation_target ON relations(target)",
     "CREATE INDEX IF NOT EXISTS idx_relation_status ON relations(status)",
@@ -570,6 +580,32 @@ def normalize_collations(conn):
             conn.execute(f'ALTER TABLE `{table}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
 
 
+def ensure_entity_json_storage(conn):
+    """Parse entity payloads once on write, retaining the 12-column row contract.
+
+    Existing workspaces are checked before conversion: a malformed legacy value
+    stops the migration rather than being discarded or silently replaced. The
+    caller holds the tenant schema lock, so concurrent workers cannot race DDL.
+    """
+    column = conn.execute(
+        "SELECT DATA_TYPE FROM information_schema.columns "
+        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='entities' AND COLUMN_NAME='payload'"
+    ).fetchone()
+    if not column:
+        raise RuntimeError('机构实体表缺少 payload 字段，初始化已停止。')
+    if str(column[0]).lower() == 'json':
+        return
+    invalid = conn.execute(
+        'SELECT id FROM entities WHERE payload IS NOT NULL AND JSON_VALID(payload)=0 LIMIT 1'
+    ).fetchone()
+    if invalid:
+        raise RuntimeError('机构实体包含非法 JSON，无法升级存储；请在维护模式核查原始数据后重试。')
+    conn.execute('ALTER TABLE entities MODIFY COLUMN payload JSON')
+    # Refresh estimates after the table rebuild so ordered page reads can use
+    # the composite indexes immediately, including on small existing tenants.
+    conn.execute('ANALYZE TABLE entities').fetchall()
+
+
 def ensure_tenant_schema(tenant_id):
     """Provision only directory-owned database names; never accept a client database."""
     from .security.store import get_tenant
@@ -587,12 +623,15 @@ def ensure_tenant_schema(tenant_id):
         try:
             for statement in SCHEMA:
                 conn.execute(statement)
+            ensure_entity_json_storage(conn)
             from .datasets import ensure_schema
             ensure_schema(conn)
             from .provenance import initialize_provenance
             initialize_provenance(conn)
             from .special_projects import init_special_schema
             init_special_schema(conn)
+            from .sources import ensure_schema as ensure_source_schema
+            ensure_source_schema(conn)
             name = tenant.get('name') or tenant.get('title')
             category = tenant.get('category') or tenant.get('kind')
             payload = {'type': category, 'group': '一级子公司' if category == 'subsidiary' else '总部职能部门',
@@ -602,7 +641,7 @@ def ensure_tenant_schema(tenant_id):
                          (tenant_id, 'organization', name, '机构根节点', '组织管理', tenant_id, 'published', 'directory',
                           json.dumps(payload, ensure_ascii=False), timestamp, timestamp, 1))
             conn.execute('REPLACE INTO workspace_meta(meta_key,meta_value,updated_at) VALUES(?,?,?)',
-                         ('schema_version', '0.2.0', timestamp))
+                         ('schema_version', '0.3.0', timestamp))
             normalize_collations(conn)
             conn.commit()
             _READY.add(database)

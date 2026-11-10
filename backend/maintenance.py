@@ -34,7 +34,7 @@ def runtime_guard(shared=True):
         try:
             fcntl.flock(descriptor, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            message = '工作区正在维护，服务暂不能启动。' if shared else '平台或任务进程仍在运行；请停止共享此存储卷的所有 API 与 worker 后恢复。'
+            message = '工作区正在维护，服务暂不能启动。' if shared else '平台或任务进程仍在运行；请停止共享此存储卷的所有 API 与 worker 后维护。'
             raise RuntimeError(message) from exc
         token = _mode.set('shared' if shared else 'exclusive')
         try:

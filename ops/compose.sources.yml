@@ -1,0 +1,23 @@
+# Optional overlay: docker compose -f docker-compose.yml -f ops/compose.sources.yml up -d
+# The host file must be readable by uid 10001 and mode 0600. Never put it in uploads.
+services:
+  api:
+    environment:
+      ONTOLOGY_SOURCE_CREDENTIALS_FILE: /run/ontology/source-credentials.json
+    volumes:
+      - type: bind
+        source: ${ONTOLOGY_SOURCE_CREDENTIALS_PATH:?Set the absolute credential registry path}
+        target: /run/ontology/source-credentials.json
+        read_only: true
+        bind:
+          create_host_path: false
+  worker:
+    environment:
+      ONTOLOGY_SOURCE_CREDENTIALS_FILE: /run/ontology/source-credentials.json
+    volumes:
+      - type: bind
+        source: ${ONTOLOGY_SOURCE_CREDENTIALS_PATH:?Set the absolute credential registry path}
+        target: /run/ontology/source-credentials.json
+        read_only: true
+        bind:
+          create_host_path: false

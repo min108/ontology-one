@@ -1,4 +1,4 @@
-"""Create a portable, fresh-workspace 0.2.0 release without credentials or personal data."""
+"""Create a portable, fresh-workspace 0.3.0 release without credentials or personal data."""
 from pathlib import Path
 import argparse
 import json
@@ -21,10 +21,10 @@ def create_release(destination: Path):
             relative = path.relative_to(ROOT)
             if any(part in EXCLUDED for part in relative.parts):
                 continue
-            if path.name.startswith('.env') or path.suffix in {'.pyc', '.tsbuildinfo', '.db', '.log'}:
+            if path.name.startswith('.env') or path.name == 'source-credentials.json' or path.suffix in {'.pyc', '.tsbuildinfo', '.db', '.log'}:
                 continue
             files.append(path)
-    prefix = 'Ontology-One-0.2.0/'
+    prefix = 'Ontology-One-0.3.0/'
     with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in sorted(set(files)):
             archive.write(path, prefix + path.relative_to(ROOT).as_posix())

@@ -200,6 +200,7 @@ def main():
         with Sandbox(port=args.port, output=args.output) as box:
             report = run_checks(box)
     except Exception as exc:
+        report['result'] = 'failed'
         report['fatal_error'] = str(exc)[:1500]
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)

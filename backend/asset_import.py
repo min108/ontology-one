@@ -264,7 +264,7 @@ def refresh_import_links(conn, kind, assets, batch):
         # Data and algorithm ledgers may declare rules that are imported later.
         # Rebuild those declared candidates in both import orders.
         current_rules = {asset['id']: asset for asset in assets}
-        rows = conn.execute("SELECT id,kind,payload FROM entities WHERE kind IN ('data','algorithm') AND payload LIKE ?", ('%related_rules%',)).fetchall()
+        rows = conn.execute("SELECT id,kind,payload FROM entities WHERE kind IN ('data','algorithm') AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%related_rules%',)).fetchall()
         for row in rows:
             try:
                 declared = json.loads(row['payload'] or '{}').get('related_rules', [])
@@ -277,12 +277,12 @@ def refresh_import_links(conn, kind, assets, batch):
                                      current_rules[rid]['payload']['source_locator'])
     if kind == 'data':
         current = {asset['id']: asset for asset in assets}
-        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='algorithm' AND payload LIKE ?", ('%input_ids%',)).fetchall():
+        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='algorithm' AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%input_ids%',)).fetchall():
             inputs = json.loads(row['payload'] or '{}').get('input_ids', [])
             for did in current.keys() & set(inputs):
                 add_relation(conn, row['id'], did, 'requires_data', '声明数据依赖·待核语义', batch,
                              current[did]['payload']['source_locator'])
-        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='rule' AND payload LIKE ?", ('%related_data%',)).fetchall():
+        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='rule' AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%related_data%',)).fetchall():
             declared = json.loads(row['payload'] or '{}').get('related_data', [])
             for value in declared:
                 for did in current.keys() & set(re.findall(r'D\.\d{2}\.\d{2}\.\d{3}', value)):
@@ -290,7 +290,7 @@ def refresh_import_links(conn, kind, assets, batch):
                                  current[did]['payload']['source_locator'])
     if kind == 'algorithm':
         current = {asset['id']: asset for asset in assets}
-        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='rule' AND payload LIKE ?", ('%related_algorithms%',)).fetchall():
+        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='rule' AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%related_algorithms%',)).fetchall():
             declared = json.loads(row['payload'] or '{}').get('related_algorithms', [])
             for value in declared:
                 for aid in current.keys() & set(re.findall(r'A\.\d{2}\.\d{2}\.\d{3}', value)):
@@ -371,7 +371,7 @@ def download_template(kind: str):
     output = io.BytesIO()
     workbook.save(output)
     output.seek(0)
-    filename = f'Ontology-One-0.2.0-{KIND_NAMES[kind]}-标准导入模板.xlsx'
+    filename = f'Ontology-One-0.3.0-{KIND_NAMES[kind]}-标准导入模板.xlsx'
     return StreamingResponse(output, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                              headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"})
 

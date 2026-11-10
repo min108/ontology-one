@@ -84,9 +84,11 @@ def schema_columns():
     from backend.datasets import ensure_schema
     from backend.provenance import initialize_provenance
     from backend.special_projects import init_special_schema
+    from backend.sources import ensure_schema as ensure_source_schema
     ensure_schema(collector)
     initialize_provenance(collector)
     init_special_schema(collector)
+    ensure_source_schema(collector)
     result = {}
     for sql in collector.statements:
         match = re.search(r'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_]+)\s*\((.*)\)\s*ENGINE', sql, re.I | re.S)
@@ -256,7 +258,14 @@ def restore_snapshot(snapshot, archive, principal, reason):
                         if actual.get(table) != set(allowed[table]):
                             raise RestoreError(f'目标表 {table} 结构与应用定义不一致。')
                     count = 0
-                    for table, rows in tables.items():
+                    # Sources have dependencies on their registry/resources and
+                    # on ontology assets. Restore metadata in dependency order.
+                    source_order = ['source_connections', 'source_resources', 'source_schema_versions',
+                                    'source_mappings', 'source_mapping_versions', 'source_grants']
+                    ordered_tables = sorted(tables, key=lambda name: (1, source_order.index(name))
+                                            if name in source_order else (0, name))
+                    for table in ordered_tables:
+                        rows = tables[table]
                         if table == 'workspace_meta':
                             # Deployment schema markers belong to the current program.
                             continue
@@ -268,6 +277,12 @@ def restore_snapshot(snapshot, archive, principal, reason):
                             connection.executemany(f'INSERT INTO `{table}`({names}) VALUES({marks})',
                                                    [[row[name] for name in columns] for row in selected[offset:offset + 500]])
                         count += len(selected)
+                    # Restoring a catalog never silently reopens an external
+                    # system. An administrator must re-enable and rediscover it.
+                    if 'source_connections' in tables:
+                        connection.execute('UPDATE source_connections SET enabled=0,version=version+1')
+                    if 'source_grants' in tables:
+                        connection.execute('DELETE FROM source_grants')
                     store.assert_principal_current(principal, require_write=True)
                     if uploads.exists(): uploads.rmdir()
                     os.rename(staging, uploads)
@@ -292,7 +307,7 @@ def restore_snapshot(snapshot, archive, principal, reason):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='离线恢复同一机构的0.2工作区备份；禁止覆盖已有业务。')
+    parser = argparse.ArgumentParser(description='离线恢复同一机构工作区备份；禁止覆盖已有业务。')
     parser.add_argument('backup', type=Path)
     parser.add_argument('--tenant-id', required=True, help='服务端机构目录ID，必须等于备份source_tenant。')
     parser.add_argument('--username', help='平台管理员账号；省略时交互输入。')

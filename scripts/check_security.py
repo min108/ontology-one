@@ -86,12 +86,13 @@ class Session:
 
 
 class Sandbox:
-    def __init__(self, port=8877, output=None, workers=1):
+    def __init__(self, port=8877, output=None, workers=1, frontend_dist=None):
         self.source = Path(__file__).resolve().parents[1]
         self.namespace = 'ontology_security_qa_' + uuid.uuid4().hex[:10]
         self.control = self.namespace + '_control'
         self.port, self.url = port, f'http://127.0.0.1:{port}'
         self.workers = workers
+        self.frontend_dist = Path(frontend_dist) if frontend_dist else None
         self.output = Path(output or self.source / 'work' / 'security-report.json')
         self.output.parent.mkdir(parents=True, exist_ok=True)
         self.clients, self.process = [], None
@@ -109,6 +110,8 @@ class Sandbox:
         self.root = Path(self.temp.name)
         self.storage = self.root / 'private-storage'
         shutil.copytree(self.source / 'backend', self.root / 'backend', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        if self.frontend_dist:
+            shutil.copytree(self.frontend_dist, self.root / 'frontend' / 'dist')
         digest = hashlib.sha256()
         for path in sorted((self.root / 'backend').rglob('*')):
             if path.is_file():
@@ -486,6 +489,7 @@ def main():
         with Sandbox(args.port, args.output) as box:
             report = run_checks(box)
     except Exception as exc:
+        report['result'] = 'failed'
         report['fatal_error'] = str(exc)
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)

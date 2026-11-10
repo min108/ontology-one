@@ -9,3 +9,9 @@ httpx==0.28.1
 pydantic==2.13.4
 starlette==1.6.0
 PyMySQL[rsa]==1.1.2
+# Official MCP client/fixture runtime; separate from the platform's httpx 0.x client.
+mcp==2.3.0
+mcp-types==2.3.0
+httpx2==2.16.0
+httpcore2==2.16.0
+jsonschema==4.26.0

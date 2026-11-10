@@ -14,7 +14,7 @@ os.chdir(ROOT)
 
 def main():
     if os.name == 'nt':
-        raise SystemExit('0.2.0维护锁需要Linux；Windows请按README使用Docker Compose。')
+        raise SystemExit('0.3.0维护锁需要Linux；Windows请按README使用Docker Compose。')
     if not os.environ.get('MYSQL_HOST') and not os.environ.get('ONTOLOGY_MYSQL_URL'):
         raise SystemExit('请配置已迁移的MYSQL_*环境变量；完整容器启动请按README执行docker compose。')
     if not (ROOT / 'frontend/dist/index.html').is_file():
@@ -30,7 +30,7 @@ def main():
                         return
             except OSError:
                 time.sleep(1)
-    print('Ontology One 0.2.0 · 账户与租户隔离试用版：' + url, flush=True)
+    print('Ontology One 0.3.0 · 外部数据源与本体映射预览版：' + url, flush=True)
     threading.Thread(target=open_browser, daemon=True).start()
     subprocess.run([sys.executable, '-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', str(port), '--workers', os.getenv('ONTOLOGY_API_WORKERS', '4')], check=True)
 

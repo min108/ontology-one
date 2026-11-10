@@ -111,9 +111,11 @@ def cgroup_cpu():
         return {}
 
 
-async def exercise(box, actors, docs, duration, warmup, expected_assets):
+async def exercise(box, actors, docs, duration, warmup, expected_assets, mysql_pid=0):
     samples, errors, response_bytes, successful_writes = [], Counter(), 0, 0
     cgroup_started = cgroup_cpu()
+    mysql_started = process_stats(mysql_pid) if mysql_pid else None
+    mysql_peak_rss = mysql_started['rss_kib'] if mysql_started else 0
     initial_stats = process_stats(box.process.pid)
     peak_rss = initial_stats['rss_kib']
     cpu_start = initial_stats['cpu_seconds']
@@ -206,12 +208,14 @@ async def exercise(box, actors, docs, duration, warmup, expected_assets):
             sequence += 1
 
     async def monitor():
-        nonlocal peak_rss, observed_processes
+        nonlocal peak_rss, observed_processes, mysql_peak_rss
         while time.perf_counter() < stop:
             stats = process_stats(box.process.pid)
             peak_rss = max(peak_rss, stats['rss_kib'])
             observed_processes = max(observed_processes, stats['observed_processes'])
             resource_errors.update(stats['errors'])
+            if mysql_pid:
+                mysql_peak_rss = max(mysql_peak_rss, process_stats(mysql_pid)['rss_kib'])
             await asyncio.sleep(1)
 
     tasks = [asyncio.create_task(worker(index, actor, clients[index])) for index, actor in enumerate(actors)]
@@ -238,10 +242,12 @@ async def exercise(box, actors, docs, duration, warmup, expected_assets):
     thresholds = {'ordinary_read': 500, 'file_read': 500, 'write': 1000, 'hq_aggregate': 2000}
     acceptance = {category: {'limit_p95_ms': limit, 'passed': results.get(category, {}).get('p95_ms', float('inf')) <= limit}
                   for category, limit in thresholds.items()}
+    acceptance['hq_each_endpoint'] = {'limit_p95_ms': 2000, 'passed': all(percentile(values, .95) <= 2000 for name, values in endpoint_groups.items() if name.startswith('GET /federation/'))}
     acceptance['unprofiled'] = {'passed': not bool(os.getenv('ONTOLOGY_QA_PROFILE'))}
     acceptance['errors'] = {'count': sum(errors.values()), 'passed': not errors}
     acceptance['steady_duration'] = {'seconds': duration, 'passed': duration >= 60}
     final_stats = process_stats(box.process.pid)
+    mysql_final = process_stats(mysql_pid) if mysql_pid else None
     resource_errors.update(final_stats['errors'])
     return {'result': 'passed' if all(x['passed'] for x in acceptance.values()) else 'failed',
             'steady_duration_seconds': duration, 'warmup_seconds': warmup, 'measured_wall_seconds_including_drain': round(elapsed, 3),
@@ -256,6 +262,7 @@ async def exercise(box, actors, docs, duration, warmup, expected_assets):
             'successful_writes_including_warmup': successful_writes,
             'response_bytes': response_bytes, 'api_peak_rss_mib': round(peak_rss / 1024, 2) if peak_rss else None,
             'api_cpu_seconds_including_warmup': round(final_stats['cpu_seconds'] - cpu_start, 3) if final_stats['observed_processes'] else None,
+            'mysql_resources_including_warmup': {'pid': mysql_pid, 'cpu_seconds': round(mysql_final['cpu_seconds'] - mysql_started['cpu_seconds'], 3), 'peak_rss_mib': round(mysql_peak_rss / 1024, 2), 'errors': sorted(set(mysql_started['errors'] + mysql_final['errors']))} if mysql_started and mysql_final else None,
             'cgroup_cpu_delta_including_warmup': {key: value - cgroup_started.get(key, 0) for key, value in cgroup_cpu().items()},
             'resource_observability': {'max_observed_processes': observed_processes, 'expected_processes_at_least': box.workers + (1 if box.workers > 1 else 0), 'errors': sorted(resource_errors)},
             'acceptance': acceptance}
@@ -291,9 +298,17 @@ def run(box, args, report):
               'identity': 'Real password login for each session; forced initial password change; no identity mocks',
               'mix': f'{len(actors) - 1} institution sessions cycle 60% reads (list/search/graph), 20% file reads, 20% creates; one HQ session cycles aggregate overview/search/graph. Closed-loop no think time. Setup and warmup excluded.',
               'setup': 'Synthetic rows inserted directly only into test-owned tenant databases; measured writes use real API and CSRF.'})
+    if args.start_signal:
+        print(json.dumps({'stage': 'fixtures_ready', 'waiting_for': str(args.start_signal)}), flush=True)
+        deadline = time.monotonic() + 300
+        while not args.start_signal.exists():
+            if time.monotonic() > deadline:
+                raise RuntimeError('Timed out waiting for coordinated load start signal')
+            time.sleep(.2)
+    report['started_at'] = datetime.now(timezone.utc).isoformat()
     print(json.dumps({'stage': 'steady_load_start', 'sessions': len(actors), 'tenants': args.tenants,
                       'duration': args.duration, 'warmup': args.warmup, 'output': str(args.output)}), flush=True)
-    report.update(asyncio.run(exercise(box, actors, docs, args.duration, args.warmup, args.entities * args.tenants)))
+    report.update(asyncio.run(exercise(box, actors, docs, args.duration, args.warmup, args.entities * args.tenants, args.mysql_pid)))
     report['final_business_entities'] = sum(box.sql("SELECT COUNT(*) AS n FROM entities WHERE kind<>'organization'", database=box.tenant_db(tenant))[0]['n'] for tenant in tenants)
     report['acceptance']['target_scale'] = {'tenants': args.tenants, 'sessions': args.sessions, 'entities_per_tenant': args.entities,
                                              'passed': args.tenants >= 20 and args.sessions >= 50 and args.entities >= 1000}
@@ -311,6 +326,8 @@ def main():
     parser.add_argument('--sessions', type=int, default=50)
     parser.add_argument('--entities', type=int, default=1000)
     parser.add_argument('--workers', type=int, default=1)
+    parser.add_argument('--start-signal', type=Path, help='Optional file gate after fixture setup, before warmup')
+    parser.add_argument('--mysql-pid', type=int, default=0, help='Optional local MySQL process PID for resource measurement only')
     parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1] / 'work' / 'load-report.json')
     args = parser.parse_args()
     if not 1 <= args.tenants <= 37 or args.sessions < args.tenants + 1 or min(args.duration, args.entities, args.workers) <= 0 or args.warmup < 0:

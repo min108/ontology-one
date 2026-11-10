@@ -144,12 +144,13 @@ class FederationMySQLTests(unittest.TestCase):
         finally:
             for current in clients:
                 current.close()
-            with db._POOL_LOCK:
-                for key in list(db._POOLS):
-                    if key[-1] in database_names:
-                        pool = db._POOLS.pop(key)
-                        while not pool.empty():
-                            pool.get_nowait().close()
+            with db._POOL_CONDITION:
+                for ident, (key, raw) in list(db._POOL_IDLE.items()):
+                    if key[3] in database_names:
+                        db._POOL_IDLE.pop(ident)
+                        raw.close()
+                        db._POOL_TOTAL -= 1
+                db._POOL_CONDITION.notify_all()
             settings = db.mysql_config()
             settings.pop('database', None)
             with pymysql.connect(**settings) as connection, connection.cursor() as cursor:

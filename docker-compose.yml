@@ -1,7 +1,7 @@
 name: ontology-one-v020
 
 x-app: &app
-  image: ontology-one:0.2.0
+  image: ontology-one:0.3.0
   build: .
   restart: unless-stopped
   user: "10001:10001"

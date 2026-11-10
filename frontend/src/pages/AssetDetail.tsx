@@ -10,6 +10,7 @@ import './assets.css';
 import { AssetPlacement } from '../components/AssetPlacement';
 import { CollectionMembership } from './Knowledge';
 import { DataInstances } from '../components/DataInstances';
+import { SourceLineage } from '../components/SourceLineage';
 import {AuthorityRuleSummary} from '../components/AuthorityRuleSummary';
 import {usePageState,useSessionValue} from '../navigation';
 import './catalog.css';
@@ -56,6 +57,7 @@ function InfoGrid({ items, single = false }: { items: [string, any][]; single?: 
 function DataContent({ entity }: { entity: AssetEntity }) {
   const f = (...keys: string[]) => assetField(entity, ...keys);
   return <>
+    {!entity.payload?.snapshot_readonly && <SourceLineage key={entity.id} assetId={entity.id}/>}
     {entity.payload?.snapshot_readonly ? <Section title="历史口径与数据实例" icon={Database}><p className="asset-prose">当前阅读的是第 {entity.version} 版标准留档。字段对应会随业务核对更新，当前生产数据实例不直接挂接到此历史口径。</p><Link className="asset-material-cta" to={`/assets/${encodeURIComponent(entity.id)}#data-instances`}><span>打开当前标准，查看现行关联的原表数据</span><ArrowUpRight size={15}/></Link></Section> : <DataInstances standardId={entity.id}/>}
     <Section title="数据定义与业务口径" icon={Database} description="明确这项数据表示什么，以及它的业务边界。"><RichText value={f('definition', '业务含义', 'content') || entity.summary} /><InfoGrid items={[
       ['二级分类', f('category', '二级分类')], ['三级分类', f('subcategory', '三级分类')], ['数据形态', f('data_form', '数据形态')], ['资产归属', f('ownership', '资产归属')],

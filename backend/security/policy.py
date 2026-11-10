@@ -16,6 +16,11 @@ REVIEW = frozenset({'admin', 'reviewer'})
 
 # Paths are the existing business contract, including downloads.
 READ_PATHS = (
+    '/api/sources',
+    '/api/sources/lineage/{asset_id}',
+    '/api/sources/{source_id}',
+    '/api/sources/{source_id}/resources/{resource_id}/versions',
+    '/api/sources/{source_id}/mappings/{mapping_id}/versions',
     '/api/ai/status',
     '/api/integrations/capabilities',
     '/api/applications/scenarios',
@@ -89,6 +94,16 @@ READ_PATHS = (
 CONTROL_PREFIXES = ("/api/auth/", "/api/admin/", "/api/federation/")
 
 WRITE_RULES = (
+    ('POST', '/api/sources', ADMIN),
+    ('PATCH', '/api/sources/{source_id}', ADMIN),
+    ('PUT', '/api/sources/{source_id}/grants', ADMIN),
+    ('POST', '/api/sources/{source_id}/discover', BUILD),
+    ('POST', '/api/sources/{source_id}/mappings', BUILD),
+    ('PUT', '/api/sources/{source_id}/mappings/{mapping_id}', BUILD),
+    # Action-specific BUILD/REVIEW checks and separation of duties are enforced
+    # again by the strict source handler; no arbitrary source writes are open.
+    ('POST', '/api/sources/{source_id}/mappings/{mapping_id}/action', ROLES),
+    ('POST', '/api/sources/{source_id}/mappings/{mapping_id}/query', ROLES),
     ('POST', '/api/entities/{eid}/restore', ADMIN),
     ('POST', '/api/integrations/tools/call', ROLES),
     ('POST', '/api/ai/config', ADMIN),

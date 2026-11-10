@@ -29,7 +29,7 @@ def release():
     try:
         archive = folder / 'release.zip'
         create_release(archive)
-        return FileResponse(archive, media_type='application/zip', filename='Ontology-One-0.2.0-平台源码.zip',
+        return FileResponse(archive, media_type='application/zip', filename='Ontology-One-0.3.0-平台源码.zip',
                             background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)
@@ -86,12 +86,12 @@ def backup():
                             shutil.copyfileobj(source,destination,256*1024)
             assert_principal_current(principal)
             z.writestr('backup-info.json', json.dumps({
-                'platform': '集团本体平台', 'version': '0.2.0', 'database': 'MySQL', 'created_at': now(),
+                'platform': '集团本体平台', 'version': '0.3.0', 'database': 'MySQL', 'created_at': now(),
                 'contains': ['当前机构业务表快照', '当前机构上传原件'],
-                'excluded': ['AI接口密钥与运行配置'],
+                'excluded': ['AI接口密钥与运行配置', '外部数据源凭据', '源端查询结果'],
                 'restore': '停止共享存储上的全部API与worker，使用 scripts/restore_backup.py backup.zip --tenant-id <本机构ID> --maintenance --reason <恢复原因>，交互验证管理员身份后恢复同机构空工作区及原件。'
             }, ensure_ascii=False, indent=2))
-        return FileResponse(archive, media_type='application/zip', filename='Ontology-One-0.2.0-机构备份.zip',
+        return FileResponse(archive, media_type='application/zip', filename='Ontology-One-0.3.0-机构备份.zip',
                             background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)

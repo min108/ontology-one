@@ -52,7 +52,7 @@ def _snapshot():
           FROM entities"""):
             if row.get('hide_in_graph') in (True, 1, 'true', '1'):
                 continue
-            d=dict(row);d['label']=d.pop('title');d['active']=d.get('active_asset')!=0 and d.get('record_role') not in ('historical_alias','procedure_reference')
+            d=row.copy();d['label']=d.pop('title');d['active']=d.get('active_asset')!=0 and d.get('record_role') not in ('historical_alias','procedure_reference')
             d['is_demo']=d.get('source_kind')=='demo' or bool(d.get('is_demo'));d['aggregate']=False
             for key in ('category','subcategory','topic_label','domain','org_id'):d[key]=str(d.get(key) or '')
             nodes[d['id']]=d
@@ -69,7 +69,7 @@ def _snapshot():
         evidence=EvidenceCache(db)
         current_mappings={};mapping_candidates=defaultdict(list)
         for row in db.execute('SELECT * FROM mappings'):
-            value=dict(row)
+            value=row.copy()
             try:value['payload']=json.loads(value.get('payload') or '{}')
             except (TypeError,ValueError):value['payload']={}
             rid='REL-DS-MAP-'+hashlib.sha256((value['dataset_id']+'|'+value['column_name']).encode()).hexdigest()[:24]
@@ -330,7 +330,7 @@ def relation_detail(relation_id:str,reading:Literal['business','original']='busi
     snap=_snapshot()
     with closing(connect()) as c:row=c.execute('SELECT * FROM relations WHERE id=?',(relation_id,)).fetchone()
     if not row:raise HTTPException(404,'未找到关系记录。')
-    d=dict(row)
+    d=row.copy()
     try:p=json.loads(d.pop('payload') or '{}')
     except (TypeError,ValueError):p={}
     a=snap['nodes'].get(d['source'],{});b=snap['nodes'].get(d['target'],{})

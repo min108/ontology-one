@@ -33,7 +33,7 @@ def predicate(kind,params,omit=''):
     q=str(params.get('q','')).strip()
     if q:
         escaped='%'+q.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
-        terms.append("(title LIKE ? OR id LIKE ? OR summary LIKE ? OR payload LIKE ?)");args.extend([escaped]*4)
+        terms.append("(title LIKE ? OR id LIKE ? OR summary LIKE ? OR CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?)");args.extend([escaped]*4)
     return ' AND '.join(terms),args
 
 @router.get('/asset-catalog/tree')

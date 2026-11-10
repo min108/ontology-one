@@ -4,6 +4,7 @@ Uses isolated SQLite fixtures behind the same query adapter; deployment tests
 exercise the real MySQL session, grants, read-only transactions and latency.
 """
 import json
+from itertools import zip_longest
 import sqlite3
 import tempfile
 import unittest
@@ -129,6 +130,82 @@ class FederationBoundaryTests(unittest.TestCase):
         self.assertEqual(len(result['roots']), 2)
         self.assertEqual(result['edges'], [])
         self.assertNotIn('HIDDEN', json.dumps(result))
+
+    def test_graph_global_budget_preserves_round_robin_and_fetches_only_selected_edges(self):
+        for tenant in self.tenants:
+            visibility = 'institution' if tenant == 'dept-01' else 'headquarters'
+            for ident in ('a', 'b'):
+                self.add(tenant, ident, 'knowledge', ident, 'published', visibility)
+            with sqlite3.connect(self._path(tenant)) as connection:
+                connection.executemany('INSERT INTO relations VALUES(?,?,?,?,?,?,?)', [
+                    ('ab', 'a', 'b', 'references', 'A to B', 'confirmed', '{}'),
+                    ('bs', 'b', 'same', 'references', 'B to same', 'confirmed', '{}')])
+        complete = federation.graph(tenant_id='', kind='', q='', limit=100)
+        per_tenant = [[node['id'] for node in complete['nodes'] if node['tenant_id'] == tenant]
+                      for tenant in self.tenants]
+        expected_order = [ident for row in zip_longest(*per_tenant) for ident in row if ident is not None]
+        self.assertEqual(len(complete['edges']), 4)
+        original = federation._local_relations
+        for limit in (1, 3, 4, 6, 100):
+            with self.subTest(limit=limit), patch.object(federation, '_local_relations', wraps=original) as edge_queries:
+                result = federation.graph(tenant_id='', kind='', q='', limit=limit)
+            selected = set(expected_order[:limit])
+            self.assertEqual([node['id'] for node in result['nodes']], expected_order[:limit])
+            self.assertEqual(result['truncated'], len(expected_order) > limit)
+            self.assertEqual(result['roots'], complete['roots'])
+            self.assertEqual(result['edges'], [edge for edge in complete['edges']
+                                             if edge['source'] in selected and edge['target'] in selected])
+            actual_scope = {call.args[0]['id']: set(call.args[2]) for call in edge_queries.call_args_list}
+            expected_scope = {}
+            for node in result['nodes']:
+                expected_scope.setdefault(node['tenant_id'], set()).add(node['entity_id'])
+            self.assertEqual(actual_scope, expected_scope)
+
+    def test_unselected_edges_do_not_consume_selected_graph_edge_limit(self):
+        for ident in ('chosen-a', 'chosen-b', 'zz-outside'):
+            self.add('dept-01', ident, 'knowledge', ident, 'draft', 'institution')
+        with sqlite3.connect(self._path('dept-01')) as connection:
+            connection.executemany('INSERT INTO relations VALUES(?,?,?,?,?,?,?)', [
+                (f'irrelevant-{index:04d}', 'same', 'zz-outside', 'references', 'Outside graph', 'confirmed', '{}')
+                for index in range(1001)])
+            connection.execute('INSERT INTO relations VALUES(?,?,?,?,?,?,?)',
+                               ('zz-selected', 'chosen-a', 'chosen-b', 'references', 'Selected edge', 'confirmed', '{}'))
+        result = federation.graph(tenant_id='dept-01', kind='', q='', limit=2)
+        self.assertEqual([node['entity_id'] for node in result['nodes']], ['chosen-a', 'chosen-b'])
+        self.assertEqual([edge['id'] for edge in result['edges']], ['relation:dept-01:zz-selected'])
+        self.assertTrue(result['truncated'])
+
+    def test_selected_relation_endpoints_still_require_live_publication(self):
+        self.add('dept-02', 'peer', 'knowledge', 'Public peer', 'published', 'headquarters')
+        with sqlite3.connect(self._path('dept-02')) as connection:
+            connection.executemany('INSERT INTO relations VALUES(?,?,?,?,?,?,?)', [
+                ('visible', 'same', 'peer', 'references', 'Public edge', 'confirmed', '{}'),
+                ('private', 'same', 'private', 'references', 'HIDDEN private edge', 'confirmed', '{}'),
+                ('draft', 'same', 'draft', 'references', 'HIDDEN draft edge', 'confirmed', '{}'),
+                ('rejected', 'same', 'peer', 'references', 'HIDDEN rejected edge', 'rejected', '{}')])
+        selected = {'same', 'peer', 'private', 'draft', 'private-source'}
+        edges = federation._local_relations(self.tenants['dept-02'], None, selected)
+        self.assertEqual([edge['id'] for edge in edges], ['relation:dept-02:visible'])
+        with sqlite3.connect(self._path('dept-02')) as connection:
+            connection.execute("UPDATE entity_access SET visibility='institution' WHERE entity_id='peer'")
+        self.assertEqual(federation._local_relations(self.tenants['dept-02'], None, selected), [])
+        self.assertEqual(federation._local_relations(self.tenants['dept-02'], None, set()), [])
+
+    def test_graph_relation_failure_is_reported_and_scope_is_still_revalidated(self):
+        original = federation._local_relations
+
+        def unavailable(tenant, *args):
+            if tenant['id'] == 'dept-02':
+                raise OSError('fixture connection unavailable')
+            return original(tenant, *args)
+
+        with patch.object(federation, '_local_relations', side_effect=unavailable), \
+             patch.object(federation, '_assert_scope_current', wraps=federation._assert_scope_current) as final_check:
+            result = federation.graph(tenant_id='', kind='', q='', limit=100)
+        self.assertEqual(len(result['nodes']), 2)
+        self.assertTrue(result['partial'])
+        self.assertEqual(result['unavailable_tenants'], ['dept-02'])
+        final_check.assert_called_once()
 
     def test_cross_tenant_reference_cannot_be_relabelled_as_local(self):
         payload = {'source_refs': [{'tenant_id': 'private-tenant', 'material_id': 'same', 'quote': 'HIDDEN QUOTE'}]}

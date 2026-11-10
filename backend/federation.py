@@ -346,12 +346,21 @@ def _safe_payload(payload, tenant, visible):
 
 
 def _local_relations(tenant, entity_id, visible_ids=None):
+    if visible_ids is not None:
+        visible_ids = sorted(set(visible_ids))
+        if not visible_ids:
+            return []
     left, left_args = _predicate(tenant, 's', 'sa')
     right, right_args = _predicate(tenant, 't', 'ta')
     where, args = f"r.status!='rejected' AND {left} AND {right}", left_args + right_args
     if entity_id:
         where += ' AND (r.source=? OR r.target=?)'
         args.extend([entity_id, entity_id])
+    if visible_ids is not None:
+        placeholders = ','.join('?' for _ in visible_ids)
+        where += f' AND r.source IN ({placeholders}) AND r.target IN ({placeholders})'
+        args.extend(visible_ids)
+        args.extend(visible_ids)
     with db.tenant_connection(tenant['id'], readonly=True) as connection:
         rows = connection.execute(f'''SELECT r.id,r.source,r.target,r.type,r.label,r.status,
             s.title source_title,t.title target_title FROM relations r
@@ -363,7 +372,7 @@ def _local_relations(tenant, entity_id, visible_ids=None):
              'source_tenant_id': tenant['id'], 'target_tenant_id': tenant['id'], 'tenant_id': tenant['id'],
              'tenant_name': tenant['name'], 'org_id': tenant.get('org_id'), 'source_title': row['source_title'],
              'target_title': row['target_title'], 'label': row['label'], 'type': row['type'], 'status': row['status'],
-             'cross_tenant': False} for row in rows if visible_ids is None or (row['source'] in visible_ids and row['target'] in visible_ids)]
+             'cross_tenant': False} for row in rows]
 
 
 def _central_links(tenant_ids, entity=None, include_pending=False):
@@ -436,9 +445,7 @@ def entity_detail(tenant_id: str, entity_id: str):
 
 def _graph_rows(tenant, q, kind, limit):
     items = _search_rows(tenant, q, kind, '', 0, limit + 1, exclude_root=True)
-    ids = {item['id'] for item in items[:limit]}
-    return {'items': items[:limit], 'truncated': len(items) > limit,
-            'relations': _local_relations(tenant, None, ids)}
+    return {'items': items[:limit], 'truncated': len(items) > limit}
 
 
 @router.get('/graph')
@@ -473,10 +480,18 @@ def graph(tenant_id: str = Query('', max_length=100), kind: str = Query('', max_
             nodes.append({**item, 'id': item['node_id'], 'entity_id': item['id'], 'label': item['title'], 'parent_id': parent})
         position += 1
     visible_nodes = {node['id'] for node in nodes}
-    for result in results.values():
-        truncated = truncated or result['truncated']
-        relations.extend(relation for relation in result['relations'] if relation['source'] in visible_nodes and relation['target'] in visible_nodes)
-    truncated = truncated or sum(len(result['items']) for result in results.values()) > len(nodes)
+    # Fetch edges only after the global node budget is allocated. Each query
+    # applies endpoint IDs in SQL, so rows discarded by round-robin never cross
+    # the database boundary and cannot consume the per-query edge limit.
+    selected_ids = {}
+    for node in nodes:
+        selected_ids.setdefault(node['tenant_id'], set()).add(node['entity_id'])
+    local, failed = _parallel([tenant for tenant in tenants if tenant['id'] in selected_ids],
+                             lambda tenant: _local_relations(tenant, None, selected_ids[tenant['id']]))
+    unavailable = sorted(set(unavailable + failed))
+    for tenant in tenants:
+        relations.extend(local.get(tenant['id'], []))
+    truncated = any(result['truncated'] for result in results.values()) or sum(len(result['items']) for result in results.values()) > len(nodes)
     relations.extend(_cross_relations(tenants, visible_nodes=visible_nodes, node_metadata={node['id']: node for node in nodes}))
     _assert_scope_current(principal, tenants)
     return {'scope': _scope_view(principal, tenants), 'roots': roots, 'nodes': nodes, 'edges': relations,

@@ -25,7 +25,7 @@ async def lifespan(app):
             if worker:
                 worker.cancel()
                 await asyncio.gather(worker, return_exceptions=True)
-app=FastAPI(title='Ontology One · 集团本体平台',version='0.2.0',lifespan=lifespan)
+app=FastAPI(title='Ontology One · 集团本体平台',version='0.3.0',lifespan=lifespan)
 from .security.middleware import SecurityMiddleware
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173','http://localhost:8765','http://127.0.0.1:8765'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
@@ -33,7 +33,7 @@ app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http:/
 async def db_error(request,exc):return JSONResponse(status_code=503,content={'detail':'MySQL 数据服务暂时不可用或繁忙，请检查连接后重试。'})
 
 @app.get('/api/health')
-def health():return {'ok':True,'service':'集团本体平台','version':'0.2.0','database':'MySQL','mode':'enterprise-preview','time':now()}
+def health():return {'ok':True,'service':'集团本体平台','version':'0.3.0','database':'MySQL','mode':'enterprise-preview','time':now()}
 @app.get('/api/catalog')
 def catalog():
     with closing(connect()) as c, c:
@@ -46,7 +46,7 @@ def entities(kind:str='',q:str='',domain:str='',org_id:str='',status:str='',sour
     for k,v in [('kind',kind),('domain',domain),('org_id',org_id),('status',status),('source_kind',source_kind)]:
         if v:
             vals=v.split(',');where.append(f"{k} IN ({','.join('?' for _ in vals)})");args+=vals
-    if q:where.append('(title LIKE ? OR summary LIKE ? OR id LIKE ? OR payload LIKE ?)');args += ['%'+q+'%']*4
+    if q:where.append('(title LIKE ? OR summary LIKE ? OR id LIKE ? OR CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?)');args += ['%'+q+'%']*4
     filt=' WHERE '+' AND '.join(where) if where else ''
     with closing(connect()) as c, c:
         total=c.execute('SELECT COUNT(*) FROM entities'+filt,args).fetchone()[0]
@@ -63,7 +63,7 @@ def entity_facets(kind:str='',q:str='',domain:str='',org_id:str='',status:str=''
         for field,value in filters.items():
             if value and field!=omit:
                 values=value.split(',');terms.append(f"{field} IN ({','.join('?' for _ in values)})");args.extend(values)
-        if q:terms.append('(title LIKE ? OR summary LIKE ? OR id LIKE ? OR payload LIKE ?)');args.extend(['%'+q+'%']*4)
+        if q:terms.append('(title LIKE ? OR summary LIKE ? OR id LIKE ? OR CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?)');args.extend(['%'+q+'%']*4)
         return (' WHERE '+' AND '.join(terms) if terms else ''),args
     with closing(connect()) as c:
         where,args=clause();result={'total':c.execute('SELECT count(*) FROM entities'+where,args).fetchone()[0]}
@@ -351,6 +351,8 @@ app.include_router(federation_router, prefix='/api')
 app.include_router(jobs_router, prefix='/api')
 from .integrations import router as integration_router
 app.include_router(integration_router, prefix='/api')
+from .sources import router as source_router
+app.include_router(source_router, prefix='/api')
 
 dist=ROOT/'frontend/dist'
 if dist.exists():
