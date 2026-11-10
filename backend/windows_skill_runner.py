@@ -3,9 +3,10 @@
 No Docker, elevation, shell or installed Python is required: a pinned embedded
 Python distribution ships in the native bundle. Files and profile storage are
 read-only inside the sandbox; the sole result channel is bounded JSON stdout.
-Capabilities are empty, and WindowsProcess verifies the resulting LPAC token
-before its initial thread is resumed. Runtime copies and profiles are unique
-per request, so concurrent tenants never share an AppContainer identity.
+The only capability is the fixed OS registryRead needed by the native loader;
+network capabilities are absent. WindowsProcess verifies the complete resulting
+capability set and LPAC token before its initial thread is resumed. Runtime
+copies and profiles are unique per case, so tenants never share an identity.
 """
 from __future__ import annotations
 

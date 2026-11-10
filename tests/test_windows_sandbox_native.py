@@ -58,6 +58,61 @@ def _console_policy():
         return {'query_error': exc.winerror}
 
 
+@contextmanager
+def _private_registry_probe():
+    """Own one synthetic key; never change ACLs on an existing parent key."""
+    import winreg
+    from backend.platform_io import current_user_sid
+
+    kernel, advapi, _, _ = native._api()
+    advapi.GetSecurityDescriptorDacl.restype = native.BOOL
+    advapi.GetSecurityDescriptorDacl.argtypes = [native.LPVOID, ctypes.POINTER(native.BOOL),
+        ctypes.POINTER(native.LPVOID), ctypes.POINTER(native.BOOL)]
+    advapi.SetSecurityInfo.restype = native.DWORD
+    advapi.SetSecurityInfo.argtypes = [native.HANDLE, ctypes.c_int, native.DWORD,
+        native.LPVOID, native.LPVOID, native.LPVOID, native.LPVOID]
+    sid = current_user_sid()
+    relative = 'Software\\OntologyOneSandboxProbe-' + uuid.uuid4().hex
+    actual_path = sid + '\\' + relative
+    created = False
+    descriptor = native.LPVOID()
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, relative, 0,
+                               winreg.KEY_ALL_ACCESS | winreg.KEY_WOW64_64KEY) as key:
+            created = True
+            native._check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                'D:P(A;;KA;;;' + sid + ')(A;;KA;;;SY)', 1, ctypes.byref(descriptor), None))
+            present, defaulted, dacl = native.BOOL(), native.BOOL(), native.LPVOID()
+            native._check(advapi.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present),
+                                                          ctypes.byref(dacl), ctypes.byref(defaulted)))
+            if not present.value or not dacl:
+                raise AssertionError('Synthetic registry key requires a non-null private DACL')
+            # SE_REGISTRY_KEY, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION.
+            error = advapi.SetSecurityInfo(native.HANDLE(int(key)), 4, 0x80000004,
+                                           None, None, dacl, None)
+            if error:
+                raise AssertionError('Synthetic registry key private DACL setup failed')
+            winreg.SetValueEx(key, 'Sentinel', 0, winreg.REG_SZ, 'synthetic-host-private-value')
+        # Positive control uses the same actual HKEY_USERS path as the child.
+        # A virtualized/missing HKCU view cannot masquerade as denied access.
+        with winreg.OpenKey(winreg.HKEY_USERS, actual_path, 0,
+                            winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY) as key:
+            if winreg.QueryValueEx(key, 'Sentinel') != ('synthetic-host-private-value', winreg.REG_SZ):
+                raise AssertionError('Synthetic registry key positive control failed')
+        yield actual_path
+    finally:
+        if descriptor:
+            kernel.LocalFree(descriptor)
+        if created:
+            winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER, relative, winreg.KEY_WOW64_64KEY, 0)
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, relative, 0,
+                                    winreg.KEY_QUERY_VALUE | winreg.KEY_WOW64_64KEY):
+                    raise AssertionError('Synthetic registry probe key was not removed')
+            except FileNotFoundError:
+                pass
+
+
 @unittest.skipUnless(ENABLED, 'real Windows sandbox acceptance is opt-in')
 class WindowsSandboxNativeTests(unittest.TestCase):
     @classmethod
@@ -265,6 +320,59 @@ print(json.dumps({'host_read_denied':host_read,'writes_denied':writes}))
                     # Only uniquely named synthetic probe files are touched.
                     for path in paths:
                         path.unlink(missing_ok=True)
+
+    def test_private_host_registry_actual_user_hive_read_and_write_are_denied(self):
+        script = '''import json,sys,winreg
+args=json.load(sys.stdin)
+denied={}
+for mode,access in [('read',winreg.KEY_QUERY_VALUE),('write',winreg.KEY_SET_VALUE)]:
+    try:
+        with winreg.OpenKey(winreg.HKEY_USERS,args['host_path'],0,access|winreg.KEY_WOW64_64KEY) as key:
+            if mode=='read':
+                winreg.QueryValueEx(key,'Sentinel')
+            else:
+                winreg.SetValueEx(key,'Sentinel',0,winreg.REG_SZ,'synthetic-child-write-probe')
+        denied[mode]=False
+    except OSError as exc:
+        denied[mode]=exc.winerror==5
+print(json.dumps(denied))
+'''
+        import winreg
+        with _private_registry_probe() as actual_path:
+            with self.sandbox(script) as (owner, *_):
+                result = self.communicate_json(owner, {'host_path': actual_path})
+            self.assertEqual(result, {'read': True, 'write': True})
+            with winreg.OpenKey(winreg.HKEY_USERS, actual_path, 0,
+                                winreg.KEY_QUERY_VALUE | winreg.KEY_WOW64_64KEY) as key:
+                self.assertEqual(winreg.QueryValueEx(key, 'Sentinel'),
+                                 ('synthetic-host-private-value', winreg.REG_SZ))
+
+    def test_fixed_system_side_by_side_registry_read_without_write_access(self):
+        # Probe only the OS path implicated by the loader trace. Requesting
+        # KEY_SET_VALUE establishes whether write access is granted; no system
+        # registry value is ever created, edited or deleted by this test.
+        script = '''import json,winreg
+path=r'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\SideBySide'
+try:
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,path,0,winreg.KEY_QUERY_VALUE|winreg.KEY_WOW64_64KEY):
+        read_allowed=True
+except OSError:
+    read_allowed=False
+try:
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,path,0,winreg.KEY_SET_VALUE|winreg.KEY_WOW64_64KEY):
+        write_denied=False
+except OSError as exc:
+    write_denied=exc.winerror==5
+print(json.dumps({'read_allowed':read_allowed,'write_denied':write_denied}))
+'''
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r'SOFTWARE\Microsoft\Windows\CurrentVersion\SideBySide', 0,
+                            winreg.KEY_QUERY_VALUE | winreg.KEY_WOW64_64KEY):
+            pass  # Positive control: the same real, 64-bit OS key exists.
+        with self.sandbox(script) as (owner, *_):
+            self.assertEqual(self.communicate_json(owner, {}),
+                             {'read_allowed': True, 'write_denied': True})
 
     def test_loopback_connection_has_no_network_capability(self):
         script = '''import json,socket,sys

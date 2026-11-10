@@ -58,7 +58,15 @@ def main():
                     with spawn_job_process(command,cwd=package,env=env,stdin=DEVNULL,stdout=log,stderr=STDOUT) as child:
                         code=child.wait(timeout=timeout)
                 except TimeoutError:code=124
-            results['checks'].append({'name':name,'exit_code':code,'passed':code==0})
+            results['checks'].append({'name':name,'exit_code':code,'passed':code==0,
+                                      'status':'passed' if code==0 else 'failed'})
+            if name=='native_units' and code!=0:
+                # Installation takes several minutes and cannot make a failed
+                # isolation suite releasable. Do not repeat it for diagnostics;
+                # a green native suite must still run the entire startup smoke.
+                results['checks'].append({'name':'portable_smoke','exit_code':None,
+                    'passed':False,'status':'not_run','reason':'native_units_failed'})
+                break
     finally:
         # This uses the instance's authenticated stop API; it never selects PIDs.
         try:

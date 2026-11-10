@@ -34,7 +34,8 @@ class WindowsProcessError(OSError):
         self.code = code
         self.native_error = native_error if type(native_error) is int and 0 <= native_error <= 0xFFFFFFFF else None
         self.operation = operation if operation in {'CreateProcessW', 'AssignProcessToJobObject',
-            'UpdateProcThreadAttribute', 'ResumeThread', 'OpenProcessToken', 'GetTokenInformation', 'DuplicateToken', 'AccessCheck'} else None
+            'UpdateProcThreadAttribute', 'ResumeThread', 'OpenProcessToken', 'GetTokenInformation',
+            'DuplicateToken', 'AccessCheck', 'DeriveCapabilitySidsFromName'} else None
         self.token_info_class = token_info_class if type(token_info_class) is int and token_info_class in {29, 30, 31, 46} else None
         self.access_mask = access_mask if type(access_mask) is int and 0 <= access_mask <= 0xFFFFFFFF else None
         super().__init__(code)
@@ -90,6 +91,14 @@ class PROCESS_INFORMATION(C.Structure):
 
 class SECURITY_CAPABILITIES(C.Structure):
     _fields_ = [('AppContainerSid', LPVOID), ('Capabilities', LPVOID), ('CapabilityCount', DWORD), ('Reserved', DWORD)]
+
+
+class SID_AND_ATTRIBUTES(C.Structure):
+    _fields_ = [('Sid', LPVOID), ('Attributes', DWORD)]
+
+
+class TOKEN_GROUPS_ONE(C.Structure):
+    _fields_ = [('GroupCount', DWORD), ('Groups', SID_AND_ATTRIBUTES * 1)]
 
 
 class JOBOBJECT_BASIC_LIMIT_INFORMATION(C.Structure):
@@ -169,6 +178,8 @@ def _api():
         ('SetFileSecurityW', BOOL, [C.c_wchar_p, DWORD, LPVOID]),
         ('ConvertSidToStringSidW', BOOL, [LPVOID, C.POINTER(LPVOID)]),
         ('FreeSid', LPVOID, [LPVOID]),
+        ('IsValidSid', BOOL, [LPVOID]),
+        ('GetLengthSid', DWORD, [LPVOID]),
         ('OpenProcessToken', BOOL, [HANDLE, DWORD, C.POINTER(HANDLE)]),
         ('GetTokenInformation', BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
         ('EqualSid', BOOL, [LPVOID, LPVOID]),
@@ -275,6 +286,93 @@ def _verify_lpac_access(token):
         kernel.CloseHandle(impersonation)
 
 
+@lru_cache(maxsize=1)
+def _capability_derivation_api():
+    _api()  # Refuse unsupported hosts before loading a native library.
+    try:
+        library = C.WinDLL('kernelbase', use_last_error=True)
+        function = library.DeriveCapabilitySidsFromName
+    except (OSError, AttributeError) as failure:
+        raise WindowsProcessError('APPCONTAINER_UNAVAILABLE') from failure
+    sid_array = C.POINTER(LPVOID)
+    function.restype = BOOL
+    function.argtypes = [C.c_wchar_p, C.POINTER(sid_array), C.POINTER(DWORD),
+                         C.POINTER(sid_array), C.POINTER(DWORD)]
+    return function
+
+
+def _is_capability_sid(value):
+    # SID revision 1, AppAuthority 15, capability RID 3. Named capability
+    # identities are derived by Windows, never accepted from a skill package.
+    return (isinstance(value, bytes) and 12 <= len(value) <= 68 and value[0] == 1
+            and 1 <= value[1] <= 15 and len(value) == 8 + 4 * value[1]
+            and value[2:8] == b'\0\0\0\0\0\x0f' and value[8:12] == b'\x03\0\0\0')
+
+
+@lru_cache(maxsize=1)
+def _registry_read_capability_sid():
+    """Derive exactly one fixed OS registry-read capability; no configurable set.
+
+    A real LPAC loader trace denied the OS SideBySide registry key after its
+    Python/UCRT images loaded. Chromium likewise adds registryRead for LPAC
+    startup. This is not network/COM or filesystem access and grants no registry
+    write permission. Existing object DACL checks still apply.
+    https://github.com/chromium/chromium/blob/main/sandbox/policy/win/sandbox_win.cc
+    https://learn.microsoft.com/windows/win32/api/securitybaseapi/nf-securitybaseapi-derivecapabilitysidsfromname
+    """
+    kernel, advapi, _, _ = _api()
+    groups, capabilities = C.POINTER(LPVOID)(), C.POINTER(LPVOID)()
+    group_count, capability_count = DWORD(), DWORD()
+    try:
+        _check(_capability_derivation_api()('registryRead', C.byref(groups), C.byref(group_count),
+            C.byref(capabilities), C.byref(capability_count)), 'APPCONTAINER_UNAVAILABLE',
+            operation='DeriveCapabilitySidsFromName')
+        if not capabilities or capability_count.value != 1 or group_count.value > 64:
+            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        sid = capabilities[0]
+        _check(sid and advapi.IsValidSid(sid), 'APPCONTAINER_UNAVAILABLE')
+        size = int(advapi.GetLengthSid(sid))
+        if not 12 <= size <= 68:
+            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        value = C.string_at(sid, size)
+        if not _is_capability_sid(value):
+            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        return value  # Immutable owned bytes; all native allocations freed below.
+    finally:
+        # The API returns two independently owned arrays. Group SIDs are never
+        # added to the process, but each SID and both arrays must be LocalFree'd.
+        for array, count in ((groups, group_count.value), (capabilities, capability_count.value)):
+            if array:
+                if count <= 64:
+                    for index in range(count):
+                        if array[index]: kernel.LocalFree(array[index])
+                kernel.LocalFree(C.cast(array, LPVOID))
+
+
+def _assert_registry_read_capability(data, returned_size, expected):
+    """Validate the complete bounded TOKEN_GROUPS capability set before resume."""
+    def denied():
+        raise WindowsProcessError('APPCONTAINER_UNAVAILABLE', operation='GetTokenInformation', token_info_class=30)
+    if not C.sizeof(TOKEN_GROUPS_ONE) <= returned_size <= len(data):
+        denied()
+    observed = C.cast(data, C.POINTER(TOKEN_GROUPS_ONE)).contents
+    # Windows may mark a capability mandatory/default-enabled too. No owner,
+    # integrity, resource, deny-only or logon flags are accepted.
+    if observed.GroupCount != 1 or observed.Groups[0].Attributes & ~0x7 or not observed.Groups[0].Attributes & 0x4:
+        denied()
+    pointer = observed.Groups[0].Sid
+    start, end = C.addressof(data), C.addressof(data) + returned_size
+    if pointer is None or not start + C.sizeof(TOKEN_GROUPS_ONE) <= pointer <= end - 8:
+        denied()
+    header = C.string_at(pointer, 8)
+    size = 8 + 4 * header[1]
+    if not 12 <= size <= 68 or pointer + size > end:
+        denied()
+    value = C.string_at(pointer, size)
+    if not _is_capability_sid(value) or value != expected:
+        denied()
+
+
 def _verify_appcontainer_token(process, expected_sid):
     kernel, advapi, _, _ = _api()
     token = HANDLE()
@@ -300,8 +398,7 @@ def _verify_appcontainer_token(process, expected_sid):
         data = C.create_string_buffer(size.value)
         _check(advapi.GetTokenInformation(token, 30, data, size, C.byref(size)), 'APPCONTAINER_UNAVAILABLE',
                operation='GetTokenInformation', token_info_class=30)
-        if C.cast(data, C.POINTER(DWORD))[0] != 0:
-            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        _assert_registry_read_capability(data, int(size.value), _registry_read_capability_sid())
     finally:
         kernel.CloseHandle(token)
 
@@ -614,7 +711,9 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
         if appcontainer is not None:
             if not isinstance(appcontainer, AppContainerProfile) or not appcontainer.sid:
                 raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
-            capabilities = SECURITY_CAPABILITIES(appcontainer.sid, None, 0, 0)
+            capability_sid = C.create_string_buffer(_registry_read_capability_sid())
+            capability_entries = (SID_AND_ATTRIBUTES * 1)(SID_AND_ATTRIBUTES(C.cast(capability_sid, LPVOID), 0x4))
+            capabilities = SECURITY_CAPABILITIES(appcontainer.sid, C.cast(capability_entries, LPVOID), 1, 0)
             policy = DWORD(_ALL_APPLICATION_PACKAGES_OPT_OUT)  # Always 1 in production; native tests exercise the rejecting negative control.
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x20009, C.byref(capabilities), C.sizeof(capabilities), None, None), 'APPCONTAINER_UNAVAILABLE')
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x2000F, C.byref(policy), C.sizeof(policy), None, None), 'APPCONTAINER_UNAVAILABLE')

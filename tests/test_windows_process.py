@@ -12,6 +12,9 @@ from unittest.mock import patch
 from backend import windows_process as win
 
 
+CAPABILITY_SID = b'\x01\x02\0\0\0\0\0\x0f\x03\0\0\0\x7b\0\0\0'
+
+
 class Kernel:
     def __init__(self, failure=None):
         self.calls, self.failure, self.counter = [], failure, 200
@@ -65,6 +68,7 @@ class WindowsProcessContractTests(unittest.TestCase):
         if C.sizeof(C.c_void_p) != 8: self.skipTest('x64 layout test')
         for kind, expected in [(win.SECURITY_ATTRIBUTES, 24), (win.STARTUPINFOW, 104), (win.STARTUPINFOEXW, 112),
                                (win.PROCESS_INFORMATION, 24), (win.SECURITY_CAPABILITIES, 24),
+                               (win.SID_AND_ATTRIBUTES, 16), (win.TOKEN_GROUPS_ONE, 24),
                                (win.JOBOBJECT_BASIC_LIMIT_INFORMATION, 64), (win.IO_COUNTERS, 48),
                                (win.JOBOBJECT_EXTENDED_LIMIT_INFORMATION, 144),
                                (win.JOBOBJECT_CPU_RATE_CONTROL_INFORMATION, 8)]:
@@ -185,19 +189,77 @@ class WindowsProcessContractTests(unittest.TestCase):
         with self.assertRaises(OSError): os.fstat(descriptor)
         self.assertNotIn('ResumeThread', [name for name, _ in kernel.calls])
 
-    def test_appcontainer_has_lpac_and_no_capabilities_before_resume(self):
+    def test_appcontainer_has_lpac_and_only_fixed_registry_read_before_resume(self):
         kernel = Kernel(); profile = win.AppContainerProfile(); profile.sid = 444
-        with patch.object(win, '_verify_appcontainer_token') as verify:
+        with patch.object(win, '_verify_appcontainer_token') as verify, \
+             patch.object(win, '_registry_read_capability_sid', return_value=CAPABILITY_SID):
             process = self.spawn(kernel, appcontainer=profile)
         verify.assert_called_once_with(101, 444)
         updates = {args[2]: args for name, args in kernel.calls if name == 'UpdateProcThreadAttribute'}
         capabilities = C.cast(updates[0x20009][3], C.POINTER(win.SECURITY_CAPABILITIES)).contents
-        self.assertEqual(capabilities.CapabilityCount, 0)
+        self.assertEqual(capabilities.CapabilityCount, 1)
         self.assertEqual(C.cast(updates[0x2000F][3], C.POINTER(win.DWORD))[0], 1)
         creation = next(args for name, args in kernel.calls if name == 'CreateProcessW')
         self.assertTrue(creation[5] & 0x8)
         self.assertFalse(creation[5] & 0x08000000)
         process.close()
+
+    def test_registry_read_derivation_frees_both_arrays_and_never_uses_group_sid(self):
+        kernel = Kernel()
+        group = C.create_string_buffer(b'\x01\x01\0\0\0\0\0\x05\x15\0\0\0')
+        capability = C.create_string_buffer(CAPABILITY_SID)
+        group_array = (win.LPVOID * 1)(C.addressof(group))
+        capability_array = (win.LPVOID * 1)(C.addressof(capability))
+        calls = []
+        def derive(name, groups, group_count, capabilities, capability_count):
+            calls.append(name)
+            C.cast(groups, C.POINTER(C.POINTER(win.LPVOID)))[0] = C.cast(group_array, C.POINTER(win.LPVOID))
+            C.cast(capabilities, C.POINTER(C.POINTER(win.LPVOID)))[0] = C.cast(capability_array, C.POINTER(win.LPVOID))
+            C.cast(group_count, C.POINTER(win.DWORD))[0] = 1
+            C.cast(capability_count, C.POINTER(win.DWORD))[0] = 1
+            return True
+        api = types.SimpleNamespace(IsValidSid=lambda *_: True, GetLengthSid=lambda *_: len(CAPABILITY_SID))
+        win._registry_read_capability_sid.cache_clear()
+        self.addCleanup(win._registry_read_capability_sid.cache_clear)
+        with patch.object(win, '_api', return_value=(kernel, api, None, None)), \
+             patch.object(win, '_capability_derivation_api', return_value=derive):
+            self.assertEqual(win._registry_read_capability_sid(), CAPABILITY_SID)
+            self.assertEqual(calls, ['registryRead'])
+        freed = [args[0].value if isinstance(args[0], C.c_void_p) else args[0]
+                 for name, args in kernel.calls if name == 'LocalFree']
+        self.assertCountEqual(freed, [C.addressof(group), C.addressof(capability),
+                                     C.addressof(group_array), C.addressof(capability_array)])
+
+    def test_capability_token_requires_exact_sid_count_enabled_flags_and_owned_bounds(self):
+        def buffer():
+            result = C.create_string_buffer(C.sizeof(win.TOKEN_GROUPS_ONE) + len(CAPABILITY_SID))
+            groups = C.cast(result, C.POINTER(win.TOKEN_GROUPS_ONE)).contents
+            groups.GroupCount = 1
+            groups.Groups[0].Attributes = 4
+            groups.Groups[0].Sid = C.addressof(result) + C.sizeof(win.TOKEN_GROUPS_ONE)
+            C.memmove(groups.Groups[0].Sid, CAPABILITY_SID, len(CAPABILITY_SID))
+            return result, groups
+        for attributes in (4, 7):
+            data, groups = buffer(); groups.Groups[0].Attributes = attributes
+            win._assert_registry_read_capability(data, len(data), CAPABILITY_SID)
+        mutations = [lambda data, groups: setattr(groups, 'GroupCount', 0),
+                     lambda data, groups: setattr(groups, 'GroupCount', 2),
+                     lambda data, groups: setattr(groups.Groups[0], 'Attributes', 0),
+                     lambda data, groups: setattr(groups.Groups[0], 'Attributes', 0x14),
+                     lambda data, groups: setattr(groups.Groups[0], 'Attributes', 0x80000004),
+                     lambda data, groups: setattr(groups.Groups[0], 'Sid', C.addressof(data)),
+                     lambda data, groups: setattr(groups.Groups[0], 'Sid', C.addressof(data) + len(data)),
+                     lambda data, groups: C.memset(groups.Groups[0].Sid + 1, 15, 1),
+                     lambda data, groups: C.memset(groups.Groups[0].Sid + 12, 124, 1)]
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                data, groups = buffer(); mutate(data, groups)
+                with self.assertRaises(win.WindowsProcessError):
+                    win._assert_registry_read_capability(data, len(data), CAPABILITY_SID)
+        data, _ = buffer()
+        for size in (0, 23, len(data) - 1, len(data) + 1):
+            with self.subTest(returned_size=size), self.assertRaises(win.WindowsProcessError):
+                win._assert_registry_read_capability(data, size, CAPABILITY_SID)
 
     def test_lpac_effective_access_requires_only_restricted_applications_bit(self):
         kernel, state = Kernel(), {'mask': 2, 'permitted': True, 'success': True}
