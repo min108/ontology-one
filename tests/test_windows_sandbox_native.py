@@ -375,24 +375,36 @@ print(json.dumps({'read_allowed':read_allowed,'write_denied':write_denied}))
                              {'read_allowed': True, 'write_denied': True})
 
     def test_loopback_connection_has_no_network_capability(self):
-        script = '''import json,socket,sys
+        script = '''import json,sys
 port=json.load(sys.stdin)['port']
-sock=socket.socket();sock.settimeout(1)
+sock=None;stage='import';denied=False;error=0;kind=None
 try:
-    sock.connect(('127.0.0.1',port));denied=False
-except OSError:
-    denied=True
+    import socket
+    stage='create';sock=socket.socket()
+    stage='configure';sock.settimeout(1)
+    stage='connect';sock.connect(('127.0.0.1',port))
+except OSError as exc:
+    error=getattr(exc,'winerror',0) or 0;kind='OSError'
+    denied=error in (5,10013)
+except ImportError:
+    kind='ImportError'
 finally:
-    sock.close()
-print(json.dumps({'denied':denied}))
+    if sock is not None: sock.close()
+print(json.dumps({'denied':denied,'stage':stage,'winerror':error,'error_kind':kind}))
 '''
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
             listener.listen(2)
             listener.settimeout(.1)
             port = listener.getsockname()[1]
+            with socket.create_connection(('127.0.0.1', port), timeout=1):
+                accepted, _ = listener.accept(); accepted.close()
             with self.sandbox(script) as (owner, *_):
-                self.assertEqual(self.communicate_json(owner, {'port': port}), {'denied': True})
+                result = self.communicate_json(owner, {'port': port})
+                self.assertIn(result['stage'], ('create', 'connect'), result)
+                self.assertEqual(result['error_kind'], 'OSError', result)
+                self.assertIn(result['winerror'], (5, 10013), result)
+                self.assertTrue(result['denied'], result)
             with self.assertRaises(socket.timeout):
                 accepted, _ = listener.accept()
                 accepted.close()
@@ -476,15 +488,35 @@ print(json.dumps({'own_read':own,'other_denied':denied}))
 
     def test_unrelated_inheritable_file_handle_is_not_leaked(self):
         import msvcrt
-        script = '''import json,msvcrt,os,sys
+        script = '''import ctypes as C,json,sys
 args=json.load(sys.stdin)
-try:
-    fd=msvcrt.open_osfhandle(args['handle'],os.O_RDONLY|os.O_BINARY)
-    try: leaked=os.read(fd,128).decode('ascii',errors='ignore')==args['synthetic_value']
-    finally: os.close(fd)
-except (OSError,ValueError):
-    leaked=False
-print(json.dumps({'leaked':leaked}))
+kernel=C.WinDLL('kernel32',use_last_error=True)
+D=C.c_uint32;H=C.c_void_p;B=C.c_int32
+kernel.GetHandleInformation.restype=B;kernel.GetHandleInformation.argtypes=[H,C.POINTER(D)]
+kernel.GetFileType.restype=D;kernel.GetFileType.argtypes=[H]
+kernel.GetFileInformationByHandle.restype=B;kernel.GetFileInformationByHandle.argtypes=[H,H]
+kernel.ReadFile.restype=B;kernel.ReadFile.argtypes=[H,H,D,C.POINTER(D),H]
+handle=H(args['handle']);flags=D()
+valid=bool(kernel.GetHandleInformation(handle,C.byref(flags)))
+query_error=0 if valid else C.get_last_error()
+result={'queried':True,'valid':valid,'query_error':query_error,'file_type':0,
+        'identity_checked':False,'same_identity':False,'read_attempted':False,
+        'read_error':None,'sentinel_match':False}
+if valid:
+    result['file_type']=int(kernel.GetFileType(handle))
+    if result['file_type']==1:
+        info=(D*13)()
+        result['identity_checked']=bool(kernel.GetFileInformationByHandle(handle,info))
+        if result['identity_checked']:
+            result['same_identity']=[int(info[7]),int(info[11]),int(info[12])]==args['identity']
+        data=C.create_string_buffer(128);read=D()
+        result['read_attempted']=True
+        success=bool(kernel.ReadFile(handle,data,len(data),C.byref(read),None))
+        result['read_error']=0 if success else C.get_last_error()
+        result['sentinel_match']=success and data.raw[:read.value]==args['synthetic_value'].encode('ascii')
+# Never adopt or close an unknown handle, and never read a pipe/character handle:
+# the numeric value may have been reused for a different child object.
+print(json.dumps(result))
 '''
         with tempfile.TemporaryDirectory(prefix='Ontology inherited handle ') as host:
             private = ensure_private_directory(Path(host))
@@ -493,13 +525,76 @@ print(json.dumps({'leaked':leaked}))
             sentinel.write_text(synthetic, encoding='ascii')
             with sentinel.open('rb', buffering=0) as unrelated:
                 handle = msvcrt.get_osfhandle(unrelated.fileno())
+                kernel = native._api()[0]
+                kernel.GetFileInformationByHandle.restype = native.BOOL
+                kernel.GetFileInformationByHandle.argtypes = [native.HANDLE, native.LPVOID]
+                information = (native.DWORD * 13)()
+                native._check(kernel.GetFileInformationByHandle(native.HANDLE(handle), information))
+                identity = [int(information[7]), int(information[11]), int(information[12])]
                 os.set_handle_inheritable(handle, True)
                 try:
                     with self.sandbox(script) as (owner, *_):
-                        self.assertEqual(self.communicate_json(owner, {'handle': handle, 'synthetic_value': synthetic}),
-                                         {'leaked': False})
+                        result = self.communicate_json(owner, {'handle': handle, 'identity': identity,
+                                                                'synthetic_value': synthetic})
+                        self.assertTrue(result['queried'], result)
+                        self.assertFalse(result['same_identity'], result)
+                        self.assertFalse(result['sentinel_match'], result)
+                        if not result['valid']:
+                            self.assertEqual(result['query_error'], 6, result)
+                            self.assertFalse(result['read_attempted'], result)
+                        elif result['file_type'] == 1:
+                            self.assertTrue(result['identity_checked'], result)
+                            self.assertTrue(result['read_attempted'], result)
+                        else:
+                            self.assertFalse(result['read_attempted'], result)
                 finally:
                     os.set_handle_inheritable(handle, False)
+
+
+    def test_product_runner_status_and_two_unicode_skill_cases_end_to_end(self):
+        files = {
+            'SKILL.md': ('---\nname: native-product-probe\n'
+                         'description: Verify isolated synthetic JSON skill execution.\n'
+                         '---\nEcho synthetic input as a UTF-8 JSON result.\n'),
+            'scripts/main.py': (
+                'import json,sys\n'
+                'value=json.load(sys.stdin)\n'
+                'json.dump({"value":value,"stdin_encoding":sys.stdin.encoding,'
+                '"stdout_encoding":sys.stdout.encoding},sys.stdout,ensure_ascii=False)\n'),
+        }
+        values = [
+            {'机构': '集团总部·科技与数字化部', '说明': '中文标点：“甲、乙”；金额¥123，📚'},
+            {'机构': '中信银行', '技能': ['数据发现', '语义查询'], '结果': {'通过': True, '数量': 2}},
+        ]
+        cases = [{'name': 'unicode-' + str(index), 'input': value,
+                  'expected_output': {'value': value, 'stdin_encoding': 'utf-8', 'stdout_encoding': 'utf-8'}}
+                 for index, value in enumerate(values, 1)]
+        previous = os.environ.get('ONTOLOGY_SKILL_TEMP_DIR')
+        with tempfile.TemporaryDirectory(prefix='Ontology product 技能 ') as temporary:
+            os.environ['ONTOLOGY_SKILL_TEMP_DIR'] = temporary
+            try:
+                # Exercise the product's real first-run isolation probe and
+                # orchestration without changing its cache or replacing APIs.
+                status = runner.runner_status()
+                self.assertTrue(status['available'], 'Real Windows runner availability probe failed')
+                self.assertEqual(list(Path(temporary).glob('request-*')), [],
+                                 'Availability probe left a request directory')
+                result = runner.execute_tests(files, 'scripts/main.py', cases)
+                self.assertEqual(result['outcome'], 'passed')
+                self.assertEqual(result['mode'], 'isolated_python')
+                self.assertEqual(result['report']['passed'], 2)
+                self.assertEqual(result['report']['failed'], 0)
+                self.assertEqual([(case['status'], case['code']) for case in result['report']['cases']],
+                                 [('passed', 'PASSED'), ('passed', 'PASSED')])
+                self.assertEqual(list(Path(temporary).glob('request-*')), [],
+                                 'Product execution left a request directory')
+                # execute_tests reports cleanup failures as unavailable, so
+                # PASSED also requires its own per-case profile cleanup.
+            finally:
+                if previous is None:
+                    os.environ.pop('ONTOLOGY_SKILL_TEMP_DIR', None)
+                else:
+                    os.environ['ONTOLOGY_SKILL_TEMP_DIR'] = previous
 
 
 if __name__ == '__main__':
