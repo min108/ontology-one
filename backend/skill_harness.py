@@ -41,6 +41,7 @@ MAX_REQUEST_BYTES = 1024 * 1024
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024 + 256 * 1024
 MAX_DRAFT_BYTES = 512 * 1024
 DEFAULT_TIMEOUT = 90
+WINDOWS_CLEANUP_RETRY_SECONDS = 3.0
 SDK_HASHES = {
     '__init__.py': '0511648a19b7f0e639f2dd4fe2cb972039c8e794be57546422ac519004992e4b',
     'api.py': '7ff562d094f04390c5c6d05977c74282416d9bbf3604031ffc8fcdc69897aa61',
@@ -58,6 +59,7 @@ SAFE_ERRORS = {
     'HARNESS_TIMEOUT': (504, '技能生成超过时限，运行已终止；请缩小任务后重试。'),
     'HARNESS_LIMIT': (413, '技能上下文或模型结果超过限制，请缩小文件或任务范围。'),
     'HARNESS_FAILED': (502, 'Harness 未完成技能生成，请核对模型配置、连接和任务范围。'),
+    'HARNESS_CLEANUP_FAILED': (503, '受控运行的清理未完成，技能生成已暂停，请联系管理员检查运行环境。'),
     'HARNESS_INCOMPLETE': (502, 'Harness 未完成有效提案，请缩小任务或调整说明后重试。'),
     'HARNESS_CONFIG_CHANGED': (409, '模型配置在运行期间已变化，本次结果未返回，请重新发起。'),
     'HARNESS_NO_PROPOSAL': (422, '模型尚未形成可采纳的技能提案，请补充业务条件或调整任务要求。'),
@@ -290,6 +292,8 @@ def harness_status():
         available = True
     except HTTPException:
         available, reason = False, '需要固定的 x64 Harness 0.2.1rc2 运行时及可用的平台隔离工作区。'
+    if EXECUTOR.cleanup_failed:
+        available, reason = False, SAFE_ERRORS['HARNESS_CLEANUP_FAILED'][1]
     configured = bool(config['api_key'])
     return {'available': available, 'configured': configured, 'verified': config['verified'],
             'version': SDK_VERSION, 'protocol': 'deepseek-messages', 'base_url': config['base_url'],
@@ -305,7 +309,7 @@ class HarnessExecutor:
         self.maximum = int(maximum if maximum is not None else os.getenv('ONTOLOGY_HARNESS_MAX_CONCURRENT', '2'))
         if not 1 <= self.maximum <= 4:
             raise ValueError('Harness concurrency must be between 1 and 4')
-        self.active, self.closing = 0, False
+        self.active, self.closing, self.cleanup_failed = 0, False, False
         self.calls, self.children = set(), set()
 
     async def _spawn(self, directory):
@@ -440,7 +444,29 @@ class HarnessExecutor:
         if process.stdin: process.stdin.close()
         self.children.discard(process)
 
+    async def _remove_workspace(self, directory):
+        if sys.platform != 'win32':
+            shutil.rmtree(directory, ignore_errors=False)
+            return
+        # Only called after the owned Job has been fully reaped. Windows may
+        # temporarily deny deletion of a just-unloaded native module. Retry
+        # these exact native errors without relaxing ACLs or ignoring failure.
+        deadline = time.monotonic() + WINDOWS_CLEANUP_RETRY_SECONDS
+        delay = .05
+        while True:
+            try:
+                await asyncio.to_thread(shutil.rmtree, directory, ignore_errors=False)
+                return
+            except OSError as exc:
+                remaining = deadline - time.monotonic()
+                if getattr(exc, 'winerror', None) not in {5, 32, 33} or remaining <= 0:
+                    raise
+                await asyncio.sleep(min(delay, remaining))
+                delay = min(delay * 2, .25)
+
     async def execute(self, payload, *, timeout_seconds=DEFAULT_TIMEOUT):
+        if self.cleanup_failed:
+            raise _error('HARNESS_CLEANUP_FAILED')
         if self.closing or self.active >= self.maximum:
             raise _error('HARNESS_BUSY')
         if len(_json(payload)) > MAX_REQUEST_BYTES:
@@ -493,12 +519,18 @@ class HarnessExecutor:
                     for task in tasks: task.cancel()
                     if tasks: await asyncio.gather(*tasks, return_exceptions=True)
                     if process is not None: await self._reap(process)
+                    if directory is not None:
+                        await self._remove_workspace(directory)
+                except Exception:
+                    # Keep the failed slot occupied and stop admission. A
+                    # bounded cleanup failure must never become silent residue
+                    # followed by further generations in this API process.
+                    self.cleanup_failed = self.closing = True
+                    raise _error('HARNESS_CLEANUP_FAILED') from None
+                else:
+                    self.active -= 1
                 finally:
-                    try:
-                        if directory is not None:
-                            shutil.rmtree(directory, ignore_errors=False)
-                    finally:
-                        self.active -= 1; self.calls.discard(call)
+                    self.calls.discard(call)
             if await _finish_owned_cleanup(asyncio.create_task(cleanup())):
                 raise asyncio.CancelledError()
 

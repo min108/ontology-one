@@ -24,6 +24,7 @@ DWORD, WORD, BOOL, HRESULT = C.c_uint32, C.c_uint16, C.c_int32, C.c_int32
 HANDLE, SIZE_T, LPVOID = C.c_void_p, C.c_size_t, C.c_void_p
 PIPE, DEVNULL, STDOUT = subprocess.PIPE, subprocess.DEVNULL, subprocess.STDOUT
 _ALL_APPLICATION_PACKAGES_OPT_OUT = 1
+_APPCONTAINER_PROCESS_MODE = 0x8  # DETACHED_PROCESS; explicit pipes, no console initialization.
 _ERROR_MODE_LOCK = threading.Lock()
 
 
@@ -617,7 +618,14 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
             policy = DWORD(_ALL_APPLICATION_PACKAGES_OPT_OUT)  # Always 1 in production; native tests exercise the rejecting negative control.
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x20009, C.byref(capabilities), C.sizeof(capabilities), None, None), 'APPCONTAINER_UNAVAILABLE')
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x2000F, C.byref(policy), C.sizeof(policy), None, None), 'APPCONTAINER_UNAVAILABLE')
-        flags = 0x4 | 0x80000 | 0x400 | 0x08000000
+        # CREATE_NO_WINDOW still selects console-process initialization, which
+        # Windows can deny for lowbox tokens when LowBoxConsoleEnabled is absent.
+        # We need only the three explicit pipes, so avoid console attachment
+        # altogether. Ordinary trusted jobs keep their existing NO_WINDOW mode.
+        # Microsoft/SandboxSecurityTools enables HKCU\Console for console ACs;
+        # this runner neither modifies that setting nor creates a console.
+        # https://github.com/microsoft/SandboxSecurityTools/blob/main/LaunchAppContainer/LaunchAppContainer/LaunchAppContainer.cpp
+        flags = 0x4 | 0x80000 | 0x400 | (_APPCONTAINER_PROCESS_MODE if appcontainer is not None else 0x08000000)
         if appcontainer is not None:
             _headless_error_mode(kernel)
         _check(kernel.CreateProcessW(argv[0], command, None, None, True, flags, environment, str(cwd), C.byref(si), C.byref(process)),

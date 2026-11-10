@@ -296,6 +296,113 @@ class WindowsExchangeOwnershipTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.gather(task, return_exceptions=True)
 
 
+class WindowsWorkspaceCleanupTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def native_error(code):
+        if os.name == 'nt':
+            import ctypes
+            return ctypes.WinError(code)
+        error = PermissionError(13, 'PRIVATE_WORKSPACE_DETAIL')
+        error.winerror = code
+        return error
+
+    async def execute_fixture(self, executor, root, deletion, *, reap_failure=False):
+        process = object()
+        async def spawn(_): return process
+        async def exchange(*_): return {'ok': True}
+        async def reap(owner):
+            self.assertIs(owner, process)
+            self.assertEqual(executor.active, 1)
+            if reap_failure: raise OSError('PRIVATE_PROCESS_DETAIL')
+            executor.children.discard(owner)
+        with patch.object(client.sys, 'platform', 'win32'), \
+                patch.object(client, '_work_root', return_value=root), \
+                patch.object(executor, '_spawn', side_effect=spawn), \
+                patch.object(executor, '_exchange', side_effect=exchange), \
+                patch.object(executor, '_reap', side_effect=reap), \
+                patch.object(client.shutil, 'rmtree', side_effect=deletion):
+            return await executor.execute({})
+
+    async def test_transient_windows_delete_errors_retry_after_reap_without_releasing_slot(self):
+        delete = client.shutil.rmtree
+        for code in (5, 32, 33):
+            with self.subTest(winerror=code), tempfile.TemporaryDirectory() as temporary:
+                executor = client.HarnessExecutor(maximum=1)
+                attempts = []
+                def deletion(path, **kwargs):
+                    self.assertEqual(executor.active, 1)
+                    self.assertFalse(executor.children)
+                    attempts.append(path)
+                    if len(attempts) == 1: raise self.native_error(code)
+                    delete(path, **kwargs)
+                result = await self.execute_fixture(executor, Path(temporary), deletion)
+                self.assertEqual(result, {'ok': True})
+                self.assertEqual(len(attempts), 2)
+                self.assertFalse(list(Path(temporary).iterdir()))
+                self.assertEqual(executor.active, 0)
+                self.assertFalse(executor.cleanup_failed)
+
+    async def test_permanent_delete_failure_is_bounded_safe_and_stops_admission(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executor, attempts = client.HarnessExecutor(maximum=1), []
+            def deletion(path, **_):
+                attempts.append(path)
+                raise self.native_error(5)
+            with patch.object(client, 'WINDOWS_CLEANUP_RETRY_SECONDS', .02):
+                with self.assertRaises(HTTPException) as caught:
+                    await self.execute_fixture(executor, Path(temporary), deletion)
+            self.assertEqual(caught.exception.detail['code'], 'HARNESS_CLEANUP_FAILED')
+            self.assertNotIn('PRIVATE_', str(caught.exception.detail))
+            self.assertGreaterEqual(len(attempts), 2)
+            self.assertLessEqual(len(attempts), 3)
+            self.assertEqual(executor.active, 1)
+            self.assertTrue(executor.cleanup_failed and executor.closing)
+            self.assertFalse(executor.calls)
+            self.assertTrue(list(Path(temporary).iterdir()))
+            with self.assertRaises(HTTPException) as denied: await executor.execute({})
+            self.assertEqual(denied.exception.detail['code'], 'HARNESS_CLEANUP_FAILED')
+
+    async def test_failed_reap_never_deletes_workspace_or_releases_slot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executor, attempts = client.HarnessExecutor(maximum=1), []
+            with self.assertRaises(HTTPException) as caught:
+                await self.execute_fixture(executor, Path(temporary),
+                    lambda *args, **kwargs: attempts.append(args), reap_failure=True)
+            self.assertEqual(caught.exception.detail['code'], 'HARNESS_CLEANUP_FAILED')
+            self.assertFalse(attempts)
+            self.assertEqual(executor.active, 1)
+            self.assertTrue(executor.cleanup_failed and executor.closing)
+            self.assertTrue(executor.children)
+
+    async def test_repeated_cancel_during_delete_retry_keeps_workspace_owned_until_removed(self):
+        delete = client.shutil.rmtree
+        entered, release = threading.Event(), threading.Event()
+        with tempfile.TemporaryDirectory() as temporary:
+            executor, attempts = client.HarnessExecutor(maximum=1), []
+            def deletion(path, **kwargs):
+                self.assertEqual(executor.active, 1)
+                attempts.append(path)
+                if len(attempts) == 1: raise self.native_error(32)
+                entered.set()
+                if not release.wait(3): raise AssertionError('Test did not release deletion')
+                delete(path, **kwargs)
+            task = asyncio.create_task(self.execute_fixture(executor, Path(temporary), deletion))
+            try:
+                async with asyncio.timeout(2):
+                    while not entered.is_set(): await asyncio.sleep(.01)
+                task.cancel(); await asyncio.sleep(0); task.cancel()
+                self.assertEqual(executor.active, 1)
+                release.set()
+                with self.assertRaises(asyncio.CancelledError): await task
+                self.assertEqual(executor.active, 0)
+                self.assertFalse(executor.calls or executor.children or executor.cleanup_failed)
+                self.assertFalse(list(Path(temporary).iterdir()))
+            finally:
+                release.set()
+                if not task.done(): task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+
 @unittest.skipUnless(sys.platform == 'linux', 'Linux process-group cases; Windows Job lifecycle is exercised separately')
 class LifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

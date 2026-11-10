@@ -147,6 +147,8 @@ class WindowsProcessContractTests(unittest.TestCase):
         self.assertLess(names.index('AssignProcessToJobObject'), names.index('ResumeThread'))
         creation = next(args for name, args in kernel.calls if name == 'CreateProcessW')
         self.assertTrue(creation[5] & 0x4)
+        self.assertTrue(creation[5] & 0x08000000)
+        self.assertFalse(creation[5] & 0x8)
         handle_list = next(args for name, args in kernel.calls if name == 'UpdateProcThreadAttribute' and args[2] == 0x20002)
         self.assertEqual(set(handle_list[3]), {201, 202, 203})
         self.assertNotIn(100, handle_list[3])
@@ -192,6 +194,9 @@ class WindowsProcessContractTests(unittest.TestCase):
         capabilities = C.cast(updates[0x20009][3], C.POINTER(win.SECURITY_CAPABILITIES)).contents
         self.assertEqual(capabilities.CapabilityCount, 0)
         self.assertEqual(C.cast(updates[0x2000F][3], C.POINTER(win.DWORD))[0], 1)
+        creation = next(args for name, args in kernel.calls if name == 'CreateProcessW')
+        self.assertTrue(creation[5] & 0x8)
+        self.assertFalse(creation[5] & 0x08000000)
         process.close()
 
     def test_lpac_effective_access_requires_only_restricted_applications_bit(self):

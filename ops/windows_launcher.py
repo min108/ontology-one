@@ -425,7 +425,10 @@ class Supervisor:
         atomic_write(defaults, ('[client]\nuser=root\npassword=' + self.settings['root_password'] + '\n').encode('ascii'))
         server = None
         try:
-            server = self.persistent('mysql_secure', [self.runtime['mysqld'], '--no-defaults', '--console',
+            # MySQL's Windows monitor rebuilds Unicode arguments in an
+            # undersized wcstombs buffer. Our Job supervisor already owns the
+            # lifecycle, so run the server directly with its supported option.
+            server = self.persistent('mysql_secure', [self.runtime['mysqld'], '--no-defaults', '--no-monitor', '--console',
                 '--basedir=' + str(mysql_root), '--datadir=' + str(staging), '--skip-networking',
                 '--mysqlx=OFF', '--shared-memory', '--shared-memory-base-name=' + shared_name,
                 '--local-infile=OFF', '--secure-file-priv=NULL', '--skip-log-bin', '--init-file=' + str(init)], environment)
@@ -499,7 +502,7 @@ class Supervisor:
             # cannot leave a partial database at the durable data/mysql path.
             staging = Path(tempfile.mkdtemp(prefix='.mysql-initialize-', dir=ROOT / 'data'))
             ensure_private_directory(staging)
-            child = self.spawn('mysql_initialize', [self.runtime['mysqld'], '--no-defaults', '--initialize-insecure', '--console',
+            child = self.spawn('mysql_initialize', [self.runtime['mysqld'], '--no-defaults', '--no-monitor', '--initialize-insecure', '--console',
                 '--basedir=' + str(mysql_root), '--datadir=' + str(staging)], environment)
             try:
                 output, errors = child.communicate(timeout=120, cancelled=self.stop_event, max_stdout=65536, max_stderr=65536)
@@ -517,7 +520,7 @@ class Supervisor:
                     import shutil
                     with suppress(OSError): shutil.rmtree(staging)
         self.phase_to('starting_database')
-        self.persistent('mysql', [self.runtime['mysqld'], '--no-defaults', '--basedir=' + str(mysql_root),
+        self.persistent('mysql', [self.runtime['mysqld'], '--no-defaults', '--no-monitor', '--basedir=' + str(mysql_root),
             '--datadir=' + str(mysql_data), '--bind-address=127.0.0.1', '--port=' + str(self.settings['mysql_port']),
             '--mysqlx=OFF', '--local-infile=OFF', '--secure-file-priv=NULL', '--skip-log-bin',
             '--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci',

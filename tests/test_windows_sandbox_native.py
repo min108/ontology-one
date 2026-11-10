@@ -46,6 +46,18 @@ def _elevated():
         kernel.CloseHandle(token)
 
 
+def _console_policy():
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'Console', 0, winreg.KEY_QUERY_VALUE) as key:
+            value, kind = winreg.QueryValueEx(key, 'LowBoxConsoleEnabled')
+        return {'present': True, 'enabled': kind == winreg.REG_DWORD and value == 1}
+    except FileNotFoundError:
+        return {'present': False}
+    except OSError as exc:
+        return {'query_error': exc.winerror}
+
+
 @unittest.skipUnless(ENABLED, 'real Windows sandbox acceptance is opt-in')
 class WindowsSandboxNativeTests(unittest.TestCase):
     @classmethod
@@ -59,6 +71,7 @@ class WindowsSandboxNativeTests(unittest.TestCase):
             'elevated': elevated, 'pointer_bits': ctypes.sizeof(ctypes.c_void_p) * 8,
             'standard_user_required': os.getenv('ONTOLOGY_REQUIRE_STANDARD_USER') == '1',
             'runtime_files': len(cls.runtime_files), 'network': 'loopback-only test listener',
+            'lowbox_console_policy': _console_policy(),
         }}, ensure_ascii=True), flush=True)
         if os.getenv('ONTOLOGY_REQUIRE_STANDARD_USER') == '1' and elevated:
             raise AssertionError('The standard-user acceptance lane requires a non-elevated token')
@@ -165,6 +178,19 @@ class WindowsSandboxNativeTests(unittest.TestCase):
                     **owner.diagnostic_counters()}}), flush=True)
         except native.WindowsProcessError as failure:
             print(json.dumps({'native_default_profile_diagnostic': failure.diagnostic()}), flush=True)
+
+    def test_03_previous_console_mode_fixed_marker_diagnostic(self):
+        # The previous NO_WINDOW mode can succeed where a host already enables
+        # lowbox consoles. This records the A/B result without requiring failure
+        # and never changes registry values or a production security property.
+        try:
+            with patch.object(native, '_APPCONTAINER_PROCESS_MODE', 0x08000000):
+                with self.sandbox('import os\nos.write(1,b"ONTOLOGY_NATIVE_READY\\n")\n') as (owner, *_):
+                    output, _ = owner.communicate(b'', timeout=5, max_stdout=128, max_stderr=1024)
+                    print(json.dumps({'native_previous_console_mode': {'early_marker': output == b'ONTOLOGY_NATIVE_READY\n',
+                        **owner.diagnostic_counters()}}), flush=True)
+        except native.WindowsProcessError as failure:
+            print(json.dumps({'native_previous_console_mode': failure.diagnostic()}), flush=True)
 
     def test_lpac_proof_rejects_an_ordinary_appcontainer_before_resume(self):
         # Negative control only: create an actual ordinary AC, while retaining
@@ -278,7 +304,7 @@ print(json.dumps({'denied':denied}))
     def test_active_process_limit_rejects_another_python(self):
         script = '''import json,subprocess,sys
 try:
-    child=subprocess.Popen([sys.executable,'-I','-B','-c','pass'])
+    child=subprocess.Popen([sys.executable,'-I','-B','-c','pass'],creationflags=subprocess.DETACHED_PROCESS)
     child.wait(timeout=1)
     denied=False
 except OSError:
