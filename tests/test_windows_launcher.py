@@ -5,6 +5,7 @@ from pathlib import Path
 import socket
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -24,6 +25,22 @@ class LauncherTests(unittest.TestCase):
     def tearDown(self):
         for item in reversed(self.patches): item.stop()
         self.directory.cleanup()
+
+    def test_windows_before_process_utf8_manifest_support_is_rejected(self):
+        with patch.object(launcher.os, 'name', 'nt'), patch.object(launcher.sys, 'maxsize', 2**63 - 1):
+            for major, build, supported in ((6, 9600, False), (10, 17763, False),
+                                            (10, 18361, False), (10, 18362, True),
+                                            (10, 19045, True), (10, 22631, True)):
+                with self.subTest(major=major, build=build), patch.object(launcher.sys, 'getwindowsversion',
+                        return_value=SimpleNamespace(major=major, build=build), create=True):
+                    if supported:
+                        launcher.require_supported_windows()
+                    else:
+                        with self.assertRaises(launcher.LaunchError) as error:
+                            launcher.require_supported_windows()
+                        self.assertEqual(error.exception.code, 'WINDOWS_REQUIRED')
+            with patch.object(launcher.sys, 'maxsize', 2**31 - 1):
+                with self.assertRaises(launcher.LaunchError): launcher.require_supported_windows()
 
     def test_credentials_are_private_unique_and_stable(self):
         first = launcher.get_installation()

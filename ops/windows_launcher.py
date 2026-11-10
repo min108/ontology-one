@@ -38,7 +38,7 @@ READY = LOCAL / 'initialized.json'
 MAX_CONTROL = 8192
 START_TIMEOUT = 360
 _ERRORS = {
-    'WINDOWS_REQUIRED': '需要 Windows 10/11 64位系统和交付包内的64位Python。',
+    'WINDOWS_REQUIRED': '需要 Windows 10 1903（内部版本18362）及以上或 Windows 11 的64位系统，并使用交付包内的64位Python。平台不会修改系统区域或代码页设置。',
     'RUNTIME_MISSING': '运行包不完整，请重新解压完整的Windows运行包。',
     'RUNTIME_INVALID': '运行时清单或文件校验不一致，请重新获取完整运行包。',
     'LOCAL_NTFS_REQUIRED': '请将完整运行包解压到本机固定NTFS磁盘，再双击启动。网络共享、FAT/exFAT和重解析目录不满足本平台的凭据权限要求。',
@@ -116,9 +116,18 @@ def runtime_path(relative):
     return path
 
 
-def check_runtime():
-    if os.name != 'nt' or sys.maxsize <= 2**32 or sys.getwindowsversion().major < 10:
+def require_supported_windows():
+    if os.name != 'nt' or sys.maxsize <= 2**32:
         raise LaunchError('WINDOWS_REQUIRED')
+    version = sys.getwindowsversion()
+    # Per-process activeCodePage=UTF-8 begins with Windows 10 1903. Older
+    # kernels silently ignore the manifest and cannot safely use Unicode paths.
+    if version.major < 10 or (version.major == 10 and version.build < 18362):
+        raise LaunchError('WINDOWS_REQUIRED')
+
+
+def check_runtime():
+    require_supported_windows()
     try:
         manifest = json.loads((ROOT / 'runtime' / 'manifest.json').read_text(encoding='utf-8-sig'))
         if manifest['schema_version'] != 1 or manifest['platform'] != 'win_amd64':
@@ -442,7 +451,7 @@ class Supervisor:
             # cannot leave a partial database at the durable data/mysql path.
             staging = Path(tempfile.mkdtemp(prefix='.mysql-initialize-', dir=ROOT / 'data'))
             ensure_private_directory(staging)
-            child = self.spawn('mysql_initialize', [self.runtime['mysqld'], '--no-defaults', '--initialize-insecure',
+            child = self.spawn('mysql_initialize', [self.runtime['mysqld'], '--no-defaults', '--initialize-insecure', '--console',
                 '--basedir=' + str(mysql_root), '--datadir=' + str(staging)], environment)
             try:
                 output, errors = child.communicate(timeout=120, cancelled=self.stop_event, max_stdout=65536, max_stderr=65536)

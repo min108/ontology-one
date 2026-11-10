@@ -24,6 +24,7 @@ DWORD, WORD, BOOL, HRESULT = C.c_uint32, C.c_uint16, C.c_int32, C.c_int32
 HANDLE, SIZE_T, LPVOID = C.c_void_p, C.c_size_t, C.c_void_p
 PIPE, DEVNULL, STDOUT = subprocess.PIPE, subprocess.DEVNULL, subprocess.STDOUT
 _ALL_APPLICATION_PACKAGES_OPT_OUT = 1
+_ERROR_MODE_LOCK = threading.Lock()
 
 
 class WindowsProcessError(OSError):
@@ -125,6 +126,10 @@ class GENERIC_MAPPING(C.Structure):
     _fields_ = [(name, DWORD) for name in ('GenericRead', 'GenericWrite', 'GenericExecute', 'GenericAll')]
 
 
+class FILETIME(C.Structure):
+    _fields_ = [('low', DWORD), ('high', DWORD)]
+
+
 @lru_cache(maxsize=1)
 def _api():
     if os.name != 'nt' or C.sizeof(LPVOID) != 8:
@@ -135,6 +140,7 @@ def _api():
     ole = C.WinDLL('ole32', use_last_error=True)
     signatures = {
         'CloseHandle': (BOOL, [HANDLE]), 'GetCurrentProcess': (HANDLE, []),
+        'GetErrorMode': (DWORD, []), 'SetErrorMode': (DWORD, [DWORD]),
         'CreateJobObjectW': (HANDLE, [LPVOID, C.c_wchar_p]),
         'SetInformationJobObject': (BOOL, [HANDLE, C.c_int, LPVOID, DWORD]),
         'QueryInformationJobObject': (BOOL, [HANDLE, C.c_int, LPVOID, DWORD, LPVOID]),
@@ -142,6 +148,8 @@ def _api():
         'IsProcessInJob': (BOOL, [HANDLE, HANDLE, C.POINTER(BOOL)]),
         'TerminateProcess': (BOOL, [HANDLE, DWORD]), 'WaitForSingleObject': (DWORD, [HANDLE, DWORD]),
         'GetExitCodeProcess': (BOOL, [HANDLE, C.POINTER(DWORD)]), 'ResumeThread': (DWORD, [HANDLE]),
+        'GetProcessTimes': (BOOL, [HANDLE, C.POINTER(FILETIME), C.POINTER(FILETIME), C.POINTER(FILETIME), C.POINTER(FILETIME)]),
+        'GetProcessIoCounters': (BOOL, [HANDLE, C.POINTER(IO_COUNTERS)]),
         'CreatePipe': (BOOL, [C.POINTER(HANDLE), C.POINTER(HANDLE), C.POINTER(SECURITY_ATTRIBUTES), DWORD]),
         'SetHandleInformation': (BOOL, [HANDLE, DWORD, DWORD]),
         'CreateFileW': (HANDLE, [C.c_wchar_p, DWORD, DWORD, C.POINTER(SECURITY_ATTRIBUTES), DWORD, DWORD, HANDLE]),
@@ -210,6 +218,15 @@ def _validate_appcontainer_environment(env):
     entries = {key.upper(): value for key, value in env.items()}
     if not all(entries.get(key) for key in ('SYSTEMROOT', 'LOCALAPPDATA')):
         raise WindowsProcessError('APPCONTAINER_ENVIRONMENT_REQUIRED')
+
+
+def _headless_error_mode(kernel):
+    # A headless coordinator and its children must report loader failures, not
+    # wait for invisible Windows error dialogs. CreateProcess inherits the
+    # process error mode unless CREATE_DEFAULT_ERROR_MODE is requested (it is
+    # not). Preserve existing stricter flags; no machine policy is changed.
+    with _ERROR_MODE_LOCK:
+        kernel.SetErrorMode(kernel.GetErrorMode() | 0x1 | 0x2 | 0x8000)
 
 
 def _job_limits(limits):
@@ -347,6 +364,7 @@ class WindowsProcess:
         self._returncode = None
         self._lock, self._communication = threading.RLock(), threading.Lock()
         self._closed = False
+        self._communication_counts = {'stdin_bytes': 0, 'stdout_bytes': 0, 'stderr_bytes': 0}
 
     @property
     def returncode(self):
@@ -412,6 +430,20 @@ class WindowsProcess:
                         return tuple(int(values[index]) for index in range(listed))
             raise WindowsProcessError('PROCESS_QUERY_FAILED')
 
+    def diagnostic_counters(self):
+        """Numeric native acceptance diagnostics only; never payload or paths."""
+        with self._lock:
+            if self._closed: raise WindowsProcessError('PROCESS_CLOSED')
+            created, exited, kernel_time, user_time = FILETIME(), FILETIME(), FILETIME(), FILETIME()
+            _check(self._kernel.GetProcessTimes(self._process, C.byref(created), C.byref(exited),
+                C.byref(kernel_time), C.byref(user_time)), 'PROCESS_QUERY_FAILED')
+            io = IO_COUNTERS()
+            _check(self._kernel.GetProcessIoCounters(self._process, C.byref(io)), 'PROCESS_QUERY_FAILED')
+            milliseconds = lambda value: ((int(value.high) << 32) | int(value.low)) // 10_000
+            return {'exit_code': self.poll(), 'user_cpu_ms': milliseconds(user_time), 'kernel_cpu_ms': milliseconds(kernel_time),
+                    'process_read_bytes': int(io.ReadTransferCount), 'process_write_bytes': int(io.WriteTransferCount),
+                    **self._communication_counts}
+
     def communicate(self, input=b'', *, timeout=None, cancelled=None, max_stdout=2 * 1024 * 1024, max_stderr=64 * 1024):
         if not isinstance(input, bytes) or type(max_stdout) is not int or type(max_stderr) is not int or min(max_stdout, max_stderr) < 0:
             raise ValueError('Invalid communication limits')
@@ -420,6 +452,7 @@ class WindowsProcess:
         if not self._communication.acquire(blocking=False):
             raise WindowsProcessError('PROCESS_ALREADY_READING')
         output, errors, guard = [bytearray(), bytearray()], [], threading.Lock()
+        sent = [0]
         deadline = None if timeout is None else time.monotonic() + timeout
         def fail(code):
             with guard:
@@ -441,6 +474,7 @@ class WindowsProcess:
                 while view:
                     count = self.stdin.write(view[:65536])
                     if not count: break
+                    sent[0] += count
                     view = view[count:]
                 self.stdin.flush()
             except (BrokenPipeError, OSError, ValueError):
@@ -478,6 +512,7 @@ class WindowsProcess:
                     if any(thread.is_alive() for thread in threads):
                         raise WindowsProcessError('PROCESS_CLEANUP_FAILED')
             finally:
+                self._communication_counts = {'stdin_bytes': sent[0], 'stdout_bytes': len(output[0]), 'stderr_bytes': len(output[1])}
                 self._communication.release()
         if errors:
             raise WindowsProcessError(errors[0])
@@ -583,6 +618,8 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x20009, C.byref(capabilities), C.sizeof(capabilities), None, None), 'APPCONTAINER_UNAVAILABLE')
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x2000F, C.byref(policy), C.sizeof(policy), None, None), 'APPCONTAINER_UNAVAILABLE')
         flags = 0x4 | 0x80000 | 0x400 | 0x08000000
+        if appcontainer is not None:
+            _headless_error_mode(kernel)
         _check(kernel.CreateProcessW(argv[0], command, None, None, True, flags, environment, str(cwd), C.byref(si), C.byref(process)),
                'APPCONTAINER_UNAVAILABLE' if appcontainer is not None else 'PROCESS_UNAVAILABLE', operation='CreateProcessW')
         _check(kernel.AssignProcessToJobObject(job, process.hProcess), operation='AssignProcessToJobObject')

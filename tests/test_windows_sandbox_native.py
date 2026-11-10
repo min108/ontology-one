@@ -53,6 +53,7 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         # An explicitly enabled but unconfigured Windows run must fail, not
         # silently become a green collection of skipped acceptance checks.
         cls.runtime_files = runner._runtime_files()
+        native._headless_error_mode(native._api()[0])
         elevated = _elevated()
         print(json.dumps({'windows_sandbox_acceptance': {
             'elevated': elevated, 'pointer_bits': ctypes.sizeof(ctypes.c_void_p) * 8,
@@ -64,7 +65,7 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         cls.system_root = os.environ.get('SystemRoot', r'C:\Windows')
 
     @contextmanager
-    def sandbox(self, script, *, limits=None, diagnose=True):
+    def sandbox(self, script, *, limits=None, diagnose=True, contained=True):
         temporary = tempfile.TemporaryDirectory(prefix='Ontology native 沙盒 ! ')
         root = ensure_private_directory(Path(temporary.name))
         runtime = root / 'runtime'
@@ -85,11 +86,15 @@ class WindowsSandboxNativeTests(unittest.TestCase):
             environment = runner._sandbox_environment(runtime, work, self.system_root)
             owner = native.spawn_job_process(
                 [str(runtime / 'python.exe'), '-I', '-X', 'utf8', '-B', '-u', str(script_path)],
-                cwd=str(work), env=environment, limits=LIMITS if limits is None else limits, appcontainer=profile)
+                cwd=str(work), env=environment, limits=LIMITS if limits is None else limits, appcontainer=profile if contained else None)
             yield owner, root, runtime, work, profile
         except native.WindowsProcessError as exc:
             if diagnose:
-                print(json.dumps({'windows_sandbox_failure': exc.diagnostic()}, ensure_ascii=True), flush=True)
+                diagnostic = {'windows_sandbox_failure': exc.diagnostic()}
+                if owner is not None:
+                    try: diagnostic['native_process_counters'] = owner.diagnostic_counters()
+                    except native.WindowsProcessError as failure: diagnostic['native_counters_error'] = failure.diagnostic()
+                print(json.dumps(diagnostic, ensure_ascii=True), flush=True)
             raise
         finally:
             try:
@@ -116,6 +121,20 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         with self.sandbox(script) as (owner, *_):
             self.assertEqual(self.communicate_json(owner, {'number': 7, 'text': '中文'}),
                              {'value': {'number': 7, 'text': '中文'}, 'ok': True})
+
+    def test_00_trusted_copied_runtime_early_entry_control(self):
+        # Diagnostic positive control only; never a production fallback. The
+        # exact same copied interpreter/stdio/job run a fixed benign marker.
+        with self.sandbox('import os\nos.write(1,b"ONTOLOGY_NATIVE_READY\\n")\n', contained=False) as (owner, *_):
+            output, error = owner.communicate(b'', timeout=5, max_stdout=128, max_stderr=1024)
+            print(json.dumps({'native_runtime_control': owner.diagnostic_counters()}), flush=True)
+            self.assertEqual(owner.returncode, 0); self.assertEqual(output, b'ONTOLOGY_NATIVE_READY\n'); self.assertEqual(error, b'')
+
+    def test_01_lpac_runtime_early_entry_marker(self):
+        with self.sandbox('import os\nos.write(1,b"ONTOLOGY_NATIVE_READY\\n")\n') as (owner, *_):
+            output, error = owner.communicate(b'', timeout=5, max_stdout=128, max_stderr=1024)
+            print(json.dumps({'native_lpac_marker': owner.diagnostic_counters()}), flush=True)
+            self.assertEqual(owner.returncode, 0); self.assertEqual(output, b'ONTOLOGY_NATIVE_READY\n'); self.assertEqual(error, b'')
 
     def test_lpac_proof_rejects_an_ordinary_appcontainer_before_resume(self):
         # Negative control only: create an actual ordinary AC, while retaining

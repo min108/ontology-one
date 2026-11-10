@@ -1,9 +1,11 @@
 """Handle-based local file access and locks for Unix and native Windows.
 
 Windows directory ancestors stay open without WRITE/DELETE sharing for the
-entire operation. Reparse points are opened as objects and rejected, rather than
-resolved. This prevents both renaming an ancestor and changing its reparse tag
-between validation and a child operation. Storage must be on a local volume.
+entire operation. Metadata-only handles can still change a directory's reparse
+tag, so sharing is not the reparse security boundary: each child is opened from
+its pinned parent with OBJ_DONT_REPARSE, never by resolving an absolute path.
+Observed reparse objects are rejected before/after operations. Same-directory
+atomic rename stays bound to its already-open source. Storage must be local.
 """
 from __future__ import annotations
 
@@ -292,13 +294,17 @@ if WINDOWS:
             raise PermissionError(errno.EACCES, 'The volume cannot enforce private DACLs')
 
     def _relative_handle(parent, name, access, sharing, disposition, directory, descriptor):
+        _assert_plain_directory(parent)
         encoded = name.encode('utf-16-le')
         if not encoded or len(encoded) > 65532 or any(c in name for c in '/\\:'):
             raise PermissionError(errno.EACCES, 'Invalid relative object name')
         buffer = ctypes.create_string_buffer(encoded + b'\0\0')
         text = _UnicodeString(len(encoded), len(encoded) + 2, ctypes.cast(buffer, wintypes.LPWSTR))
         attributes = _ObjectAttributes(ctypes.sizeof(_ObjectAttributes), parent, ctypes.pointer(text),
-                                       0x40, descriptor, None)  # OBJ_CASE_INSENSITIVE
+                                       0x40 | 0x1000, descriptor, None)  # CASE_INSENSITIVE | DONT_REPARSE
+        # OBJ_DONT_REPARSE is enforced during native name parsing, closing the
+        # race after the parent metadata check; no reparses may be followed.
+        # https://learn.microsoft.com/en-us/windows/win32/api/ntdef/ns-ntdef-_object_attributes
         status, handle = _IoStatus(), wintypes.HANDLE()
         options = 0x20 | 0x00200000 | (1 if directory else 0x40)  # synchronous, open reparse object
         create = {_OPEN_EXISTING: 1, _CREATE_NEW: 2, _OPEN_ALWAYS: 3}[disposition]
@@ -307,7 +313,26 @@ if WINDOWS:
                                sharing, create, options, None, 0)
         if result < 0:
             _win_error(_NtError(result), operation='NtCreateFile')
+        try:
+            _assert_plain_directory(parent)
+        except BaseException:
+            # A fresh atomic temporary may have been created in the original
+            # pinned directory before a concurrent retag was observed.
+            if status.Information == 2 and access & _DELETE and not directory:
+                try:
+                    _delete_on_close(handle.value)
+                except OSError:
+                    pass
+            _Close(handle.value)
+            raise
         return handle.value
+
+    def _assert_plain_directory(handle):
+        info = _FileInfo()
+        if not _Info(handle, ctypes.byref(info)):
+            _win_error(operation='GetFileInformationByHandle:directory')
+        if not info.attributes & _DIRECTORY or info.attributes & _REPARSE:
+            raise PermissionError(errno.EACCES, 'Directory changed to a reparse object')
 
     def _open_handle(path, access, disposition=_OPEN_EXISTING, *, directory=False, private=False, delete_share=False, parent=None):
         # GetFileInformationByHandle requires FILE_READ_ATTRIBUTES even for a
@@ -318,10 +343,12 @@ if WINDOWS:
             # Metadata-only directory handles do not participate in Windows
             # read/write sharing accounting. FILE_LIST_DIRECTORY supplies the
             # minimum read access that makes our no-WRITE/no-DELETE sharing
-            # exclude pre-existing and subsequent reparse-capable write handles.
+            # exclude pre-existing and subsequent data-write handles. Metadata
+            # writes still require the separate DONT_REPARSE parsing boundary.
             # No directory contents are enumerated by this helper.
             access |= _LIST_DIRECTORY
-        # WRITE sharing on a directory would permit FSCTL_SET_REPARSE_POINT.
+        # Pin names against rename and exclude data-write handles. This alone
+        # does not prevent FSCTL_SET_REPARSE_POINT via metadata-only handles.
         sharing = 1 if directory else 1 | 2 | (4 if delete_share else 0)
         flags = _OPEN_REPARSE | _BACKUP_SEMANTICS
         def create(descriptor=None):
@@ -370,7 +397,11 @@ if WINDOWS:
                 if current == Path(value.anchor):
                     raise PermissionError(errno.EACCES, 'A volume root cannot be made private')
                 _set_private(handles[-1], True)
+            for handle in handles:
+                _assert_plain_directory(handle)
             yield handles[-1]
+            for handle in handles:
+                _assert_plain_directory(handle)
         finally:
             for handle in reversed(handles):
                 _Close(handle)

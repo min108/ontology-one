@@ -83,6 +83,23 @@ class WindowsProcessContractTests(unittest.TestCase):
         for environment in ({'Path': 'a', 'PATH': 'b'}, {'A=B': 'c'}, {'A': '\0'}):
             with self.assertRaises(ValueError): win._environment_block(environment)
 
+    def test_headless_error_mode_preserves_existing_flags_and_disables_error_dialogs(self):
+        kernel = Kernel()
+        with patch.object(kernel, 'GetErrorMode', return_value=4), patch.object(kernel, 'SetErrorMode') as setter:
+            win._headless_error_mode(kernel)
+        setter.assert_called_once_with(0x8007)
+
+    def test_process_diagnostics_are_only_numeric_counts_without_pipe_contents(self):
+        kernel = Kernel()
+        process = win.WindowsProcess(kernel, 100, 101, 103, (io.BytesIO(), io.BytesIO(b'synthetic-output'), io.BytesIO()))
+        process.communicate(b'private-input')
+        counters = process.diagnostic_counters()
+        self.assertEqual(counters['stdin_bytes'], len(b'private-input'))
+        self.assertEqual(counters['stdout_bytes'], len(b'synthetic-output'))
+        self.assertTrue(all(type(value) is int for value in counters.values()))
+        self.assertNotIn('private-input', str(counters)); self.assertNotIn('synthetic-output', str(counters))
+        process.close()
+
     def spawn(self, kernel, **kwargs):
         with patch.object(win, '_api', return_value=(kernel, None, None, None)), \
              patch.object(win, 'assert_network_isolation_services'), patch.dict(sys.modules, {'msvcrt': types.SimpleNamespace()}):

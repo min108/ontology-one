@@ -33,6 +33,14 @@ def set_junction_on_handle(handle, target):
         fs._win_error(operation='FSCTL_SET_REPARSE_POINT')
 
 
+def clear_junction_on_handle(handle):
+    data = struct.pack('<IHH', 0xA0000003, 0, 0)
+    buffer, returned = ctypes.create_string_buffer(data), fs.wintypes.DWORD()
+    # set_junction_on_handle has already declared the same native function.
+    if not fs._kernel.DeviceIoControl(handle, 0x900AC, buffer, len(data), None, 0, ctypes.byref(returned), None):
+        fs._win_error(operation='FSCTL_DELETE_REPARSE_POINT')
+
+
 def make_world_accessible(path):
     descriptor = fs.wintypes.LPVOID()
     if not fs._Descriptor('D:P(A;;FA;;;WD)', 1, ctypes.byref(descriptor), None):

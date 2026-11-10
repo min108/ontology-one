@@ -36,7 +36,7 @@ def main():
     modules=['tests.test_platform_io','tests.test_windows_process','tests.test_windows_async_process',
         'tests.test_mcp_transport','tests.test_skill_harness','tests.test_windows_sandbox_native',
         'tests.test_windows_launcher','tests.test_windows_initialize','tests.test_windows_distribution',
-        'tests.test_source_adapters']
+        'tests.test_source_adapters','tests.test_windows_mysql_utf8']
     manifest=json.loads((package/'runtime/manifest.json').read_text(encoding='utf-8'))
     diagnostics={'source_commit':manifest['source_commit'],'sys_path':sys.path,'prefix':sys.prefix,
         'backend_exists':(package/'backend/__init__.py').is_file(),

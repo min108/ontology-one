@@ -23,6 +23,11 @@ import urllib.parse
 import urllib.request
 import zipfile
 
+try:
+    from .windows_mysql_utf8 import transform_mysql_executable
+except ImportError:
+    from windows_mysql_utf8 import transform_mysql_executable
+
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = '0.5.0'
 HOSTS = {'www.python.org', 'cdn.mysql.com', 'files.pythonhosted.org', 'download.visualstudio.microsoft.com', 'visualstudio.microsoft.com', 'codeload.github.com'}
@@ -193,6 +198,9 @@ def build(args):
         resolved()
     python_archive,mysql_archive,mysql_source=(artifacts[name] for name in ('python','mysql','mysql_source'))
     extract(python_archive,package/'runtime/python');extract(python_archive,package/'runtime/skill-python');extract(mysql_archive,package/'runtime/mysql',mysql=True)
+    print(json.dumps({'phase':'mysql_utf8_resource_transformation'}),flush=True)
+    mysql_transformations={name:transform_mysql_executable(package/'runtime/mysql/bin'/name)
+                          for name in ('mysqld.exe','mysql.exe','mysqladmin.exe')}
     wheel_paths=[download(item,args.cache) for item in wheels['wheels']]
     site=package/'runtime/python/Lib/site-packages'
     env=build_environment()
@@ -223,7 +231,14 @@ def build(args):
         'Python wheels: retain every .dist-info license/notice; versions and origins in windows-wheels.lock.json.\n'
         'DeepSeek Harness: MIT and bundled THIRD_PARTY_NOTICES.md retained in its .dist-info/licenses directory.\n'
         'MySQL Community Server: GPL version 2 and bundled component notices retained under runtime/mysql.\n'
-        f'Complete corresponding MySQL {runtime["mysql"]["version"]} source accompanies this release as {mysql_source.name};\n'
+        'The three MySQL executables are derived builds: only embedded application manifest resources\n'
+        'activate the UTF-8 Windows code page (Windows build 18362+). Existing vendor certificate tables,\n'
+        'if any, are removed; these derived executables are not represented as vendor-signed originals.\n'
+        'Vendor and derived SHA256 values and the exact resource transformation recipe are recorded in\n'
+        'runtime/manifest.json. Reproduction source: scripts/windows_mysql_utf8.py and\n'
+        'scripts/build_windows_release.py, shipped in this package and the same source commit.\n'
+        f'Unmodified upstream MySQL {runtime["mysql"]["version"]} source accompanies this release as {mysql_source.name};\n'
+        'together with the included transformation recipes it supplies the corresponding build source.\n'
         'redistributors must supply it from the same distribution location alongside the binary package.\n'
         'Microsoft VC runtime: unmodified, Microsoft-signed app-local files from licensed Visual Studio 2022 VC/Redist.\n'
         'Redistribution list: '+runtime['vc_runtime']['license_url']+'\nLicense terms: '+runtime['vc_runtime']['terms_url']+'\n')
@@ -238,7 +253,10 @@ def build(args):
         'mysql':{'version':runtime['mysql']['version'],'server':'runtime/mysql/bin/mysqld.exe','client':'runtime/mysql/bin/mysql.exe','admin':'runtime/mysql/bin/mysqladmin.exe',
             'server_sha256':digest(package/'runtime/mysql/bin/mysqld.exe'),
             'client_sha256':digest(package/'runtime/mysql/bin/mysql.exe'),
-            'admin_sha256':digest(package/'runtime/mysql/bin/mysqladmin.exe'),'source_sha256':runtime['mysql']['sha256']},
+            'admin_sha256':digest(package/'runtime/mysql/bin/mysqladmin.exe'),'source_sha256':runtime['mysql']['sha256'],
+            'vendor_archive_sha256':runtime['mysql']['sha256'],
+            'resource_transformation':{'recipe':'scripts/windows_mysql_utf8.py','recipe_sha256':digest(ROOT/'scripts/windows_mysql_utf8.py'),
+                'source_commit':commit or 'uncommitted-build','minimum_windows_build':18362,'executables':mysql_transformations}},
         'harness':runtime['harness'],'vc_runtime':runtime['vc_runtime'],'wheels':wheels['wheels'],
         'upstream_sources':{name:runtime[name] for name in ('python','mysql','mysql_source')},
         'files':[{'path':path.relative_to(package).as_posix(),'sha256':digest(path),'bytes':path.stat().st_size}

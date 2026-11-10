@@ -249,42 +249,63 @@ class WindowsNativeTests(_FileFixture):
         finally:
             fs._Close(handle)
 
-    def test_metadata_only_handle_cannot_retag_a_pinned_empty_directory(self):
-        from tests.windows_filesystem_fixture import set_junction_on_handle
-        outside = fs.ensure_private_directory(self.root / 'retag-target')
-        fs.atomic_write(outside / 'marker', b'foreign-unchanged')
-        for preopened in (False, True):
-            with self.subTest(preopened=preopened):
-                folder = fs.ensure_private_directory(self.root / ('retag-before' if preopened else 'retag-after'))
-                handle = None
-                def metadata_handle():
-                    # FILE_WRITE_ATTRIBUTES is deliberately excluded from
-                    # read/write sharing accounting, so its open may succeed.
-                    opened = fs._CreateFile(fs._extended(folder), 0x100, 1 | 2 | 4, None,
-                                            fs._OPEN_EXISTING, fs._OPEN_REPARSE | fs._BACKUP_SEMANTICS, None)
-                    self.assertNotEqual(opened, fs._INVALID)
-                    return opened
-                try:
-                    if preopened:
-                        handle = metadata_handle()
-                    with fs._directory(folder) as pinned:
-                        if handle is None:
-                            handle = metadata_handle()
-                        # The folder is empty: success cannot be prevented only
-                        # by NTFS's non-empty-directory junction restriction.
-                        with self.assertRaises(PermissionError) as failure:
+    def test_metadata_retag_race_cannot_read_or_create_in_an_external_tree(self):
+        from tests.windows_filesystem_fixture import set_junction_on_handle, clear_junction_on_handle
+        for operation in ('read', 'create', 'atomic'):
+            for preopened in (False, True):
+                with self.subTest(operation=operation, preopened=preopened):
+                    suffix = operation + ('-before' if preopened else '-after')
+                    folder = fs.ensure_private_directory(self.root / ('original-' + suffix))
+                    outside = fs.ensure_private_directory(self.root / ('outside-' + suffix))
+                    fs.atomic_write(outside / 'secret.txt', b'foreign-secret-must-never-return')
+                    handle, changed = None, False
+                    original = fs._NtCreateFile
+                    def metadata_handle():
+                        opened = fs._CreateFile(fs._extended(folder), 0x100, 1 | 2 | 4, None,
+                                                fs._OPEN_EXISTING, fs._OPEN_REPARSE | fs._BACKUP_SEMANTICS, None)
+                        self.assertNotEqual(opened, fs._INVALID)
+                        return opened
+                    def retag_at_native_open(*arguments):
+                        nonlocal handle, changed
+                        attributes = ctypes.cast(arguments[2], ctypes.POINTER(fs._ObjectAttributes)).contents
+                        leaf = attributes.ObjectName.contents.Buffer
+                        is_target = leaf.startswith('.pending-') if operation == 'atomic' else leaf == ('secret.txt' if operation == 'read' else 'new.txt')
+                        if is_target and not changed:
+                            self.assertTrue(attributes.Attributes & 0x1000, 'OBJ_DONT_REPARSE is required')
+                            if handle is None:
+                                handle = metadata_handle()
+                            # Mutate the real empty directory after the last
+                            # userspace check, immediately before NtCreateFile.
+                            # Sharing cannot prevent this metadata-only FSCTL.
                             set_junction_on_handle(handle, outside)
-                        self.assertEqual(failure.exception.winerror, 5)
-                        info = fs._FileInfo()
-                        self.assertTrue(fs._Info(pinned, ctypes.byref(info)))
-                        self.assertFalse(info.attributes & fs._REPARSE)
-                finally:
-                    if handle is not None:
-                        fs._Close(handle)
-                    # On regression remove the junction itself, never its target.
-                    if getattr(os.lstat(folder), 'st_file_attributes', 0) & fs._REPARSE:
-                        folder.rmdir()
-                self.assertEqual((outside / 'marker').read_bytes(), b'foreign-unchanged')
+                            changed = True
+                        return original(*arguments)
+                    try:
+                        if preopened:
+                            handle = metadata_handle()
+                        with patch.object(fs, '_NtCreateFile', side_effect=retag_at_native_open):
+                            with self.assertRaises(OSError):
+                                if operation == 'atomic':
+                                    fs.atomic_write(folder / 'new.txt', b'never-outside')
+                                else:
+                                    with fs.secure_open(folder / ('secret.txt' if operation == 'read' else 'new.txt'),
+                                                        'rb' if operation == 'read' else 'xb') as stream:
+                                        if operation == 'read':
+                                            self.fail('Retag exposed an external file handle')
+                                        stream.write(b'never-outside')
+                        self.assertTrue(changed, 'The real retag must run in the native-open race window')
+                        self.assertEqual((outside / 'secret.txt').read_bytes(), b'foreign-secret-must-never-return')
+                        self.assertEqual(sorted(item.name for item in outside.iterdir()), ['secret.txt'])
+                        # Retag observed before a later operation is rejected,
+                        # too; neither a stale pin nor a known path is trusted.
+                        with self.assertRaises(OSError):
+                            with fs.secure_open(folder / 'secret.txt'):
+                                self.fail('An observed junction was opened')
+                    finally:
+                        if handle is not None:
+                            if changed:
+                                clear_junction_on_handle(handle)
+                            fs._Close(handle)
 
     def test_windows_aliases_ads_and_non_acl_volumes_fail_closed(self):
         for name in ('NUL', 'con.txt', 'COM1', 'value:stream', 'trailing.', 'trailing '):
