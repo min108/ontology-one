@@ -184,6 +184,8 @@ def _initialize_control_unlocked():
         with conn.cursor() as cur:
             for statement in DDL:
                 cur.execute(statement)
+            from .applications import ensure_schema as ensure_application_schema
+            ensure_application_schema(cur)
             # Immutable audit records: not only the HTTP API but SQL UPDATE/DELETE
             # is rejected. Database administrators still own database recovery.
             cur.execute('SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=%s', (database,))
@@ -228,11 +230,23 @@ def initialize_control():
 
 def _audit(cur, principal, action, resource, outcome, details=None, request_id=''):
     safe_details = dict(details or {})
+    if principal and principal.identity_kind == 'application':
+        safe_details.update(application_id=principal.application_id, credential_id=principal.credential_id,
+                            permission_version=principal.permission_version)
     if any(re.search(r'password|token|secret|cookie|authorization', str(key), re.I) for key in safe_details):
         raise ValueError('Secret-bearing audit field is forbidden')
+    def redact(value):
+        if isinstance(value, str):
+            return re.sub(r'onto_app_[A-Za-z0-9_-]{43}', '[application credential redacted]', value)
+        if isinstance(value, dict):
+            return {key: redact(child) for key, child in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [redact(child) for child in value]
+        return value
+    safe_details = redact(safe_details)
     cur.execute('INSERT INTO sec_audit(created_at,actor_id,actor_username,tenant_id,action,resource,outcome,request_id,details) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                 (time.time(), principal.user_id if principal else None, principal.username if principal else None,
-                 principal.tenant_id if principal else None, action[:100], str(resource)[:500], outcome[:32],
+                 principal.tenant_id if principal else None, action[:100], redact(str(resource))[:500], outcome[:32],
                  principal.request_id if principal else request_id, json.dumps(safe_details, ensure_ascii=False, default=str)))
 
 
@@ -324,6 +338,11 @@ def authenticate_session(raw_cookie, request_id):
 def assert_principal_current(principal, require_write=False):
     if principal is None:
         raise HTTPException(401, '登录状态无效。')
+    if principal.identity_kind == 'application':
+        from .applications import assert_application_current
+        return assert_application_current(principal, require_write=require_write)
+    if principal.identity_kind != 'session':
+        raise HTTPException(401, '身份类型无效。')
     with control_connection() as conn, conn.cursor() as cur:
         current = _joined_principal(_session_row(cur, principal=principal), principal.request_id)
         if not _same_identity(current, principal):
@@ -334,7 +353,7 @@ def assert_principal_current(principal, require_write=False):
 
 def assert_job_principal_current(principal, require_write=True):
     """Only a queue-validated lease may use the captured tenant instead of UI scope."""
-    if principal is None:
+    if principal is None or principal.identity_kind != 'session':
         raise HTTPException(401, '任务身份无效。')
     with control_connection() as conn, conn.cursor() as cur:
         current = _joined_principal(_session_row(cur, principal=principal, captured_tenant=principal.tenant_id), principal.request_id)
@@ -353,6 +372,8 @@ def authorized_control_connection(principal, mode='standard'):
     logout and workspace changes have narrow explicit postconditions; a concurrent
     account disable/role change waits on the actor row and cannot race the write.
     """
+    if principal is None or principal.identity_kind != 'session':
+        raise HTTPException(403, '控制面修改只接受用户会话。')
     with control_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
@@ -406,6 +427,8 @@ def _authorized_rows(cur, principal, lock=False):
 def _live_scope_query(cursor, principal, tenant_id=None):
     # One live JOIN validates the session and selects only explicitly authorized
     # target directories; it never caches account state across requests.
+    if principal.identity_kind != 'session':
+        raise HTTPException(403, '应用身份不能使用跨机构授权。')
     sql = """SELECT t.*,g.access,
         CASE WHEN t.id=u.home_tenant_id OR g.access IN ('read_private','write') THEN 'private' ELSE 'published' END AS visibility
         FROM sec_sessions s JOIN sec_users u ON u.id=s.user_id
@@ -438,6 +461,8 @@ def authorized_read_tenants(principal):
 
 def authorized_read_tenants_in_transaction(principal, connection):
     """Fresh scope for a guarded federation write, sharing its actor transaction."""
+    if principal.identity_kind != 'session':
+        raise HTTPException(403, '应用身份不能访问机构联邦控制面。')
     with connection.cursor() as cursor:
         cursor.execute('SELECT * FROM sec_users WHERE id=%s', (principal.user_id,))
         user = cursor.fetchone()
@@ -631,6 +656,8 @@ def change_password(principal, current_password, new_password, ip, user_agent):
 
 
 def require_admin(principal, superadmin=False):
+    if principal is None or principal.identity_kind != 'session':
+        raise HTTPException(403, '管理员操作只接受用户会话。')
     principal = assert_principal_current(principal, require_write=True)
     if principal.role != 'admin' or (superadmin and not principal.is_superadmin):
         raise HTTPException(403, '此操作需要总部平台管理员权限。' if superadmin else '此操作需要机构管理员权限。')

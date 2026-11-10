@@ -1,7 +1,7 @@
 name: ontology-one-v020
 
 x-app: &app
-  image: ontology-one:0.3.0
+  image: ontology-one:0.4.0
   build: .
   restart: unless-stopped
   user: "10001:10001"
@@ -21,6 +21,8 @@ x-app: &app
     ONTOLOGY_DB_POOL_SIZE: ${ONTOLOGY_DB_POOL_SIZE:-16}
     ONTOLOGY_TRUSTED_ORIGINS: ${ONTOLOGY_TRUSTED_ORIGINS:-http://127.0.0.1:8765,http://localhost:8765}
     ONTOLOGY_COOKIE_SECURE: ${ONTOLOGY_COOKIE_SECURE:-0}
+    ONTOLOGY_MCP_ALLOWED_HOSTS: ${ONTOLOGY_MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*}
+    ONTOLOGY_MCP_MAX_CONCURRENT: ${ONTOLOGY_MCP_MAX_CONCURRENT:-4}
 
 services:
   mysql:

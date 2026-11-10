@@ -16,4 +16,4 @@ if __name__ == '__main__':
         initialize_control();initialize_federation();ensure_queue()
         if args.provision_all:
             for tenant in list_tenants():ensure_tenant_schema(tenant['id'])
-    print('0.3.0账户目录、审计约束与后台队列初始化完成。')
+    print('0.4.0账户目录、审计约束与后台队列初始化完成。')

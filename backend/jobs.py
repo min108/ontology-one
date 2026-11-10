@@ -59,6 +59,8 @@ def _slot(tenant, kind, entity):
 
 def enqueue(job_id, kind, entity_id, args, *, retry=False):
     """Call inside the tenant transaction, before committing its job record."""
+    if require_context().identity_kind != 'session':
+        raise HTTPException(403, '应用身份不能提交后台任务。')
     if kind not in ALLOWED or not isinstance(args, list):
         raise ValueError('Unsupported background operation')
     p = assert_principal_current(require_context(), require_write=True)

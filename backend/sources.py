@@ -241,9 +241,14 @@ def _source(conn, source_id, *, lock=False):
 def _permissions(conn, source, principal=None):
     principal = principal or require_context()
     if principal.role == 'admin':
-        return {'manage': True, 'discover': True, 'query': True}
-    grant = conn.execute('SELECT can_discover,can_query FROM source_grants WHERE source_id=? AND user_id=?', (source['id'], principal.user_id)).fetchone()
-    return {'manage': False, 'discover': bool(grant and grant['can_discover']), 'query': bool(grant and grant['can_query'])}
+        base = {'manage': True, 'discover': True, 'query': True}
+    else:
+        grant = conn.execute('SELECT can_discover,can_query FROM source_grants WHERE source_id=? AND user_id=?', (source['id'], principal.user_id)).fetchone()
+        base = {'manage': False, 'discover': bool(grant and grant['can_discover']), 'query': bool(grant and grant['can_query'])}
+    if principal.identity_kind != 'session':
+        from .security.applications import intersect_source_permissions
+        return intersect_source_permissions(principal, conn, source['id'], base)
+    return base
 
 
 def _authorize(conn, source_id, capability=None, *, lock=False, expected_version=None, enabled=True):
@@ -682,6 +687,15 @@ def _mark_query_invalid(source_id, mapping_id, code, source_version, mapping_ver
 
 
 def execute_mapping_query(mapping_id: str, request: QueryBody | dict):
+    principal = require_context()
+    if principal.identity_kind == 'application':
+        from .security.applications import application_source_metadata
+        with application_source_metadata(principal, mapping_id):
+            return _execute_mapping_query(mapping_id, request)
+    return _execute_mapping_query(mapping_id, request)
+
+
+def _execute_mapping_query(mapping_id: str, request: QueryBody | dict):
     """Shared read-only invocation boundary for HTTP and future MCP tools."""
     from .source_adapters import SourceFailure, discover, query
     body = request if isinstance(request, QueryBody) else QueryBody.model_validate(request)

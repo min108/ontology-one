@@ -77,8 +77,9 @@ def _wrap(value):
 
 
 class Cursor:
-    def __init__(self, cursor):
+    def __init__(self, cursor, guard=None):
         self._cursor = cursor
+        self._guard = guard
 
     @property
     def description(self):
@@ -93,10 +94,14 @@ class Cursor:
         return self._cursor.lastrowid
 
     def execute(self, sql, params=()):
+        if self._guard:
+            params = self._guard(sql, params)
         self._cursor.execute(translate(sql), tuple(params or ()))
         return self
 
     def executemany(self, sql, params):
+        if self._guard:
+            self._guard(sql, ())
         self._cursor.executemany(translate(sql), params)
         return self
 
@@ -132,11 +137,20 @@ class Connection:
 
     def _guard(self, sql, params):
         command = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ''
+        if self.principal and self.principal.identity_kind == 'application':
+            # Application tools generate fixed SQL. Reject statement stacking,
+            # comments and SELECT file writes even on a reused public cursor.
+            if re.search(r';|--|/\*|\*/|#|\b(?:OUTFILE|DUMPFILE|LOAD_FILE)\b', sql, re.I):
+                from fastapi import HTTPException
+                raise HTTPException(403, '应用查询语句不受支持。')
         writes = command not in ('SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'SET', 'BEGIN', 'START')
         if writes:
             if self.readonly:
                 from fastapi import HTTPException
                 raise HTTPException(403, '当前连接只允许读取。')
+            if self.principal and self.principal.identity_kind == 'application':
+                from .security.applications import validate_application_write
+                validate_application_write(self.principal, sql)
             if self.principal and not self._dirty:
                 from .jobs import assert_execution_principal_current
                 assert_execution_principal_current(self.principal, require_write=True)
@@ -144,8 +158,7 @@ class Connection:
         return tuple(params or ())
 
     def execute(self, sql, params=()):
-        params = self._guard(sql, params)
-        cursor = Cursor(self.raw.cursor())
+        cursor = Cursor(self.raw.cursor(), self._guard)
         try:
             return cursor.execute(sql, params)
         except Exception as exc:
@@ -155,8 +168,7 @@ class Connection:
             raise
 
     def executemany(self, sql, params):
-        self._guard(sql, ())
-        cursor = Cursor(self.raw.cursor())
+        cursor = Cursor(self.raw.cursor(), self._guard)
         try:
             return cursor.executemany(sql, params)
         except Exception:
@@ -453,6 +465,8 @@ def tenant_connection(tenant_id, readonly=True):
     from .security.store import can_read_tenant
     from fastapi import HTTPException
     principal = require_context()
+    if principal.identity_kind != 'session':
+        raise HTTPException(403, '应用身份只能访问其固定机构。')
     # can_read_tenant atomically validates the live session and its target grant.
     access = can_read_tenant(principal, tenant_id)
     if not access:
@@ -641,7 +655,7 @@ def ensure_tenant_schema(tenant_id):
                          (tenant_id, 'organization', name, '机构根节点', '组织管理', tenant_id, 'published', 'directory',
                           json.dumps(payload, ensure_ascii=False), timestamp, timestamp, 1))
             conn.execute('REPLACE INTO workspace_meta(meta_key,meta_value,updated_at) VALUES(?,?,?)',
-                         ('schema_version', '0.3.0', timestamp))
+                         ('schema_version', '0.4.0', timestamp))
             normalize_collations(conn)
             conn.commit()
             _READY.add(database)

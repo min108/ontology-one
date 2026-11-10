@@ -7,6 +7,9 @@ from pathlib import Path
 import json,uuid,os,hashlib,asyncio
 import pymysql
 from .db import connect,initialize,entity_json,log,now,ROOT,current_org_id
+from .mcp_server import build_mcp_app
+
+mcp_app = build_mcp_app()
 
 @asynccontextmanager
 async def lifespan(app):
@@ -20,12 +23,13 @@ async def lifespan(app):
         await asyncio.to_thread(ensure_queue)
         worker = asyncio.create_task(worker_loop()) if os.getenv('ONTOLOGY_WORKER_ENABLED', '1') == '1' else None
         try:
-            yield
+            async with mcp_app.lifespan():
+                yield
         finally:
             if worker:
                 worker.cancel()
                 await asyncio.gather(worker, return_exceptions=True)
-app=FastAPI(title='Ontology One · 集团本体平台',version='0.3.0',lifespan=lifespan)
+app=FastAPI(title='Ontology One · 集团本体平台',version='0.4.0',lifespan=lifespan)
 from .security.middleware import SecurityMiddleware
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173','http://localhost:8765','http://127.0.0.1:8765'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
@@ -33,7 +37,7 @@ app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http:/
 async def db_error(request,exc):return JSONResponse(status_code=503,content={'detail':'MySQL 数据服务暂时不可用或繁忙，请检查连接后重试。'})
 
 @app.get('/api/health')
-def health():return {'ok':True,'service':'集团本体平台','version':'0.3.0','database':'MySQL','mode':'enterprise-preview','time':now()}
+def health():return {'ok':True,'service':'集团本体平台','version':'0.4.0','database':'MySQL','mode':'enterprise-preview','time':now()}
 @app.get('/api/catalog')
 def catalog():
     with closing(connect()) as c, c:
@@ -353,6 +357,9 @@ from .integrations import router as integration_router
 app.include_router(integration_router, prefix='/api')
 from .sources import router as source_router
 app.include_router(source_router, prefix='/api')
+from .security.applications import router as integration_applications_router
+app.include_router(integration_applications_router, prefix='/api')
+app.mount('/mcp', mcp_app)
 
 dist=ROOT/'frontend/dist'
 if dist.exists():

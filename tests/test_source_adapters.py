@@ -722,6 +722,40 @@ class SourceAdapterTests(unittest.TestCase):
         finally:
             logger.removeHandler(handler)
 
+    def test_authorization_failures_are_not_operational_partial_candidates(self):
+        for number in (1044, 1045, 1142, 1143, 1227, 2026):
+            failure = pymysql.OperationalError(number, 'PRIVATE_SOURCE_TEXT')
+            with self.subTest(number=number), patch.object(adapters, '_TLSRequiredConnection', side_effect=failure):
+                error = self.assert_failure(lambda: adapters.discover(self.mysql))
+                self.assertEqual((error.code, error.status), ('SOURCE_UPSTREAM_AUTH', 403))
+        wrapped = pymysql.OperationalError(2003, 'PRIVATE_SOURCE_TEXT')
+        wrapped.original_exception = ssl.SSLCertVerificationError('PRIVATE_CERTIFICATE_TEXT')
+        with patch.object(adapters, '_TLSRequiredConnection', side_effect=wrapped):
+            error = self.assert_failure(lambda: adapters.discover(self.mysql))
+            self.assertEqual((error.code, error.status), ('SOURCE_UPSTREAM_AUTH', 403))
+
+    def test_http_source_auth_and_service_outage_are_distinguished_before_body(self):
+        class Remote(adapters.httpx2.AsyncBaseTransport):
+            def __init__(self, status): self.status = status
+            async def handle_async_request(self, request):
+                return adapters.httpx2.Response(self.status, content=b'PRIVATE_UPSTREAM_BODY')
+        async def check(status):
+            budget = {'bytes': 0, 'failure': None}
+            transport = adapters._LimitedTransport(budget)
+            await transport.transport.aclose()
+            transport.transport = Remote(status)
+            try:
+                with self.assertRaises(adapters.SourceFailure) as caught:
+                    await transport.handle_async_request(adapters.httpx2.Request('POST', 'https://source.example.test/mcp'))
+                error = caught.exception
+                expected = ('SOURCE_UPSTREAM_AUTH', 403) if status in (401, 403) else ('SOURCE_UPSTREAM_UNAVAILABLE', 503)
+                self.assertEqual((error.code, error.status), expected)
+                self.assertNotIn('PRIVATE', str(error))
+            finally:
+                await transport.aclose()
+        for status in (401, 403, 429, 500, 503):
+            with self.subTest(status=status): asyncio.run(check(status))
+
     def test_mysql_repeated_query_has_no_result_cache(self):
         selected = mysql_resource(columns=['id'])
         connections = [FakeConnection([{'id': 'first'}], resources=[selected]), FakeConnection([{'id': 'second'}], resources=[selected])]

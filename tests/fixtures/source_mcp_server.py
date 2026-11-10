@@ -42,7 +42,8 @@ def create_app(state_path: Path):
         return json.loads(state_path.read_text())
 
     events_path = state_path.with_suffix('.events.json')
-    counters = {'discover': 0, 'query_started': 0, 'query_finished': 0}
+    counters = {'discover': 0, 'query_started': 0, 'query_finished': 0,
+                'caller_token_seen': 0, 'authenticated_requests': 0}
 
     def mark(name):
         counters[name] += 1
@@ -84,6 +85,8 @@ def create_app(state_path: Path):
         while read().get('query_hold') and time.monotonic() - began < 12:
             await asyncio.sleep(.025)
         state = read()
+        if state.get('mode') == 'query_error':
+            raise ValueError('Fixture source tool rejected this request')
         if state.get('query_delay'):
             await asyncio.sleep(min(float(state['query_delay']), 8))
         rows = [dict(row) for row in state['rows']]
@@ -103,7 +106,10 @@ def create_app(state_path: Path):
                 if op == 'is_null': return actual is None
                 if op == 'eq': return actual == value
                 if op == 'ne': return actual != value
-                if op == 'in': return actual in value
+                if op == 'in':
+                    if state.get('coerce_key_filters'):
+                        return any(str(actual) == str(item) for item in value)
+                    return actual in value
                 if actual is None: return False
                 return {'gt': lambda: actual > value, 'gte': lambda: actual >= value,
                         'lt': lambda: actual < value, 'lte': lambda: actual <= value}[op]()
@@ -126,11 +132,41 @@ def create_app(state_path: Path):
         if scope['type'] == 'http':
             headers = dict(scope.get('headers', []))
             expected = ('Bearer ' + read()['token']).encode()
+            if headers.get(b'authorization', b'').startswith(b'Bearer onto_app_'):
+                mark('caller_token_seen')
             if not hmac.compare_digest(headers.get(b'authorization', b''), expected):
                 body = b'{"detail":"Authentication required"}'
                 await send({'type': 'http.response.start', 'status': 401, 'headers': [(b'content-type', b'application/json')]})
                 await send({'type': 'http.response.body', 'body': body})
                 return
+            mark('authenticated_requests')
+            failure_status = read().get('query_http_status')
+            if failure_status and scope.get('method') == 'POST':
+                chunks = []
+                while True:
+                    message = await receive()
+                    if message['type'] != 'http.request':
+                        break
+                    chunks.append(message.get('body', b''))
+                    if not message.get('more_body'):
+                        break
+                payload = b''.join(chunks)
+                request = json.loads(payload)
+                if request.get('method') == 'tools/call' and request.get('params', {}).get('name') == 'ontology_source_query':
+                    mark('query_started')
+                    body = b'{"detail":"Fixture source request unavailable"}'
+                    await send({'type': 'http.response.start', 'status': int(failure_status), 'headers': [(b'content-type', b'application/json')]})
+                    await send({'type': 'http.response.body', 'body': body})
+                    return
+                original_receive = receive
+                delivered = False
+                async def replay():
+                    nonlocal delivered
+                    if not delivered:
+                        delivered = True
+                        return {'type': 'http.request', 'body': payload, 'more_body': False}
+                    return await original_receive()
+                receive = replay
         await application(scope, receive, send)
 
     return authenticated

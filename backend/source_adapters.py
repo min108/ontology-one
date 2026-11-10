@@ -578,8 +578,12 @@ class _LimitedTransport(httpx2.AsyncBaseTransport):
 
     async def handle_async_request(self, request):
         response = await self.transport.handle_async_request(request)
-        code, message = None, None
-        if 300 <= response.status_code < 400:
+        code, message, status = None, None, 502
+        if response.status_code in (401, 403):
+            code, message, status = 'SOURCE_UPSTREAM_AUTH', '源系统拒绝当前凭据或读取授权。', 403
+        elif response.status_code == 429 or response.status_code >= 500:
+            code, message, status = 'SOURCE_UPSTREAM_UNAVAILABLE', '源系统暂时不可用，请稍后重试。', 503
+        elif 300 <= response.status_code < 400:
             code, message = 'MCP_REDIRECT_REJECTED', 'MCP端点不得重定向，请由管理员配置最终地址。'
         elif response.headers.get('content-encoding', 'identity').lower() not in ('', 'identity'):
             code, message = 'MCP_ENCODING_REJECTED', 'MCP端点须返回未压缩的受限响应。'
@@ -589,7 +593,7 @@ class _LimitedTransport(httpx2.AsyncBaseTransport):
                 code, message = 'SOURCE_RESULT_LIMIT', 'MCP响应超过传输大小限制。'
         if code:
             await response.aclose()
-            error = SourceFailure(code, message, 502)
+            error = SourceFailure(code, message, status)
             self.budget['failure'] = error
             raise error
         return httpx2.Response(response.status_code, headers=response.headers,
@@ -658,6 +662,22 @@ def _exception_leaves(error):
     return [leaf for item in nested for leaf in _exception_leaves(item)] if nested else [error]
 
 
+def _tls_failure(error):
+    """Keep certificate failures distinct from operational outages for joins."""
+    pending, seen = [error], set()
+    while pending and len(seen) < 32:
+        item = pending.pop()
+        if item is None or id(item) in seen:
+            continue
+        seen.add(id(item))
+        if isinstance(item, ssl.SSLError):
+            return True
+        pending.extend(getattr(item, 'exceptions', ()))
+        pending.extend((getattr(item, '__cause__', None), getattr(item, '__context__', None),
+                        getattr(item, 'original_exception', None)))
+    return False
+
+
 def _mcp_operation(config, credentials, operation, arguments, expected_resource=None):
     budget = {'bytes': 0, 'failure': None}
     try:
@@ -669,10 +689,14 @@ def _mcp_operation(config, credentials, operation, arguments, expected_resource=
         for leaf in leaves:
             if isinstance(leaf, SourceFailure):
                 raise leaf from None
+        if _tls_failure(exc):
+            raise SourceFailure('SOURCE_UPSTREAM_AUTH', 'MCP源系统安全连接验证失败。', 403) from None
         if any(isinstance(leaf, (TimeoutError, httpx2.TimeoutException)) or
                isinstance(leaf, MCPError) and leaf.code == REQUEST_TIMEOUT or
                'timeout' in type(leaf).__name__.lower() for leaf in leaves):
             raise SourceFailure('SOURCE_TIMEOUT', 'MCP请求超时，请缩小范围或检查上游服务。', 504) from None
+        if any(isinstance(leaf, httpx2.NetworkError) for leaf in leaves):
+            raise SourceFailure('SOURCE_UPSTREAM_UNAVAILABLE', 'MCP源系统连接暂时不可用。', 503) from None
         raise SourceFailure('SOURCE_UPSTREAM_ERROR', 'MCP连接或协议调用失败，请核对服务是否支持ontology-source/1。', 502) from None
 
 
@@ -684,8 +708,12 @@ def _boundary(operation):
         raise
     except Exception as exc:
         code = exc.args[0] if isinstance(exc, pymysql.MySQLError) and exc.args else None
+        if code in (1044, 1045, 1142, 1143, 1227, 2026) or _tls_failure(exc):
+            raise SourceFailure('SOURCE_UPSTREAM_AUTH', '源系统拒绝凭据、读取授权或安全连接。', 403) from None
         if isinstance(exc, (TimeoutError, httpx2.TimeoutException)) or code in (3024, 1969):
             raise SourceFailure('SOURCE_TIMEOUT', '数据源请求超时，请缩小查询范围。', 504) from None
+        if code in (2002, 2003, 2006, 2013) or isinstance(exc, (ConnectionError, httpx2.NetworkError)):
+            raise SourceFailure('SOURCE_UPSTREAM_UNAVAILABLE', '源系统连接暂时不可用。', 503) from None
         raise SourceFailure('SOURCE_UPSTREAM_ERROR', '数据源连接或查询失败，请检查上游服务和只读授权。', 502) from None
     finally:
         _REMOTE_LOG_SCOPE.reset(token)

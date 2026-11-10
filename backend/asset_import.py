@@ -371,7 +371,7 @@ def download_template(kind: str):
     output = io.BytesIO()
     workbook.save(output)
     output.seek(0)
-    filename = f'Ontology-One-0.3.0-{KIND_NAMES[kind]}-标准导入模板.xlsx'
+    filename = f'Ontology-One-0.4.0-{KIND_NAMES[kind]}-标准导入模板.xlsx'
     return StreamingResponse(output, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                              headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"})
 

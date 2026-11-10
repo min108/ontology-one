@@ -16,6 +16,8 @@ REVIEW = frozenset({'admin', 'reviewer'})
 
 # Paths are the existing business contract, including downloads.
 READ_PATHS = (
+    '/api/integrations/applications',
+    '/api/integrations/applications/options',
     '/api/sources',
     '/api/sources/lineage/{asset_id}',
     '/api/sources/{source_id}',
@@ -94,6 +96,10 @@ READ_PATHS = (
 CONTROL_PREFIXES = ("/api/auth/", "/api/admin/", "/api/federation/")
 
 WRITE_RULES = (
+    ('POST', '/api/integrations/applications', ADMIN),
+    ('PATCH', '/api/integrations/applications/{application_id}', ADMIN),
+    ('POST', '/api/integrations/applications/{application_id}/credentials', ADMIN),
+    ('POST', '/api/integrations/applications/{application_id}/revoke', ADMIN),
     ('POST', '/api/sources', ADMIN),
     ('PATCH', '/api/sources/{source_id}', ADMIN),
     ('PUT', '/api/sources/{source_id}/grants', ADMIN),
@@ -210,6 +216,10 @@ class Decision:
 
 def authorize(principal, method: str, path: str, body: Mapping | None = None) -> Decision:
     """Authorize a known business operation. Identity never comes from the body."""
+    if principal.identity_kind != 'session':
+        return Decision(False, 403, '浏览器业务接口只接受用户会话。')
+    if path.startswith('/api/integrations/applications') and principal.role != 'admin':
+        return Decision(False, 403, '应用管理需要机构管理员权限。')
     if principal.role not in ROLES:
         return Decision(False)
     if getattr(principal, 'must_change_password', False) and not path.startswith('/api/auth/'):

@@ -21,6 +21,10 @@ class Principal:
     request_id: str = ''
     visibility: str = 'private'
     must_change_password: bool = False
+    identity_kind: str = 'session'
+    application_id: str = ''
+    credential_id: str = ''
+    permission_version: int = 0
 
 
 _current: ContextVar[Principal | None] = ContextVar('ontology_principal', default=None)
