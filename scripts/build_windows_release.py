@@ -195,7 +195,10 @@ def build(args):
     site=package/'runtime/python/Lib/site-packages'
     env=build_environment()
     subprocess.run([sys.executable,'-m','pip','install','--no-index','--no-deps','--no-compile','--target',str(site),*[str(path) for path in wheel_paths]],env=env,check=True)
-    (package/'runtime/python/python312._pth').write_text('python312.zip\n.\nLib/site-packages\n../..\nimport site\n',encoding='utf-8')
+    # CPython's early Windows path normalizer resolved "../.." one level
+    # short in the real embedded-runtime probe. Native separators with a
+    # terminating separator preserve the complete parent traversal.
+    (package/'runtime/python/python312._pth').write_text('python312.zip\n.\nLib\\site-packages\n..\\..\\\nimport site\n',encoding='utf-8')
     (package/'runtime/skill-python/python312._pth').write_text('python312.zip\n.\n',encoding='utf-8')
     # Validate application resolution from outside the checkout/package before
     # spending time signing/copying redistributables or compressing a release.
