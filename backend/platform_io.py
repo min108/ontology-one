@@ -375,17 +375,27 @@ if WINDOWS:
             for handle in reversed(handles):
                 _Close(handle)
 
-    def _rename(handle, parent, target, overwrite):
+    def _rename(handle, target, overwrite):
+        if (not isinstance(target, str) or not target or target in {'.', '..'}
+                or any(character in target for character in '/\\:\x00') or target[-1] in {'.', ' '}):
+            raise PermissionError(errno.EACCES, 'A rename requires a single filename')
         encoded = target.encode('utf-16-le')
         offset = _RenameInfo.FileName.offset
         data = ctypes.create_string_buffer(max(ctypes.sizeof(_RenameInfo), offset + len(encoded)))
         info = ctypes.cast(data, ctypes.POINTER(_RenameInfo)).contents
-        info.ReplaceIfExists, info.RootDirectory, info.FileNameLength = bool(overwrite), parent, len(encoded)
+        # FILE_RENAME_INFORMATION documents NULL RootDirectory + a simple name
+        # as renaming within the source handle's existing directory. Our temp
+        # is created in that same directory and remains open throughout.
+        # Supplying RootDirectory unnecessarily invokes IopOpenLinkOrRenameTarget
+        # with FILE_WRITE_DATA, conflicting with the directory's no-WRITE pin.
+        # Keep every pin; never reopen or resolve an absolute destination path.
+        # https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information
+        info.ReplaceIfExists, info.RootDirectory, info.FileNameLength = bool(overwrite), None, len(encoded)
         ctypes.memmove(ctypes.addressof(data) + offset, encoded, len(encoded))
         status = _IoStatus()
         result = _NtSetInfo(handle, ctypes.byref(status), data, len(data), 10)  # FileRenameInformation
         if result < 0:
-            _win_error(_NtError(result))
+            _win_error(_NtError(result), operation='NtSetInformationFile:rename')
 
     def _delete_on_close(handle):
         remove = wintypes.BOOL(True)
@@ -519,7 +529,7 @@ def atomic_write(path, data, *, overwrite=True, before_commit=None):
                     # Leaf validation rejects an existing junction/symlink. The
                     # rename itself replaces an object, never follows its target.
                     reject_reparse_points(value)
-                    _rename(handle, parent, value.name, overwrite)
+                    _rename(handle, value.name, overwrite)
                     installed = True
                     return size
                 finally:

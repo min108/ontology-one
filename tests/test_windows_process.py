@@ -177,6 +177,36 @@ class WindowsProcessContractTests(unittest.TestCase):
         self.assertEqual(C.cast(updates[0x2000F][3], C.POINTER(win.DWORD))[0], 1)
         process.close()
 
+    def test_lpac_effective_access_requires_only_restricted_applications_bit(self):
+        kernel, state = Kernel(), {'mask': 2, 'permitted': True, 'success': True}
+        def duplicate(_token, level, result):
+            self.assertEqual(level, 2)
+            C.cast(result, C.POINTER(win.HANDLE))[0] = 501
+            return True
+        def descriptor(text, _revision, result, _size):
+            self.assertIn('(A;;0x1;;;S-1-15-2-1)', text)
+            self.assertIn('(A;;0x2;;;S-1-15-2-2)', text)
+            C.cast(result, C.POINTER(win.LPVOID))[0] = 600
+            return True
+        def access(_sd, _token, desired, _mapping, _privileges, _size, mask, permitted):
+            self.assertEqual(desired, 0x02000000)
+            C.cast(mask, C.POINTER(win.DWORD))[0] = state['mask']
+            C.cast(permitted, C.POINTER(win.BOOL))[0] = state['permitted']
+            return state['success']
+        advapi = types.SimpleNamespace(DuplicateToken=duplicate, ConvertStringSecurityDescriptorToSecurityDescriptorW=descriptor,
+                                       AccessCheck=access)
+        with patch.object(win, '_api', return_value=(kernel, advapi, None, None)):
+            win._verify_lpac_access(123)
+            for mask, permitted in ((1, True), (3, True), (0, False)):
+                state.update(mask=mask, permitted=permitted)
+                with self.assertRaises(win.WindowsProcessError) as caught: win._verify_lpac_access(123)
+                self.assertEqual(caught.exception.code, 'APPCONTAINER_LPAC_REQUIRED')
+                self.assertEqual(caught.exception.diagnostic()['access_mask'], mask)
+            state.update(mask=2, permitted=True, success=False)
+            with self.assertRaises(win.WindowsProcessError) as caught: win._verify_lpac_access(123)
+            self.assertEqual(caught.exception.code, 'APPCONTAINER_UNAVAILABLE')
+            self.assertEqual(caught.exception.operation, 'AccessCheck')
+
     def test_current_job_limits_are_queried_from_kernel_not_environment(self):
         kernel = Kernel()
         with patch.object(win, '_api', return_value=(kernel, None, None, None)):

@@ -23,21 +23,27 @@ import uuid
 DWORD, WORD, BOOL, HRESULT = C.c_uint32, C.c_uint16, C.c_int32, C.c_int32
 HANDLE, SIZE_T, LPVOID = C.c_void_p, C.c_size_t, C.c_void_p
 PIPE, DEVNULL, STDOUT = subprocess.PIPE, subprocess.DEVNULL, subprocess.STDOUT
+_ALL_APPLICATION_PACKAGES_OPT_OUT = 1
 
 
 class WindowsProcessError(OSError):
     """Safe fixed diagnostic: never embeds command lines, paths or child output."""
-    def __init__(self, code='PROCESS_UNAVAILABLE', *, native_error=None, operation=None):
+    def __init__(self, code='PROCESS_UNAVAILABLE', *, native_error=None, operation=None, token_info_class=None, access_mask=None):
         self.code = code
         self.native_error = native_error if type(native_error) is int and 0 <= native_error <= 0xFFFFFFFF else None
         self.operation = operation if operation in {'CreateProcessW', 'AssignProcessToJobObject',
-            'UpdateProcThreadAttribute', 'ResumeThread', 'OpenProcessToken', 'GetTokenInformation'} else None
+            'UpdateProcThreadAttribute', 'ResumeThread', 'OpenProcessToken', 'GetTokenInformation', 'DuplicateToken', 'AccessCheck'} else None
+        self.token_info_class = token_info_class if type(token_info_class) is int and token_info_class in {29, 30, 31, 46} else None
+        self.access_mask = access_mask if type(access_mask) is int and 0 <= access_mask <= 0xFFFFFFFF else None
         super().__init__(code)
 
     def diagnostic(self):
         # Opt-in native acceptance logging only; ordinary API reports still use
         # the fixed code. Numeric errors avoid FormatMessage/path disclosure.
-        return {'code': self.code, 'operation': self.operation, 'win32_error': self.native_error}
+        result = {'code': self.code, 'operation': self.operation, 'win32_error': self.native_error}
+        if self.token_info_class is not None: result['token_info_class'] = self.token_info_class
+        if self.access_mask is not None: result['access_mask'] = self.access_mask
+        return result
 
 
 @dataclass(frozen=True)
@@ -115,6 +121,10 @@ class SERVICE_STATUS_PROCESS(C.Structure):
         'dwWin32ExitCode', 'dwServiceSpecificExitCode', 'dwCheckPoint', 'dwWaitHint', 'dwProcessId', 'dwServiceFlags')]
 
 
+class GENERIC_MAPPING(C.Structure):
+    _fields_ = [(name, DWORD) for name in ('GenericRead', 'GenericWrite', 'GenericExecute', 'GenericAll')]
+
+
 @lru_cache(maxsize=1)
 def _api():
     if os.name != 'nt' or C.sizeof(LPVOID) != 8:
@@ -153,6 +163,9 @@ def _api():
         ('OpenProcessToken', BOOL, [HANDLE, DWORD, C.POINTER(HANDLE)]),
         ('GetTokenInformation', BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
         ('EqualSid', BOOL, [LPVOID, LPVOID]),
+        ('DuplicateToken', BOOL, [HANDLE, C.c_int, C.POINTER(HANDLE)]),
+        ('AccessCheck', BOOL, [LPVOID, HANDLE, DWORD, C.POINTER(GENERIC_MAPPING), LPVOID,
+                               C.POINTER(DWORD), C.POINTER(DWORD), C.POINTER(BOOL)]),
         ('OpenSCManagerW', HANDLE, [C.c_wchar_p, C.c_wchar_p, DWORD]),
         ('OpenServiceW', HANDLE, [HANDLE, C.c_wchar_p, DWORD]),
         ('QueryServiceStatusEx', BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
@@ -169,11 +182,11 @@ def _api():
     return kernel, advapi, userenv, ole
 
 
-def _check(value, code='PROCESS_UNAVAILABLE', *, operation=None):
+def _check(value, code='PROCESS_UNAVAILABLE', *, operation=None, token_info_class=None):
     if not value:
         # Cleanup Win32 calls can overwrite the thread-local last error.
         native_error = C.get_last_error() if hasattr(C, 'get_last_error') else None
-        raise WindowsProcessError(code, native_error=native_error, operation=operation)
+        raise WindowsProcessError(code, native_error=native_error, operation=operation, token_info_class=token_info_class)
     return value
 
 
@@ -215,27 +228,60 @@ def _job_limits(limits):
     return info
 
 
+def _verify_lpac_access(token):
+    """Prove effective LPAC semantics on the actual suspended child's token.
+
+    Token information class 46 is enumerated, but some Windows user-mode builds
+    reject it with ERROR_INVALID_PARAMETER. We instead use documented Win32
+    DuplicateToken + AccessCheck: an LPAC disregards ALL APPLICATION PACKAGES.
+    This is the same synthetic access-mask check used by Chromium's sandbox:
+    https://chromium.googlesource.com/chromium/src/+/main/sandbox/win/src/app_container_test.cc
+    See CheckLpacToken; the 1/2 masks are our synthetic rights, not OS flags.
+    No real resource ACL is modified, and failure never permits ResumeThread.
+    """
+    kernel, advapi, _, _ = _api()
+    impersonation, descriptor = HANDLE(), LPVOID()
+    _check(advapi.DuplicateToken(token, 2, C.byref(impersonation)), 'APPCONTAINER_UNAVAILABLE', operation='DuplicateToken')
+    try:
+        sddl = 'O:SYG:SYD:(A;;0x3;;;WD)(A;;0x1;;;S-1-15-2-1)(A;;0x2;;;S-1-15-2-2)'
+        _check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, C.byref(descriptor), None), 'APPCONTAINER_UNAVAILABLE')
+        mapping = GENERIC_MAPPING()
+        privileges = C.create_string_buffer(1024)
+        privilege_size, granted, permitted = DWORD(len(privileges)), DWORD(), BOOL()
+        _check(advapi.AccessCheck(descriptor, impersonation, 0x02000000, C.byref(mapping), privileges,
+            C.byref(privilege_size), C.byref(granted), C.byref(permitted)), 'APPCONTAINER_UNAVAILABLE', operation='AccessCheck')
+        if not permitted.value or granted.value != 0x2:
+            raise WindowsProcessError('APPCONTAINER_LPAC_REQUIRED', operation='AccessCheck', access_mask=int(granted.value))
+    finally:
+        if descriptor: kernel.LocalFree(descriptor)
+        kernel.CloseHandle(impersonation)
+
+
 def _verify_appcontainer_token(process, expected_sid):
     kernel, advapi, _, _ = _api()
     token = HANDLE()
-    _check(advapi.OpenProcessToken(process, 0x8, C.byref(token)), 'APPCONTAINER_UNAVAILABLE')
+    _check(advapi.OpenProcessToken(process, 0x8 | 0x2, C.byref(token)), 'APPCONTAINER_UNAVAILABLE', operation='OpenProcessToken')
     try:
-        for kind in (29, 46):  # TokenIsAppContainer / TokenIsLessPrivilegedAppContainer.
-            value, size = DWORD(), DWORD()
-            _check(advapi.GetTokenInformation(token, kind, C.byref(value), C.sizeof(value), C.byref(size)), 'APPCONTAINER_UNAVAILABLE')
-            if value.value != 1: raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        value, size = DWORD(), DWORD()
+        _check(advapi.GetTokenInformation(token, 29, C.byref(value), C.sizeof(value), C.byref(size)),
+               'APPCONTAINER_UNAVAILABLE', operation='GetTokenInformation', token_info_class=29)
+        if not value.value or size.value != C.sizeof(value):
+            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE', operation='GetTokenInformation', token_info_class=29)
+        _verify_lpac_access(token)
         size = DWORD()
         advapi.GetTokenInformation(token, 31, None, 0, C.byref(size))
         if not 0 < size.value < 65536: raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
         data = C.create_string_buffer(size.value)
-        _check(advapi.GetTokenInformation(token, 31, data, size, C.byref(size)), 'APPCONTAINER_UNAVAILABLE')
+        _check(advapi.GetTokenInformation(token, 31, data, size, C.byref(size)), 'APPCONTAINER_UNAVAILABLE',
+               operation='GetTokenInformation', token_info_class=31)
         observed_sid = C.cast(data, C.POINTER(LPVOID))[0]
         _check(advapi.EqualSid(observed_sid, expected_sid), 'APPCONTAINER_UNAVAILABLE')
         size = DWORD()
         advapi.GetTokenInformation(token, 30, None, 0, C.byref(size))
         if not 0 < size.value < 65536: raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
         data = C.create_string_buffer(size.value)
-        _check(advapi.GetTokenInformation(token, 30, data, size, C.byref(size)), 'APPCONTAINER_UNAVAILABLE')
+        _check(advapi.GetTokenInformation(token, 30, data, size, C.byref(size)), 'APPCONTAINER_UNAVAILABLE',
+               operation='GetTokenInformation', token_info_class=30)
         if C.cast(data, C.POINTER(DWORD))[0] != 0:
             raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
     finally:
@@ -533,7 +579,7 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
             if not isinstance(appcontainer, AppContainerProfile) or not appcontainer.sid:
                 raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
             capabilities = SECURITY_CAPABILITIES(appcontainer.sid, None, 0, 0)
-            policy = DWORD(1)  # LPAC: opt out of ALL APPLICATION PACKAGES grants.
+            policy = DWORD(_ALL_APPLICATION_PACKAGES_OPT_OUT)  # Always 1 in production; native tests exercise the rejecting negative control.
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x20009, C.byref(capabilities), C.sizeof(capabilities), None, None), 'APPCONTAINER_UNAVAILABLE')
             _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x2000F, C.byref(policy), C.sizeof(policy), None, None), 'APPCONTAINER_UNAVAILABLE')
         flags = 0x4 | 0x80000 | 0x400 | 0x08000000

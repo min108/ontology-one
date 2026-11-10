@@ -176,6 +176,35 @@ class WindowsNativeTests(_FileFixture):
             finally:
                 fs._Close(handle)
 
+    def test_same_directory_rename_keeps_strong_parent_pin_through_native_commit(self):
+        folder = fs.ensure_private_directory(self.root / 'same-directory')
+        path = folder / 'private.json'
+        fs.atomic_write(path, b'previous')
+        native = fs._NtSetInfo
+        def verify_pin_then_commit(handle, status, data, length, operation):
+            self.assertEqual(operation, 10)
+            info = ctypes.cast(data, ctypes.POINTER(fs._RenameInfo)).contents
+            self.assertIsNone(info.RootDirectory)
+            leaf = ctypes.string_at(ctypes.addressof(data) + fs._RenameInfo.FileName.offset,
+                                    info.FileNameLength).decode('utf-16-le')
+            self.assertEqual(leaf, path.name)
+            attack = fs._CreateFile(fs._extended(folder), fs._GENERIC_WRITE, 1 | 2 | 4, None,
+                                   fs._OPEN_EXISTING, fs._OPEN_REPARSE | fs._BACKUP_SEMANTICS, None)
+            if attack != fs._INVALID:
+                fs._Close(attack)
+                self.fail('Atomic commit released the strong directory pin')
+            self.assertEqual(ctypes.get_last_error(), 32)
+            return native(handle, status, data, length, operation)
+        with patch.object(fs, '_NtSetInfo', side_effect=verify_pin_then_commit) as rename:
+            fs.atomic_write(path, b'updated')
+            rename.assert_called_once()
+        with fs.secure_open(path, require_private=True) as stream:
+            self.assertEqual(stream.read(), b'updated')
+        self.assertEqual([item.name for item in folder.iterdir()], [path.name])
+        for forbidden in ('../escape', 'other\\escape', 'C:\\escape', 'stream:ads', '.', ''):
+            with self.subTest(forbidden=forbidden), self.assertRaises(PermissionError):
+                fs._rename(None, forbidden, True)
+
     def test_junctions_are_rejected_without_following_foreign_tree(self):
         outside = fs.ensure_private_directory(self.root / 'foreign')
         fs.atomic_write(outside / 'secret', b'foreign')

@@ -20,6 +20,7 @@ import shutil
 import socket
 import tempfile
 import unittest
+from unittest.mock import patch
 import uuid
 
 from backend import windows_process as native
@@ -63,7 +64,7 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         cls.system_root = os.environ.get('SystemRoot', r'C:\Windows')
 
     @contextmanager
-    def sandbox(self, script, *, limits=None):
+    def sandbox(self, script, *, limits=None, diagnose=True):
         temporary = tempfile.TemporaryDirectory(prefix='Ontology native 沙盒 ! ')
         root = ensure_private_directory(Path(temporary.name))
         runtime = root / 'runtime'
@@ -87,7 +88,8 @@ class WindowsSandboxNativeTests(unittest.TestCase):
                 cwd=str(work), env=environment, limits=LIMITS if limits is None else limits, appcontainer=profile)
             yield owner, root, runtime, work, profile
         except native.WindowsProcessError as exc:
-            print(json.dumps({'windows_sandbox_failure': exc.diagnostic()}, ensure_ascii=True), flush=True)
+            if diagnose:
+                print(json.dumps({'windows_sandbox_failure': exc.diagnostic()}, ensure_ascii=True), flush=True)
             raise
         finally:
             try:
@@ -114,6 +116,33 @@ class WindowsSandboxNativeTests(unittest.TestCase):
         with self.sandbox(script) as (owner, *_):
             self.assertEqual(self.communicate_json(owner, {'number': 7, 'text': '中文'}),
                              {'value': {'number': 7, 'text': '中文'}, 'ok': True})
+
+    def test_lpac_proof_rejects_an_ordinary_appcontainer_before_resume(self):
+        # Negative control only: create an actual ordinary AC, while retaining
+        # the production verifier. Its suspended child must never be resumed.
+        # No verification API/result is mocked and the script is a benign noop.
+        with patch.object(native, '_ALL_APPLICATION_PACKAGES_OPT_OUT', 0):
+            with self.assertRaises(native.WindowsProcessError) as caught:
+                with self.sandbox('pass\n', diagnose=False):
+                    self.fail('An ordinary AppContainer was accepted as LPAC')
+        self.assertEqual(caught.exception.code, 'APPCONTAINER_LPAC_REQUIRED')
+        self.assertEqual(caught.exception.operation, 'AccessCheck')
+        self.assertEqual(caught.exception.access_mask, 3)
+
+    def test_lpac_proof_rejects_the_standard_host_token(self):
+        kernel, advapi, _, _ = native._api()
+        token = native.HANDLE()
+        native._check(advapi.OpenProcessToken(kernel.GetCurrentProcess(), 0x8 | 0x2, ctypes.byref(token)))
+        try:
+            value, size = native.DWORD(), native.DWORD()
+            native._check(advapi.GetTokenInformation(token, 29, ctypes.byref(value), ctypes.sizeof(value), ctypes.byref(size)))
+            self.assertEqual(value.value, 0)
+            with self.assertRaises(native.WindowsProcessError) as caught:
+                native._verify_lpac_access(token)
+            self.assertEqual(caught.exception.code, 'APPCONTAINER_LPAC_REQUIRED')
+            self.assertEqual(caught.exception.access_mask, 3)
+        finally:
+            kernel.CloseHandle(token)
 
     def test_unicode_json_pipes_use_utf8_despite_isolated_mode_and_windows_acp(self):
         script = ('import json,sys\nvalue=json.load(sys.stdin)\n'
