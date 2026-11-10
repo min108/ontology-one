@@ -78,7 +78,17 @@ def summarize(csv_path: Path, receipt_path: Path) -> dict:
         raise ValueError('INVALID_PROBE_RECEIPT')
     if any(type(pid) is not int or not 0 < pid < 2**32 for pid in pids):
         raise ValueError('INVALID_PROBE_PID')
-    owned = set(pids); counts = Counter(); matched = rows = 0
+    control_pids = receipt.get('control_pids', [])
+    if (not isinstance(control_pids, list) or len(control_pids) > 2 or
+            any(type(pid) is not int or not 0 < pid < 2**32 for pid in control_pids)):
+        raise ValueError('INVALID_CONTROL_PID')
+    owned, control = set(pids), set(control_pids)
+    if owned & control: raise ValueError('OVERLAPPING_PROBE_PIDS')
+    probe_pid = receipt.get('probe_pid')
+    if probe_pid is not None and (type(probe_pid) is not int or not 0 < probe_pid < 2**32 or probe_pid in owned | control):
+        raise ValueError('INVALID_PARENT_PID')
+    parent = {probe_pid} if probe_pid is not None else set()
+    counts = Counter(); sequence = {}; matched = controlled = parented = rows = malformed_pids = 0
     with csv_path.open('rb') as file:
         prefix = file.read(4)
     encoding = 'utf-16' if prefix.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig'
@@ -90,9 +100,14 @@ def summarize(csv_path: Path, receipt_path: Path) -> dict:
             rows += 1
             if rows > 2_000_000: raise ValueError('CAPTURE_ROW_LIMIT')
             try: pid = int(row['PID'])
-            except (ValueError, TypeError): continue
-            if pid not in owned: continue
-            matched += 1
+            except (ValueError, TypeError):
+                malformed_pids += 1
+                continue
+            if pid not in owned | control | parent: continue
+            role = 'lpac' if pid in owned else ('normal_control' if pid in control else 'probe_parent')
+            if pid in owned: matched += 1
+            elif pid in control: controlled += 1
+            else: parented += 1
             raw_operation = row['Operation']
             operation = raw_operation if raw_operation in OPERATIONS else 'other_operation'
             category, module = object_label(row['Path'])
@@ -100,15 +115,21 @@ def summarize(csv_path: Path, receipt_path: Path) -> dict:
             # The hash permits correlating otherwise undisclosed objects without
             # leaking directory names, registry values, or package/user paths.
             object_id = hashlib.sha256(row['Path'].encode('utf-8')).hexdigest()[:16]
-            counts[(pid, operation, category, module, status, object_id,
-                    canonical_system_object(row['Path']))] += 1
+            key = (pid, operation, category, module, status, object_id,
+                   canonical_system_object(row['Path']), role)
+            counts[key] += 1
+            sequence.setdefault(key, [rows, rows])[1] = rows
     entries = [{'pid': k[0], 'operation': k[1], 'object': k[2], 'module': k[3],
                 'ntstatus': k[4], 'object_id': k[5], 'system_object': k[6],
-                'count': n} for k, n in counts.items()]
-    entries.sort(key=lambda item: (item['ntstatus'] != 0xC0000022,
+                'role': k[7], 'count': n, 'first_sequence': sequence[k][0],
+                'last_sequence': sequence[k][1]} for k, n in counts.items()]
+    entries.sort(key=lambda item: (item['role'] != 'lpac', item['ntstatus'] != 0xC0000022,
         item['ntstatus'] in (0, 0x104), item['operation'] != 'Load Image', item['object_id']))
-    return {'schema_version': 1, 'status': 'captured' if matched else 'no_owned_events',
+    return {'schema_version': 1, 'status': 'captured' if matched else ('control_only' if controlled else ('parent_only' if parented else 'no_owned_events')),
         'owned_pid_count': len(owned), 'owned_event_count': matched,
+        'control_pid_count': len(control), 'control_event_count': controlled,
+        'parent_pid_count': len(parent), 'parent_event_count': parented,
+        'csv_event_count': rows, 'unparseable_pid_count': malformed_pids,
         'distinct_event_count': len(entries), 'truncated': len(entries) > 256,
         'events': entries[:256], 'raw_content_retained': False}
 

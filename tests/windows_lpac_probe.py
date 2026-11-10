@@ -94,16 +94,35 @@ def main():
     arguments = parser.parse_args()
     if os.name != 'nt' or _elevated():
         raise SystemExit('Loader probe requires a standard Windows user')
-    receipt = {'schema_version': 1, 'purpose': 'fixed_lpac_loader_diagnostic', 'child_pids': [],
+    receipt = {'schema_version': 1, 'purpose': 'fixed_lpac_loader_diagnostic', 'probe_pid': os.getpid(),
+               'child_pids': [], 'control_pids': [],
                'started_at_utc': _utc(), 'finished_at_utc': None,
                'fixture_sha256': hashlib.sha256(FIXTURE.encode()).hexdigest(),
-               'stage': 'preparing', 'marker_received': False, 'cleanup_complete': False}
+               'stage': 'preparing', 'marker_received': False, 'cleanup_complete': False,
+               'control_marker_received': False, 'control_cleanup_complete': False}
     arguments.receipt = native._plain_path(arguments.receipt)
     _write_receipt(arguments.receipt, receipt)
     try:
         with _probe_environment(arguments.receipt):
             WindowsSandboxNativeTests.setUpClass()
             probe = WindowsSandboxNativeTests(methodName='test_01_lpac_runtime_early_entry_marker')
+            # This ordinary-Job control runs the exact same fixed marker and
+            # runtime files. It proves the collector observes an owned working
+            # process; it is never a sandbox fallback or acceptance result.
+            with probe.sandbox(FIXTURE, contained=False, audit=False) as (control, *_):
+                receipt.update(control_pids=[control.pid], stage='control_spawned')
+                _write_receipt(arguments.receipt, receipt)
+                try:
+                    output, _ = control.communicate(b'', timeout=5, max_stdout=128, max_stderr=1024)
+                    receipt['control_marker_received'] = output == b'ONTOLOGY_NATIVE_READY\n'
+                except native.WindowsProcessError as failure:
+                    receipt['control_error'] = failure.diagnostic()
+                finally:
+                    counters = control.diagnostic_counters()
+                    receipt['control_counters'] = counters
+                    receipt['control_exit_code'] = counters['exit_code']
+                    receipt['control_active_owned_pids_after_communication'] = list(control.process_ids())
+            receipt['control_cleanup_complete'] = True
             with probe.sandbox(FIXTURE, audit=True) as (process, *_):
                 receipt.update(child_pids=[process.pid], stage='spawned', token_verified_before_resume=True)
                 _write_receipt(arguments.receipt, receipt)

@@ -111,9 +111,10 @@ try {
     }
     $capture.Refresh()
     $captureExitCode = $capture.ExitCode
+    $captureEnd = [datetime]::UtcNow
     $capturing = $false
     $phase = 'csv_export'
-    Run-Bounded $procmon @('/AcceptEula','/Quiet','/OpenLog',"`"$pml`"",'/SaveAs',"`"$csv`"") 30
+    Run-Bounded $procmon @('/AcceptEula','/Quiet','/NoConnect','/OpenLog',"`"$pml`"",'/SaveAs',"`"$csv`"") 30
     $summary = Join-Path $PSScriptRoot 'summarize_windows_loader.py'
     $phase = 'safe_summary'
     & $python -I -X utf8 -B $summary --csv $csv --receipt $receipt --report $report
@@ -122,6 +123,11 @@ try {
     $outcome.existing_loader_event_logs = @(Read-OwnedLoaderEvents $receipt $captureStart ([datetime]::UtcNow))
     $outcome.collector_version = '4.13'
     $outcome.collector_capture_exit_code = $captureExitCode
+    $outcome.capture_started_at_utc = $captureStart.ToString('o')
+    $outcome.capture_exited_at_utc = $captureEnd.ToString('o')
+    $outcome.capture_duration_ms = [int]($captureEnd - $captureStart).TotalMilliseconds
+    $outcome.pml_bytes = (Get-Item -LiteralPath $pml).Length
+    $outcome.csv_bytes = (Get-Item -LiteralPath $csv).Length
     $outcome.collector_archive_sha256 = '97330813853e0e514a11ee16a47d4c6fe90148fae834649839afb30487cc8b0b'
 } catch {
     # Never output exception text: Windows exceptions can contain raw paths.

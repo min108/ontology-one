@@ -145,7 +145,7 @@ class Acceptance:
             self.rows.append(row)
             raise
 
-    def command(self, *arguments, success=True, timeout=420):
+    def command(self, *arguments, success=True, timeout=930):
         result = subprocess.run([str(self.python), '-I', '-X', 'utf8', '-B', str(self.launcher), *arguments, '--json'],
                                 cwd=self.package, env=self.environment, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
@@ -161,14 +161,19 @@ class Acceptance:
             diagnostic = value.get('diagnostic') if isinstance(value, dict) else None
             if isinstance(diagnostic, dict):
                 safe = {}
-                for name in ('phase', 'exception', 'operation', 'code'):
+                for name in ('phase', 'exception', 'operation', 'code', 'migration_phase'):
                     item = diagnostic.get(name)
                     if isinstance(item, str) and 0 < len(item) <= 64 and all(c.isascii() and (c.isalnum() or c == '_') for c in item):
                         safe[name] = item
-                for name in ('native_error', 'winerror', 'errno', 'process_exit'):
+                for name in ('native_error', 'winerror', 'errno', 'process_exit', 'completed_tenants', 'total_tenants', 'elapsed_ms'):
                     item = diagnostic.get(name)
                     if type(item) is int and 0 <= item < 2**32:
                         safe[name] = item
+                counters = diagnostic.get('process_counters')
+                if isinstance(counters, dict):
+                    safe['process_counters'] = {name: item for name, item in counters.items()
+                        if name in {'exit_code', 'user_cpu_ms', 'kernel_cpu_ms', 'process_read_bytes', 'process_write_bytes',
+                                    'stdin_bytes', 'stdout_bytes', 'stderr_bytes'} and type(item) is int and 0 <= item < 2**64}
                 mysql_codes = diagnostic.get('mysql_codes')
                 if isinstance(mysql_codes, list) and len(mysql_codes) <= 12:
                     valid_codes = [item for item in mysql_codes if isinstance(item, str) and len(item) == 9
@@ -251,7 +256,8 @@ class Acceptance:
         """The committed admin survives a crash before the ready receipt."""
         helper = self.package / 'ops' / 'windows_initialize.py'
         original = helper.read_bytes()
-        injected = original.replace(b'        main()\n', b'        main()\n        raise SystemExit(19)\n', 1)
+        injected = original.replace(b'        main(progress=ProgressWriter())\n',
+                                    b'        main(progress=ProgressWriter())\n        raise SystemExit(19)\n', 1)
         require(injected != original, 'BOOTSTRAP_FAILURE_INJECTION_MISSING')
         try:
             helper.write_bytes(injected)
@@ -340,7 +346,7 @@ class Acceptance:
             environment = dict(self.environment, ONTOLOGY_QA_BATCH_ENTRY=str(self.package / filename))
             result = subprocess.run(command_line, executable=str(cmd), shell=False,
                 cwd=self.package, env=environment, input=b'\r\n', stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, timeout=420 if filename == '启动平台.bat' else 90)
+                stderr=subprocess.PIPE, timeout=930 if filename == '启动平台.bat' else 90)
             require(result.returncode == 0, 'BATCH_ENTRY_FAILED_' + ('START' if filename == '启动平台.bat' else 'STOP'))
             require(len(result.stdout) <= 16384 and len(result.stderr) <= 16384, 'BATCH_OUTPUT_LIMIT')
             try:

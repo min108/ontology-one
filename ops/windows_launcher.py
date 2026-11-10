@@ -36,7 +36,9 @@ STATE = LOCAL / 'runtime-state.json'
 SETTINGS = LOCAL / 'installation.json'
 READY = LOCAL / 'initialized.json'
 MAX_CONTROL = 8192
-START_TIMEOUT = 360
+START_TIMEOUT = 900
+MIGRATION_TIMEOUT = 600
+MIGRATION_STALL_TIMEOUT = 180
 _ERRORS = {
     'WINDOWS_REQUIRED': '需要 Windows 10 1903（内部版本18362）及以上或 Windows 11 的64位系统，并使用交付包内的64位Python。平台不会修改系统区域或代码页设置。',
     'RUNTIME_MISSING': '运行包不完整，请重新解压完整的Windows运行包。',
@@ -97,6 +99,56 @@ class MysqlDiagnostics:
         with self._lock:
             return {key: sorted(value) for key, value in
                     (('mysql_codes', self._server), ('mysql_client_codes', self._client)) if value}
+
+
+def read_migration_progress():
+    with secure_open(LOCAL / 'migration-progress.json', 'rb', require_private=True) as stream:
+        raw = stream.read(4097)
+    if len(raw) > 4096:
+        raise ValueError('Invalid migration progress')
+    return json.loads(raw)
+
+
+class MigrationWatch:
+    """Bound trusted installer work by both total time and forward progress."""
+    def __init__(self, run_id, stop_event, *, reader=read_migration_progress, clock=time.monotonic):
+        self.run_id, self.stop_event, self.reader, self.clock = run_id, stop_event, reader, clock
+        self.began = self.advanced = clock()
+        self.checked = self.began - 1
+        self.phase, self.completed, self.total, self.rank = 'starting', 0, 0, -1
+        self.error = None
+
+    def cancelled(self):
+        from ops.windows_initialize import PROGRESS_PHASES
+        now = self.clock()
+        if self.stop_event.is_set():
+            return True
+        if now - self.checked >= 1:
+            self.checked = now
+            try:
+                value = self.reader()
+                if (not isinstance(value, dict) or set(value) != {'run_id', 'phase', 'completed', 'total'}
+                        or value['run_id'] != self.run_id or value['phase'] not in PROGRESS_PHASES
+                        or type(value['completed']) is not int or type(value['total']) is not int
+                        or not 0 <= value['completed'] <= value['total'] <= 10000):
+                    raise ValueError('Invalid migration progress')
+                rank = PROGRESS_PHASES.index(value['phase'])
+                if (rank >= self.rank and value['completed'] >= self.completed
+                        and (self.total == 0 or value['total'] == self.total)
+                        and (rank > self.rank or value['completed'] > self.completed)):
+                    self.phase, self.completed, self.total, self.rank = value['phase'], value['completed'], value['total'], rank
+                    self.advanced = now
+            except (OSError, ValueError, TypeError):
+                pass
+        if now - self.began >= MIGRATION_TIMEOUT:
+            self.error = 'MIGRATION_TIMEOUT'
+        elif now - self.advanced >= MIGRATION_STALL_TIMEOUT:
+            self.error = 'MIGRATION_STALLED'
+        return self.error is not None
+
+    def metadata(self):
+        return {'migration_phase': self.phase, 'completed_tenants': self.completed,
+                'total_tenants': self.total, 'elapsed_ms': max(0, round((self.clock() - self.began) * 1000))}
 
 
 def mysql_failure(child, phase, *, code='DATABASE_INIT_FAILED', output=b'', diagnostics=None):
@@ -331,6 +383,7 @@ class Supervisor:
         self.stop_event, self.finished = threading.Event(), threading.Event()
         self.phase, self.error = 'starting', None
         self.failure_diagnostic = None
+        self.migration_watch = None
         self.token = secrets.token_hex(32)
         self.channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.channel.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -338,10 +391,14 @@ class Supervisor:
 
     def status(self):
         with self.state_lock:
-            return {'installation_id': self.settings['installation_id'], 'running': not self.finished.is_set(),
+            result = {'installation_id': self.settings['installation_id'], 'running': not self.finished.is_set(),
                     'ready': self.phase == 'ready', 'phase': self.phase, 'error': self.error,
                     'api_port': self.settings['api_port'],
                     'processes': {name: {'pid': child.pid, 'alive': child.poll() is None} for name, child in self.children.items()}}
+            watch = getattr(self, 'migration_watch', None)
+            if watch is not None and self.phase == 'migrating':
+                result['migration'] = watch.metadata()
+            return result
 
     def phase_to(self, phase):
         with self.state_lock:
@@ -537,12 +594,30 @@ class Supervisor:
             '--pid-file=' + str(mysql_data / 'server.pid')], environment)
         self.wait_until(self.database_ready, 90, 'DATABASE_START_FAILED')
         self.phase_to('migrating')
+        environment = application_environment(self.settings, root=True)
+        run_id = secrets.token_hex(16)
+        environment['ONTOLOGY_INITIALIZATION_RUN_ID'] = run_id
+        self.migration_watch = MigrationWatch(run_id, self.stop_event)
         migration = self.spawn('migration', [self.runtime['python'], '-I', '-X', 'utf8', '-B', ROOT / 'ops' / 'windows_initialize.py'],
-                               application_environment(self.settings, root=True))
-        migration.communicate(json.dumps(bootstrap).encode('utf-8'), timeout=180,
-                              cancelled=self.stop_event, max_stdout=65536, max_stderr=65536)
-        if migration.wait(timeout=1) != 0:
-            raise LaunchError('MIGRATION_FAILED')
+                               environment)
+        try:
+            migration.communicate(json.dumps(bootstrap).encode('utf-8'), timeout=MIGRATION_TIMEOUT + 5,
+                                  cancelled=self.migration_watch.cancelled, max_stdout=65536, max_stderr=65536)
+            if migration.wait(timeout=1) != 0:
+                raise LaunchError('MIGRATION_FAILED')
+        except Exception as exc:
+            self.migration_watch.cancelled()
+            diagnostic = safe_diagnostic(exc, self.phase)
+            diagnostic.update(self.migration_watch.metadata())
+            if self.migration_watch.error:
+                diagnostic['code'] = self.migration_watch.error
+            try:
+                diagnostic['process_counters'] = {key: value for key, value in migration.diagnostic_counters().items()
+                    if key in {'exit_code', 'user_cpu_ms', 'kernel_cpu_ms', 'process_read_bytes', 'process_write_bytes',
+                               'stdin_bytes', 'stdout_bytes', 'stderr_bytes'} and type(value) is int and 0 <= value < 2**64}
+            except Exception:
+                pass
+            raise LaunchError('START_CANCELLED' if self.stop_event.is_set() else 'MIGRATION_FAILED', diagnostic=diagnostic) from None
         self.finish_child('migration'); bootstrap.clear()
         write_json(READY, {'installation_id': self.settings['installation_id'], 'version': '0.5.0'})
         self.phase_to('starting_api')
@@ -660,7 +735,7 @@ def start(args, runtime):
         cwd=str(ROOT), env=base_environment(), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
     supervisor.stdin.write(json.dumps(bootstrap).encode('utf-8')); supervisor.stdin.close(); bootstrap.clear()
-    began, phase = time.monotonic(), None
+    began, phase, migration_progress = time.monotonic(), None, None
     while time.monotonic() - began < START_TIMEOUT:
         active = control('status')
         if active:
@@ -674,6 +749,11 @@ def start(args, runtime):
                        'securing_database': '设置并验证数据库访问凭据', 'promoting_database': '保存初始化数据库',
                        'starting_database': '启动本地数据库', 'migrating': '迁移机构工作区并初始化账户',
                        'starting_api': '启动平台服务', 'stopping': '正在回收本次启动进程'}.get(phase, phase), flush=True)
+            progress = active.get('migration', {})
+            current = (progress.get('completed_tenants'), progress.get('total_tenants'))
+            if not args.json and current != migration_progress and all(type(value) is int for value in current) and current[1]:
+                migration_progress = current
+                print(f'机构工作区迁移：{current[0]}/{current[1]}', flush=True)
         if supervisor.poll() is not None:
             if (LOCAL / 'last-result.json').exists():
                 receipt = read_json(LOCAL / 'last-result.json')

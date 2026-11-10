@@ -123,6 +123,39 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(len(diagnostics.snapshot()['mysql_codes']), 12)
         self.assertEqual(len(diagnostics.snapshot()['mysql_client_codes']), 12)
 
+    def test_installer_budget_requires_forward_progress_and_rejects_stale_receipts(self):
+        current, receipt = [0], {'run_id': 'a' * 32, 'phase': 'tenants', 'completed': 0, 'total': 51}
+        watch = launcher.MigrationWatch('a' * 32, threading.Event(), reader=lambda: dict(receipt), clock=lambda: current[0])
+        self.assertFalse(watch.cancelled())
+        current[0] = 150; receipt['completed'] = 10
+        self.assertFalse(watch.cancelled())
+        self.assertEqual(watch.metadata()['completed_tenants'], 10)
+        # Replayed, regressing, or another run's marker cannot reset the stall deadline.
+        current[0] = 250; receipt['completed'] = 9
+        self.assertFalse(watch.cancelled())
+        current[0] = 329; receipt.update(run_id='b' * 32, completed=51, phase='completed')
+        self.assertFalse(watch.cancelled())
+        current[0] = 330
+        self.assertTrue(watch.cancelled())
+        self.assertEqual(watch.error, 'MIGRATION_STALLED')
+        self.assertEqual(watch.metadata()['completed_tenants'], 10)
+
+    def test_installer_total_budget_and_user_cancel_remain_bounded(self):
+        current, completed = [0], [0]
+        def read(): return {'run_id': 'a' * 32, 'phase': 'tenants', 'completed': completed[0], 'total': 51}
+        stop = threading.Event()
+        watch = launcher.MigrationWatch('a' * 32, stop, reader=read, clock=lambda: current[0])
+        for index in range(6):
+            current[0], completed[0] = index * 100, index
+            self.assertFalse(watch.cancelled())
+        current[0], completed[0] = 600, 6
+        self.assertTrue(watch.cancelled())
+        self.assertEqual(watch.error, 'MIGRATION_TIMEOUT')
+        watch = launcher.MigrationWatch('a' * 32, stop, reader=read, clock=lambda: current[0])
+        stop.set()
+        self.assertTrue(watch.cancelled())
+        self.assertIsNone(watch.error)
+
     def test_control_channel_authenticates_token_and_installation(self):
         settings = launcher.get_installation()
         supervisor = object.__new__(launcher.Supervisor)

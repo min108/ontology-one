@@ -13,7 +13,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       ONTOLOGY_BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -87,7 +87,7 @@ jobs:
             }
             $arguments = @('-I', '-X', 'utf8', '-B', "`"$entry`"", '--package', "`"$package`"", '--report-dir', "`"$reports`"")
             $process = Start-Process -FilePath $python -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -RedirectStandardOutput (Join-Path $reports 'ci-entry.stdout.log') -RedirectStandardError (Join-Path $reports 'ci-entry.stderr.log') -PassThru
-            if (-not $process.WaitForExit(1800000)) { throw 'Native acceptance exceeded its time budget' }
+            if (-not $process.WaitForExit(2700000)) { throw 'Native acceptance exceeded its time budget' }
             $process.Refresh()
             @{ exit_code = $process.ExitCode; has_exited = $process.HasExited } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $reports 'ci-entry-state.json')
             New-Item -ItemType Directory -Force -Path 'out/reports' | Out-Null

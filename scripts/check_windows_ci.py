@@ -46,7 +46,7 @@ def main():
              'system_python_required':False,'model':'synthetic_fixture_only','checks':[]}
     commands=[('native_units',[str(python),'-I','-X','utf8','-B','-m','unittest',*modules,'-v'],600),
               ('portable_smoke',[str(python),'-I','-X','utf8','-B',str(package/'tests/windows_portable_smoke.py'),
-                '--package',str(package),'--report',str(reports/'windows-portable-smoke.json')],900)]
+                '--package',str(package),'--report',str(reports/'windows-portable-smoke.json')],1800)]
     try:
         import backend
         if not Path(backend.__file__).resolve().is_relative_to(package/'backend'):
