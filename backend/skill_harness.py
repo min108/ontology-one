@@ -400,9 +400,16 @@ class HarnessExecutor:
 
     async def _reap(self, process):
         if sys.platform == 'win32':
+            from .windows_process import WindowsProcessError
             try:
                 await asyncio.to_thread(process.terminate_tree)
-                await asyncio.to_thread(process.wait, 5)
+                try:
+                    await asyncio.to_thread(process.wait, 5)
+                except WindowsProcessError as exc:
+                    # A cancellation's kill-on-close fallback may have already
+                    # released this owned Job, without a cached exit code.
+                    if exc.code != 'PROCESS_CLOSED':
+                        raise
             finally:
                 await asyncio.to_thread(process.close)
                 self.children.discard(process)

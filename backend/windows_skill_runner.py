@@ -15,12 +15,14 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import tempfile
 import threading
 import time
 
 from .skill_package import validate_files
-from .windows_process import AppContainerProfile, ProcessLimits, WindowsProcessError, spawn_job_process, _plain_path
+from .windows_process import (AppContainerProfile, ProcessLimits, WindowsProcessError, spawn_job_process,
+                              assert_network_isolation_services, _plain_path)
 
 MAX_OUTPUT = 64 * 1024
 LIMITS = ProcessLimits(memory_bytes=192 * 1024 * 1024, active_processes=1, cpu_time_seconds=5, cpu_rate_percent=50)
@@ -229,16 +231,43 @@ def runner_status():
     unavailable = {'available': False, 'reason': 'Windows 隔离测试不可用；不会降级为普通进程执行。'}
     if _UNHEALTHY.is_set(): return unavailable
     try:
+        # Never let the cached successful probe hide stopped filtering services.
+        assert_network_isolation_services()
         runtime = _runtime_files()
         fingerprint = tuple((str(path), path.stat().st_size, path.stat().st_mtime_ns) for path in runtime)
     except (OSError, ValueError):
+        _STATUS = None
         return unavailable
     with _STATUS_LOCK:
         if _STATUS is not None and _STATUS[0] == fingerprint and time.monotonic() - _STATUS[1] < 300:
             return dict(_STATUS[2])
         files = {'SKILL.md': '---\nname: isolation-probe\ndescription: Native isolated execution probe.\n---\nSynthetic test.\n',
-                 'scripts/main.py': 'import json\nprint(json.dumps({"isolated": True}))\n'}
-        result = execute_tests(files, 'scripts/main.py', [{'name': 'probe', 'input': {}, 'expected_output': {'isolated': True}}])
+                 'scripts/main.py': ('import json,socket,sys\nport=json.load(sys.stdin)["port"]\n'
+                     'try:\n with socket.create_connection(("127.0.0.1",port),timeout=.5): denied=False\n'
+                     'except OSError:\n denied=True\nprint(json.dumps({"isolated":True,"network_denied":denied}))\n')}
+        try:
+            with socket.socket() as listener:
+                listener.bind(('127.0.0.1', 0)); listener.listen(2); listener.settimeout(1)
+                port = listener.getsockname()[1]
+                # Positive control: the endpoint exists and is reachable by the
+                # host, so a refused connection is not a false isolation proof.
+                with socket.create_connection(('127.0.0.1', port), timeout=1):
+                    accepted, _ = listener.accept(); accepted.close()
+                result = execute_tests(files, 'scripts/main.py', [{'name': 'probe', 'input': {'port': port},
+                    'expected_output': {'isolated': True, 'network_denied': True}}])
+                listener.settimeout(.05)
+                try:
+                    accepted, _ = listener.accept(); accepted.close()
+                except socket.timeout:
+                    pass
+                else:
+                    # Even a malformed child result cannot hide an observed
+                    # connection to the supposedly inaccessible host listener.
+                    _STATUS = None
+                    return unavailable
+        except OSError:
+            _STATUS = None
+            return unavailable
         if any(case.get('code') == 'RUNNER_BUSY' for case in result.get('report', {}).get('cases', [])):
             if _STATUS is not None and _STATUS[0] == fingerprint and _STATUS[2]['available']:
                 return {'available': True, 'reason': 'Windows 隔离测试已验证，当前测试任务繁忙，请稍后重试。'}

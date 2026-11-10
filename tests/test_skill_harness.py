@@ -253,6 +253,20 @@ class MemoryContextTests(unittest.TestCase):
 
 
 class WindowsExchangeOwnershipTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reap_accepts_an_already_closed_job_after_kill_fallback(self):
+        from backend.windows_process import WindowsProcessError
+        class Process:
+            closed = False
+            def terminate_tree(self): pass
+            def wait(self, *_): raise WindowsProcessError('PROCESS_CLOSED')
+            def close(self): self.closed = True
+        executor, process = client.HarnessExecutor(), Process()
+        executor.children.add(process)
+        with patch.object(client.sys, 'platform', 'win32'):
+            await executor._reap(process)
+        self.assertTrue(process.closed)
+        self.assertFalse(executor.children)
+
     async def test_repeat_cancel_and_terminate_failure_still_join_communicator(self):
         from backend.windows_process import WindowsProcessError
         started, closed, release, finished = (threading.Event() for _ in range(4))

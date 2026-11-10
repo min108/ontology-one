@@ -28,7 +28,7 @@ Windows 发行资产为 `ontology-one-0.5.0-windows-x64.zip`，与 GitHub 自动
 
 本地 MySQL 默认只监听 `127.0.0.1:18765`，数据库初次设密阶段关闭TCP网络。数据库随机凭据、控制令牌与模型配置只授予当前Windows用户和SYSTEM访问。正常关闭及重复启停保留 `data/`；已有数据或凭据异常时不会自动删除、重置数据库。端口被其他程序占用时明确报错，不按进程名或旧PID强杀。首次失败会回收本次启动的进程；查阅 `data/local/last-result.json` 中的固定错误码以及本实例数据库日志进行诊断，不在聊天或Git中提交私有配置。
 
-便携模式用于本机体验及单机部署，默认不开放局域网访问。Windows安全策略若禁止PowerShell、AppContainer或包内程序执行，启动或隔离测试会明确失败，不会绕过系统策略。BAT使用ASCII/CRLF，中文PowerShell入口使用UTF-8 BOM；直接从源码检出不能代替带runtime的发行包。升级前关闭平台并备份，保留原目录及其 `data/`，避免把新包覆盖到仍运行的实例。
+便携模式用于本机体验及单机部署，默认不开放局域网访问。组织强制安全策略若禁止PowerShell、AppContainer或包内程序执行，启动或隔离测试会明确失败。BAT使用ASCII/CRLF，中文PowerShell入口使用UTF-8 BOM；直接从源码检出不能代替带runtime的发行包。升级前关闭平台并备份，保留原目录及其 `data/`，避免把新包覆盖到仍运行的实例。
 
 ## Linux 容器部署
 
@@ -137,11 +137,11 @@ docker compose -f docker-compose.yml -f ops/compose.sources.yml up -d --build
 
 统一响应包含`contract_version`、`request_id`、`status`、`data`、`error`、`warnings`、`provenance`和`retention`。失败状态不含业务数据；安全错误码包括`INVALID_ARGUMENT`、`FORBIDDEN`、`UNAUTHENTICATED`、`STALE_MAPPING`、`TIMEOUT`、`BUSY`、`RESULT_LIMIT`及`SOURCE_UNAVAILABLE`。HTTP认证错误使用401/403，工具执行错误使用结构化响应。调用方应检查`status`与`warnings`，不能把部分或截断结果当作完整结果。
 
-每个工具调用使用固定入口临时进程，限制768MiB地址空间、15秒CPU时间、文件大小和文件句柄；调用方不能指定程序。执行时限由`timeout_ms`指定，范围1～30秒，包括启动和最终授权复验；超时/断连后终止并回收执行进程，清理和失败审计另有最多3秒预算。请求不排队，每API进程默认4个同时执行，满额返回`BUSY`；`ONTOLOGY_MCP_MAX_CONCURRENT`允许1～16，须结合机器内存与连接容量调整。子进程最终复验所有涉及的应用授权、源授权、映射及结构版本后才交付结果；这不等于跨系统严格线性化事务。远端查询仍受源端自身超时及断连处理约束。
+每个工具调用使用固定入口临时进程；Linux限制768MiB地址空间、15秒CPU时间、文件大小和文件句柄，Windows通过Job限制768MiB合计内存、15秒CPU时间及最多4个进程。调用方不能指定程序。执行时限由`timeout_ms`指定，范围1～30秒，包括启动和最终授权复验；超时/断连后终止并回收执行进程，清理与失败审计在请求预算之外完成，进程回收前不释放并发槽位。请求不排队，每API进程默认4个同时执行，满额返回`BUSY`；`ONTOLOGY_MCP_MAX_CONCURRENT`允许1～16，须结合机器内存与连接容量调整。子进程最终复验所有涉及的应用授权、源授权、映射及结构版本后才交付结果；这不等于跨系统严格线性化事务。远端查询仍受源端自身超时及断连处理约束。
 
 MCP结果不进入数据库、磁盘文件、任务队列或结果缓存，响应最多2MiB且`Cache-Control:no-store`。平台关闭该传输的默认OpenTelemetry工具正文采集，SDK传输日志不记录参数或结果；安全审计仅保留调用方、委托账号、机构、工具、版本、数量、时长、错误码等元数据。应用元数据和凭据摘要属于控制库，不随机构业务备份导出。调用方及内网代理应按自身治理要求设置日志策略。
 
-内网部署无需外部身份服务、云托管或模型API。将实际内网域名加入`ONTOLOGY_MCP_ALLOWED_HOSTS`（精确主机及端口），浏览器来源加入`ONTOLOGY_TRUSTED_ORIGINS`，配置HTTPS反向代理并关闭该路由缓存和正文日志；代理应支持SSE、不缓存响应，超时留出40秒以上。默认只接受本机Host，不能用任意Host覆盖名单。依赖和镜像须预先准备；不声称交付包包含离线依赖仓库。
+内网部署无需外部身份服务、云托管或模型API。将实际内网域名加入`ONTOLOGY_MCP_ALLOWED_HOSTS`（精确主机及端口），浏览器来源加入`ONTOLOGY_TRUSTED_ORIGINS`，配置HTTPS反向代理并关闭该路由缓存和正文日志；代理应支持SSE、不缓存响应，超时留出40秒以上。默认只接受本机Host，不能用任意Host覆盖名单。Linux容器依赖和镜像须预先准备；Windows便携包已包含其原生运行依赖。
 
 提供标准SDK调用方示例，默认只输出状态、数量与版本，不打印查询值。运行后交互输入应用令牌，或由受控进程环境注入`ONTOLOGY_MCP_TOKEN`；不把令牌放进命令行或示例文件。
 
@@ -174,7 +174,7 @@ printf '%s' '{"mapping_id":"mapping-id","query":{"fields":["field-name"],"limit"
 
 首版执行Python标准库脚本：选择`scripts/`中的`.py`入口，从标准输入读取一个JSON值，向标准输出写一个JSON值。期望输出保留在隔离进程外比较，不交给待测脚本。其他语言文件可以编辑及导出，尚不提供执行环境或自动安装依赖。
 
-Windows便携包通过原生低权限AppContainer（LPAC）与Job Object执行测试。每个用例使用独立身份，不授予网络能力；Python标准库副本、技能文件及AppContainer目录只读，结果仅通过JSON管道返回。脚本不支持写工作文件。每个用例最多192MiB合计内存、1个进程、5秒CPU时间及5秒执行时限，限制输出并回收整个Job；隔离不可用时拒绝执行，不退回普通宿主进程。运行时可用性通过实际隔离探针确认。
+Windows便携包通过原生低权限AppContainer（LPAC）与Job Object执行测试。每个用例使用独立身份，不授予网络能力；Python标准库副本、技能文件及AppContainer目录只读，结果仅通过JSON管道返回。脚本不支持写工作文件。每个用例最多192MiB合计内存、1个进程、5秒CPU时间及5秒执行时限，限制输出并回收整个Job；隔离不可用时拒绝执行，不退回普通宿主进程。运行时可用性通过实际隔离探针确认，包括本机网络连接拒绝；BFE与Windows防火墙服务须运行，平台仅检查状态，不启停服务或修改防火墙。
 
 完整容器部署启用可选运行器配置：
 

@@ -22,6 +22,7 @@ import pymysql
 from mcp import types as mcp_types
 
 from backend import source_adapters as adapters
+from backend import platform_io as fs
 
 
 def resource(key='items', columns=None, kind='table'):
@@ -235,8 +236,13 @@ class SourceAdapterTests(unittest.TestCase):
         self.network_attempts.assert_not_called()
 
     def write_registry(self, mode=0o600):
-        self.registry.write_text(json.dumps({'refs': self.refs}), encoding='utf-8')
-        self.registry.chmod(mode)
+        fs.atomic_write(self.registry, json.dumps({'refs': self.refs}).encode('utf-8'))
+        if fs.WINDOWS:
+            if mode != 0o600:
+                from tests.windows_filesystem_fixture import make_world_accessible
+                make_world_accessible(self.registry)
+        else:
+            self.registry.chmod(mode)
 
     def selection(self, **overrides):
         return {'columns': ['id', 'amount', 'observed_at'], 'filters': [], 'order_by': [], 'limit': 2, **overrides}
@@ -309,11 +315,21 @@ class SourceAdapterTests(unittest.TestCase):
         self.write_registry(0o644)
         self.assert_failure(lambda: adapters._resolve_credentials(self.mysql))
         self.write_registry()
-        alias = self.registry.with_name('alias.json')
-        alias.symlink_to(self.registry)
-        with patch.dict(os.environ, {'ONTOLOGY_SOURCE_CREDENTIALS_FILE': str(alias)}):
-            self.assert_failure(lambda: adapters._resolve_credentials(self.mysql))
-        self.registry.write_text('{"refs": ' + self.secret, encoding='utf-8')
+        if fs.WINDOWS:
+            from tests.windows_filesystem_fixture import make_junction
+            alias = self.registry.with_name('junction')
+            make_junction(alias, self.registry.parent)
+            try:
+                with patch.dict(os.environ, {'ONTOLOGY_SOURCE_CREDENTIALS_FILE': str(alias / self.registry.name)}):
+                    self.assert_failure(lambda: adapters._resolve_credentials(self.mysql))
+            finally:
+                alias.rmdir()
+        else:
+            alias = self.registry.with_name('alias.json')
+            alias.symlink_to(self.registry)
+            with patch.dict(os.environ, {'ONTOLOGY_SOURCE_CREDENTIALS_FILE': str(alias)}):
+                self.assert_failure(lambda: adapters._resolve_credentials(self.mysql))
+        fs.atomic_write(self.registry, ('{"refs": ' + self.secret).encode('utf-8'))
         self.assert_failure(lambda: adapters._resolve_credentials(self.mysql))
 
     def test_missing_registry_and_default_mcp_transport_fail_closed(self):

@@ -19,6 +19,8 @@ class WindowsSkillRunnerTests(unittest.TestCase):
         self.runtime = self.root / 'python.exe'; self.runtime.write_bytes(b'unit-test-placeholder')
         self.session = self.root / 'session'; self.session.mkdir()
         runner._STATUS = None; runner._UNHEALTHY.clear()
+        self.network_services = patch.object(runner, 'assert_network_isolation_services')
+        self.network_services.start(); self.addCleanup(self.network_services.stop)
 
     def tearDown(self):
         runner._STATUS = None; runner._UNHEALTHY.clear()
@@ -80,6 +82,21 @@ class WindowsSkillRunnerTests(unittest.TestCase):
     def test_actual_probe_failure_is_not_cached_as_success(self):
         failed = {'outcome': 'unavailable', 'report': {'cases': [{'code': 'RUNNER_UNAVAILABLE'}]}}
         with patch.object(runner, '_runtime_files', return_value=[self.runtime]), patch.object(runner, 'execute_tests', return_value=failed):
+            self.assertFalse(runner.runner_status()['available']); self.assertIsNone(runner._STATUS)
+
+    def test_stopped_network_service_invalidates_successful_cached_probe(self):
+        fingerprint = ((str(self.runtime), self.runtime.stat().st_size, self.runtime.stat().st_mtime_ns),)
+        runner._STATUS = (fingerprint, runner.time.monotonic(), {'available': True, 'reason': 'verified'})
+        with patch.object(runner, 'assert_network_isolation_services', side_effect=runner.WindowsProcessError('NETWORK_ISOLATION_UNAVAILABLE')), \
+             patch.object(runner, 'execute_tests') as execute:
+            self.assertFalse(runner.runner_status()['available'])
+        self.assertIsNone(runner._STATUS); execute.assert_not_called()
+
+    def test_observed_probe_connection_cannot_be_hidden_by_successful_result(self):
+        def connected(_files, _entrypoint, cases):
+            with runner.socket.create_connection(('127.0.0.1', cases[0]['input']['port']), timeout=1): pass
+            return {'outcome': 'passed', 'report': {'cases': [{'code': 'PASSED'}]}}
+        with patch.object(runner, '_runtime_files', return_value=[self.runtime]), patch.object(runner, 'execute_tests', side_effect=connected):
             self.assertFalse(runner.runner_status()['available']); self.assertIsNone(runner._STATUS)
 
     def test_json_comparison_preserves_boolean_numeric_boundary(self):

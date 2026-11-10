@@ -35,7 +35,8 @@ def main():
         PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1')
     modules=['tests.test_platform_io','tests.test_windows_process','tests.test_windows_async_process',
         'tests.test_mcp_transport','tests.test_skill_harness','tests.test_windows_sandbox_native',
-        'tests.test_windows_launcher','tests.test_windows_initialize','tests.test_windows_distribution']
+        'tests.test_windows_launcher','tests.test_windows_initialize','tests.test_windows_distribution',
+        'tests.test_source_adapters']
     manifest=json.loads((package/'runtime/manifest.json').read_text(encoding='utf-8'))
     results={'source_commit':manifest['source_commit'],'standard_user':True,'delivered_python':True,
              'system_python_required':False,'model':'synthetic_fixture_only','checks':[]}

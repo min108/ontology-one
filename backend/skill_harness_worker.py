@@ -1,7 +1,8 @@
 """One-shot official Harness worker. No platform DB/config imports or caller code.
 
-Only private stdin carries a provider credential. SDK journals live in the
-parent-owned tmpfs directory, and the fixed plugin edits memory values only.
+Only private stdin carries a provider credential. Linux journals stay in the
+parent-owned tmpfs; Windows disables journals and uses a memory context channel.
+The fixed plugin edits memory values only.
 """
 from __future__ import annotations
 

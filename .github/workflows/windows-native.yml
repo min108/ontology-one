@@ -36,6 +36,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix frontend run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Restore official dependency download cache
+        id: native-cache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: ${{ runner.temp }}/ontology-downloads
+          key: ontology-windows-runtime-${{ hashFiles('ops/windows-runtime.lock.json', 'ops/windows-wheels.lock.json') }}
+          restore-keys: ontology-windows-runtime-
       - name: Build self-contained package from fixed official dependencies
         shell: pwsh
         run: |
@@ -45,6 +52,12 @@ jobs:
           if ('${{ github.event_name }}' -eq 'pull_request' -and $unresolved) { $arguments += '--bootstrap-lock' }
           python @arguments
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Cache downloads for incremental QA
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: ${{ runner.temp }}/ontology-downloads
+          key: ontology-windows-runtime-${{ hashFiles('ops/windows-runtime.lock.json', 'ops/windows-wheels.lock.json') }}
       - name: Native standard-user acceptance without system Python
         shell: pwsh
         run: |
@@ -70,9 +83,10 @@ jobs:
             $python = Join-Path $package 'runtime/python/python.exe'
             $entry = Join-Path $package 'scripts/check_windows_ci.py'
             $arguments = @('-I', '-B', "`"$entry`"", '--package', "`"$package`"", '--report-dir', "`"$reports`"")
-            $process = Start-Process -FilePath $python -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -PassThru
+            $process = Start-Process -FilePath $python -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -RedirectStandardOutput (Join-Path $reports 'ci-entry.stdout.log') -RedirectStandardError (Join-Path $reports 'ci-entry.stderr.log') -PassThru
             if (-not $process.WaitForExit(1800000)) { throw 'Native acceptance exceeded its time budget' }
             $process.Refresh()
+            @{ exit_code = $process.ExitCode; has_exited = $process.HasExited } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $reports 'ci-entry-state.json')
             New-Item -ItemType Directory -Force -Path 'out/reports' | Out-Null
             Copy-Item -Path (Join-Path $reports '*') -Destination 'out/reports' -Force
             if ($process.ExitCode -ne 0) { throw 'Native acceptance failed; see safe reports' }

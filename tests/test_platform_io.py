@@ -3,7 +3,6 @@ import ctypes
 import multiprocessing
 import os
 from pathlib import Path
-import struct
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -149,28 +148,8 @@ class UnixRaceTests(_FileFixture):
 @unittest.skipUnless(fs.WINDOWS, 'Requires actual native Windows filesystem APIs')
 class WindowsNativeTests(_FileFixture):
     def junction(self, link, target):
-        # Native NTFS mount-point creation needs no Developer Mode or symlink
-        # privilege, and does not involve shell quoting for Unicode/! paths.
-        fs.ensure_private_directory(link)
-        handle = fs._CreateFile(fs._extended(link), fs._GENERIC_WRITE, 1 | 2 | 4, None,
-                                 fs._OPEN_EXISTING, fs._OPEN_REPARSE | fs._BACKUP_SEMANTICS, None)
-        self.assertNotEqual(handle, fs._INVALID)
-        try:
-            substitute = ('\\??\\' + str(target)).encode('utf-16-le')
-            printed = str(target).encode('utf-16-le')
-            names = substitute + b'\0\0' + printed + b'\0\0'
-            fields = struct.pack('<HHHH', 0, len(substitute), len(substitute) + 2, len(printed))
-            data = struct.pack('<IHH', 0xA0000003, len(fields) + len(names), 0) + fields + names
-            buffer, returned = ctypes.create_string_buffer(data), fs.wintypes.DWORD()
-            call = fs._kernel.DeviceIoControl
-            call.restype = fs.wintypes.BOOL
-            call.argtypes = [fs.wintypes.HANDLE, fs.wintypes.DWORD, fs.wintypes.LPVOID,
-                             fs.wintypes.DWORD, fs.wintypes.LPVOID, fs.wintypes.DWORD,
-                             ctypes.POINTER(fs.wintypes.DWORD), fs.wintypes.LPVOID]
-            self.assertTrue(call(handle, 0x900A4, buffer, len(data), None, 0, ctypes.byref(returned), None),
-                            'Native junction setup failed')
-        finally:
-            fs._Close(handle)
+        from tests.windows_filesystem_fixture import make_junction
+        make_junction(link, target)
 
     def test_native_64bit_structure_layout(self):
         self.assertEqual(ctypes.sizeof(ctypes.c_void_p), 8)
@@ -246,25 +225,30 @@ class WindowsNativeTests(_FileFixture):
     def test_broad_dacl_is_rejected_on_the_actual_read_handle(self):
         path = self.root / 'synthetic-credential.json'
         fs.atomic_write(path, b'synthetic-only')
-        descriptor = fs.wintypes.LPVOID()
-        self.assertTrue(fs._Descriptor('D:P(A;;FA;;;WD)', 1, ctypes.byref(descriptor), None))
-        try:
-            present, defaulted, acl = fs.wintypes.BOOL(), fs.wintypes.BOOL(), fs.wintypes.LPVOID()
-            self.assertTrue(fs._DescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(acl), ctypes.byref(defaulted)))
-            with fs._directory(path.parent) as parent:
-                handle = fs._open_handle(path, fs._WRITE_DAC | fs._READ_CONTROL, parent=parent)
-                try:
-                    self.assertEqual(fs._SetSecurity(handle, 1, 0x4 | 0x80000000, None, None, acl, None), 0)
-                finally:
-                    fs._Close(handle)
-        finally:
-            fs._Free(descriptor)
+        from tests.windows_filesystem_fixture import make_world_accessible
+        make_world_accessible(path)
         with self.assertRaises(PermissionError): fs.assert_private(path)
         with self.assertRaises(PermissionError):
             with fs.secure_open(path, require_private=True): pass
         fs.restrict_permissions(path)
         with fs.secure_open(path, require_private=True) as stream:
             self.assertEqual(stream.read(), b'synthetic-only')
+
+    def test_private_check_reads_owner_and_rejects_foreign_owner_identity(self):
+        path = self.root / 'owner-checked.json'
+        fs.atomic_write(path, b'synthetic-only')
+        current = fs.current_user_sid()
+        with fs.secure_open(path, require_private=True):
+            pass
+        # Standard users cannot assign a foreign owner. Inject only that SID
+        # decoding result; descriptor acquisition remains a real handle API.
+        with patch.object(fs, 'current_user_sid', return_value=current), \
+                patch.object(fs, '_sid_string', return_value='S-1-5-21-1-2-3-1001'), \
+                patch.object(fs, '_GetSecurity', wraps=fs._GetSecurity) as security:
+            with self.assertRaises(PermissionError):
+                with fs.secure_open(path, require_private=True):
+                    pass
+            self.assertEqual(security.call_args.args[2], 0x1 | 0x4)
 
 
 if __name__ == '__main__':

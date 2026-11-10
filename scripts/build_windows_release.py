@@ -186,6 +186,7 @@ def build(args):
         (args.output/'resolved-windows-runtime.lock.json').write_text(json.dumps(runtime,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     artifacts={}
     for name in ('python','mysql','mysql_source','vc_license'):
+        print(json.dumps({'phase':'official_download','component':name}),flush=True)
         artifacts[name]=download(runtime[name],args.cache,bootstrap=args.bootstrap_lock)
         resolved()
     python_archive,mysql_archive,mysql_source=(artifacts[name] for name in ('python','mysql','mysql_source'))
@@ -232,7 +233,8 @@ def build(args):
     (package/'runtime/manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     (args.output/'resolved-windows-runtime.lock.json').write_text(json.dumps(runtime,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     output=args.output/f'ontology-one-{VERSION}-windows-x64.zip'
-    with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
+    print(json.dumps({'phase':'archive_distribution'}),flush=True)
+    with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
         for path in sorted(package.rglob('*')):
             if path.is_file():archive.write(path,path.relative_to(args.output).as_posix())
     assets=[output,args.output/mysql_source.name]

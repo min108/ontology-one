@@ -223,11 +223,14 @@ def _verify_appcontainer_token(process, expected_sid):
 
 
 def assert_network_isolation_services():
-    """Require the Windows services that enforce network isolation, read-only.
+    """Require our conservative network-isolation prerequisites, read-only.
 
     AppContainer capability checks rely on Windows network isolation/WFP. A
     token flag alone is not a substitute for an operational filtering stack.
-    This does not change firewall profiles, start services or request elevation.
+    Microsoft documents BFE and Windows Firewall as prerequisites for the
+    firewall stack. It does not promise LPAC isolation with stopped services;
+    this product therefore refuses that unverified state. This does not change
+    firewall profiles, start services or request elevation.
     """
     _, advapi, _, _ = _api()
     manager = _check(advapi.OpenSCManagerW(None, None, 0x1), 'NETWORK_ISOLATION_UNAVAILABLE')
@@ -397,12 +400,17 @@ class WindowsProcess:
             self.wait(timeout=5)
         finally:
             try:
-                self.terminate_tree()
-                self._wait_empty()
-                for thread in threads:
-                    if thread.ident is not None: thread.join(timeout=5)
-                if any(thread.is_alive() for thread in threads):
-                    raise WindowsProcessError('PROCESS_CLEANUP_FAILED')
+                try:
+                    self.terminate_tree()
+                    self._wait_empty()
+                finally:
+                    # A concurrent cancellation fallback may already have
+                    # closed the Job. Native-query errors still cannot abandon
+                    # the three threads that own this communication's pipes.
+                    for thread in threads:
+                        if thread.ident is not None: thread.join(timeout=5)
+                    if any(thread.is_alive() for thread in threads):
+                        raise WindowsProcessError('PROCESS_CLEANUP_FAILED')
             finally:
                 self._communication.release()
         if errors:
@@ -420,6 +428,10 @@ class WindowsProcess:
                 # alive while its owner's reader is being shut down.
                 self._kernel.CloseHandle(self._job)
                 self._job = None
+                if self._returncode is None and self._kernel.WaitForSingleObject(self._process, 5000) == 0:
+                    code = DWORD()
+                    if self._kernel.GetExitCodeProcess(self._process, C.byref(code)):
+                        self._returncode = int(code.value)
                 pipe_error = False
                 try:
                     for stream in (self.stdin, self.stdout, self.stderr):

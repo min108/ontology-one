@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import sys
+import threading
 import types
 import unittest
 from unittest.mock import patch
@@ -73,9 +74,36 @@ class WindowsProcessContractTests(unittest.TestCase):
             with self.assertRaises(ValueError): win._environment_block(environment)
 
     def spawn(self, kernel, **kwargs):
-        with patch.object(win, '_api', return_value=(kernel, None, None, None)), patch.dict(sys.modules, {'msvcrt': types.SimpleNamespace()}):
+        with patch.object(win, '_api', return_value=(kernel, None, None, None)), \
+             patch.object(win, 'assert_network_isolation_services'), patch.dict(sys.modules, {'msvcrt': types.SimpleNamespace()}):
             return win.spawn_job_process([str(Path(sys.executable).absolute()), '-I'], cwd=str(Path(__file__).absolute().parent), env={},
                 stdin=win.DEVNULL, stdout=win.DEVNULL, stderr=win.DEVNULL, **kwargs)
+
+    def test_network_isolation_requires_both_running_services_and_query_permission(self):
+        states, closed = {'BFE': 4, 'MpsSvc': 4}, []
+        def status(service, _, buffer, _length, _returned):
+            C.cast(buffer, C.POINTER(win.SERVICE_STATUS_PROCESS)).contents.dwCurrentState = states[service]
+            return True
+        api = types.SimpleNamespace(OpenSCManagerW=lambda *_: 100, OpenServiceW=lambda _, name, __: name,
+            QueryServiceStatusEx=status, CloseServiceHandle=closed.append)
+        with patch.object(win, '_api', return_value=(None, api, None, None)):
+            win.assert_network_isolation_services()
+            self.assertEqual(closed, ['BFE', 'MpsSvc', 100])
+            for name, state in (('BFE', 1), ('MpsSvc', 2)):
+                states.update(BFE=4, MpsSvc=4); states[name] = state
+                with self.assertRaises(win.WindowsProcessError) as caught: win.assert_network_isolation_services()
+                self.assertEqual(caught.exception.code, 'NETWORK_ISOLATION_UNAVAILABLE')
+            api.OpenSCManagerW = lambda *_: None
+            with self.assertRaises(win.WindowsProcessError): win.assert_network_isolation_services()
+
+    def test_stopped_filtering_service_prevents_process_creation(self):
+        kernel = Kernel()
+        with patch.object(win, '_api', return_value=(kernel, None, None, None)), \
+             patch.object(win, 'assert_network_isolation_services', side_effect=win.WindowsProcessError('NETWORK_ISOLATION_UNAVAILABLE')):
+            with self.assertRaises(win.WindowsProcessError):
+                win.spawn_job_process([str(Path(sys.executable).absolute())], cwd=str(Path.cwd()), env={},
+                    appcontainer=win.AppContainerProfile())
+        self.assertFalse(kernel.calls)
 
     def test_suspended_child_is_assigned_before_resume_with_only_stdio_inherited(self):
         kernel = Kernel(); process = self.spawn(kernel)
@@ -151,10 +179,23 @@ class WindowsProcessContractTests(unittest.TestCase):
     def test_closed_unreaped_process_errors_instead_of_waiting_forever(self):
         kernel = Kernel('TerminateJobObject')
         process = win.WindowsProcess(kernel, 100, 101, 103, (None, None, None))
-        with self.assertRaises(win.WindowsProcessError): process.close()
+        with patch.object(kernel, 'WaitForSingleObject', return_value=258):
+            with self.assertRaises(win.WindowsProcessError): process.close()
         self.assertEqual([args[0] for name, args in kernel.calls if name == 'CloseHandle'], [100, 101])
         with self.assertRaises(win.WindowsProcessError) as caught: process.wait()
         self.assertEqual(caught.exception.code, 'PROCESS_CLOSED')
+
+    def test_job_query_failure_still_joins_all_owned_pipe_threads(self):
+        kernel = Kernel('QueryInformationJobObject')
+        process = win.WindowsProcess(kernel, 100, 101, 103, (io.BytesIO(), io.BytesIO(b'{}'), io.BytesIO()))
+        joined = []
+        original = threading.Thread.join
+        def join(thread, *args, **kwargs):
+            joined.append(thread.name); return original(thread, *args, **kwargs)
+        with patch.object(threading.Thread, 'join', join):
+            with self.assertRaises(win.WindowsProcessError): process.communicate()
+        self.assertEqual(set(joined), {'windows-stdin', 'windows-stdout', 'windows-stderr'})
+        with self.assertRaises(win.WindowsProcessError): process.close()
 
     def test_process_ids_query_only_owned_job(self):
         kernel = Kernel(); process = win.WindowsProcess(kernel, 100, 101, 103, (None, None, None))
