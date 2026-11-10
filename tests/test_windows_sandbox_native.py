@@ -488,32 +488,25 @@ print(json.dumps({'own_read':own,'other_denied':denied}))
 
     def test_unrelated_inheritable_file_handle_is_not_leaked(self):
         import msvcrt
-        script = '''import ctypes as C,json,sys
+        import _winapi
+        script = '''import json,sys
 args=json.load(sys.stdin)
-kernel=C.WinDLL('kernel32',use_last_error=True)
-D=C.c_uint32;H=C.c_void_p;B=C.c_int32
-kernel.GetHandleInformation.restype=B;kernel.GetHandleInformation.argtypes=[H,C.POINTER(D)]
-kernel.GetFileType.restype=D;kernel.GetFileType.argtypes=[H]
-kernel.GetFileInformationByHandle.restype=B;kernel.GetFileInformationByHandle.argtypes=[H,H]
-kernel.ReadFile.restype=B;kernel.ReadFile.argtypes=[H,H,D,C.POINTER(D),H]
-handle=H(args['handle']);flags=D()
-valid=bool(kernel.GetHandleInformation(handle,C.byref(flags)))
-query_error=0 if valid else C.get_last_error()
-result={'queried':True,'valid':valid,'query_error':query_error,'file_type':0,
-        'identity_checked':False,'same_identity':False,'read_attempted':False,
-        'read_error':None,'sentinel_match':False}
-if valid:
-    result['file_type']=int(kernel.GetFileType(handle))
+result={'stage':'import','queried':False,'file_type':None,'read_attempted':False,
+        'read_error':None,'sentinel_match':False,'error_kind':None,'winerror':0}
+try:
+    import _winapi
+    result['stage']='get_file_type';result['queried']=True
+    result['file_type']=int(_winapi.GetFileType(args['handle']))
     if result['file_type']==1:
-        info=(D*13)()
-        result['identity_checked']=bool(kernel.GetFileInformationByHandle(handle,info))
-        if result['identity_checked']:
-            result['same_identity']=[int(info[7]),int(info[11]),int(info[12])]==args['identity']
-        data=C.create_string_buffer(128);read=D()
-        result['read_attempted']=True
-        success=bool(kernel.ReadFile(handle,data,len(data),C.byref(read),None))
-        result['read_error']=0 if success else C.get_last_error()
-        result['sentinel_match']=success and data.raw[:read.value]==args['synthetic_value'].encode('ascii')
+        result['stage']='read_file';result['read_attempted']=True
+        data,error=_winapi.ReadFile(args['handle'],128)
+        result['read_error']=int(error)
+        result['sentinel_match']=data==args['synthetic_value'].encode('ascii')
+    result['stage']='complete'
+except OSError as exc:
+    result['error_kind']='OSError';result['winerror']=getattr(exc,'winerror',0) or 0
+except (ImportError,AttributeError,TypeError,ValueError) as exc:
+    result['error_kind']=type(exc).__name__
 # Never adopt or close an unknown handle, and never read a pipe/character handle:
 # the numeric value may have been reused for a different child object.
 print(json.dumps(result))
@@ -525,28 +518,32 @@ print(json.dumps(result))
             sentinel.write_text(synthetic, encoding='ascii')
             with sentinel.open('rb', buffering=0) as unrelated:
                 handle = msvcrt.get_osfhandle(unrelated.fileno())
-                kernel = native._api()[0]
-                kernel.GetFileInformationByHandle.restype = native.BOOL
-                kernel.GetFileInformationByHandle.argtypes = [native.HANDLE, native.LPVOID]
-                information = (native.DWORD * 13)()
-                native._check(kernel.GetFileInformationByHandle(native.HANDLE(handle), information))
-                identity = [int(information[7]), int(information[11]), int(information[12])]
+                # Use the same bundled CPython Win32 wrappers as the child.
+                # Prove this is a readable disk file, then reset its shared
+                # kernel file offset. Inherited handles share that offset.
+                self.assertEqual(_winapi.GetFileType(handle), 1)
+                self.assertEqual(_winapi.ReadFile(handle, 128), (synthetic.encode('ascii'), 0))
+                unrelated.seek(0)
+                self.assertEqual(unrelated.tell(), 0)
                 os.set_handle_inheritable(handle, True)
                 try:
                     with self.sandbox(script) as (owner, *_):
-                        result = self.communicate_json(owner, {'handle': handle, 'identity': identity,
-                                                                'synthetic_value': synthetic})
+                        result = self.communicate_json(owner, {'handle': handle, 'synthetic_value': synthetic})
                         self.assertTrue(result['queried'], result)
-                        self.assertFalse(result['same_identity'], result)
                         self.assertFalse(result['sentinel_match'], result)
-                        if not result['valid']:
-                            self.assertEqual(result['query_error'], 6, result)
+                        self.assertEqual(unrelated.tell(), 0, 'Unrelated source handle was inherited and read')
+                        if result['error_kind'] is not None:
+                            self.assertEqual(result['error_kind'], 'OSError', result)
+                            self.assertEqual(result['stage'], 'get_file_type', result)
+                            self.assertEqual(result['winerror'], 6, result)
                             self.assertFalse(result['read_attempted'], result)
-                        elif result['file_type'] == 1:
-                            self.assertTrue(result['identity_checked'], result)
-                            self.assertTrue(result['read_attempted'], result)
                         else:
-                            self.assertFalse(result['read_attempted'], result)
+                            self.assertEqual(result['stage'], 'complete', result)
+                            if result['file_type'] == 1:
+                                self.assertTrue(result['read_attempted'], result)
+                                self.assertEqual(result['read_error'], 0, result)
+                            else:
+                                self.assertFalse(result['read_attempted'], result)
                 finally:
                     os.set_handle_inheritable(handle, False)
 
