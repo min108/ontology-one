@@ -492,6 +492,33 @@ def ensure_private_directory(path):
     return value
 
 
+def promote_private_directory(source, target):
+    """Atomically promote a private Windows directory to a new sibling name.
+
+    Existing destinations are never replaced. The source object, its parent and
+    every ancestor remain pinned throughout; there is no pathname-based move,
+    cross-directory move, recursive copy or permission-relaxing fallback.
+    """
+    origin, destination = _absolute(source), _absolute(target)
+    if origin.parent != destination.parent or origin == destination:
+        raise PermissionError(errno.EACCES, 'Directory promotion requires distinct sibling names')
+    if not WINDOWS:
+        raise NotImplementedError('Private directory promotion requires native Windows')
+    with _directory(origin.parent) as parent:
+        handle = _open_handle(origin, _DELETE | _READ_CONTROL, directory=True, parent=parent)
+        try:
+            _assert_private_handle(handle)
+            _assert_plain_directory(handle)
+            # The same source-relative rename used for atomic files avoids
+            # reopening the parent for WRITE_DATA while a service lock pins it.
+            _rename(handle, destination.name, False)
+            _assert_plain_directory(handle)
+            _assert_private_handle(handle)
+        finally:
+            _Close(handle)
+    return destination
+
+
 @contextmanager
 def secure_open(path, mode='rb', *, create_parents=False, require_private=False):
     value = _absolute(path)

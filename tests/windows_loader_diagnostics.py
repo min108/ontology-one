@@ -103,16 +103,27 @@ def _audit_default_dacl(advapi, primary, impersonation):
 
     GetTokenInformation/InitializeSecurityDescriptor/SetSecurityDescriptor*
     operate only on owned in-memory buffers here; no token or OS ACL is changed.
+    TokenDefaultDacl is a template: map generic ACE rights in a separate owned
+    clone for each object type, as object creation would, before AccessCheck.
     https://learn.microsoft.com/windows/win32/secauthz/dacl-for-a-new-object
     """
+    class ACL_SIZE_INFORMATION(C.Structure):
+        _fields_ = [('AceCount', native.DWORD), ('AclBytesInUse', native.DWORD),
+                    ('AclBytesFree', native.DWORD)]
+
     for name, args in (
         ('InitializeSecurityDescriptor', [native.LPVOID, native.DWORD]),
         ('SetSecurityDescriptorDacl', [native.LPVOID, native.BOOL, native.LPVOID, native.BOOL]),
         ('SetSecurityDescriptorOwner', [native.LPVOID, native.LPVOID, native.BOOL]),
         ('SetSecurityDescriptorGroup', [native.LPVOID, native.LPVOID, native.BOOL]),
+        ('IsValidAcl', [native.LPVOID]),
+        ('GetAclInformation', [native.LPVOID, native.LPVOID, native.DWORD, C.c_int]),
+        ('GetAce', [native.LPVOID, native.DWORD, C.POINTER(native.LPVOID)]),
     ):
         function = getattr(advapi, name)
         function.restype, function.argtypes = native.BOOL, args
+    advapi.MapGenericMask.restype = None
+    advapi.MapGenericMask.argtypes = [C.POINTER(native.DWORD), C.POINTER(native.GENERIC_MAPPING)]
 
     buffers = []
     for kind in (4, 5, 6):  # TokenOwner, TokenPrimaryGroup, TokenDefaultDacl.
@@ -125,23 +136,71 @@ def _audit_default_dacl(advapi, primary, impersonation):
             return [{'object': 'token_default_dacl', 'security_query_error': C.get_last_error()}]
         buffers.append(buffer)
     owner, group, dacl = [C.cast(buffer, C.POINTER(native.LPVOID))[0] for buffer in buffers]
-    descriptor = SECURITY_DESCRIPTOR()
-    for operation in (
-        lambda: advapi.InitializeSecurityDescriptor(C.byref(descriptor), 1),
-        lambda: advapi.SetSecurityDescriptorOwner(C.byref(descriptor), owner, False),
-        lambda: advapi.SetSecurityDescriptorGroup(C.byref(descriptor), group, False),
-        lambda: advapi.SetSecurityDescriptorDacl(C.byref(descriptor), True, dacl, False),
-    ):
-        if not operation():
-            return [{'object': 'token_default_dacl', 'descriptor_error': C.get_last_error()}]
+    if not dacl:
+        return [{'object': 'token_default_dacl', 'diagnostic': 'unsupported_null_default_dacl'}]
+    # The returned ACL must be wholly inside its owned GetTokenInformation
+    # buffer before even reading its header or cloning bytes from its pointer.
+    start, end = C.addressof(buffers[2]), C.addressof(buffers[2]) + len(buffers[2])
+    if not start <= dacl <= end - 8:
+        return [{'object': 'token_default_dacl', 'diagnostic': 'invalid_default_dacl_bounds'}]
+    acl_size = C.c_uint16.from_address(dacl + 2).value
+    if not 8 <= acl_size <= 65536 or dacl + acl_size > end:
+        return [{'object': 'token_default_dacl', 'diagnostic': 'invalid_default_dacl_bounds'}]
+    template = C.string_at(dacl, acl_size)
+
+    def check(label, mapping, requested):
+        # Never map masks in the token buffer, nor reuse the Event mapping for
+        # the Section probe. The copied ACL remains alive through AccessCheck.
+        acl = C.create_string_buffer(template, len(template))
+        if not advapi.IsValidAcl(acl):
+            return {'object': label, 'diagnostic': 'invalid_default_dacl'}
+        information = ACL_SIZE_INFORMATION()
+        if not advapi.GetAclInformation(acl, C.byref(information), C.sizeof(information), 2):
+            return {'object': label, 'acl_query_error': C.get_last_error()}
+        used = int(information.AclBytesInUse)
+        if not 8 <= used <= len(acl) or information.AceCount > (used - 8) // 4:
+            return {'object': label, 'diagnostic': 'invalid_default_dacl_bounds'}
+        acl_start, acl_end = C.addressof(acl), C.addressof(acl) + used
+        for index in range(information.AceCount):
+            ace = native.LPVOID()
+            if not advapi.GetAce(acl, index, C.byref(ace)):
+                return {'object': label, 'acl_query_error': C.get_last_error()}
+            address = ace.value
+            if address is None or not acl_start + 8 <= address <= acl_end - 4:
+                return {'object': label, 'diagnostic': 'invalid_default_dacl_bounds'}
+            ace_type = C.c_ubyte.from_address(address).value
+            ace_size = C.c_uint16.from_address(address + 2).value
+            if ace_size < 4 or address + ace_size > acl_end:
+                return {'object': label, 'diagnostic': 'invalid_default_dacl_bounds'}
+            # Callback/object/audit ACEs require different layouts or semantics;
+            # this diagnostic deliberately does not guess how to model them.
+            if ace_type not in (0, 1):  # ACCESS_ALLOWED_ACE / ACCESS_DENIED_ACE.
+                return {'object': label, 'diagnostic': 'unsupported_default_dacl_ace_type'}
+            if ace_size < 16:  # ACE_HEADER + ACCESS_MASK + minimum SID header.
+                return {'object': label, 'diagnostic': 'invalid_default_dacl_bounds'}
+            mask = native.DWORD.from_address(address + 4)
+            advapi.MapGenericMask(C.byref(mask), C.byref(mapping))
+            if mask.value & 0xF0000000:
+                return {'object': label, 'diagnostic': 'unmapped_default_dacl_generic_rights'}
+        if not advapi.IsValidAcl(acl):
+            return {'object': label, 'diagnostic': 'invalid_default_dacl'}
+        descriptor = SECURITY_DESCRIPTOR()
+        for operation in (
+            lambda: advapi.InitializeSecurityDescriptor(C.byref(descriptor), 1),
+            lambda: advapi.SetSecurityDescriptorOwner(C.byref(descriptor), owner, False),
+            lambda: advapi.SetSecurityDescriptorGroup(C.byref(descriptor), group, False),
+            lambda: advapi.SetSecurityDescriptorDacl(C.byref(descriptor), True, acl, False),
+        ):
+            if not operation():
+                return {'object': label, 'descriptor_error': C.get_last_error()}
+        return _descriptor_access(advapi, impersonation, label, C.byref(descriptor), mapping, requested)
+
     # Event probe asks only MODIFY_STATE|SYNCHRONIZE. Section probe asks only
     # MAP_READ|MAP_EXECUTE. These are synthetic access tests, not evidence of a
     # specific loader object or a request to add rights to the target token.
     return [
-        _descriptor_access(advapi, impersonation, 'default_dacl_event', C.byref(descriptor),
-                           native.GENERIC_MAPPING(0x20001, 0x20002, 0x120000, 0x1F0003), 0x100002),
-        _descriptor_access(advapi, impersonation, 'default_dacl_section', C.byref(descriptor),
-                           native.GENERIC_MAPPING(0x20005, 0x20002, 0x20008, 0xF001F), 0xC),
+        check('default_dacl_event', native.GENERIC_MAPPING(0x20001, 0x20002, 0x120000, 0x1F0003), 0x100002),
+        check('default_dacl_section', native.GENERIC_MAPPING(0x20005, 0x20002, 0x20008, 0xF001F), 0xC),
     ]
 
 

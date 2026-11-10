@@ -41,7 +41,7 @@ def clear_junction_on_handle(handle):
         fs._win_error(operation='FSCTL_DELETE_REPARSE_POINT')
 
 
-def make_world_accessible(path):
+def make_world_accessible(path, *, directory=False):
     descriptor = fs.wintypes.LPVOID()
     if not fs._Descriptor('D:P(A;;FA;;;WD)', 1, ctypes.byref(descriptor), None):
         fs._win_error()
@@ -50,7 +50,7 @@ def make_world_accessible(path):
         if not fs._DescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(acl), ctypes.byref(defaulted)):
             fs._win_error()
         with fs._directory(path.parent) as parent:
-            handle = fs._open_handle(path, fs._WRITE_DAC | fs._READ_CONTROL, parent=parent)
+            handle = fs._open_handle(path, fs._WRITE_DAC | fs._READ_CONTROL, directory=directory, parent=parent)
             try:
                 error = fs._SetSecurity(handle, 1, 0x4 | 0x80000000, None, None, acl, None)
                 if error:

@@ -29,7 +29,7 @@ import webbrowser
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.platform_io import (atomic_write, ensure_private_directory, file_lock,
-                                 reject_reparse_points, secure_open)
+                                 promote_private_directory, reject_reparse_points, secure_open)
 
 LOCAL = ROOT / 'data' / 'local'
 STATE = LOCAL / 'runtime-state.json'
@@ -513,7 +513,13 @@ class Supervisor:
                     raise mysql_failure(child, self.phase, output=output + errors)
                 self.finish_child('mysql_initialize')
                 self.secure_new_database(mysql_root, staging, environment)
-                staging.rename(mysql_data)
+                self.phase_to('promoting_database')
+                try:
+                    promote_private_directory(staging, mysql_data)
+                except OSError as exc:
+                    diagnostic = safe_diagnostic(exc, self.phase)
+                    diagnostic['operation'] = 'promote_database'
+                    raise LaunchError('DATABASE_INIT_FAILED', diagnostic=diagnostic) from None
             finally:
                 if staging.exists():
                     # Only this call's newly created staging directory is removed.
@@ -665,6 +671,7 @@ def start(args, runtime):
             if active['phase'] != phase and not args.json:
                 phase = active['phase']
                 print({'starting': '准备启动', 'initializing_database': '首次初始化本地数据库',
+                       'securing_database': '设置并验证数据库访问凭据', 'promoting_database': '保存初始化数据库',
                        'starting_database': '启动本地数据库', 'migrating': '迁移机构工作区并初始化账户',
                        'starting_api': '启动平台服务', 'stopping': '正在回收本次启动进程'}.get(phase, phase), flush=True)
         if supervisor.poll() is not None:

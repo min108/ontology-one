@@ -205,6 +205,52 @@ class WindowsNativeTests(_FileFixture):
             with self.subTest(forbidden=forbidden), self.assertRaises(PermissionError):
                 fs._rename(None, forbidden, True)
 
+    def test_private_directory_promotion_under_lifetime_lock_preserves_contents_and_never_replaces(self):
+        data = fs.ensure_private_directory(self.root / 'data')
+        local = fs.ensure_private_directory(data / 'local')
+        staging = fs.ensure_private_directory(data / 'mysql-initialize-synthetic')
+        fs.atomic_write(staging / 'table.synthetic', b'durable-synthetic-content')
+        target = data / 'mysql'
+        # The service's long-lived file context pins data/ and all ancestors.
+        # MoveFileExW would reopen that parent for write and fail sharing checks.
+        with fs.secure_open(local / 'service.lock', 'a+b') as lock, fs.file_lock(lock, blocking=False):
+            self.assertEqual(fs.promote_private_directory(staging, target), target)
+            self.assertFalse(staging.exists())
+            fs.assert_private(target)
+            with fs.secure_open(target / 'table.synthetic', require_private=True) as stream:
+                self.assertEqual(stream.read(), b'durable-synthetic-content')
+            second = fs.ensure_private_directory(data / 'mysql-initialize-second')
+            fs.atomic_write(second / 'other.synthetic', b'second-must-survive')
+            with self.assertRaises(FileExistsError):
+                fs.promote_private_directory(second, target)
+            self.assertEqual((target / 'table.synthetic').read_bytes(), b'durable-synthetic-content')
+            self.assertEqual((second / 'other.synthetic').read_bytes(), b'second-must-survive')
+            with self.assertRaises(PermissionError):
+                fs.promote_private_directory(second, local / 'cross-parent')
+            with self.assertRaises(PermissionError):
+                fs.promote_private_directory(second, second)
+
+    def test_private_directory_promotion_rejects_junction_or_broad_dacl_source(self):
+        from tests.windows_filesystem_fixture import make_world_accessible
+        source = fs.ensure_private_directory(self.root / 'promotion-source')
+        foreign = fs.ensure_private_directory(self.root / 'promotion-foreign')
+        fs.atomic_write(foreign / 'marker', b'foreign-unchanged')
+        source.rmdir()
+        self.junction(source, foreign)
+        try:
+            with self.assertRaises(OSError):
+                fs.promote_private_directory(source, self.root / 'promotion-target')
+            self.assertFalse((self.root / 'promotion-target').exists())
+            self.assertEqual((foreign / 'marker').read_bytes(), b'foreign-unchanged')
+        finally:
+            source.rmdir()
+        fs.ensure_private_directory(source)
+        make_world_accessible(source, directory=True)
+        with self.assertRaises(PermissionError):
+            fs.promote_private_directory(source, self.root / 'promotion-target')
+        self.assertTrue(source.is_dir())
+        self.assertFalse((self.root / 'promotion-target').exists())
+
     def test_junctions_are_rejected_without_following_foreign_tree(self):
         outside = fs.ensure_private_directory(self.root / 'foreign')
         fs.atomic_write(outside / 'secret', b'foreign')

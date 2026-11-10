@@ -11,13 +11,19 @@ $private = Join-Path $env:RUNNER_TEMP ('ontology-loader-private-' + [Guid]::NewG
 $procmon = $null
 $capturing = $false
 $phase = 'private_directory'
+$script:commandExitCode = $null
+$script:commandTimedOut = $false
 $outcome = @{ schema_version = 1; status = 'collector_unavailable'; raw_content_retained = $false }
 function Run-Bounded([string]$File, [string[]]$Arguments, [int]$Seconds) {
+    $script:commandExitCode = $null
+    $script:commandTimedOut = $false
     $child = Start-Process -FilePath $File -ArgumentList $Arguments -PassThru -RedirectStandardOutput (Join-Path $private 'tool.stdout') -RedirectStandardError (Join-Path $private 'tool.stderr')
     if (-not $child.WaitForExit($Seconds * 1000)) {
+        $script:commandTimedOut = $true
         $child.Kill(); $child.WaitForExit(); throw 'COLLECTOR_COMMAND_TIMEOUT'
     }
     $child.Refresh()
+    $script:commandExitCode = $child.ExitCode
     if ($child.ExitCode -ne 0) { throw 'COLLECTOR_COMMAND_FAILED' }
 }
 function Read-OwnedLoaderEvents([string]$Receipt, [datetime]$Start, [datetime]$End) {
@@ -96,9 +102,16 @@ try {
         $probe.Kill(); $probe.WaitForExit(); throw 'PROBE_TIMEOUT'
     }
     $phase = 'capture_stop'
-    Run-Bounded $procmon @('/Terminate','/Quiet') 10
+    # /Runtime bounds the recording itself. Prefer its natural exit, because
+    # /Terminate is an auxiliary control process whose exit code alone does
+    # not establish whether the recorder flushed and closed its backing file.
+    if (-not $capture.WaitForExit(30000)) {
+        try { Run-Bounded $procmon @('/Terminate','/Quiet') 10 } catch { }
+        if (-not $capture.WaitForExit(10000)) { throw 'CAPTURE_EXIT_TIMEOUT' }
+    }
+    $capture.Refresh()
+    $captureExitCode = $capture.ExitCode
     $capturing = $false
-    if (-not $capture.WaitForExit(10000)) { throw 'CAPTURE_EXIT_TIMEOUT' }
     $phase = 'csv_export'
     Run-Bounded $procmon @('/AcceptEula','/Quiet','/OpenLog',"`"$pml`"",'/SaveAs',"`"$csv`"") 30
     $summary = Join-Path $PSScriptRoot 'summarize_windows_loader.py'
@@ -108,10 +121,18 @@ try {
     $outcome = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json -AsHashtable
     $outcome.existing_loader_event_logs = @(Read-OwnedLoaderEvents $receipt $captureStart ([datetime]::UtcNow))
     $outcome.collector_version = '4.13'
+    $outcome.collector_capture_exit_code = $captureExitCode
     $outcome.collector_archive_sha256 = '97330813853e0e514a11ee16a47d4c6fe90148fae834649839afb30487cc8b0b'
 } catch {
     # Never output exception text: Windows exceptions can contain raw paths.
-    $outcome = @{ schema_version = 1; status = 'collector_unavailable'; phase = $phase; raw_content_retained = $false }
+    $knownFailures = @('ADMIN_REQUIRED','PREEXISTING_COLLECTOR','COLLECTOR_HASH_MISMATCH',
+        'COLLECTOR_SIGNATURE_INVALID','COLLECTOR_COMMAND_TIMEOUT','COLLECTOR_COMMAND_FAILED',
+        'PROBE_TIMEOUT','CAPTURE_EXIT_TIMEOUT','SUMMARY_FAILED')
+    $failureCode = if ($_.Exception.Message -in $knownFailures) { $_.Exception.Message } else { 'COLLECTOR_OPERATION_FAILED' }
+    $outcome = @{ schema_version = 1; status = 'collector_unavailable'; phase = $phase;
+        error = $failureCode;
+        command_exit_code = $script:commandExitCode; command_timed_out = $script:commandTimedOut;
+        raw_content_retained = $false }
 } finally {
     if ($capturing -and $procmon) {
         try { Run-Bounded $procmon @('/Terminate','/Quiet') 10 } catch { }
