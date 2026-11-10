@@ -19,6 +19,132 @@ class LUID_AND_ATTRIBUTES(C.Structure):
     _fields_ = [('luid', LUID), ('attributes', native.DWORD)]
 
 
+class USEROBJECTFLAGS(C.Structure):
+    _fields_ = [('inherit', native.BOOL), ('reserved', native.BOOL), ('flags', native.DWORD)]
+
+
+class SECURITY_DESCRIPTOR(C.Structure):
+    # Absolute SECURITY_DESCRIPTOR; pointers keep their owning token buffers
+    # alive throughout AccessCheck. No descriptor is applied to a real object.
+    _fields_ = [('revision', C.c_ubyte), ('reserved', C.c_ubyte), ('control', native.WORD),
+                ('owner', native.LPVOID), ('group', native.LPVOID),
+                ('sacl', native.LPVOID), ('dacl', native.LPVOID)]
+
+
+def _descriptor_access(advapi, token, label, descriptor, mapping, requested):
+    privilege_set = C.create_string_buffer(65536)
+    length, granted, permitted = native.DWORD(len(privilege_set)), native.DWORD(), native.BOOL()
+    if not advapi.AccessCheck(descriptor, token, 0x02000000, C.byref(mapping), privilege_set,
+                            C.byref(length), C.byref(granted), C.byref(permitted)):
+        return {'object': label, 'access_check_error': C.get_last_error()}
+    mask = int(granted.value)
+    return {'object': label, 'requested': requested, 'granted': mask,
+            'allowed': bool(permitted.value) and mask & requested == requested,
+            'missing_rights': requested & ~mask}
+
+
+def _audit_user_objects(kernel, advapi, token):
+    """Evaluate launcher UI objects; do not claim the child has connected.
+
+    Documented mappings (window-station mappings differ by interactive state):
+    https://learn.microsoft.com/windows/win32/winstation/window-station-security-and-access-rights
+    https://learn.microsoft.com/windows/win32/winstation/desktop-security-and-access-rights
+    Missing rights are a diagnostic inventory, not a minimum required by Python.
+    """
+    user = C.WinDLL('user32', use_last_error=True)
+    user.GetProcessWindowStation.restype, user.GetProcessWindowStation.argtypes = native.HANDLE, []
+    user.GetThreadDesktop.restype, user.GetThreadDesktop.argtypes = native.HANDLE, [native.DWORD]
+    user.GetUserObjectSecurity.restype = native.BOOL
+    user.GetUserObjectSecurity.argtypes = [native.HANDLE, C.POINTER(native.DWORD), native.LPVOID,
+                                          native.DWORD, C.POINTER(native.DWORD)]
+    user.GetUserObjectInformationW.restype = native.BOOL
+    user.GetUserObjectInformationW.argtypes = [native.HANDLE, C.c_int, native.LPVOID,
+                                              native.DWORD, C.POINTER(native.DWORD)]
+    kernel.GetCurrentThreadId.restype, kernel.GetCurrentThreadId.argtypes = native.DWORD, []
+
+    def check(label, handle, mapping):
+        if not handle:
+            return {'object': label, 'object_query_error': C.get_last_error()}
+        information, required = native.DWORD(0x7), native.DWORD()
+        user.GetUserObjectSecurity(handle, C.byref(information), None, 0, C.byref(required))
+        if not 20 <= required.value <= 65536:
+            return {'object': label, 'security_query_error': C.get_last_error() or 122}
+        # ctypes owns an aligned native allocation suitable for self-relative SD.
+        descriptor = C.create_string_buffer(required.value)
+        if not user.GetUserObjectSecurity(handle, C.byref(information), descriptor,
+                                         len(descriptor), C.byref(required)):
+            return {'object': label, 'security_query_error': C.get_last_error()}
+        return _descriptor_access(advapi, token, label, descriptor, mapping, int(mapping.GenericAll))
+
+    rows = []
+    station = user.GetProcessWindowStation()
+    if not station:
+        rows.append({'object': 'winstation', 'object_query_error': C.get_last_error()})
+    else:
+        flags, required = USEROBJECTFLAGS(), native.DWORD()
+        if not user.GetUserObjectInformationW(station, 1, C.byref(flags), C.sizeof(flags), C.byref(required)):
+            rows.append({'object': 'winstation', 'object_query_error': C.get_last_error()})
+        else:
+            # WSF_VISIBLE identifies the interactive window station. SYNCHRONIZE
+            # is not supported for either window stations or desktops.
+            mapping = (native.GENERIC_MAPPING(0x20303, 0x2001C, 0x20060, 0xF037F)
+                       if flags.flags & 1 else
+                       native.GENERIC_MAPPING(0x20103, 0x2000C, 0x20060, 0xF016F))
+            rows.append(check('winstation', station, mapping))
+    desktop = user.GetThreadDesktop(kernel.GetCurrentThreadId())
+    rows.append(check('desktop', desktop, native.GENERIC_MAPPING(0x20041, 0x200BE, 0x20100, 0xF01FF)))
+    # GetProcessWindowStation/GetThreadDesktop return borrowed handles. Closing
+    # them would affect the launcher; this read-only audit must not close them.
+    return rows
+
+
+def _audit_default_dacl(advapi, primary, impersonation):
+    """AccessCheck synthetic Event/Section descriptors built from TokenDefaultDacl.
+
+    GetTokenInformation/InitializeSecurityDescriptor/SetSecurityDescriptor*
+    operate only on owned in-memory buffers here; no token or OS ACL is changed.
+    https://learn.microsoft.com/windows/win32/secauthz/dacl-for-a-new-object
+    """
+    for name, args in (
+        ('InitializeSecurityDescriptor', [native.LPVOID, native.DWORD]),
+        ('SetSecurityDescriptorDacl', [native.LPVOID, native.BOOL, native.LPVOID, native.BOOL]),
+        ('SetSecurityDescriptorOwner', [native.LPVOID, native.LPVOID, native.BOOL]),
+        ('SetSecurityDescriptorGroup', [native.LPVOID, native.LPVOID, native.BOOL]),
+    ):
+        function = getattr(advapi, name)
+        function.restype, function.argtypes = native.BOOL, args
+
+    buffers = []
+    for kind in (4, 5, 6):  # TokenOwner, TokenPrimaryGroup, TokenDefaultDacl.
+        required = native.DWORD()
+        advapi.GetTokenInformation(primary, kind, None, 0, C.byref(required))
+        if not C.sizeof(native.LPVOID) <= required.value <= 65536:
+            return [{'object': 'token_default_dacl', 'security_query_error': C.get_last_error() or 122}]
+        buffer = C.create_string_buffer(required.value)
+        if not advapi.GetTokenInformation(primary, kind, buffer, len(buffer), C.byref(required)):
+            return [{'object': 'token_default_dacl', 'security_query_error': C.get_last_error()}]
+        buffers.append(buffer)
+    owner, group, dacl = [C.cast(buffer, C.POINTER(native.LPVOID))[0] for buffer in buffers]
+    descriptor = SECURITY_DESCRIPTOR()
+    for operation in (
+        lambda: advapi.InitializeSecurityDescriptor(C.byref(descriptor), 1),
+        lambda: advapi.SetSecurityDescriptorOwner(C.byref(descriptor), owner, False),
+        lambda: advapi.SetSecurityDescriptorGroup(C.byref(descriptor), group, False),
+        lambda: advapi.SetSecurityDescriptorDacl(C.byref(descriptor), True, dacl, False),
+    ):
+        if not operation():
+            return [{'object': 'token_default_dacl', 'descriptor_error': C.get_last_error()}]
+    # Event probe asks only MODIFY_STATE|SYNCHRONIZE. Section probe asks only
+    # MAP_READ|MAP_EXECUTE. These are synthetic access tests, not evidence of a
+    # specific loader object or a request to add rights to the target token.
+    return [
+        _descriptor_access(advapi, impersonation, 'default_dacl_event', C.byref(descriptor),
+                           native.GENERIC_MAPPING(0x20001, 0x20002, 0x120000, 0x1F0003), 0x100002),
+        _descriptor_access(advapi, impersonation, 'default_dacl_section', C.byref(descriptor),
+                           native.GENERIC_MAPPING(0x20005, 0x20002, 0x20008, 0xF001F), 0xC),
+    ]
+
+
 def audit_loader_access(process, runtime, work, system_root):
     kernel, advapi, _, _ = native._api()
     advapi.GetNamedSecurityInfoW.restype = native.DWORD
@@ -83,8 +209,13 @@ def audit_loader_access(process, runtime, work, system_root):
         for index, parent in enumerate((runtime, *runtime.parents)):
             rows.append(check('runtime_ancestor_' + str(index), parent, 0x20))
         rows.append(check('work_directory', work, 0x20))
+        user_rows = _audit_user_objects(kernel, advapi, impersonation)
+        default_dacl_rows = _audit_default_dacl(advapi, token, impersonation)
         print(json.dumps({'native_loader_acl_audit': {'bypass_traverse_enabled': bool(traverse_enabled),
-              'objects': rows}}, ensure_ascii=True), flush=True)
+              'objects': rows,
+              'user_object_scope': 'launcher_current_winstation_desktop',
+              'user_objects': user_rows, 'synthetic_default_dacl_objects': default_dacl_rows}},
+              ensure_ascii=True), flush=True)
     finally:
         if impersonation: kernel.CloseHandle(impersonation)
         kernel.CloseHandle(token)

@@ -82,6 +82,9 @@ jobs:
             $package = Join-Path $qaRoot 'Ontology-One-0.5.0-windows-x64'
             $python = Join-Path $package 'runtime/python/python.exe'
             $entry = Join-Path $package 'scripts/check_windows_ci.py'
+            if ('${{ github.event_name }}' -eq 'pull_request') {
+              & ./.github/scripts/windows-loader-capture.ps1 -Package $package -Reports $reports -Credential $credential
+            }
             $arguments = @('-I', '-X', 'utf8', '-B', "`"$entry`"", '--package', "`"$package`"", '--report-dir', "`"$reports`"")
             $process = Start-Process -FilePath $python -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -RedirectStandardOutput (Join-Path $reports 'ci-entry.stdout.log') -RedirectStandardError (Join-Path $reports 'ci-entry.stderr.log') -PassThru
             if (-not $process.WaitForExit(1800000)) { throw 'Native acceptance exceeded its time budget' }

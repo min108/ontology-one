@@ -500,7 +500,10 @@ class Supervisor:
             self.phase_to('initializing_database')
             # Initialize in a new private staging directory. A failed first run
             # cannot leave a partial database at the durable data/mysql path.
-            staging = Path(tempfile.mkdtemp(prefix='.mysql-initialize-', dir=ROOT / 'data'))
+            # InnoDB's Dir_Walker skips a dot-prefixed root even on Windows.
+            # A hidden staging name makes the next startup miss existing undo
+            # tablespaces. Privacy comes from the DACL, not a dot in the name.
+            staging = Path(tempfile.mkdtemp(prefix='mysql-initialize-', dir=ROOT / 'data'))
             ensure_private_directory(staging)
             child = self.spawn('mysql_initialize', [self.runtime['mysqld'], '--no-defaults', '--no-monitor', '--initialize-insecure', '--console',
                 '--basedir=' + str(mysql_root), '--datadir=' + str(staging)], environment)
