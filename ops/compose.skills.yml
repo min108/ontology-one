@@ -1,0 +1,64 @@
+# Optional complete script-testing profile:
+# docker compose -f docker-compose.yml -f ops/compose.skills.yml up -d --build
+# Only the trusted fixed runner receives Docker access; API mounts only its UDS.
+services:
+  skill-test-image:
+    image: ontology-skill-test:0.5.0
+    build:
+      context: .
+      dockerfile: ops/skill-runner.Dockerfile
+    entrypoint: ["python", "-I", "-B", "-c", "pass"]
+    command: []
+    network_mode: none
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: none
+    restart: "no"
+  skill-runner:
+    image: ontology-skill-runner:0.5.0
+    build:
+      context: .
+      dockerfile: ops/skill-runner-service.Dockerfile
+    restart: unless-stopped
+    read_only: true
+    network_mode: none
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 2
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      ONTOLOGY_SKILL_TEST_IMAGE: ontology-skill-test:0.5.0
+      ONTOLOGY_SKILL_RUNNER_NAMESPACE: ${COMPOSE_PROJECT_NAME:-ontology-one}
+    volumes:
+      - skill_runner_socket:/run/ontology-skills
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      skill-test-image:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-I", "-B", "/opt/skill_runner.py", "--socket", "/run/ontology-skills/runner.sock", "--check"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+  api:
+    environment:
+      ONTOLOGY_SKILL_RUNNER_SOCKET: /run/ontology-skills/runner.sock
+    volumes:
+      - skill_runner_socket:/run/ontology-skills:ro
+    depends_on:
+      skill-runner:
+        condition: service_healthy
+volumes:
+  skill_runner_socket:

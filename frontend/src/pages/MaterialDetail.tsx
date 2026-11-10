@@ -12,7 +12,7 @@ type Chunk = { id: string; position: number; heading: string; content: string; l
 type Candidate = { id: string; kind: string; title: string; summary: string; content: string; source_chunk_ids: string[]; source_quotes?: { chunk_id: string; quote: string }[]; conditions: string[]; questions: string[]; status?: string; extraction_label?: string; extraction_mode?: string; entity_id?: string };
 type Job = { id: string; status: string; progress: number; message: string; created_at?: string; result?: { mode?: string } };
 type Detail = { segmentation: { status: string; mode: string; locked: boolean; lock_reason?: string; has_source: boolean }; entity: { id: string; title: string; domain: string; org_id: string; source_kind: string; summary: string; payload: { parse_warnings?: string[]; filename?: string; processing_mode?: string; source_url?: string; [key: string]: any } }; chunks: Chunk[]; historical_chunks?: Chunk[]; candidates: Candidate[]; coverage: Record<string, { status: string; mode: string; message: string; candidate_count?: number }>; jobs: Job[]; stats: { chunks: number; covered: number; candidates: number; adopted: number; pending: number } };
-const kindNames: Record<string, string> = { data: '数据资产', rule: '规则资产', algorithm: '算法资产', knowledge: '知识资产' };
+const kindNames: Record<string, string> = { data: '数据资产', rule: '规则资产', skill: '技能资产', knowledge: '知识资产' };
 const candidateNames: Record<string, string> = { pending: '待核对', adopted: '已采纳', rejected: '已驳回', merged: '已合并' };
 const sourceNames: Record<string, string> = { demo: '演示材料 · 虚构业务', regulation: '法规原文', imported: '存量资料', user: '用户上传' };
 

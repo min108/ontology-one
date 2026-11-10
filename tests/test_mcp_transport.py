@@ -61,11 +61,7 @@ class ProbeExecutor(mcp_server.ProcessExecutor):
         self.audit_events = []
 
     async def _spawn(self):
-        process = await asyncio.create_subprocess_exec(
-            sys.executable, '-c', CHILD, self.mode, stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            start_new_session=True, limit=mcp_server.MAX_RESULT_BYTES + 4096,
-        )
+        process = await self._spawn_command([sys.executable, '-c', CHILD, self.mode])
         self.spawned.append(process)
         self.started.set()
         if self.barrier is not None:
@@ -87,13 +83,20 @@ class ProcessTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(executor.calls)
         for process in executor.spawned:
             self.assertIsNotNone(process.returncode)
-            with self.assertRaises(ProcessLookupError):
-                os.kill(process.pid, 0)
+            if os.name == 'nt':
+                # aclose waits for ActiveProcesses == 0 and closes the native
+                # Job/pipe handles; os.kill(pid, 0) is destructive on Windows.
+                self.assertTrue(process._cleanup.done())
+                self.assertIsNone(process._cleanup.exception())
+                self.assertFalse(any(thread.is_alive() for thread in process._threads))
+            else:
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(process.pid, 0)
 
     async def test_two_phase_result_and_real_child_reaped(self):
         executor = ProbeExecutor()
-        result = await self.execute(executor)
-        self.assertEqual(result.data, {'tenant': 'dept-01'})
+        result = await self.execute(executor, tenant='总部部门-中文-!')
+        self.assertEqual(result.data, {'tenant': '总部部门-中文-!'})
         self.assert_reaped(executor)
 
     async def test_timeout_terminates_and_reaps_before_releasing_slot(self):
@@ -201,11 +204,8 @@ main()
         from dataclasses import asdict
         with tempfile.TemporaryDirectory() as directory:
             flag = Path(directory) / 'revoked'
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, '-c', script, str(flag), cwd=mcp_server._ROOT,
-                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE, start_new_session=True,
-            )
+            executor = mcp_server.ProcessExecutor()
+            process = await executor._spawn_command([sys.executable, '-c', script, str(flag)])
             try:
                 payload = {'principal': asdict(principal()), 'tool': 'ontology_discover',
                            'arguments': {}, 'request_id': 'request-1', 'mode': 'execute'}
@@ -227,9 +227,7 @@ main()
                 self.assertEqual(await process.stderr.read(), b'')
                 await process.wait()
             finally:
-                if process.returncode is None:
-                    process.kill()
-                    await process.wait()
+                await executor._reap(process)
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):

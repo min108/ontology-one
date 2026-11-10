@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 
 import httpx2
 import pymysql
+from .platform_io import secure_open, reject_reparse_points, WINDOWS
 from pymysql.cursors import SSDictCursor
 from pymysql.constants import CLIENT
 from mcp import ClientSession
@@ -138,19 +139,16 @@ def _resolve_credentials(source):
         path = Path(raw_path)
         if not raw_path or not path.is_absolute() or '..' in path.parts:
             raise ValueError()
-        for part in (path, *path.parents):
-            if part.is_symlink():
-                raise ValueError()
+        reject_reparse_points(path)
         resolved = path.resolve(strict=True)
         forbidden = [Path(__file__).resolve().parent.parent]
         if os.environ.get('ONTOLOGY_STORAGE_ROOT'):
             forbidden.append(Path(os.environ['ONTOLOGY_STORAGE_ROOT']).resolve())
         if any(resolved == root or root in resolved.parents for root in forbidden) or 'uploads' in resolved.parts:
             raise ValueError()
-        fd = os.open(resolved, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
-        with os.fdopen(fd, 'rb') as handle:
+        with secure_open(path, 'rb', require_private=True) as handle:
             info = os.fstat(handle.fileno())
-            if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 1024 * 1024:
+            if not stat.S_ISREG(info.st_mode) or (not WINDOWS and stat.S_IMODE(info.st_mode) != 0o600) or info.st_size > 1024 * 1024:
                 raise ValueError()
             raw = handle.read(1024 * 1024 + 1)
         if len(raw) > 1024 * 1024:
@@ -160,7 +158,7 @@ def _resolve_credentials(source):
     except SourceFailure:
         raise
     except (OSError, ValueError, TypeError, RecursionError):
-        _fail('SOURCE_CREDENTIALS_UNAVAILABLE', '部署凭据文件不可用；须由管理员配置安全位置的600权限文件。', 503)
+        _fail('SOURCE_CREDENTIALS_UNAVAILABLE', '部署凭据文件不可用；须使用安全本地目录及当前用户专用权限（Windows DACL / Unix 600）。', 503)
     if not isinstance(entry, dict) or entry.get('tenant_id') != tenant or entry.get('kind') != kind:
         _fail('SOURCE_CREDENTIAL_SCOPE', '凭据引用不存在、已撤销或不属于当前机构与数据源类型。', 403)
     keys = ('host', 'port', 'database') if kind == 'mysql' else ('endpoint',)

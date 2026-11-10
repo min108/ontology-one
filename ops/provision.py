@@ -34,7 +34,7 @@ def main():
             # Escaped underscores keep this grant within the exact deployment prefix.
             cursor.execute(r"GRANT ALL PRIVILEGES ON `ontology\_one\_v020\_%`.* TO 'ontology_runtime'@'%'")
             conn.commit()
-    print('0.4.0迁移完成；51个空机构工作区与受限运行账号已就绪。')
+    print('0.5.0迁移完成；51个空机构工作区与受限运行账号已就绪。')
 
 
 if __name__ == '__main__':

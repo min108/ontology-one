@@ -24,6 +24,7 @@ from .policy import authorize, is_control_path, needs_body
 
 COOKIE_NAME = 'ontology_session'
 MAX_POLICY_BODY = 1024 * 1024
+MAX_SKILL_BODY = 3 * 1024 * 1024
 SAFE_METHODS = frozenset({'GET', 'HEAD', 'OPTIONS'})
 PUBLIC = frozenset({
     ('GET', '/api/health'),
@@ -178,8 +179,10 @@ class SecurityMiddleware:
 
         body = None
         original_receive = receive
-        if needs_body(method, path):
-            if headers.get('content-type', '').split(';', 1)[0].strip().lower() != 'application/json':
+        policy_body = needs_body(method, path)
+        skill_body = method not in SAFE_METHODS and (path == '/api/skills' or path.startswith('/api/skills/'))
+        if policy_body or skill_body:
+            if policy_body and headers.get('content-type', '').split(';', 1)[0].strip().lower() != 'application/json':
                 await error(415, '此操作须使用 JSON 请求。')
                 return
             chunks, size = [], 0
@@ -191,20 +194,21 @@ class SecurityMiddleware:
                     continue
                 chunk = message.get('body', b'')
                 size += len(chunk)
-                if size > MAX_POLICY_BODY:
+                if size > (MAX_SKILL_BODY if skill_body else MAX_POLICY_BODY):
                     await error(413, '请求正文超过此操作的大小限制。')
                     return
                 chunks.append(chunk)
                 if not message.get('more_body', False):
                     break
             raw = b''.join(chunks)
-            try:
-                body = json.loads(raw)
-                if not isinstance(body, dict):
-                    raise ValueError('object required')
-            except (ValueError, UnicodeDecodeError):
-                await error(400, '请求正文须为有效 JSON 对象。')
-                return
+            if policy_body:
+                try:
+                    body = json.loads(raw)
+                    if not isinstance(body, dict):
+                        raise ValueError('object required')
+                except (ValueError, UnicodeDecodeError):
+                    await error(400, '请求正文须为有效 JSON 对象。')
+                    return
             delivered = False
 
             async def replay_receive():

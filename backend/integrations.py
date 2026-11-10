@@ -38,11 +38,14 @@ class ToolCall(BaseModel):
 def capabilities():
     p = assert_principal_current(require_context())
     from .mcp_contracts import TOOL_MODELS, CONTRACT_VERSION, RETENTION
-    return {'version': '0.4.0', 'transport': 'authenticated-http', 'mcp_transport': 'streamable-http',
+    return {'version': '0.5.0', 'transport': 'authenticated-http', 'mcp_transport': 'streamable-http',
             'mcp_client': {'transport': 'streamable-http', 'sdk_version': '2.3.0', 'profile': 'ontology-source/1'},
             'mcp_server': {'enabled': True, 'endpoint': '/mcp/', 'contract_version': CONTRACT_VERSION,
                            'identity': 'delegated-application', 'tools': list(TOOL_MODELS),
                            'tenant_scope': 'fixed-tenant', 'retention': RETENTION},
+            'skills': {'endpoint': '/api/skills', 'format': 'agent-skills', 'asset_kind': 'skill',
+                       'governance': 'digest-bound-review', 'script_testing': 'isolated-runner',
+                       'harness_authoring': {'sdk_version': '0.2.1rc2', 'proposal_only': True}},
             'tools': [{'name': name, 'read_only': True} for name in TOOLS],
             'tenant_id': p.tenant_id, 'identity': 'server-session',
             'policy': '与交互界面共用机构、角色、授权、撤权及审计服务。'}

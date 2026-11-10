@@ -13,14 +13,14 @@ from .db import connect, entity_json, log, now
 from .security.context import require_context
 
 router = APIRouter()
-ASSETS = {"data", "rule", "algorithm", "knowledge"}
+ASSETS = {"data", "rule", "skill", "knowledge"}
 TARGETS = ASSETS | {"material", "case", "dataset"}
 RELATIONS = {
     "derived_from": {"label": "提炼自", "sources": ASSETS, "targets": {"material", "case", "dataset"}},
-    "based_on": {"label": "依据规则", "sources": {"data", "algorithm", "knowledge"}, "targets": {"rule"}},
-    "uses_data": {"label": "使用数据口径", "sources": {"algorithm", "rule", "knowledge"}, "targets": {"data"}},
-    "implements_rule": {"label": "落实规则", "sources": {"algorithm"}, "targets": {"rule"}},
-    "informs": {"label": "提供核查参考", "sources": {"knowledge"}, "targets": {"rule", "algorithm"}},
+    "based_on": {"label": "依据规则", "sources": {"data", "skill", "knowledge"}, "targets": {"rule"}},
+    "uses_data": {"label": "使用数据口径", "sources": {"skill", "rule", "knowledge"}, "targets": {"data"}},
+    "implements_rule": {"label": "落实规则", "sources": {"skill"}, "targets": {"rule"}},
+    "informs": {"label": "提供核查参考", "sources": {"knowledge"}, "targets": {"rule", "skill"}},
     "references": {"label": "业务引用", "sources": ASSETS, "targets": ASSETS},
     "related_to": {"label": "同类业务参考", "sources": ASSETS | {"case"}, "targets": ASSETS | {"case"}},
 }
@@ -89,7 +89,7 @@ def candidates_for(e, q="", limit=30):
         # Precise ID/title search also permits manual replacement without AI invention.
         if q:
             needle = "%" + q.replace("%", "\\%").replace("_", "\\_") + "%"
-            rows = c.execute("SELECT * FROM entities WHERE kind IN ('data','rule','algorithm','knowledge','material','case','dataset') AND status NOT IN ('archived','rejected') AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0 AND (id LIKE ? OR title LIKE ?) ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,id LIMIT 30", (needle, needle, q)).fetchall()
+            rows = c.execute("SELECT * FROM entities WHERE kind IN ('data','rule','skill','knowledge','material','case','dataset') AND status NOT IN ('archived','rejected') AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0 AND (id LIKE ? OR title LIKE ?) ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,id LIMIT 30", (needle, needle, q)).fetchall()
             for row in rows:
                 target = entity_json(row)
                 if target["id"] not in seen:
@@ -106,7 +106,7 @@ def allowed(source, target, relation_type):
 def default_relation(source, target):
     if target["kind"] in ("material", "case", "dataset"):
         return "derived_from"
-    if target["kind"] == "rule" and source["kind"] == "algorithm":
+    if target["kind"] == "rule" and source["kind"] == "skill":
         return "implements_rule"
     if target["kind"] == "rule" and source["kind"] != "rule":
         return "based_on"
@@ -144,6 +144,8 @@ class ConfirmRequest(BaseModel):
 def search_candidates(asset_id: str, q: str = Query(default="", max_length=500)):
     with closing(connect()) as c:
         e = source_asset(c, asset_id)
+        from .skills import guard_generic_entity
+        guard_generic_entity(c, e)
     items = candidates_for(e, q)
     return {"items": items, "total": len(items), "asset_version": e["version"], "relation_types": [{"type": k, "label": v["label"], "sources": sorted(v["sources"]), "targets": sorted(v["targets"])} for k, v in RELATIONS.items()]}
 
@@ -225,6 +227,9 @@ def confirm(asset_id: str, body: ConfirmRequest):
     fingerprint = hashlib.sha256(dump({**body.model_dump(exclude={'reviewer'}), 'reviewer_id': principal.user_id}).encode()).hexdigest()
     with closing(connect()) as c, c:
         c.execute("BEGIN IMMEDIATE")
+        c.execute('SELECT id FROM entities WHERE id=? FOR UPDATE', (asset_id,)).fetchone()
+        from .skills import guard_generic_entity
+        guard_generic_entity(c, asset_id)
         job = c.execute("SELECT * FROM jobs WHERE id=? AND entity_id=? AND kind='asset_placement'", (body.job_id, asset_id)).fetchone()
         if not job:
             raise HTTPException(404, "未找到本项资产的关联建议记录。")
@@ -246,7 +251,9 @@ def confirm(asset_id: str, body: ConfirmRequest):
             original = generated.get(link.suggestion_id)
             if not original:
                 raise HTTPException(400, "提交项不属于本次关联建议。")
-            target = entity(c, link.target_id)
+            target = entity_json(c.execute('SELECT * FROM entities WHERE id=? FOR UPDATE', (link.target_id,)).fetchone())
+            if not target:
+                raise HTTPException(404, '关联目标不存在。')
             if target["kind"] not in TARGETS or target["status"] in ("archived", "rejected"):
                 raise HTTPException(400, "目标对象不属于可关联的业务资产或来源。")
             if target["version"] != link.target_version:
@@ -256,6 +263,7 @@ def confirm(asset_id: str, body: ConfirmRequest):
             if link.direction not in ("outgoing", "incoming"):
                 raise HTTPException(400, "关联方向不正确。")
             start, end = (e, target) if link.direction == "outgoing" else (target, e)
+            guard_generic_entity(c, start)
             if not allowed(start, end, link.relation_type):
                 raise HTTPException(400, "关系类型与两端对象不相容，或发生了自身关联。")
             key = (start["id"], end["id"], link.relation_type)

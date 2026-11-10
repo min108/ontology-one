@@ -16,6 +16,14 @@ REVIEW = frozenset({'admin', 'reviewer'})
 
 # Paths are the existing business contract, including downloads.
 READ_PATHS = (
+    '/api/skills',
+    '/api/skills/options',
+    '/api/skills/harness/status',
+    '/api/skills/{id}',
+    '/api/skills/{id}/versions',
+    '/api/skills/{id}/versions/{revision}',
+    '/api/skills/{id}/export',
+    '/api/skills/{id}/load',
     '/api/integrations/applications',
     '/api/integrations/applications/options',
     '/api/sources',
@@ -96,6 +104,16 @@ READ_PATHS = (
 CONTROL_PREFIXES = ("/api/auth/", "/api/admin/", "/api/federation/")
 
 WRITE_RULES = (
+    ('POST', '/api/skills', BUILD),
+    ('POST', '/api/skills/import', BUILD),
+    ('PUT', '/api/skills/{id}', BUILD),
+    ('POST', '/api/skills/{id}/validate', ROLES),
+    ('POST', '/api/skills/{id}/test', BUILD),
+    ('POST', '/api/skills/{id}/assist', BUILD),
+    # Strict handler validates action-specific role, CAS and separate reviewer.
+    ('POST', '/api/skills/{id}/action', ROLES),
+    ('POST', '/api/skills/harness/config', ADMIN),
+    ('POST', '/api/skills/harness/test', ADMIN),
     ('POST', '/api/integrations/applications', ADMIN),
     ('PATCH', '/api/integrations/applications/{application_id}', ADMIN),
     ('POST', '/api/integrations/applications/{application_id}/credentials', ADMIN),

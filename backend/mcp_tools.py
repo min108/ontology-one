@@ -21,7 +21,7 @@ from .mcp_contracts import (
 from .security.context import require_context
 from .security.store import assert_principal_current
 
-ONTOLOGY_KINDS = ('data', 'rule', 'algorithm', 'knowledge', 'organization')
+ONTOLOGY_KINDS = ('data', 'rule', 'skill', 'knowledge', 'organization')
 
 
 def _auth():
@@ -39,7 +39,7 @@ def _principal():
 def _visible(alias='e'):
     # Payload content is never projected. These predicates match the UI's active
     # publication boundary while suppressing the synthetic headquarters root.
-    return (f"{alias}.kind IN ('data','rule','algorithm','knowledge','organization') "
+    return (f"{alias}.kind IN ('data','rule','skill','knowledge','organization') "
             f"AND {alias}.status='published' "
             f"AND COALESCE(json_extract({alias}.payload,'$.active_asset'),1)!=0 "
             f"AND COALESCE(json_extract({alias}.payload,'$.hide_in_graph'),0)=0")

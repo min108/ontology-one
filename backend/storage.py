@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import os
 import re
-import uuid
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from threading import RLock
 
 from fastapi import HTTPException
 from .security.context import require_context
+from . import platform_io
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,9 +22,10 @@ def _tenant_id():
 
 
 def _reject_symlinks(path):
-    for parent in (path, *path.parents):
-        if parent.is_symlink():
-            raise HTTPException(403, '不允许通过符号链接访问工作区文件。')
+    try:
+        platform_io.reject_reparse_points(path)
+    except OSError as exc:
+        raise HTTPException(403, '不允许通过符号链接、目录联接或重解析点访问工作区文件。') from exc
 
 
 def workspace_root(*, create=False):
@@ -33,7 +34,10 @@ def workspace_root(*, create=False):
     path = base / _tenant_id()
     _reject_symlinks(path)
     if create:
-        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            platform_io.ensure_private_directory(path)
+        except OSError as exc:
+            raise HTTPException(403, '无法建立当前用户专用的安全工作区目录。') from exc
     return path
 
 
@@ -54,10 +58,13 @@ def scoped_path(relative, *, allowed=('data/uploads',), create_parent=False, mus
     root = workspace_root(create=create_parent)
     path = root.joinpath(*part.parts)
     _reject_symlinks(path)
-    if not path.resolve().is_relative_to(root.resolve()):
+    if not path.is_relative_to(root):
         raise HTTPException(403, '禁止跨机构访问文件。')
     if create_parent:
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            platform_io.ensure_private_directory(path.parent)
+        except OSError as exc:
+            raise HTTPException(403, '无法建立安全资料目录。') from exc
     if must_exist and not path.is_file():
         raise HTTPException(404, '当前机构资料库中没有该原件。')
     return path
@@ -73,7 +80,10 @@ def upload_path(name, category='', *, create_parent=False, must_exist=False):
 def uploads_dir(category=''):
     suffix = '/' + category.strip('/') if category else ''
     path = scoped_path('data/uploads' + suffix, create_parent=True)
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        platform_io.ensure_private_directory(path)
+    except OSError as exc:
+        raise HTTPException(403, '无法建立安全上传目录。') from exc
     return path
 
 
@@ -94,61 +104,30 @@ def assert_storage_write():
 
 
 @contextmanager
-def open_file(path, mode='rb'):
-    """Walk using dirfd + O_NOFOLLOW so replacing a parent with a link cannot escape."""
-    root = workspace_root()
-    relative = stored_path(path)
-    parts = PurePosixPath(relative).parts
+def open_file(path, mode='rb', *, require_private=False):
+    """Authorize tenant scope, then pin directories and open the verified object."""
+    stored_path(path)
     write = any(c in mode for c in 'wax+')
     if write:
         assert_storage_write()
-    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    parent_fd = root_fd
     try:
-        for name in parts[:-1]:
-            new_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
-            if parent_fd != root_fd:
-                os.close(parent_fd)
-            parent_fd = new_fd
-        flags = os.O_NOFOLLOW
-        if 'w' in mode: flags |= os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        elif 'x' in mode: flags |= os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        elif 'a' in mode: flags |= os.O_WRONLY | os.O_CREAT | os.O_APPEND
-        else: flags |= os.O_RDONLY
-        fd = os.open(parts[-1], flags, 0o600, dir_fd=parent_fd)
-        with os.fdopen(fd, mode) as stream:
+        with platform_io.secure_open(path, mode, require_private=require_private) as stream:
             yield stream
             if write:
                 assert_storage_write()
     except OSError as exc:
         raise HTTPException(403, '无法安全访问当前机构文件。') from exc
-    finally:
-        if parent_fd != root_fd: os.close(parent_fd)
-        os.close(root_fd)
 
 
 def write_bytes(path, data, *, overwrite=True):
-    path=Path(path)
-    temporary=path.with_name('.pending-' + uuid.uuid4().hex)
+    stored_path(path)
+    assert_storage_write()
     try:
-        with open_file(temporary, 'xb') as stream:
-            size=stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        assert_storage_write()
-        _reject_symlinks(path)
-        directory=os.open(path.parent,os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            if overwrite:
-                os.replace(temporary.name,path.name,src_dir_fd=directory,dst_dir_fd=directory)
-            else:
-                os.link(temporary.name,path.name,src_dir_fd=directory,dst_dir_fd=directory,follow_symlinks=False)
-            os.fsync(directory)
-        finally:
-            os.close(directory)
-        return size
-    finally:
-        temporary.unlink(missing_ok=True)
+        return platform_io.atomic_write(path, data, overwrite=overwrite, before_commit=assert_storage_write)
+    except FileExistsError:
+        raise
+    except OSError as exc:
+        raise HTTPException(403, '无法安全写入当前机构文件。') from exc
 
 
 def read_bytes(path):

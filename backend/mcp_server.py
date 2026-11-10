@@ -70,14 +70,35 @@ class ProcessExecutor:
         environment = dict(os.environ)
         environment['PYTHONDONTWRITEBYTECODE'] = '1'
         environment['PYTHONUNBUFFERED'] = '1'
+        return await self._spawn_command([sys.executable, '-m', 'backend.mcp_worker'], environment)
+
+    async def _spawn_command(self, command, environment=None):
+        if os.name == 'nt':
+            from .windows_async_process import async_spawn
+            from .windows_process import ProcessLimits
+            memory_mb = max(256, min(1536, int(os.getenv('ONTOLOGY_MCP_WORKER_MEMORY_MB', '768'))))
+            return await async_spawn(
+                command, cwd=str(_ROOT), env=environment or dict(os.environ),
+                limits=ProcessLimits(memory_bytes=memory_mb * 1024 * 1024,
+                                     active_processes=4, cpu_time_seconds=15),
+                max_stdout=MAX_RESULT_BYTES + 2048, max_stderr=MAX_STDERR_BYTES,
+                max_line_bytes=MAX_RESULT_BYTES + 1, max_stdin=MAX_INPUT_BYTES + 64,
+            )
         return await asyncio.create_subprocess_exec(
-            sys.executable, '-m', 'backend.mcp_worker', cwd=str(_ROOT), env=environment,
+            *command, cwd=str(_ROOT), env=environment,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, start_new_session=True,
             limit=MAX_RESULT_BYTES + 4096,
         )
 
     async def _reap(self, process):
+        if os.name == 'nt':
+            # The owner kills the entire Job and joins every pipe reader/writer
+            # before releasing the call's slot, including after normal exit.
+            await process.aclose()
+            self.children.discard(process)
+            return
+
         async def discard(stream):
             while await stream.read(65536):
                 pass
@@ -199,7 +220,13 @@ class ProcessExecutor:
         except ToolFailure as exc:
             await self._audit_failure(payload, 'result_limit' if exc.code == 'RESULT_LIMIT' else 'failed')
             raise
-        except Exception:
+        except Exception as exc:
+            # The native pipe owner enforces byte caps before buffering. Its
+            # fixed codes contain no provider, query, credential or row data.
+            from .windows_async_process import WindowsProcessIOError
+            if isinstance(exc, WindowsProcessIOError) and exc.code == 'WINDOWS_PROCESS_OUTPUT_LIMIT':
+                await self._audit_failure(payload, 'result_limit')
+                raise ToolFailure('RESULT_LIMIT', '工具输出超过允许范围。') from None
             await self._audit_failure(payload, 'failed')
             raise ToolFailure('INTERNAL_ERROR', '工具执行暂不可用。') from None
         finally:
@@ -266,7 +293,7 @@ class MCPApplication:
                 }[result.status])],
             )
 
-        self.server = Server('Ontology One', version='0.4.0', on_list_tools=list_tools,
+        self.server = Server('Ontology One', version='0.5.0', on_list_tools=list_tools,
                              on_call_tool=call_tool, get_tool_input_schema=schemas.get)
         # Low-level Server installs only OpenTelemetry by default. The public
         # middleware list lets this endpoint opt out even when an exporter is

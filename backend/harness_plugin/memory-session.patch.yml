@@ -1,0 +1,4 @@
+# Windows authoring uses the official in-memory Session service without a
+# durable backend. No draft, model output, or session events are journaled.
+- id: sessions
+  disabled: true

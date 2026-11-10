@@ -13,7 +13,7 @@ from .db import connect, entity_json, log, now
 
 router = APIRouter(tags=["变化影响复核"])
 STATUSES = {"confirmed": "已确认", "candidate": "待核实", "source_verified": "来源文本一致", "demo": "演示关联"}
-ASSETS = ("rule", "data", "algorithm", "knowledge")
+ASSETS = ("rule", "data", "skill", "knowledge")
 REVIEWABLE = ASSETS + ("case", "dataset", "analysis", "issue")
 # These edges point from a consumer to its dependency. A change in the target
 # therefore reaches the source; changing the consumer must not affect its inputs.
@@ -32,7 +32,7 @@ def brief(row):
 def get_source(db, source_id):
     row = db.execute("SELECT * FROM entities WHERE id=?", (source_id,)).fetchone()
     if not row or (row["kind"] not in ASSETS and not (row["kind"] == "material" and row["source_kind"] == "regulation")):
-        raise HTTPException(404, "请选择规则、数据、算法、知识资产或已归集的法规原文")
+        raise HTTPException(404, "请选择规则、数据、技能、知识资产或已归集的法规原文")
     return row
 
 
@@ -63,8 +63,8 @@ def scope(db, source, depth=2):
         rev = ",".join("?" for _ in REVERSE)
         fwd = ",".join("?" for _ in FORWARD)
         source_types = ",".join("?" for _ in SOURCE_DEPENDENCIES)
-        clauses = [f"(r.target IN ({slots}) AND (r.type IN ({rev}) OR (r.type='references_algorithm' AND s.kind='case')))",
-                   f"(r.source IN ({slots}) AND (r.type IN ({fwd}) OR (r.type='references_algorithm' AND s.kind='rule')))"]
+        clauses = [f"(r.target IN ({slots}) AND (r.type IN ({rev}) OR (r.type='references_skill' AND s.kind='case')))",
+                   f"(r.source IN ({slots}) AND (r.type IN ({fwd}) OR (r.type='references_skill' AND s.kind='rule')))"]
         params = [*frontier, *REVERSE, *frontier, *FORWARD]
         if level == 1 and source["kind"] == "material":
             clauses.append(f"(r.target=? AND r.type IN ({source_types}))")
@@ -77,7 +77,7 @@ def scope(db, source, depth=2):
         next_frontier = []
         for r in rows[:PATH_CAP]:
             scanned += 1
-            if r["source"] in frontier and (r["type"] in FORWARD or (r["type"] == "references_algorithm" and r["sk"] == "rule")):
+            if r["source"] in frontier and (r["type"] in FORWARD or (r["type"] == "references_skill" and r["sk"] == "rule")):
                 previous, affected = r["source"], r["target"]
                 target_kind = r["tk"]
             else:
@@ -115,7 +115,7 @@ def scope(db, source, depth=2):
 
 @router.get("/impact/sources")
 def sources(q: str = Query("",max_length=200), kind: str="", page: int=Query(1,ge=1), page_size:int=Query(12,ge=1,le=30)):
-    where="(e.kind IN ('rule','data','algorithm','knowledge') OR (e.kind='material' AND e.source_kind='regulation')) AND COALESCE(json_extract(e.payload,'$.active_asset'),1)!=0"
+    where="(e.kind IN ('rule','data','skill','knowledge') OR (e.kind='material' AND e.source_kind='regulation')) AND COALESCE(json_extract(e.payload,'$.active_asset'),1)!=0"
     args=[]
     if kind:
         where+=" AND e.kind=?";args.append(kind)

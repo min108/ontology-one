@@ -9,14 +9,21 @@ import contextlib
 import json
 import logging
 import os
-import resource
 import sys
+
+if os.name != 'nt':
+    import resource
 
 MAX_INPUT_BYTES = 160 * 1024
 MAX_RESULT_BYTES = 2 * 1024 * 1024
 
 
 def _limits():
+    if os.name == 'nt':
+        from .windows_process import assert_job_limits
+        memory = max(256, min(1536, int(os.getenv('ONTOLOGY_MCP_WORKER_MEMORY_MB', '768')))) * 1024 * 1024
+        assert_job_limits(max_memory_bytes=memory, max_processes=4, max_cpu_time_seconds=15)
+        return
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
     resource.setrlimit(resource.RLIMIT_CPU, (15, 15))
@@ -58,6 +65,10 @@ def main():
     # Save only the private protocol descriptor. Suppress accidental prints,
     # third-party logs and tracebacks before importing business modules.
     output = os.dup(sys.stdout.fileno())
+    if os.name == 'nt':
+        import msvcrt
+        msvcrt.setmode(output, os.O_BINARY)
+        msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
     sink = os.open(os.devnull, os.O_WRONLY)
     os.dup2(sink, sys.stdout.fileno())
     os.dup2(sink, sys.stderr.fileno())

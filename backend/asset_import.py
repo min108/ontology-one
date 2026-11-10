@@ -1,4 +1,4 @@
-"""Transactional Excel import and standard templates for data, rule and algorithm assets."""
+"""Transactional Excel import and standard templates for data, rule and skill assets."""
 from __future__ import annotations
 
 import hashlib
@@ -18,27 +18,28 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .db import connect, entity_json, log, now
+from .asset_kinds import canonical_kind
 
 router = APIRouter()
 from .storage import upload_path, stored_path, open_file, read_bytes
 MAX_UPLOAD = 30 * 1024 * 1024
-KIND_NAMES = {'data': '数据资产', 'rule': '规则资产', 'algorithm': '算法资产'}
+KIND_NAMES = {'data': '数据资产', 'rule': '规则资产', 'skill': '技能资产'}
 
 FIELDS = {
     'data': ['数据项编码', '二级分类', '三级分类', '数据项名称', '数据形态', '资产归属', '业务含义', '参考形式', '值域与约束', '标准依据', '正例', '反例', '敏感级别', '关联规则资产'],
-    'algorithm': ['算法编码', '业务领域', '子类别', '算法类型', '算法逻辑名称', '适用场景', '数据需求', '分析方法', '判定规则', '输出模板', '关联规则资产'],
-    'rule': ['规则编码', '规则类型', '二级分类', '规则内容（法规原文·逐字）', '效力位阶', '规范依据', '条款号', '法规编号', '关联数据项', '关联算法', '资产来源'],
+    'skill': ['技能编码', '业务领域', '子类别', '技能类型', '技能逻辑名称', '适用场景', '数据需求', '分析方法', '判定规则', '输出模板', '关联规则资产'],
+    'rule': ['规则编码', '规则类型', '二级分类', '规则内容（法规原文·逐字）', '效力位阶', '规范依据', '条款号', '法规编号', '关联数据项', '关联技能', '资产来源'],
 }
 REQUIRED = {
     'data': ['数据项编码', '二级分类', '三级分类', '数据项名称', '数据形态', '资产归属', '业务含义', '敏感级别'],
-    'algorithm': ['算法编码', '业务领域', '子类别', '算法类型', '算法逻辑名称', '适用场景', '数据需求', '分析方法', '判定规则'],
+    'skill': ['技能编码', '业务领域', '子类别', '技能类型', '技能逻辑名称', '适用场景', '数据需求', '分析方法', '判定规则'],
     'rule': ['规则编码', '规则类型', '二级分类', '规则内容（法规原文·逐字）', '规范依据', '资产来源'],
 }
 ENUMS = {
     '数据形态': ['结构化', '非结构化', '双载体'],
     '资产归属': ['组织管理', '经营管理', '数据治理', '外部数据'],
     '敏感级别': ['公开', '内部', '敏感', '核心'],
-    '算法类型': ['数据校验', '统计分析', '关系识别'],
+    '技能类型': ['数据校验', '统计分析', '关系识别'],
     '资产来源': ['外部法规', '内部制度'],
     '规则类型': ['T1 权责规范', 'T2 禁止规定', 'T3 义务程序', 'T4 指标阈值', 'T5 尺度参照'],
 }
@@ -53,7 +54,7 @@ DOMAINS = {
 }
 PATTERNS = {
     'data': re.compile(r'D\.\d{2}\.\d{2}\.\d{3}'),
-    'algorithm': re.compile(r'A\.\d{2}\.\d{2}\.\d{3}'),
+    'skill': re.compile(r'[AS]\.\d{2}\.\d{2}\.\d{3}'),
     'rule': re.compile(r'R\.\d{2}\.\d{2}\.\d{3}\.T[1-5]'),
 }
 WIDTHS = {'编码': 22, '名称': 30, '内容': 60, '含义': 42, '场景': 42, '需求': 48, '方法': 55, '规则': 50, '模板': 45, '依据': 38, '正例': 35, '反例': 35}
@@ -91,7 +92,7 @@ def domain_from_sheet(sheet, ident):
 def sheet_rows(workbook, kind):
     """Read either the standard sheet or the original multi-sheet ledger."""
     candidates = []
-    if kind == 'algorithm' and '总表' in workbook.sheetnames:
+    if kind == 'skill' and '总表' in workbook.sheetnames:
         candidates = [workbook['总表']]
     else:
         candidates = list(workbook.worksheets)
@@ -101,9 +102,13 @@ def sheet_rows(workbook, kind):
         header_index = None
         headers = []
         for index, row in enumerate(rows[:12]):
-            current = [text(x) for x in row]
+            aliases = {'算法编码': '技能编码', '算法类型': '技能类型', '算法逻辑名称': '技能逻辑名称', '关联算法': '关联技能'}
+            current = [aliases.get(text(x), text(x)) for x in row]
             code_header = FIELDS[kind][0]
             if code_header in current and sum(h in current for h in FIELDS[kind]) >= min(5, len(FIELDS[kind])):
+                present = [header for header in current if header in FIELDS[kind]]
+                if len(present) != len(set(present)):
+                    raise HTTPException(422, '表头包含重复字段或新旧技能字段并存，请核对后再导入。')
                 header_index, headers = index, current
                 break
         if header_index is None:
@@ -178,7 +183,7 @@ def build_asset(kind, record, material_id, material_title, chunk_id, batch):
     code = text(v[FIELDS[kind][0]]).upper()
     sheet, row = record['sheet'], record['row']
     ref = source_ref(material_id, material_title, record, chunk_id,
-                     v.get('业务含义') if kind == 'data' else v.get('适用场景') if kind == 'algorithm' else v.get('规则内容（法规原文·逐字）'))
+                     v.get('业务含义') if kind == 'data' else v.get('适用场景') if kind == 'skill' else v.get('规则内容（法规原文·逐字）'))
     common = {'code': code, 'source_locator': f"'{sheet}'!第{row}行", 'source_refs': [ref],
               'source': {'file': material_title, 'sheet': sheet, 'row': row}, 'batch': batch,
               'active_asset': True, 'import_managed': True}
@@ -196,19 +201,19 @@ def build_asset(kind, record, material_id, material_title, chunk_id, batch):
                    'reference_status': '分类级候选关联'}
         return {'id': code, 'kind': kind, 'title': text(v.get('数据项名称')), 'summary': text(v.get('业务含义'), True),
                 'domain': domain_from_sheet(sheet, code), 'status': 'draft', 'payload': payload}
-    if kind == 'algorithm':
+    if kind == 'skill':
         content = '\n\n'.join(f'{label}\n{text(v.get(field), True)}' for label, field in
                               [('适用场景', '适用场景'), ('数据需求', '数据需求'), ('分析方法', '分析方法'),
                                ('判定规则', '判定规则'), ('输出模板', '输出模板')])
         inputs = text(v.get('数据需求'), True)
-        payload = {**common, 'category': text(v.get('子类别')), 'algorithm_type': text(v.get('算法类型')),
+        payload = {**common, 'category': text(v.get('子类别')), 'skill_type': text(v.get('技能类型')),
                    'scenario': text(v.get('适用场景'), True), 'inputs': inputs,
                    'input_ids': sorted(set(re.findall(r'D\.\d{2}\.\d{2}\.\d{3}', inputs))),
                    'method': text(v.get('分析方法'), True), 'conditions': text(v.get('判定规则'), True),
                    'outputs': text(v.get('输出模板'), True), 'related_rules': split_refs(v.get('关联规则资产')),
-                   'content': content, 'source_id': material_id, 'maturity': '业务分析逻辑，尚未验证为可执行算法',
+                   'content': content, 'source_id': material_id, 'maturity': '业务分析逻辑，尚未验证为可执行技能',
                    'executable': False, 'review_note': '阈值、数据角色、例外和适用依据需分别复核；未部署为业务自动拦截。'}
-        return {'id': code, 'kind': kind, 'title': text(v.get('算法逻辑名称')), 'summary': text(v.get('适用场景'), True),
+        return {'id': code, 'kind': kind, 'title': text(v.get('技能逻辑名称')), 'summary': text(v.get('适用场景'), True),
                 'domain': text(v.get('业务领域')) or domain_from_sheet(sheet, code),
                 'status': 'draft', 'payload': payload}
     original = text(v.get('规则内容（法规原文·逐字）'), True)
@@ -219,7 +224,7 @@ def build_asset(kind, record, material_id, material_title, chunk_id, batch):
     payload = {**common, 'rule_type': text(v.get('规则类型')), 'category': category, 'content': original,
                'original_text': original, 'authority': text(v.get('效力位阶')), 'basis': basis, 'clause': clause,
                'law_id': text(v.get('法规编号')), 'related_data': split_refs(v.get('关联数据项')),
-               'related_algorithms': split_refs(v.get('关联算法')), 'asset_source': text(v.get('资产来源')),
+               'related_skills': split_refs(v.get('关联技能')), 'asset_source': text(v.get('资产来源')),
                'conditions': '原文条件尚待逐项拆解与审核', 'exceptions': '原文例外尚待结构化确认',
                'source_id': text(v.get('法规编号')) or material_id, 'review_note': '导入内容保留原文；关联与适用条件须结合原文逐项复核。',
                'maturity': '原文条款资产', 'reference_status': 'candidate'}
@@ -240,12 +245,12 @@ def add_relation(conn, source, target, typ, label, batch, locator):
 def refresh_import_links(conn, kind, assets, batch):
     for asset in assets:
         p = asset['payload']
-        if kind in ('data', 'algorithm'):
+        if kind in ('data', 'skill'):
             for value in p.get('related_rules', []):
                 for rid in re.findall(r'R\.\d{2}\.\d{2}\.\d{3}\.T[1-5]', value):
                     if conn.execute("SELECT 1 FROM entities WHERE id=? AND kind='rule'", (rid,)).fetchone():
                         add_relation(conn, asset['id'], rid, 'references_rule', '声明规则依据·待核语义', batch, p['source_locator'])
-        if kind == 'algorithm':
+        if kind == 'skill':
             for did in p['input_ids']:
                 if conn.execute("SELECT 1 FROM entities WHERE id=? AND kind='data'", (did,)).fetchone():
                     add_relation(conn, asset['id'], did, 'requires_data', '声明数据依赖·待核语义', batch, p['source_locator'])
@@ -253,19 +258,22 @@ def refresh_import_links(conn, kind, assets, batch):
             for did in p['related_data']:
                 if conn.execute("SELECT 1 FROM entities WHERE id=? AND kind='data'", (did,)).fetchone():
                     add_relation(conn, asset['id'], did, 'references_data', '分类级数据关联·待核', batch, p['source_locator'])
-            for value in p['related_algorithms']:
-                for aid in re.findall(r'A\.\d{2}\.\d{2}\.\d{3}', value):
-                    if conn.execute("SELECT 1 FROM entities WHERE id=? AND kind='algorithm'", (aid,)).fetchone():
-                        add_relation(conn, asset['id'], aid, 'references_algorithm', '分类级方法关联·待核', batch, p['source_locator'])
+            for value in p['related_skills']:
+                for aid in re.findall(r'[AS]\.\d{2}\.\d{2}\.\d{3}', value):
+                    if conn.execute("SELECT 1 FROM entities WHERE id=? AND kind='skill'", (aid,)).fetchone():
+                        add_relation(conn, asset['id'], aid, 'references_skill', '分类级方法关联·待核', batch, p['source_locator'])
             law_id = p.get('law_id')
             if law_id and conn.execute("SELECT 1 FROM entities WHERE id=? AND kind='material'", (law_id,)).fetchone():
                 add_relation(conn, asset['id'], law_id, 'derived_from', '对应法规或制度原文', batch, p['source_locator'])
     if kind == 'rule':
-        # Data and algorithm ledgers may declare rules that are imported later.
+        # Data and skill ledgers may declare rules that are imported later.
         # Rebuild those declared candidates in both import orders.
         current_rules = {asset['id']: asset for asset in assets}
-        rows = conn.execute("SELECT id,kind,payload FROM entities WHERE kind IN ('data','algorithm') AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%related_rules%',)).fetchall()
+        rows = conn.execute("SELECT id,kind,payload FROM entities WHERE kind IN ('data','skill') AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ? FOR UPDATE", ('%related_rules%',)).fetchall()
         for row in rows:
+            from .skills import is_managed_skill
+            if row['kind'] == 'skill' and (json.loads(row['payload'] or '{}').get('managed_skill') or is_managed_skill(conn, row['id'])):
+                continue
             try:
                 declared = json.loads(row['payload'] or '{}').get('related_rules', [])
             except (TypeError, ValueError):
@@ -277,7 +285,10 @@ def refresh_import_links(conn, kind, assets, batch):
                                      current_rules[rid]['payload']['source_locator'])
     if kind == 'data':
         current = {asset['id']: asset for asset in assets}
-        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='algorithm' AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%input_ids%',)).fetchall():
+        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='skill' AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ? FOR UPDATE", ('%input_ids%',)).fetchall():
+            from .skills import is_managed_skill
+            if json.loads(row['payload'] or '{}').get('managed_skill') or is_managed_skill(conn, row['id']):
+                continue
             inputs = json.loads(row['payload'] or '{}').get('input_ids', [])
             for did in current.keys() & set(inputs):
                 add_relation(conn, row['id'], did, 'requires_data', '声明数据依赖·待核语义', batch,
@@ -288,13 +299,13 @@ def refresh_import_links(conn, kind, assets, batch):
                 for did in current.keys() & set(re.findall(r'D\.\d{2}\.\d{2}\.\d{3}', value)):
                     add_relation(conn, row['id'], did, 'references_data', '分类级数据关联·待核', batch,
                                  current[did]['payload']['source_locator'])
-    if kind == 'algorithm':
+    if kind == 'skill':
         current = {asset['id']: asset for asset in assets}
-        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='rule' AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%related_algorithms%',)).fetchall():
-            declared = json.loads(row['payload'] or '{}').get('related_algorithms', [])
+        for row in conn.execute("SELECT id,payload FROM entities WHERE kind='rule' AND CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?", ('%related_skills%',)).fetchall():
+            declared = json.loads(row['payload'] or '{}').get('related_skills', [])
             for value in declared:
-                for aid in current.keys() & set(re.findall(r'A\.\d{2}\.\d{2}\.\d{3}', value)):
-                    add_relation(conn, row['id'], aid, 'references_algorithm', '分类级方法关联·待核', batch,
+                for aid in current.keys() & set(re.findall(r'[AS]\.\d{2}\.\d{2}\.\d{3}', value)):
+                    add_relation(conn, row['id'], aid, 'references_skill', '分类级方法关联·待核', batch,
                                  current[aid]['payload']['source_locator'])
 
 
@@ -307,6 +318,7 @@ def ensure_schema(conn):
 
 @router.get('/asset-import/template/{kind}')
 def download_template(kind: str):
+    kind = canonical_kind(kind)
     if kind not in KIND_NAMES:
         raise HTTPException(404, '该资产类型不提供 Excel 模板。')
     workbook = Workbook()
@@ -347,10 +359,10 @@ def download_template(kind: str):
         ['项目', '说明'],
         ['模板用途', f'{KIND_NAMES[kind]}标准空模板；在“资产导入”工作表中一行填写一项资产，不要合并单元格、插空行或添加合计行。'],
         ['必填字段', '、'.join(REQUIRED[kind])],
-        ['编码格式', {'data': 'D.01.01.001', 'algorithm': 'A.01.01.001', 'rule': 'R.01.01.001.T4；末段须与规则类型一致'}[kind]],
+        ['编码格式', {'data': 'D.01.01.001', 'skill': 'S.01.01.001（兼容原有A前缀编号）', 'rule': 'R.01.01.001.T4；末段须与规则类型一致'}[kind]],
         ['文本保留', '编码按文本保存；长文本可保留单元格内换行，导入不会把换行拆成多条记录。'],
         ['关联清单', '多个关联编码使用中文分号“；”分隔；没有关联时可留空，不要编造编码。'],
-        ['导入范围', '也可上传符合字段规范的多工作表台账；算法存在“总表”时仅读取总表，避免与领域表重复。'],
+        ['导入范围', '也可上传符合字段规范的多工作表台账；技能存在“总表”时仅读取总表，避免与领域表重复。'],
         ['写入方式', '整批校验通过后以草稿写入，提交审核后才能发布；同编号资产更新时保留原版本快照并重新审核。'],
     ]
     if kind == 'rule':
@@ -371,15 +383,16 @@ def download_template(kind: str):
     output = io.BytesIO()
     workbook.save(output)
     output.seek(0)
-    filename = f'Ontology-One-0.4.0-{KIND_NAMES[kind]}-标准导入模板.xlsx'
+    filename = f'Ontology-One-0.5.0-{KIND_NAMES[kind]}-标准导入模板.xlsx'
     return StreamingResponse(output, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                              headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"})
 
 
 @router.post('/asset-import/{kind}')
 def import_assets(kind: str, file: UploadFile = File(...)):
+    kind = canonical_kind(kind)
     if kind not in KIND_NAMES:
-        raise HTTPException(404, '知识资产不通过此入口导入；请选择数据、规则或算法资产。')
+        raise HTTPException(404, '知识资产不通过此入口导入；请选择数据、规则或技能资产。')
     original_name = Path(file.filename or f'{KIND_NAMES[kind]}.xlsx').name
     if Path(original_name).suffix.lower() != '.xlsx':
         raise HTTPException(422, '请上传 .xlsx 文件；旧版 .xls 请先另存为 .xlsx。')
@@ -418,9 +431,11 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                 conn.execute('INSERT INTO chunks(id,material_id,position,heading,content,locator,status) VALUES(?,?,?,?,?,?,?)',
                              (chunk_id, material_id, position, f"{asset['id']} {asset['title']}", content,
                               asset['payload']['source_locator'], 'available'))
-                old_row = conn.execute('SELECT * FROM entities WHERE id=?', (asset['id'],)).fetchone()
+                old_row = conn.execute('SELECT * FROM entities WHERE id=? FOR UPDATE', (asset['id'],)).fetchone()
                 old = entity_json(old_row)
                 if old:
+                    from .skills import guard_generic_entity
+                    guard_generic_entity(conn, old, asset)
                     if old['kind'] != kind:
                         raise HTTPException(422, f"编码 {asset['id']} 已被{old['kind']}对象使用，未写入任何资产。")
                     conn.execute('INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)',

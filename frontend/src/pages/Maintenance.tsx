@@ -11,7 +11,7 @@ import './business.css';
 
 type Relation = { id: string; source: string; target: string; source_title: string; target_title: string; label: string; type: string; status: string; payload?: Record<string, any>; work_entry?: {href:string;label:string;reason:string} | null };
 type Activity = { id: number; entity_id: string; title?: string; entity_title?: string; action: string; detail: string; actor: string; created_at: string };
-const kindNames: Record<string, string> = { rule: '规则', data: '数据标准', knowledge: '知识', algorithm: '分析方法', material: '资料', task: '任务', project: '专题', case: '案例', issue: '事项', dataset: '单位台账' };
+const kindNames: Record<string, string> = { rule: '规则', data: '数据标准', knowledge: '知识', skill: '分析方法', material: '资料', task: '任务', project: '专题', case: '案例', issue: '事项', dataset: '单位台账' };
 const displayTime = (v: string) => { if (!v) return '时间待确认'; const d = new Date(v); return isNaN(d.getTime()) ? v : new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d); };
 const relationPayload = (v: any) => { if (typeof v === 'string') { try { return JSON.parse(v); } catch { return {}; } } return v || {}; };
 const historicalLabels: Record<string, string> = { content: '业务内容', definition: '业务定义', objective: '工作目标', scope: '工作范围', instruction: '办理要求', scenario: '业务场景', conditions: '适用条件', exceptions: '例外情况', conclusion: '阶段结论', next_action: '后续工作', evidence_status: '佐证情况', owner: '责任人', due_date: '办理期限', applicability: '适用范围', notes: '补充说明' };

@@ -16,7 +16,7 @@ function uid(){return 'v'+Date.now().toString(36)+Math.random().toString(36).sli
 function clean(path:string){const u=new URL(path,window.location.origin);u.searchParams.delete(TOKEN);return u.pathname+u.search+u.hash}
 function href(v:Visit){const u=new URL(v.path,window.location.origin);u.searchParams.set(TOKEN,v.id);return u.pathname+u.search+u.hash}
 function title(){return document.querySelector('main h1')?.textContent?.trim()||''}
-function entityId(path:string){const u=new URL(path,window.location.origin);const m=u.pathname.match(/^\/(?:assets|authority|materials|datasets|projects|tasks)\/([^/]+)$/)||u.pathname.match(/^\/knowledge\/collections\/([^/]+)$/);return m?decodeURIComponent(m[1]):u.pathname==='/experience'?(u.searchParams.get('record')||u.searchParams.get('session')||u.searchParams.get('id')||''):''}
+function entityId(path:string){const u=new URL(path,window.location.origin);const m=u.pathname.match(/^\/(?:assets|authority|materials|datasets|projects|tasks|skill-development)\/([^/]+)$/)||u.pathname.match(/^\/knowledge\/collections\/([^/]+)$/);return m?decodeURIComponent(m[1]):u.pathname==='/experience'?(u.searchParams.get('record')||u.searchParams.get('session')||u.searchParams.get('id')||''):''}
 const NavigationContext=createContext<{visit:Visit|null;ancestors:Visit[];focusInitialElement:(id:string,block?:ScrollLogicalPosition)=>()=>void}>({visit:null,ancestors:[],focusInitialElement:()=>()=>{}});
 export function useInitialDocumentFocus(){return useContext(NavigationContext).focusInitialElement}
 

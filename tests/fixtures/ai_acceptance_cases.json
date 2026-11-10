@@ -1,0 +1,503 @@
+{
+  "schema_version": "1.0",
+  "purpose": "九类既有 AI 辅助能力的真实模型小样本验收；全部业务、金额、日期、账户和机构叙述均为虚构。此文件只有测试数据与验收描述，不含凭据或可执行模型调用。",
+  "execution_policy": {
+    "serial_only": true,
+    "automatic_case_retries": 0,
+    "stop_case_on_first_failure": true,
+    "setup_requires_model_calls": false,
+    "estimated_provider_calls_normal": 12,
+    "estimated_provider_calls_with_one_mapping_supplement_and_one_experience_repair": 14,
+    "cost_note": "估计值不是费用或请求硬上限。映射补检索、经验修复/分页和后台重试会增加请求。首轮每类仅一个小样本；后台测试任务设 max_attempts=1，首个失败先诊断，不自动重跑。",
+    "transport": "复用 scripts/check_security.py 的 Sandbox、Session 与真实 MySQL；通过真实登录、CSRF 和业务 HTTP 入口执行。只使用本次随机测试 namespace。",
+    "credential_owner": "仅运行主代理负责凭据与配置；fixture 和结果报告不接收或保存 key。",
+    "retention": "业务输入全部是本地合成资料。生成内容只进入可清理的测试租户，长期报告仅保存 case_id、检查项、状态、时长和失败类别。模型原文如需语义诊断仅在本次授权测试范围内临时查看，不混入生产数据。",
+    "report_statuses": [
+      "passed",
+      "failed",
+      "manual_review",
+      "blocked",
+      "not_run"
+    ],
+    "manual_semantics": "契约和来源验证通过不等于业务含义正确；逐字引用、方向、单位可自动核查，其余语义条件需人工/主代理核对。不得通过词语命中自动宣布全部语义通过。"
+  },
+  "seed_assets": [
+    {
+      "alias": "contract_amount_yuan",
+      "kind": "data",
+      "title": "合成合同金额（元）",
+      "domain": "合同管理",
+      "summary": "一份合成采购合同约定的人民币总金额，以元记录。",
+      "payload": {
+        "data_form": "standard_field",
+        "data_type": "decimal",
+        "format": "数值型",
+        "unit": "元",
+        "category": "合同管理",
+        "definition": "一份合成采购合同约定的人民币总金额，以元记录；不等同于本次付款金额。",
+        "record_grain": "一份合成采购合同",
+        "subject_role": "合同",
+        "constraints": "人民币非负金额；必须保留来源单位",
+        "active_asset": true
+      }
+    },
+    {
+      "alias": "payer_account",
+      "kind": "data",
+      "title": "合成合同付款方账号",
+      "domain": "合同管理",
+      "summary": "合成采购合同约定的付款方银行账号。",
+      "payload": {
+        "data_form": "standard_field",
+        "data_type": "string",
+        "format": "文本",
+        "unit": "无",
+        "category": "合同管理",
+        "definition": "合成采购合同约定的付款方银行账号，属于付款主体，不能用收款方账号替代。",
+        "record_grain": "一份合成采购合同",
+        "subject_role": "付款方",
+        "active_asset": true
+      }
+    },
+    {
+      "alias": "receiver_account",
+      "kind": "data",
+      "title": "合成合同收款方账号",
+      "domain": "合同管理",
+      "summary": "合成采购合同约定的收款方银行账号。",
+      "payload": {
+        "data_form": "standard_field",
+        "data_type": "string",
+        "format": "文本",
+        "unit": "无",
+        "category": "合同管理",
+        "definition": "合成采购合同约定的收款方银行账号，属于收款主体，不能用付款方账号替代。",
+        "record_grain": "一份合成采购合同",
+        "subject_role": "收款方",
+        "active_asset": true
+      }
+    },
+    {
+      "alias": "delivery_date",
+      "kind": "data",
+      "title": "合成合同实际交付日期",
+      "domain": "合同管理",
+      "summary": "合成采购合同标的实际交付的日期，与验收通过日期分别记录。",
+      "payload": {
+        "data_form": "standard_field",
+        "data_type": "date",
+        "format": "YYYY-MM-DD",
+        "unit": "日",
+        "category": "合同管理",
+        "definition": "合成采购合同标的实际交付的日期；该日期不表示验收已经通过。",
+        "record_grain": "一份合成采购合同",
+        "active_asset": true
+      }
+    },
+    {
+      "alias": "acceptance_date",
+      "kind": "data",
+      "title": "合成合同验收通过日期",
+      "domain": "合同管理",
+      "summary": "合成采购合同完成验收且确认通过的日期。",
+      "payload": {
+        "data_form": "standard_field",
+        "data_type": "date",
+        "format": "YYYY-MM-DD",
+        "unit": "日",
+        "category": "合同管理",
+        "definition": "合成采购合同完成验收且确认通过的日期，不得以实际交付日期代替。",
+        "record_grain": "一份合成采购合同",
+        "active_asset": true
+      }
+    },
+    {
+      "alias": "acceptance_rule",
+      "kind": "rule",
+      "title": "合成采购验收登记规则",
+      "domain": "合同管理",
+      "summary": "仅对指定期间、超过金额门槛的合成采购合同要求登记验收日期；附件缺失仅待核。",
+      "payload": {
+        "content": "【纯合成测试制度】本规则仅适用于2026年1月1日起新签、人民币合同金额超过10万元的合成采购合同。符合适用条件的合同应在验收通过后登记验收日期。金额恰好为10万元不适用本条。未提供验收附件时只登记为待核，不能仅据材料缺失认定未履行验收或责任。",
+        "conditions": [
+          "2026年1月1日起新签",
+          "人民币合同金额严格大于10万元"
+        ],
+        "boundary": "金额恰为10万元不适用；缺少附件不等于未验收。",
+        "active_asset": true
+      }
+    },
+    {
+      "alias": "amount_rule",
+      "kind": "rule",
+      "title": "合成合同金额分级规则",
+      "domain": "合同管理",
+      "summary": "本规则使用合成合同金额（元）进行阈值比较。",
+      "payload": {
+        "content": "【纯合成测试规则】合成合同金额分级规则使用“合成合同金额（元）”这一数据口径，以一份合成采购合同为粒度。人民币合同金额超过100000元时列入复核清单；恰为100000元不触发。币种未知时仅标待核，不作金额比较。",
+        "method": "先核对单位和币种，再使用合成合同金额（元）比较严格大于100000元。",
+        "active_asset": true
+      }
+    }
+  ],
+  "seed_dataset": {
+    "alias": "contract_ledger",
+    "title": "纯合成合同单位与角色映射台账",
+    "file_name": "synthetic-contracts.csv",
+    "csv": "合成合同编号,合同金额（万元）,付款方账号,收款方账号\nSYN-C-001,12.5,SYN-PAYER-001,SYN-RECEIVER-101\nSYN-C-002,10,SYN-PAYER-002,SYN-RECEIVER-102\n",
+    "grain": "每行代表一份合成采购合同；金额为该合同人民币总额，账号为合同约定的付款方与收款方账户。",
+    "mapping_columns": [
+      "合同金额（万元）",
+      "付款方账号",
+      "收款方账号"
+    ],
+    "source_values_to_keep_local": [
+      "SYN-C-001",
+      "SYN-PAYER-001",
+      "SYN-RECEIVER-101"
+    ]
+  },
+  "seed_documents": [
+    {
+      "alias": "material_rules",
+      "title": "纯合成采购口径与经验原文",
+      "file_name": "synthetic-procurement-rules.txt",
+      "text": "【纯合成测试原文，不代表真实制度或业务】\n第一条 金额口径。合成采购合同金额应记录合同总额，并保留币种及原始计量单位。来源以万元记录且币种确认为人民币的，换算为元时乘以10000。币种未知时不得并入人民币汇总；本条不授权推定汇率。\n第二条 日期口径。实际交付日期表示完成交付的日期，验收通过日期表示完成验收且确认通过的日期，两者应分别记录，不能互相代替。尚未取得验收材料的，只登记为待核，不据此认定未验收。\n经验说明。某次纯合成演练发现同名“完成日期”实际混用了交付和验收口径。演练人员保留原列后，分别建立两个日期口径，并交业务负责人确认。这是一条经验认识，不自动上升为新增制度。\n方法建议（尚未审定）。汇总前先核对合同粒度、币种和单位；缺少币种的记录单独列为待补，不产生貌似精确的总额。\n"
+    },
+    {
+      "alias": "special_report",
+      "title": "纯合成事项A原报告",
+      "file_name": "synthetic-matter-report.txt",
+      "text": "【纯合成测试报告】合成事项A的初始计划交付日期为2026年4月10日，台账登记实际交付日期为2026年4月15日。报告暂记为“交付晚于初始计划，延期原因及批准情况待核”。该观察不等同于责任结论，整理工作不得改写原报告记载。"
+    },
+    {
+      "alias": "special_explanation",
+      "title": "纯合成事项A补充说明",
+      "file_name": "synthetic-matter-explanation.txt",
+      "text": "【纯合成测试补充说明】对同一合成事项A，项目组提供一份变更单记载：批准后的交付期限调整为2026年4月20日；验收通过日期为2026年4月18日。应继续核对变更批准权限、适用范围和形成时间。不能仅凭这份说明断言延期责任已经成立或已经排除，也不能用验收日期替代实际交付日期。"
+    }
+  ],
+  "seed_project": {
+    "alias": "planning_project",
+    "title": "纯合成合同数据口径治理专题",
+    "kind": "project",
+    "status": "active",
+    "payload": {
+      "objective": "治理合成合同金额单位与交付、验收日期口径，形成可审校的标准、规则和材料依据。",
+      "scope": "仅本次两行合成合同台账与指定测试原文。",
+      "expected_outputs": [
+        "字段口径映射",
+        "有出处的规则草稿",
+        "关系核对记录"
+      ]
+    },
+    "existing_tasks": [
+      {
+        "title": "建立合同金额和日期标准",
+        "task_type": "dictionary",
+        "instruction": "已安排核对金额单位、实际交付日期及验收通过日期，不重复派发同范围任务。"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "qa_boundary",
+      "capability": "有出处的知识问答",
+      "expected_provider_calls": 1,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/ai/ask",
+          "json": {
+            "question": "按合成采购验收登记规则，2026年2月新签、金额恰好10万元的人民币合同，未见验收附件，能认定违反本条或未进行验收吗？请说明适用边界并引用出处。",
+            "mode": "online"
+          }
+        }
+      ],
+      "automatic_assertions": [
+        "source 必须为 online；没有在线结果不得按检索回退判通过。",
+        "citations 包含 acceptance_rule 实际 ID；所有输出 [n] 引文编号均在返回引用列表范围内。",
+        "citations 的 excerpt 能逐字回指测试种子资产，且不包含其他租户材料。"
+      ],
+      "semantic_review": [
+        "明确“超过”是严格大于，恰好10万元不适用该条。",
+        "不能据未见附件认定未验收或责任；不得把不同规则的门槛拼接。",
+        "不得仅用回答中是否含“违规”一词作自动判定，须读完整否定与条件语义。"
+      ]
+    },
+    {
+      "id": "mapping_units_roles",
+      "capability": "台账字段映射",
+      "expected_provider_calls": {
+        "normal": 1,
+        "with_supplement": 2
+      },
+      "steps": [
+        {
+          "method": "GET",
+          "path": "/datasets/{contract_ledger}"
+        },
+        {
+          "method": "POST",
+          "path": "/datasets/{contract_ledger}/mapping-recognize",
+          "json": {
+            "sheet_name": "{actual_sheet_name}",
+            "column_names": "{actual_column_ids_for_fixture_mapping_columns}"
+          }
+        }
+      ],
+      "automatic_assertions": [
+        "结果覆盖3个所选字段且每字段唯一；不可用相邻字段结果顶替。",
+        "合同金额（万元）对应 contract_amount_yuan，transform=scale10000；付款/收款字段分别对应 payer_account/receiver_account。",
+        "source_quote 逐字等于真实源字段名；standard_quote 逐字出现在对应定义中；standard_version 等于当前版本。",
+        "本次仅生成 review 记录，dataset_mappings 不应自行变成 confirmed/published。",
+        "使用已有 _field_profile/value_profile 验证只含统计形态，不向模型拼入 csv 明细值。"
+      ],
+      "semantic_review": [
+        "理由应解释元与万元、付款与收款主体，不能只复述表头或置信度。",
+        "若返回 ambiguous/gap，记录为需诊断，不能将保守拒绝误判为映射成功。"
+      ]
+    },
+    {
+      "id": "relation_direction",
+      "capability": "资产关联定位",
+      "expected_provider_calls": 1,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/placement/{contract_amount_yuan}/suggest",
+          "json": {
+            "mode": "online",
+            "expected_version": "{current_contract_amount_version}",
+            "query": "合成合同金额分级规则使用合成合同金额（元）作为阈值比较的数据口径，请准确判断关系方向。"
+          }
+        }
+      ],
+      "automatic_assertions": [
+        "至少一项建议 target_id=amount_rule、direction=incoming、relation_type=uses_data。",
+        "每条建议通过 placement.allowed(source,target,type)，证据为候选 excerpt 中10至240字符连续原文。",
+        "建议生成后正式 relations 数量及状态不变化；只能产生待审 job。"
+      ],
+      "semantic_review": [
+        "数据口径是被规则使用，不能反转成数据使用规则；通用 references 不能替代核心 uses_data 关系来算本题通过。"
+      ]
+    },
+    {
+      "id": "project_plan",
+      "capability": "专题任务拆解",
+      "expected_provider_calls": 1,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/projects/{planning_project}/plan",
+          "json": {
+            "instruction": "在现有字典任务之外，只补充原文材料核对、规则边界整理和关联核对三方面的具体工作。不要安排人员或日期，不重复“建立合同金额和日期标准”。"
+          }
+        }
+      ],
+      "automatic_assertions": [
+        "mode=online、requires_review=true；1至6项；task_type 均在现有 TYPE_MAP 内。",
+        "调用前后 tasks/entities 数量不变；project_version 与输入版本一致。"
+      ],
+      "semantic_review": [
+        "至少覆盖材料依据、规则条件或关系核对的实际缺口，任务应包含可验证成果。",
+        "不得重新提出同一字典任务；不得编造负责人、期限、法律依据或问题性质。"
+      ]
+    },
+    {
+      "id": "authority_branches",
+      "capability": "权责流程整理",
+      "expected_provider_calls": 1,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/authority/assist",
+          "json": {
+            "type": "workflow",
+            "subtype": "合成付款材料审批",
+            "text": "【纯合成流程】经办岗提出付款申请并提交材料。财务复核岗先检查材料是否齐全；不齐全则退回经办岗补齐，补齐后重新交财务复核岗检查。材料齐全后，申请金额不超过10万元的由财务复核岗确认并交出纳岗办理；超过10万元的须经分管负责人批准后交出纳岗办理。分管负责人不同意时退回经办岗调整，调整后重新进行财务复核。出纳岗登记办理结果后流程结束。未提供具体姓名、办理时限或其他金额阈值。",
+            "org_ids": [
+              "{tenant_org_id}"
+            ],
+            "person_ids": [],
+            "material_ids": []
+          }
+        }
+      ],
+      "automatic_assertions": [
+        "mode 必须为 online；Spec.model_validate 与 checks_for 的 errors 为空。",
+        "开始节点唯一、至少一个结束节点；所有业务节点可从开始到达且能到达结束；连线引用有效节点。",
+        "decision 节点至少两条有条件出线；无新增 person_ids。",
+        "返回草稿不创建或发布权责资产。"
+      ],
+      "semantic_review": [
+        "保留材料不齐退回并重新复核的循环，不把退回当结束。",
+        "保留≤10万元与>10万元两个分支，以及领导不同意后的复核路径。",
+        "责任主体区分经办、财务复核、分管负责人和出纳，不编造姓名、期限或额外阈值。"
+      ]
+    },
+    {
+      "id": "material_reading",
+      "capability": "材料阅读分段",
+      "expected_provider_calls": 1,
+      "steps": [
+        {
+          "method": "GET",
+          "path": "/materials/{material_rules}/reading"
+        },
+        {
+          "method": "POST",
+          "path": "/materials/{material_rules}/reading/ai",
+          "json": {
+            "revision": "{current_reading_revision}",
+            "mode": "online",
+            "scope_ids": [],
+            "granularity": "theme",
+            "instruction": "按金额口径、日期口径、经验说明与尚未审定的方法建议组织阅读主题。每条要求的条件与例外必须和正文共同呈现，不改写、删字或总结原文。"
+          }
+        }
+      ],
+      "automatic_assertions": [
+        "pending_ai.mode=online；建议为 pending，未经 apply 不覆盖现有 segments。",
+        "用原 segments 与 pending_ai.groups.after 还原拟议分段后，所有范围连续、无重叠、完整覆盖原文。",
+        "每段正文直接切原文；合并后逐字等于上传正文。若AI判定原分段合适、无变化，也可检查结构后通过。"
+      ],
+      "semantic_review": [
+        "“币种未知”与“不得推定汇率”保留在金额主题上下文；“未取得验收材料仅待核”不与日期主题割裂。",
+        "经验与未审定建议不被标题改成正式制度。"
+      ],
+      "downstream_setup": "人工确认测试提案或保持原分段，然后走现有 reading confirm；此确认只为后续本地材料提取建立真实 chunks，不增加模型请求。"
+    },
+    {
+      "id": "material_extraction",
+      "capability": "材料本体资产提取",
+      "expected_provider_calls": 1,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/materials/{material_rules}/extract",
+          "json": {
+            "mode": "online",
+            "retry": false
+          }
+        },
+        {
+          "worker": "run_one_once",
+          "job": "{returned_job_id}"
+        },
+        {
+          "method": "GET",
+          "path": "/materials/{material_rules}"
+        }
+      ],
+      "automatic_assertions": [
+        "job completed，无 failed chunks；至少形成一个有依据的业务候选，不能以HTTP200/零候选单独判通过。",
+        "所有引用 chunk_id 属于当前材料；source_quotes 的 quote 逐字出现且覆盖所声明的 source_chunk_ids。",
+        "coverage 覆盖全部当前chunks；候选状态 pending；未自动形成已发布正式资产。"
+      ],
+      "semantic_review": [
+        "至少识别金额换算或日期区分中的明确内容；保留单位、币种与日期的条件。",
+        "不能把经验叙述或“尚未审定”的方法建议冒充新增制度；不得虚构汇率、金额门槛或责任结论。"
+      ]
+    },
+    {
+      "id": "experience_roundtrip",
+      "capability": "经验追问、发现与修订",
+      "expected_provider_calls": {
+        "normal": 3,
+        "with_one_citation_repair": 4
+      },
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/experience/sessions",
+          "json": {
+            "title": "纯合成金额与日期口径经验",
+            "context": "【纯合成经验叙述】我们合并两张合成合同表时，发现同名金额字段一张以元记录，另一张以万元记录。我们保留原列、币种与单位，由业务负责人确认含义后按1万元等于10000元换算；币种未知的记录单独列为待补，不纳入人民币总额。这种单位换算经验不能直接用于外币，汇率和日期必须另行确认。另一个独立教训是，两张表的“完成日期”分别表示实际交付日和验收通过日。我们对照填报说明把两个日期分别建标，并保留原始字段，不以缺少验收日期认定责任。这两项认识解决不同问题，不应为了缩短篇幅合成一个含糊的通用结论。",
+            "domain": "合同管理",
+            "org_id": "{tenant_org_id}",
+            "source_kind": "demo",
+            "mode": "online"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/experience/{experience_session}/analyze",
+          "json": {
+            "retry_failed": false
+          }
+        },
+        {
+          "worker": "run_one_once",
+          "job": "{analysis_run_id}"
+        },
+        {
+          "method": "POST",
+          "path": "/experience/{experience_session}/proposals",
+          "json": {
+            "candidate_ids": [
+              "{amount_candidate_id}"
+            ],
+            "operation": "revise",
+            "instruction": "仅修订这条金额单位经验：把“不等同于外币汇率换算、币种不明不汇总”的适用边界说明清楚。保留有效引文，不补造经历，不修改另一条日期经验。",
+            "expected_revisions": {
+              "{amount_candidate_id}": "{current_candidate_revision}"
+            }
+          }
+        }
+      ],
+      "automatic_assertions": [
+        "首次 assistant turn.mode=online；未因网络失败替换成 structured/unavailable 却判通过。",
+        "分析 completed；knowledge_candidates 的 source_refs 逐字可定位，非空有效章节通过 validate_candidate。",
+        "修订提案 pending 且恰有1个输出；候选本体原稿 revision/content 在人工 apply 前不变。",
+        "另一条日期经验保持独立且未被改写；未自动 adopt/publish。"
+      ],
+      "semantic_review": [
+        "追问应针对现有金额或日期语境、只问一个有用问题，不机械要求补全六维。",
+        "发现阶段应保留金额与日期两个独立认识；不能无依据地扩写真实交易或责任。",
+        "修订保留人民币单位换算与外币汇率换算的不同条件；输出 origin 不冒充人工确认。"
+      ]
+    },
+    {
+      "id": "special_synthesis",
+      "capability": "专项跨材料综合提炼",
+      "expected_provider_calls": 2,
+      "steps": [
+        {
+          "setup": "使用 special_report 与 special_explanation，建立一个合成事项A和一个专项，HTTP register_materials 关联两份原文与该事项。专项原结论=“交付晚于初始计划，延期原因及批准情况待核”；仅此事项和两份材料进入本次运行。"
+        },
+        {
+          "method": "POST",
+          "path": "/special-projects/{special_project}/refinements",
+          "json": {
+            "matter_ids": [
+              "{special_matter_a}"
+            ],
+            "material_ids": [
+              "{special_report}",
+              "{special_explanation}"
+            ]
+          }
+        },
+        {
+          "worker": "run_one_once",
+          "job": "{refinement_job_id}"
+        },
+        {
+          "method": "GET",
+          "path": "/special-projects/{special_project}/workspace"
+        }
+      ],
+      "automatic_assertions": [
+        "job completed；coverage 两份原文均 processed；所有 source_refs 的版本、span、anchor_id 对应本轮实际原文。",
+        "综合候选的 source_refs 是逐批阶段已核验引用集合的子集；不使用未选材料或虚构ID。",
+        "至少形成一个可复用、有边界的 pending 候选；专项和事项的 original_conclusion 不变。",
+        "未自动确认候选、替换正式报告或发布资产。"
+      ],
+      "semantic_review": [
+        "原计划4月10日、交付4月15日、变更后期限4月20日、验收4月18日各含义区分清楚。",
+        "保留变更说明提供的正常解释，同时保留批准权限、范围与形成时间待核；不能直接定责或宣称已完全排除责任。"
+      ]
+    }
+  ]
+}

@@ -123,8 +123,9 @@ class JobsMySQLTests(unittest.TestCase):
             # Runtime configuration and backup include only the captured tenant.
             for p,marker,other in [(a,'甲机构','乙机构'),(b,'乙机构','甲机构')]:
                 with use_context(p):
-                    write_bytes(ai.config_path(create=True),json.dumps({'api_key':marker+'-secret','model':marker}).encode())
-                    assert ai.config()['api_key']==marker+'-secret'
+                    synthetic_key='fixture-'+p.tenant_id+'-secret'
+                    write_bytes(ai.config_path(create=True),json.dumps({'api_key':synthetic_key,'model':'fixture-model'}).encode())
+                    assert ai.config()['api_key']==synthetic_key
                     response=system.backup()
                     with zipfile.ZipFile(response.path) as archive:
                         names=archive.namelist();assert not any('runtime' in x for x in names),names

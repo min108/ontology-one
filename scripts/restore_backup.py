@@ -85,10 +85,12 @@ def schema_columns():
     from backend.provenance import initialize_provenance
     from backend.special_projects import init_special_schema
     from backend.sources import ensure_schema as ensure_source_schema
+    from backend.skills import ensure_schema as ensure_skill_schema
     ensure_schema(collector)
     initialize_provenance(collector)
     init_special_schema(collector)
     ensure_source_schema(collector)
+    ensure_skill_schema(collector)
     result = {}
     for sql in collector.statements:
         match = re.search(r'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_]+)\s*\((.*)\)\s*ENGINE', sql, re.I | re.S)
@@ -262,8 +264,9 @@ def restore_snapshot(snapshot, archive, principal, reason):
                     # on ontology assets. Restore metadata in dependency order.
                     source_order = ['source_connections', 'source_resources', 'source_schema_versions',
                                     'source_mappings', 'source_mapping_versions', 'source_grants']
-                    ordered_tables = sorted(tables, key=lambda name: (1, source_order.index(name))
-                                            if name in source_order else (0, name))
+                    skill_order = ['skill_documents', 'skill_revisions', 'skill_checks']
+                    ordered_tables = sorted(tables, key=lambda name: (1, source_order.index(name)) if name in source_order
+                                            else (2, skill_order.index(name)) if name in skill_order else (0, name))
                     for table in ordered_tables:
                         rows = tables[table]
                         if table == 'workspace_meta':
@@ -283,6 +286,13 @@ def restore_snapshot(snapshot, archive, principal, reason):
                         connection.execute('UPDATE source_connections SET enabled=0,version=version+1')
                     if 'source_grants' in tables:
                         connection.execute('DELETE FROM source_grants')
+                    # Old backups retain original IDs and history, but current
+                    # assets use the canonical skill identifiers after restore.
+                    from backend.asset_kinds import migrate_skill_assets
+                    migrate_skill_assets(connection)
+                    if 'skill_documents' in tables:
+                        from backend.skills import demote_restored_skills
+                        demote_restored_skills(connection)
                     store.assert_principal_current(principal, require_write=True)
                     if uploads.exists(): uploads.rmdir()
                     os.rename(staging, uploads)

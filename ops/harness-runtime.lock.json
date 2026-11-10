@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "source_tag": "dsh-v0.2.1-rc.2",
+  "source_commit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+  "sdk_distribution": "deepseek-harness-sdk",
+  "sdk_version": "0.2.1rc2",
+  "sdk_wheel_sha256": "30fc72c67f20ff4b46c6952087ea596fc70c2692001aa372185a24f9866bdc46",
+  "runtime_distribution": "deepseek-harness-runtime-bin",
+  "runtime_version": "0.2.1rc2",
+  "verified_runtime_platform": "linux-x86_64",
+  "runtime_wheel_sha256": "0a0a4eb85a22cd9339972e6a5ced77a27ec791353a5b220e3e10b8cdbbdeca39",
+  "verification": "SDK api.py, client.py and models.py matched the official source tag byte-for-byte; official runtime exercised through a deterministic Messages protocol model fixture.",
+  "credential_policy": "Per-tenant provider key, never application/source bearer forwarding.",
+  "skills_profile": "Fixed platform read/propose tools; package scripts execute only in the separate isolated test runner."
+}

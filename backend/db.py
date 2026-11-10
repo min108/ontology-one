@@ -23,7 +23,7 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 ROOT = Path(__file__).resolve().parent.parent
-ASSET_KINDS = ('data', 'rule', 'algorithm', 'knowledge')
+ASSET_KINDS = ('data', 'rule', 'skill', 'knowledge')
 
 
 def now():
@@ -504,6 +504,8 @@ def entity_json(row):
         value['payload'] = json.loads(value.get('payload') or '{}')
     except (TypeError, ValueError):
         value['payload'] = {}
+    from .asset_kinds import canonical_entity
+    value = canonical_entity(value)
     from .security.context import get_context
     principal = get_context()
     if principal:
@@ -646,6 +648,8 @@ def ensure_tenant_schema(tenant_id):
             init_special_schema(conn)
             from .sources import ensure_schema as ensure_source_schema
             ensure_source_schema(conn)
+            from .skills import ensure_schema as ensure_skill_schema
+            ensure_skill_schema(conn)
             name = tenant.get('name') or tenant.get('title')
             category = tenant.get('category') or tenant.get('kind')
             payload = {'type': category, 'group': '一级子公司' if category == 'subsidiary' else '总部职能部门',
@@ -655,8 +659,10 @@ def ensure_tenant_schema(tenant_id):
                          (tenant_id, 'organization', name, '机构根节点', '组织管理', tenant_id, 'published', 'directory',
                           json.dumps(payload, ensure_ascii=False), timestamp, timestamp, 1))
             conn.execute('REPLACE INTO workspace_meta(meta_key,meta_value,updated_at) VALUES(?,?,?)',
-                         ('schema_version', '0.4.0', timestamp))
+                         ('schema_version', '0.5.0', timestamp))
             normalize_collations(conn)
+            from .asset_kinds import migrate_skill_assets
+            migrate_skill_assets(conn)
             conn.commit()
             _READY.add(database)
         finally:

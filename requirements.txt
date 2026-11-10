@@ -15,3 +15,7 @@ mcp-types==2.3.0
 httpx2==2.16.0
 httpcore2==2.16.0
 jsonschema==4.26.0
+PyYAML==6.0.3
+# Official deepseek-ai/deepseek-harness dsh-v0.2.1-rc.2, pinned SDK/runtime pair.
+deepseek-harness-sdk==0.2.1rc2
+deepseek-harness-runtime-bin==0.2.1rc2

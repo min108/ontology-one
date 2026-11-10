@@ -1,4 +1,5 @@
 """Versioned internal authority rules; AI proposes, people review and publish."""
+import asyncio
 import json
 import math
 import uuid
@@ -390,6 +391,7 @@ def create_person(body: PersonRequest):
 
 @router.post('/authority/assist')
 async def assist(body: AssistRequest):
+    principal = await asyncio.to_thread(ai._principal)
     with closing(connect()) as c, c:
         organizations = [get_entity(c, oid, 'organization') for oid in dict.fromkeys(body.org_ids)]
         people = [get_entity(c, pid, 'person') for pid in dict.fromkeys(body.person_ids)]
@@ -410,16 +412,17 @@ async def assist(body: AssistRequest):
     with closing(connect()) as c, c:
         local['spec'] = validate_refs(c, Spec.model_validate(local['spec']).model_dump())
 
-    def response(proposal, model_name, mode, extra_warnings=None):
+    async def response(proposal, model_name, mode, extra_warnings=None):
         issues = checks_for(proposal['spec'])
         warnings = list(proposal.get('warnings', [])) + list(extra_warnings or [])
         warnings += issues['errors'] + issues['warnings']
         warnings.append('智能整理结果尚未保存或审定，请逐项核对原文、办理主体、分支条件、行权边界与任职关系。')
+        await asyncio.to_thread(ai._principal, principal)
         return {**proposal, 'warnings': list(dict.fromkeys(str(w)[:1000] for w in warnings))[:40],
                 'model': model_name, 'mode': mode}
 
     if not ai.config()['api_key']:
-        return response(local, '本地结构化解析（无需在线模型）', 'local',
+        return await response(local, '本地结构化解析（无需在线模型）', 'local',
                         ['当前未配置在线模型，已直接生成可编辑流程；无需补充模型配置即可采用。'])
 
     skeleton = Spec(type=body.type, subtype=body.subtype).model_dump()
@@ -465,10 +468,12 @@ async def assist(body: AssistRequest):
         online = {'title': str(result.get('title', '')).strip()[:120] or local['title'],
                   'summary': str(result.get('summary', ''))[:3000] or local['summary'], 'spec': spec,
                   'warnings': [str(w)[:1000] for w in result.get('warnings', [])][:30] if isinstance(result.get('warnings', []), list) else []}
-        return response(online, ai.config()['model'], 'online')
+        return await response(online, ai.config()['model'], 'online')
     except Exception as exc:
+        if isinstance(exc, HTTPException) and exc.status_code in (401, 403):
+            raise
         detail = str(exc).strip().replace('\n', ' ')[:180]
         notice = '在线模型本次不可用或返回结构未通过校验，已自动采用本地结构化解析生成完整编辑稿。'
         if detail:
             notice += '原因：' + detail
-        return response(local, '本地结构化解析（在线结果已回退）', 'local_fallback', [notice])
+        return await response(local, '本地结构化解析（在线结果已回退）', 'local_fallback', [notice])

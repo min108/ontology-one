@@ -32,7 +32,7 @@ export type GraphImageExportResult = {
 const KIND: Record<string, {label: string; color: string}> = {
   data: {label: '数据资产', color: '#41677f'},
   rule: {label: '规则资产', color: '#aa8140'},
-  algorithm: {label: '算法资产', color: '#8070aa'},
+  skill: {label: '技能资产', color: '#8070aa'},
   knowledge: {label: '知识资产', color: '#508579'},
   material: {label: '原始材料', color: '#8593a4'},
   dataset: {label: '单位数据表', color: '#64879c'},

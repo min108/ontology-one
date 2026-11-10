@@ -17,11 +17,11 @@ from .db import connect
 from .relation_semantics import semantic_relation, classify_relation_role, ROLE_LABELS, ROLE_LANES, RELATION_SEMANTICS
 
 router = APIRouter(tags=['本体图谱'])
-KINDS = {'data':'数据资产','rule':'规则资产','algorithm':'算法资产','knowledge':'知识资产','material':'原始材料','dataset':'单位数据台账','organization':'组织单位','person':'任职人员','project':'本体专题','task':'工作任务','case':'案例档案','matter':'业务事项','evidence':'证据引用','issue':'核对事项','collection':'知识专栏','analysis':'分析记录'}
-ASSETS = {'data','rule','algorithm','knowledge'}
+KINDS = {'data':'数据资产','rule':'规则资产','skill':'技能资产','knowledge':'知识资产','material':'原始材料','dataset':'单位数据台账','organization':'组织单位','person':'任职人员','project':'本体专题','task':'工作任务','case':'案例档案','matter':'业务事项','evidence':'证据引用','issue':'核对事项','collection':'知识专栏','analysis':'分析记录'}
+ASSETS = {'data','rule','skill','knowledge'}
 EDGE = namedtuple('GraphRelation', 'id source target type label status')
 _CACHES = {}; _LOCKS = {}; _LOCK=RLock()
-ORDER={'material':0,'dataset':1,'evidence':2,'data':3,'rule':4,'algorithm':5,'knowledge':6,'collection':7,'project':8,'task':9,'matter':10,'case':11,'issue':12,'organization':13,'person':14}
+ORDER={'material':0,'dataset':1,'evidence':2,'data':3,'rule':4,'skill':5,'knowledge':6,'collection':7,'project':8,'task':9,'matter':10,'case':11,'issue':12,'organization':13,'person':14}
 
 
 def invalidate_graph_cache(tenant_id):

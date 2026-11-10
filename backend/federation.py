@@ -22,7 +22,7 @@ from .security.context import require_context
 from .security import store
 
 router = APIRouter(prefix='/federation', tags=['federation'])
-ASSETS = ('data', 'rule', 'algorithm', 'knowledge')
+ASSETS = ('data', 'rule', 'skill', 'knowledge')
 MAX_WORKERS = 8
 _EXECUTOR = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix='federation')
 
@@ -114,7 +114,7 @@ def _predicate(tenant, alias='e', access_alias='a', *, q='', kind='', status='',
     terms = [f"COALESCE(json_extract({alias}.payload,'$.active_asset'),1)!=0"]
     args = []
     if tenant.get('visibility') != 'private':
-        terms.extend([f"{alias}.kind IN ('data','rule','algorithm','knowledge')", f"{alias}.status='published'",
+        terms.extend([f"{alias}.kind IN ('data','rule','skill','knowledge')", f"{alias}.status='published'",
                       f"{access_alias}.visibility='headquarters'"])
     if entity_id is not None:
         terms.append(f'{alias}.id=?')
@@ -289,7 +289,7 @@ def _visible_entities(tenant, ids):
 DISPLAY_KEYS = frozenset('''id title name content original_text body description summary definition format data_type data_form unit constraints
 standard_basis positive_example negative_example sensitivity category subcategory ownership rule_type asset_source
 rule_text obligation scope conditions exceptions basis clause authority effective_from effective_to review_note
-algorithm_type scenario inputs method steps outputs boundary maturity follow_up knowledge_form knowledge_type origin_type
+skill_type scenario inputs method steps outputs boundary maturity follow_up knowledge_form knowledge_type origin_type
 topic_label article_sections sections source_refs purpose notes type subtype nodes edges responsibility control evidence
 role time_limit x y source target label decision parameters intro topic is_demo demo_notice'''.split())
 REF_FIELDS = frozenset(('material_id', 'source_id', 'id', 'title', 'quote', 'excerpt', 'locator', 'chunk_id', 'source_version', 'anchor_id'))
@@ -559,7 +559,7 @@ def create_link(body: LinkRequest):
     if not body.label.strip() or not body.reason.strip():
         raise HTTPException(422, '请填写关系名称和建立依据。')
     source, target = _link_endpoints(tenants, body.source_tenant_id, body.source_entity_id, body.target_tenant_id, body.target_entity_id)
-    constraints = {'uses_data': (ASSETS, ('data',)), 'implements_rule': (('algorithm',), ('rule',)),
+    constraints = {'uses_data': (ASSETS, ('data',)), 'implements_rule': (('skill',), ('rule',)),
                    'derived_from': (ASSETS, ('material', 'case', 'dataset')), 'explains': (('knowledge',), ('rule',))}
     if body.relation_type in constraints:
         sources, targets = constraints[body.relation_type]

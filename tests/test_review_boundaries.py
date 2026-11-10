@@ -16,6 +16,14 @@ from backend.db import Row
 from backend.security.context import Principal, use_context
 
 
+class FixtureConnection(sqlite3.Connection):
+    def execute(self, statement, parameters=()):
+        # MySQL row-lock semantics are exercised in the real integration suite.
+        # SQLite here isolates handler authorization and graph invariants.
+        statement = statement.replace(' FOR UPDATE', '').replace(' FOR SHARE', '')
+        return super().execute(statement, parameters)
+
+
 class ReviewBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -30,6 +38,7 @@ class ReviewBoundaryTests(unittest.TestCase):
                 CREATE TABLE versions(id INTEGER PRIMARY KEY,entity_id TEXT,version INTEGER,snapshot TEXT,created_at TEXT,reason TEXT);
                 CREATE TABLE activities(id INTEGER PRIMARY KEY,entity_id TEXT,action TEXT,detail TEXT,actor TEXT,created_at TEXT);
                 CREATE TABLE jobs(id TEXT PRIMARY KEY,kind TEXT,entity_id TEXT,status TEXT,progress INTEGER,message TEXT,result TEXT,created_at TEXT,updated_at TEXT);
+                CREATE TABLE skill_documents(entity_id TEXT PRIMARY KEY);
                 CREATE TABLE federation_links(id TEXT PRIMARY KEY,source_tenant_id TEXT,source_entity_id TEXT,
                     target_tenant_id TEXT,target_entity_id TEXT,relation_type TEXT,label TEXT,status TEXT,reason TEXT,
                     created_by TEXT,reviewed_by TEXT,created_at TEXT,updated_at TEXT);
@@ -48,7 +57,7 @@ class ReviewBoundaryTests(unittest.TestCase):
         self.temp.cleanup()
 
     def connect(self):
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(self.path, factory=FixtureConnection)
         conn.row_factory = lambda cur, row: Row(dict(zip([col[0] for col in cur.description], row)))
         return conn
 
@@ -126,6 +135,23 @@ class ReviewBoundaryTests(unittest.TestCase):
             job = conn.execute('SELECT result FROM jobs').fetchone()[0]
         self.assertEqual(relation['reviewer_id'], self.principal.user_id)
         self.assertNotIn('impersonated-admin', job)
+
+    def test_incoming_placement_cannot_create_managed_skill_dependency(self):
+        self.add('source', 'data')
+        self.add('target', 'skill', 'published', {'managed_skill': True})
+        result = {'mode': 'local', 'asset_snapshot': {'version': 1}, 'candidates': [{'id': 'target', 'version': 1}],
+                  'suggestions': [{'id': 'suggestion', 'target_id': 'target', 'direction': 'incoming', 'relation_type': 'uses_data'}]}
+        with self.connect() as conn:
+            conn.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?)', ('job', 'asset_placement', 'source', 'ready', 100, 'Ready', json.dumps(result), '2026', '2026'))
+        body = placement.ConfirmRequest(job_id='job', expected_version=1, review_note='Reviewed original source',
+            links=[placement.ReviewedLink(suggestion_id='suggestion', target_id='target', target_version=1,
+                direction='incoming', relation_type='uses_data', reason='Business dependency reviewed', reviewed=True)])
+        with self.assertRaises(HTTPException) as caught:
+            placement.confirm('source', body)
+        self.assertEqual(caught.exception.status_code, 409)
+        with self.connect() as conn:
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM relations').fetchone()[0], 0)
+        self.assertEqual(self.read('target')['version'], 1)
 
     def test_context_relation_confirmation_ignores_supplied_actor(self):
         self.add('project', 'project', 'active')

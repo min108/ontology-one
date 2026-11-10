@@ -11,13 +11,13 @@ type Candidate = { id: string; title: string; kind: string; version: number; sta
 type Suggestion = { id: string; target_id: string; target_version: number; direction: string; relation_type: string; reason: string; evidence: string; confidence: string; reviewed?: boolean };
 type Proposal = { job_id: string; mode: string; asset_snapshot: AssetEntity; candidates: Candidate[]; suggestions: Suggestion[]; note: string; confirmation?: { created: number; reused: number; reviews?: any[] } };
 const relationTypes = [
-  { id: 'derived_from', label: '提炼自', sources: ['data', 'rule', 'algorithm', 'knowledge'], targets: ['material', 'case', 'dataset'] },
-  { id: 'based_on', label: '依据规则', sources: ['data', 'algorithm', 'knowledge'], targets: ['rule'] },
-  { id: 'uses_data', label: '使用数据口径', sources: ['algorithm', 'rule', 'knowledge'], targets: ['data'] },
-  { id: 'implements_rule', label: '落实规则', sources: ['algorithm'], targets: ['rule'] },
-  { id: 'informs', label: '提供核查参考', sources: ['knowledge'], targets: ['rule', 'algorithm'] },
-  { id: 'references', label: '业务引用', sources: ['data', 'rule', 'algorithm', 'knowledge'], targets: ['data', 'rule', 'algorithm', 'knowledge'] },
-  { id: 'related_to', label: '同类业务参考', sources: ['data', 'rule', 'algorithm', 'knowledge', 'case'], targets: ['data', 'rule', 'algorithm', 'knowledge', 'case'] },
+  { id: 'derived_from', label: '提炼自', sources: ['data', 'rule', 'skill', 'knowledge'], targets: ['material', 'case', 'dataset'] },
+  { id: 'based_on', label: '依据规则', sources: ['data', 'skill', 'knowledge'], targets: ['rule'] },
+  { id: 'uses_data', label: '使用数据口径', sources: ['skill', 'rule', 'knowledge'], targets: ['data'] },
+  { id: 'implements_rule', label: '落实规则', sources: ['skill'], targets: ['rule'] },
+  { id: 'informs', label: '提供核查参考', sources: ['knowledge'], targets: ['rule', 'skill'] },
+  { id: 'references', label: '业务引用', sources: ['data', 'rule', 'skill', 'knowledge'], targets: ['data', 'rule', 'skill', 'knowledge'] },
+  { id: 'related_to', label: '同类业务参考', sources: ['data', 'rule', 'skill', 'knowledge', 'case'], targets: ['data', 'rule', 'skill', 'knowledge', 'case'] },
 ];
 const confidenceLabel: Record<string, string> = { high: '建议匹配较高', medium: '建议匹配中等', low: '建议匹配较低', unassessed: '匹配程度未判断' };
 

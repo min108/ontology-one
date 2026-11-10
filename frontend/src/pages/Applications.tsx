@@ -84,7 +84,7 @@ export default function Applications() {
   }
   const visibleFindings = result ? (resultTab === 'insufficient' ? result.insufficient : result.findings) : [];
   return <div className="page biz-page">
-    <PageHeader eyebrow="把积累用于工作 / ONTOLOGY APPLICATIONS" title="本体应用" description="围绕具体问题调阅依据、核对台账、借鉴经验。分析结果保留原始来源，待核线索经进一步复核后形成判断。" actions={<Link className="btn" to="/assets?kind=algorithm"><BookOpen size={16} /> 查阅分析方法</Link>} />
+    <PageHeader eyebrow="把积累用于工作 / ONTOLOGY APPLICATIONS" title="本体应用" description="围绕具体问题调阅依据、核对台账、借鉴经验。分析结果保留原始来源，待核线索经进一步复核后形成判断。" actions={<Link className="btn" to="/assets?kind=skill"><BookOpen size={16} /> 查阅分析方法</Link>} />
     <div className="biz-application-banner"><div><span className="biz-overline">规则有依据 · 分析可回看 · 线索待核实</span><h2>让每一次业务判断，都有扎实的业务支撑。</h2><p>选择具体场景，连接已有台账与业务资产，形成可解释、可追溯的核对记录。</p></div><div className="biz-application-symbol"><ShieldCheck size={57} /><span>ONTOLOGY<br />IN PRACTICE</span></div></div>
     <div className="tabs biz-main-tabs">{[{ id: 'checks', title: '业务分析', icon: <FileSearch size={17} /> }, { id: 'ask', title: 'AI问答', icon: <Sparkles size={17} /> }, { id: 'cases', title: '类案与方法', icon: <BookOpen size={17} /> }].map(t => <AccessButton key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>{t.icon}{t.title}</AccessButton>)}</div>
     {tab === 'checks' && <>

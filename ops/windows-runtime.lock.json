@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "platform": "win_amd64",
+  "python": {
+    "version": "3.12.10",
+    "filename": "python-3.12.10-embed-amd64.zip",
+    "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+    "sha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+    "upstream_md5": "fe8ef205f2e9c3ba44d0cf9954e1abd3",
+    "license": "PSF-2.0; bundled component notices",
+    "license_url": "https://docs.python.org/3.12/license.html"
+  },
+  "mysql": {
+    "version": "8.4.13",
+    "filename": "mysql-8.4.13-winx64.zip",
+    "url": "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.13-winx64.zip",
+    "sha256": null,
+    "upstream_md5": "7b94489d5524dea9b27097068bea25a8",
+    "license": "GPL-2.0-only; bundled component notices",
+    "license_url": "https://dev.mysql.com/doc/refman/8.4/en/license-mysql.html"
+  },
+  "mysql_source": {
+    "version": "8.4.13",
+    "filename": "mysql-8.4.13-corresponding-source.tar.gz",
+    "url": "https://codeload.github.com/mysql/mysql-server/tar.gz/8a180268d832300c09a375115dfa0ea77d83f1af",
+    "sha256": null,
+    "license": "GPL-2.0-only; complete corresponding upstream source",
+    "release_asset_required": true,
+    "upstream_commit": "8a180268d832300c09a375115dfa0ea77d83f1af",
+    "upstream_tag": "mysql-8.4.13"
+  },
+  "vc_runtime": {
+    "version": null,
+    "files": {},
+    "origin": "Licensed Visual Studio 2022 VC/Redist/MSVC/<version>/x64/Microsoft.VC143.CRT",
+    "license_url": "https://learn.microsoft.com/visualstudio/releases/2022/redistribution",
+    "terms_url": "https://visualstudio.microsoft.com/license-terms/vs2022-ga-proenterprise/",
+    "distribution": "Unmodified app-local redistributable DLLs only; never debug_nonredist"
+  },
+  "harness": {
+    "version": "0.2.1rc2",
+    "executable": "runtime/python/Lib/site-packages/deepseek_harness_runtime/runtime/deepseek-harness-sdk-runtime-win-x64.exe",
+    "sha256": "f9ed01f241df37c50c702d81b6c226d576210b8f3947699735ca90285ea13365",
+    "license": "MIT; THIRD_PARTY_NOTICES.md"
+  },
+  "release_gate": "Unresolved artifact/VC hashes permit explicitly selected QA bootstrap only; release builds must reject them.",
+  "vc_license": {
+    "version": "Visual Studio 2022 Enterprise/Professional 2021-11",
+    "filename": "Visual-Studio-2022-Enterprise-Professional-License-EN.docx",
+    "url": "https://visualstudio.microsoft.com/wp-content/uploads/2021/11/Visual-Studio-2022-Enterprise-Professional-License-EN.docx",
+    "sha256": null,
+    "license": "Microsoft Visual Studio 2022 license terms, including distributable-code permissions"
+  }
+}

@@ -5,7 +5,7 @@ import json
 from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError, field_validator, model_validator
 
 from .sources import QueryBody, QueryFilter
 
@@ -27,8 +27,14 @@ class ToolInput(StrictModel):
 
 class DiscoverInput(ToolInput):
     query: Annotated[str, Field(max_length=200)] = ''
-    kind: Literal['data', 'rule', 'algorithm', 'knowledge', 'organization'] | None = None
+    kind: Literal['data', 'rule', 'skill', 'algorithm', 'knowledge', 'organization'] | None = Field(
+        default=None, description='skill is the canonical skill asset kind; algorithm is a deprecated 0.4 input alias.')
     limit: Annotated[StrictInt, Field(ge=1, le=100)] = 30
+
+    @field_validator('kind')
+    @classmethod
+    def legacy_kind(cls, value):
+        return 'skill' if value == 'algorithm' else value
 
 
 class SemanticQueryInput(ToolInput):

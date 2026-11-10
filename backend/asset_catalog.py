@@ -8,9 +8,9 @@ from fastapi import APIRouter, HTTPException, Request
 from .db import connect, entity_json, now, log
 
 router=APIRouter()
-ASSET_KINDS=('data','rule','algorithm','knowledge')
+ASSET_KINDS=('data','rule','skill','knowledge')
 CURRENT="COALESCE(json_extract(payload,'$.active_asset'),1) != 0"
-FIELDS={'domain':'domain','status':'status','source_kind':'source_kind','category':"COALESCE(json_extract(payload,'$.category'),'')",'subcategory':"COALESCE(json_extract(payload,'$.subcategory'),'')",'authority':"COALESCE(json_extract(payload,'$.authority'),'')",'basis':"COALESCE(json_extract(payload,'$.basis'),'')",'version_key':"COALESCE(NULLIF(json_extract(payload,'$.effective_from'),''),'未标注来源版本')",'rule_type':"COALESCE(json_extract(payload,'$.rule_type'),'')",'algorithm_type':"COALESCE(json_extract(payload,'$.algorithm_type'),'')",'ownership':"COALESCE(json_extract(payload,'$.ownership'),'')",'knowledge_form':"COALESCE(json_extract(payload,'$.knowledge_form'),'experience')",'origin_type':"COALESCE(json_extract(payload,'$.origin_type'),'personal_note')",'asset_source':"COALESCE(json_extract(payload,'$.asset_source'),'')"}
+FIELDS={'domain':'domain','status':'status','source_kind':'source_kind','category':"COALESCE(json_extract(payload,'$.category'),'')",'subcategory':"COALESCE(json_extract(payload,'$.subcategory'),'')",'authority':"COALESCE(json_extract(payload,'$.authority'),'')",'basis':"COALESCE(json_extract(payload,'$.basis'),'')",'version_key':"COALESCE(NULLIF(json_extract(payload,'$.effective_from'),''),'未标注来源版本')",'rule_type':"COALESCE(json_extract(payload,'$.rule_type'),'')",'skill_type':"COALESCE(json_extract(payload,'$.skill_type'),'')",'ownership':"COALESCE(json_extract(payload,'$.ownership'),'')",'knowledge_form':"COALESCE(json_extract(payload,'$.knowledge_form'),'experience')",'origin_type':"COALESCE(json_extract(payload,'$.origin_type'),'personal_note')",'asset_source':"COALESCE(json_extract(payload,'$.asset_source'),'')"}
 
 def collected_article(c,row):
     article=entity_json(row);membership=json.loads(article.pop('membership_payload','{}') or '{}')
@@ -23,7 +23,7 @@ def collected_article(c,row):
     article['membership']=membership;return article
 
 def predicate(kind,params,omit=''):
-    if kind not in ASSET_KINDS:raise HTTPException(422,'请选择数据、规则、算法或知识资产。')
+    if kind not in ASSET_KINDS:raise HTTPException(422,'请选择数据、规则、技能或知识资产。')
     terms=['kind=?'];args=[kind]
     if params.get('history')!='all':terms.append(CURRENT)
     for field,expression in FIELDS.items():
@@ -64,7 +64,7 @@ def catalog_items(request:Request,kind:str='data',page:int=1,page_size:int=20):
         total=c.execute('SELECT count(*) FROM entities WHERE '+where,args).fetchone()[0]
         items=[entity_json(r) for r in c.execute('SELECT * FROM entities WHERE '+where+' ORDER BY CASE status WHEN \'published\' THEN 0 ELSE 1 END,title,id LIMIT ? OFFSET ?',args+[page_size,(page-1)*page_size])]
         facets={}
-        for field in ('status','source_kind','asset_source','rule_type','algorithm_type','ownership','knowledge_form','origin_type'):
+        for field in ('status','source_kind','asset_source','rule_type','skill_type','ownership','knowledge_form','origin_type'):
             fw,fa=predicate(kind,params,field)
             facets[field]={r['value'] or '__empty__':r['n'] for r in c.execute(f'SELECT {FIELDS[field]} value,count(*) n FROM entities WHERE {fw} GROUP BY {FIELDS[field]}',fa)}
         current=c.execute("SELECT count(*) FROM entities WHERE kind=? AND "+CURRENT,(kind,)).fetchone()[0]

@@ -8,6 +8,8 @@ import json,uuid,os,hashlib,asyncio
 import pymysql
 from .db import connect,initialize,entity_json,log,now,ROOT,current_org_id
 from .mcp_server import build_mcp_app
+from .skill_harness import EXECUTOR as harness_executor
+from .asset_kinds import canonical_entity, canonical_kind
 
 mcp_app = build_mcp_app()
 
@@ -26,10 +28,11 @@ async def lifespan(app):
             async with mcp_app.lifespan():
                 yield
         finally:
+            await harness_executor.close()
             if worker:
                 worker.cancel()
                 await asyncio.gather(worker, return_exceptions=True)
-app=FastAPI(title='Ontology One · 集团本体平台',version='0.4.0',lifespan=lifespan)
+app=FastAPI(title='Ontology One · 集团本体平台',version='0.5.0',lifespan=lifespan)
 from .security.middleware import SecurityMiddleware
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173','http://localhost:8765','http://127.0.0.1:8765'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
@@ -37,7 +40,7 @@ app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http:/
 async def db_error(request,exc):return JSONResponse(status_code=503,content={'detail':'MySQL 数据服务暂时不可用或繁忙，请检查连接后重试。'})
 
 @app.get('/api/health')
-def health():return {'ok':True,'service':'集团本体平台','version':'0.4.0','database':'MySQL','mode':'enterprise-preview','time':now()}
+def health():return {'ok':True,'service':'集团本体平台','version':'0.5.0','database':'MySQL','mode':'enterprise-preview','time':now()}
 @app.get('/api/catalog')
 def catalog():
     with closing(connect()) as c, c:
@@ -46,7 +49,7 @@ def catalog():
 def entities(kind:str='',q:str='',domain:str='',org_id:str='',status:str='',source_kind:str='',page:int=1,page_size:int=30,history:str='current',asset_only:bool=False):
     page=max(1,page);page_size=min(max(1,page_size),200);where=[];args=[]
     if history!='all':where.append("COALESCE(json_extract(payload,'$.active_asset'),1)!=0")
-    if asset_only:where.append("kind IN ('data','rule','algorithm','knowledge')")
+    if asset_only:where.append("kind IN ('data','rule','skill','knowledge')")
     for k,v in [('kind',kind),('domain',domain),('org_id',org_id),('status',status),('source_kind',source_kind)]:
         if v:
             vals=v.split(',');where.append(f"{k} IN ({','.join('?' for _ in vals)})");args+=vals
@@ -81,6 +84,7 @@ async def create(request:Request):
     return await asyncio.to_thread(_create_entity, body)
 
 def _create_entity(b):
+    b = {**b, 'kind': canonical_kind(b.get('kind', 'knowledge'))}
     title=str(b.get('title','')).strip()
     if not title:raise HTTPException(400,'请填写名称。')
     if b.get('kind')=='organization':raise HTTPException(403,'机构目录由集团账户管理统一维护。')
@@ -91,9 +95,11 @@ def _create_entity(b):
     if b.get('kind')=='task':
         if b.get('status','draft')!='draft':raise HTTPException(400,'新建任务请先保存为待办理，再从任务详情推进。')
         if (b.get('payload') or {}).get('task_type'):raise HTTPException(400,'请从专题工作档案按明确的任务类型分解工作。')
-    if b.get('kind') in ['data','rule','algorithm','knowledge'] and b.get('status','draft')!='draft':raise HTTPException(400,'新建资产请先保存为草稿，再提交审核。')
+    if b.get('kind') in ['data','rule','skill','knowledge'] and b.get('status','draft')!='draft':raise HTTPException(400,'新建资产请先保存为草稿，再提交审核。')
     eid=b.get('id') or f"{b.get('kind','ASSET').upper()}-USER-{uuid.uuid4().hex[:10]}";t=now()
     with closing(connect()) as c, c:
+        from .skills import guard_generic_entity
+        guard_generic_entity(c, body=b)
         if c.execute('SELECT id FROM entities WHERE id=?',(eid,)).fetchone():raise HTTPException(409,'该编号已存在。')
         c.execute('INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(eid,b.get('kind','knowledge'),title,b.get('summary',''),b.get('domain','综合管理'),current_org_id(),b.get('status','draft'),b.get('source_kind','user'),json.dumps(b.get('payload',{}),ensure_ascii=False),t,t,1))
         log(c,eid,'创建',title,b.get('actor','本地体验用户'))
@@ -108,7 +114,7 @@ def versions(eid:str):
     with closing(connect()) as c, c:
         rows=[dict(r) for r in c.execute('SELECT * FROM versions WHERE entity_id=? ORDER BY version DESC,id DESC',(eid,))]
         for r in rows:
-            try:r['snapshot']=json.loads(r['snapshot'])
+            try:r['snapshot']=canonical_entity(json.loads(r['snapshot']))
             except:pass
         return {'items':rows}
 @app.get('/api/entities/{eid}/route')
@@ -126,8 +132,7 @@ def detail(eid:str,version:int=0):
         if version and version!=d['version']:
             previous=c.execute('SELECT snapshot FROM versions WHERE entity_id=? AND version=? ORDER BY id DESC LIMIT 1',(eid,version)).fetchone()
             if not previous:raise HTTPException(404,'所指定的历史版本不存在。')
-            current_version=d['version'];d=json.loads(previous['snapshot'])
-            if isinstance(d.get('payload'),str):d['payload']=json.loads(d['payload'])
+            current_version=d['version'];d=canonical_entity(json.loads(previous['snapshot']))
             d['payload']={**d.get('payload',{}),'snapshot_readonly':True,'current_version':current_version}
         base='SELECT r.*,s.title source_title,t.title target_title,s.kind source_kind,t.kind target_kind FROM relations r LEFT JOIN entities s ON s.id=r.source LEFT JOIN entities t ON t.id=r.target WHERE '
         d['relations']={'outgoing':[dict(r) for r in c.execute(base+'r.source=? LIMIT 120',(eid,))],'incoming':[dict(r) for r in c.execute(base+'r.target=? LIMIT 120',(eid,))]}
@@ -138,8 +143,10 @@ def detail(eid:str,version:int=0):
 async def edit(eid:str,request:Request):
     b=await request.json()
     with closing(connect()) as c, c:
-        old=entity_json(c.execute('SELECT * FROM entities WHERE id=?',(eid,)).fetchone())
+        old=entity_json(c.execute('SELECT * FROM entities WHERE id=? FOR UPDATE',(eid,)).fetchone())
         if not old:raise HTTPException(404,'未找到内容。')
+        from .skills import guard_generic_entity
+        guard_generic_entity(c, old, b)
         if old['kind']=='organization':raise HTTPException(403,'机构根节点不能通过业务编辑修改。')
         if b.get('org_id') and b['org_id']!=current_org_id():raise HTTPException(403,'不能变更数据的机构归属。')
         if old['payload'].get('authority_spec') or (b.get('payload') or {}).get('authority_spec') or old['kind']=='person':raise HTTPException(400,'请从权责规范工作面编辑，保留版本、组织人员归属和流程校验。')
@@ -151,9 +158,9 @@ async def edit(eid:str,request:Request):
         if old['kind']=='project':
             from .projects import edit_project
             return await edit_project(eid,request)
-        if old['kind'] in ['data','rule','algorithm','knowledge'] and 'status' in b and b['status'] not in [old['status'],'draft']:
+        if old['kind'] in ['data','rule','skill','knowledge'] and 'status' in b and b['status'] not in [old['status'],'draft']:
             raise HTTPException(400,'请通过提交、审核和发布操作变更资产状态。')
-        if old['kind'] in ['data','rule','algorithm','knowledge'] and old['status'] in ['published','approved','review'] and any(k in b for k in ['title','summary','domain','org_id','payload']):
+        if old['kind'] in ['data','rule','skill','knowledge'] and old['status'] in ['published','approved','review'] and any(k in b for k in ['title','summary','domain','org_id','payload']):
             b['status']='draft'
         c.execute('INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)',(eid,old['version'],json.dumps(old,ensure_ascii=False),now(),b.get('reason','内容修订')))
         allowed=['title','summary','domain','org_id','status','payload']
@@ -184,8 +191,10 @@ def _entity_action(eid, b):
     if act not in targets:raise HTTPException(400,'不支持此操作。')
     with closing(connect()) as c, c:
         if existing and existing['payload'].get('authority_spec'):c.execute('BEGIN IMMEDIATE')
-        old=entity_json(c.execute('SELECT * FROM entities WHERE id=?',(eid,)).fetchone())
+        old=entity_json(c.execute('SELECT * FROM entities WHERE id=? FOR UPDATE',(eid,)).fetchone())
         if not old:raise HTTPException(404,'未找到内容。')
+        from .skills import guard_generic_entity
+        guard_generic_entity(c, old)
         if old['payload'].get('active_asset') is False:raise HTTPException(409,'历史条目保留原审定记录，请在当前成果中办理。')
         if old['payload'].get('authority_spec'):
             from .authority import guard_action
@@ -240,9 +249,11 @@ def _restore_entity(eid, body):
         previous = conn.execute('SELECT snapshot FROM versions WHERE entity_id=? AND version=? ORDER BY id DESC LIMIT 1', (eid, version)).fetchone()
         if not old or not previous:
             raise HTTPException(404, '历史版本不存在。')
+        from .skills import guard_generic_entity
+        guard_generic_entity(conn, old)
         if old['kind'] in ('organization', 'person'):
             raise HTTPException(403, '组织与人员请通过专用管理入口维护。')
-        snapshot = json.loads(previous['snapshot'])
+        snapshot = canonical_entity(json.loads(previous['snapshot']))
         payload = snapshot.get('payload', {})
         if isinstance(payload, str):
             payload = json.loads(payload)
@@ -272,6 +283,9 @@ def relations(node:str='',status:str='',q:str='',page:int=1,page_size:int=30):
 def relation_work_entry(c,row):
     """Operational membership is reviewed in its own versioned workflow."""
     endpoints=[entity_json(c.execute('SELECT * FROM entities WHERE id=?',(eid,)).fetchone()) for eid in (row['source'],row['target'])]
+    if (json.loads(row['payload'] or '{}').get('skill_managed') or
+            (endpoints[0] and endpoints[0]['payload'].get('managed_skill'))):
+        return {'href':'/skill-development/'+row['source'],'label':'核对技能依赖','reason':'技能依赖随包版本校验、测试与发布，请从技能开发办理。'}
     for entity in endpoints:
         if entity and entity['payload'].get('active_asset') is False:
             return {'href':'/assets/'+entity['id'],'label':'查看历史依据','reason':'历史关联保留原审定记录，请从当前成果开展修订。'}
@@ -296,7 +310,7 @@ def _confirm_relation(rid, b):
     if b.get('status') not in ['candidate','confirmed','rejected']:raise HTTPException(400,'无效状态')
     if b.get('status') in ['confirmed','rejected'] and not str(b.get('reason','')).strip():raise HTTPException(400,'请说明本次核对的依据或不采纳原因。')
     with closing(connect()) as c, c:
-        row=c.execute('SELECT * FROM relations WHERE id=?',(rid,)).fetchone()
+        row=c.execute('SELECT * FROM relations WHERE id=? FOR UPDATE',(rid,)).fetchone()
         if not row:raise HTTPException(404,'未找到关系')
         entry=relation_work_entry(c,row)
         if entry:raise HTTPException(400,entry['reason'])
@@ -308,8 +322,10 @@ def _confirm_relation(rid, b):
         if p.get('proposal_job_id'):p['subsequent_review_reason']=b.get('reason','')
         else:p['review_reason']=b.get('reason','')
         p['reviewed_at']=reviewed_at
-        source=entity_json(c.execute('SELECT * FROM entities WHERE id=?',(row['source'],)).fetchone())
+        source=entity_json(c.execute('SELECT * FROM entities WHERE id=? FOR UPDATE',(row['source'],)).fetchone())
         if source:
+            from .skills import guard_generic_entity
+            guard_generic_entity(c, source)
             c.execute('INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)',(source['id'],source['version'],json.dumps(source,ensure_ascii=False),reviewed_at,'关联复核：'+b.get('reason','')))
             c.execute('UPDATE entities SET version=version+1,updated_at=? WHERE id=?',(reviewed_at,source['id']))
         c.execute('UPDATE relations SET status=?,payload=? WHERE id=?',(b['status'],json.dumps(p,ensure_ascii=False),rid));log(c,row['source'],'关联核对',b.get('reason','关联状态已更新'));c.commit()
@@ -317,12 +333,12 @@ def _confirm_relation(rid, b):
 @app.get('/api/overview')
 def overview():
     current="COALESCE(json_extract(payload,'$.active_asset'),1)!=0"
-    asset_where="kind IN ('data','rule','algorithm','knowledge') AND "+current
+    asset_where="kind IN ('data','rule','skill','knowledge') AND "+current
     with closing(connect()) as c,c:
         counts={r['kind']:r['n'] for r in c.execute('SELECT kind,count(*) n FROM entities WHERE '+current+' GROUP BY kind')}
-        assets=sum(counts.get(k,0) for k in ('data','rule','algorithm','knowledge'))
+        assets=sum(counts.get(k,0) for k in ('data','rule','skill','knowledge'))
         published=c.execute("SELECT count(*) FROM entities WHERE "+asset_where+" AND status='published'").fetchone()[0]
-        historical=c.execute("SELECT count(*) FROM entities WHERE kind IN ('data','rule','algorithm','knowledge') AND NOT ("+current+")").fetchone()[0]
+        historical=c.execute("SELECT count(*) FROM entities WHERE kind IN ('data','rule','skill','knowledge') AND NOT ("+current+")").fetchone()[0]
         domains=[dict(r) for r in c.execute("SELECT domain,count(*) count,sum(CASE WHEN status='published' THEN 1 ELSE 0 END) published FROM entities WHERE "+asset_where+" GROUP BY domain ORDER BY count DESC")]
         status=[dict(r) for r in c.execute("SELECT status,count(*) count FROM entities WHERE "+asset_where+" GROUP BY status")]
         projects=[entity_json(r) for r in c.execute("SELECT * FROM (SELECT *,ROW_NUMBER() OVER (PARTITION BY coalesce(nullif(json_extract(payload,'$.topic_label'),''),domain) ORDER BY CASE WHEN status IN ('active','returned','draft') THEN 0 ELSE 1 END,id DESC) topic_rank FROM entities WHERE kind='project') ranked_projects WHERE topic_rank=1 ORDER BY updated_at DESC,id LIMIT 6")]
@@ -357,6 +373,10 @@ from .integrations import router as integration_router
 app.include_router(integration_router, prefix='/api')
 from .sources import router as source_router
 app.include_router(source_router, prefix='/api')
+from .skill_harness import router as harness_router
+app.include_router(harness_router, prefix='/api')
+from .skills import router as skill_router
+app.include_router(skill_router, prefix='/api')
 from .security.applications import router as integration_applications_router
 app.include_router(integration_applications_router, prefix='/api')
 app.mount('/mcp', mcp_app)

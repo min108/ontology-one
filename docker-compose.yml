@@ -1,9 +1,10 @@
 name: ontology-one-v020
 
 x-app: &app
-  image: ontology-one:0.4.0
+  image: ontology-one:0.5.0
   build: .
   restart: unless-stopped
+  init: true
   user: "10001:10001"
   read_only: true
   tmpfs:
@@ -23,6 +24,7 @@ x-app: &app
     ONTOLOGY_COOKIE_SECURE: ${ONTOLOGY_COOKIE_SECURE:-0}
     ONTOLOGY_MCP_ALLOWED_HOSTS: ${ONTOLOGY_MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*}
     ONTOLOGY_MCP_MAX_CONCURRENT: ${ONTOLOGY_MCP_MAX_CONCURRENT:-4}
+    ONTOLOGY_HARNESS_MAX_CONCURRENT: ${ONTOLOGY_HARNESS_MAX_CONCURRENT:-2}
 
 services:
   mysql:
@@ -57,6 +59,14 @@ services:
 
   api:
     <<: *app
+    environment:
+      <<: *runtime
+      ONTOLOGY_HARNESS_TMP_ROOT: /run/ontology-harness
+    # The pinned Harness runtime loads native addons from its private session
+    # directory. Keep this executable tmpfs separate from /tmp and /dev/shm.
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /run/ontology-harness:rw,exec,nosuid,nodev,size=256m,mode=1777
     command: ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8765", "--workers", "${ONTOLOGY_API_WORKERS:-4}"]
     ports:
       - "127.0.0.1:${ONTOLOGY_PORT:-8765}:8765"

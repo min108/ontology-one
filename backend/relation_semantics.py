@@ -18,7 +18,7 @@ RELATION_SEMANTICS = {
     'uses_data': ('使用数据口径', '被用作数据口径', True, 'input'),
     'requires_data': ('声明数据依赖', '提供所需数据口径', True, 'input'),
     'references_data': ('数据口径参考', '被作为数据参考', True, 'reference'),
-    'references_algorithm': ('方法参考', '被作为方法参考', True, 'reference'),
+    'references_skill': ('方法参考', '被作为方法参考', True, 'reference'),
     'implements_rule': ('落实规则', '由方法落实', True, 'input'),
     'uses_asset': ('引用已有资产', '供工作引用', True, 'application'),
     'uses_method': ('采用核查方法', '用于核查事项', True, 'application'),

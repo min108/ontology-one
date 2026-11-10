@@ -1,0 +1,142 @@
+name: Native Windows distribution
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: ['release/0.5.0']
+    tags: ['v0.5.0']
+permissions:
+  contents: read
+concurrency:
+  group: native-windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      ONTOLOGY_BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.10'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Compile frontend
+        shell: pwsh
+        run: |
+          npm --prefix frontend ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix frontend run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build self-contained package from fixed official dependencies
+        shell: pwsh
+        run: |
+          $arguments = @('scripts/build_windows_release.py', '--output', 'out', '--cache', "$env:RUNNER_TEMP/ontology-downloads")
+          $lock = Get-Content -Raw ops/windows-runtime.lock.json | ConvertFrom-Json
+          $unresolved = (-not $lock.mysql.sha256) -or (-not $lock.mysql_source.sha256) -or (-not $lock.vc_license.sha256) -or (-not $lock.vc_runtime.version)
+          if ('${{ github.event_name }}' -eq 'pull_request' -and $unresolved) { $arguments += '--bootstrap-lock' }
+          python @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Native standard-user acceptance without system Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $qaUser = "ontoqa$env:GITHUB_RUN_ID"
+          if ($qaUser.Length -gt 20) { $qaUser = $qaUser.Substring(0,20) }
+          $qaRoot = Join-Path "C:\OntologyOne-QA-$env:GITHUB_RUN_ID" '本体 Windows QA !'
+          $reports = Join-Path $qaRoot 'safe-reports'
+          $randomBytes = New-Object byte[] 32
+          [Security.Cryptography.RandomNumberGenerator]::Fill($randomBytes)
+          $password = 'Qa9!' + [Convert]::ToBase64String($randomBytes)
+          $secure = ConvertTo-SecureString $password -AsPlainText -Force
+          $credential = New-Object Management.Automation.PSCredential(".\$qaUser", $secure)
+          $null = New-LocalUser -Name $qaUser -Password $secure -AccountNeverExpires -PasswordNeverExpires
+          $null = Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $qaUser
+          try {
+            New-Item -ItemType Directory -Force -Path $qaRoot,$reports | Out-Null
+            Expand-Archive -LiteralPath 'out/ontology-one-0.5.0-windows-x64.zip' -DestinationPath $qaRoot
+            $sid = (Get-LocalUser -Name $qaUser).SID.Value
+            & icacls.exe $qaRoot /grant "*${sid}:(OI)(CI)F" /T /Q | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not grant disposable account directory access' }
+            $package = Join-Path $qaRoot 'Ontology-One-0.5.0-windows-x64'
+            $python = Join-Path $package 'runtime/python/python.exe'
+            $entry = Join-Path $package 'scripts/check_windows_ci.py'
+            $arguments = @('-I', '-B', "`"$entry`"", '--package', "`"$package`"", '--report-dir', "`"$reports`"")
+            $process = Start-Process -FilePath $python -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -PassThru
+            if (-not $process.WaitForExit(1800000)) { throw 'Native acceptance exceeded its time budget' }
+            $process.Refresh()
+            New-Item -ItemType Directory -Force -Path 'out/reports' | Out-Null
+            Copy-Item -Path (Join-Path $reports '*') -Destination 'out/reports' -Force
+            if ($process.ExitCode -ne 0) { throw 'Native acceptance failed; see safe reports' }
+          } finally {
+            if (Test-Path $reports) {
+              New-Item -ItemType Directory -Force -Path 'out/reports' | Out-Null
+              Copy-Item -Path (Join-Path $reports '*') -Destination 'out/reports' -Force -ErrorAction SilentlyContinue
+            }
+            if ($package -and (Test-Path $python)) {
+              $stopArgs = @('-I', '-B', "`"$(Join-Path $package 'ops/windows_launcher.py')`"", 'stop', '--json')
+              Start-Process -FilePath $python -ArgumentList $stopArgs -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -Wait -ErrorAction SilentlyContinue | Out-Null
+            }
+            Remove-LocalUser -Name $qaUser -ErrorAction SilentlyContinue
+            $password = $null; $secure = $null; $credential = $null
+          }
+      - name: Preserve only safe diagnostics and candidate dependency lock
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-native-reports-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            out/reports
+            out/resolved-windows-runtime.lock.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Retain verified distribution assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-distribution-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            out/ontology-one-0.5.0-windows-x64.zip
+            out/mysql-*-corresponding-source.tar.gz
+            out/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/tags/v0.5.0'
+    needs: windows
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: windows-distribution-${{ github.sha }}
+          path: release-assets
+      - name: Verify asset integrity and create a new release without overwrites
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum --check SHA256SUMS.txt
+          if gh release view v0.5.0 >/dev/null 2>&1; then
+            echo 'Release v0.5.0 already exists; refusing to overwrite.'
+            exit 1
+          fi
+          cat > release-notes.txt <<'NOTES'
+          Ontology One 0.5.0 includes a native Windows x64 distribution with its own Python, MySQL and pinned official Harness runtime.
+          Download the Windows ZIP and retain the accompanying SHA256SUMS. The MySQL source archive accompanies its GPL distribution.
+          This version is published independently; previous version branches/tags and main are preserved.
+          NOTES
+          gh release create v0.5.0 ontology-one-0.5.0-windows-x64.zip mysql-*-corresponding-source.tar.gz SHA256SUMS.txt --verify-tag --draft --title 'Ontology One 0.5.0' --notes-file release-notes.txt
+          gh release edit v0.5.0 --draft=false --latest=false
