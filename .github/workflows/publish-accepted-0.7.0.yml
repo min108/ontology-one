@@ -1,0 +1,41 @@
+name: Publish accepted Windows 0.7.0 without rebuilding
+on:
+  push:
+    branches: ['qa/publish-accepted-0.7.0']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-accepted-windows-0.7.0
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify the successful native run and exact artifact identities
+        run: python .github/scripts/publish_accepted_07.py verify-run
+      - name: Download the accepted distribution without rebuilding
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: '42982936247'
+          artifact-ids: '13838634705'
+          merge-multiple: true
+          path: release-assets
+      - name: Download the corresponding native acceptance and build provenance
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: '42982936247'
+          artifact-ids: '13838649561'
+          merge-multiple: true
+          path: qa-reports
+      - name: Verify the accepted bytes and publish without overwriting history
+        run: python .github/scripts/publish_accepted_07.py publish
