@@ -21,7 +21,7 @@ CODES = {'TIMEOUT', 'PROCESS_IO_FAILED', 'OUTPUT_LIMIT', 'PROCESS_CLEANUP_FAILED
     'APPCONTAINER_CLEANUP_FAILED', 'PROCESS_CLOSED', 'OTHER_ERROR'}
 NUMBERS = {'trial', 'setup_ms', 'wall_ms', 'total_ms', 'exit_code', 'user_cpu_ms',
     'kernel_cpu_ms', 'stdin_bytes', 'stdout_bytes', 'stderr_bytes',
-    'process_read_bytes', 'process_write_bytes'}
+    'process_read_bytes', 'process_write_bytes', 'job_wait_status'}
 
 
 def safe_summary(value):
@@ -33,7 +33,7 @@ def safe_summary(value):
                and type(item) is int and 0 <= item < 2**64}
         if original.get('code') in CODES:
             row['code'] = original['code']
-        for name in ('job_empty', 'nonzero_exit', 'quota_exit'):
+        for name in ('job_empty', 'nonzero_exit', 'quota_exit', 'quota_job_signaled'):
             if type(original.get(name)) is bool:
                 row[name] = original[name]
         rows.append(row)
@@ -95,13 +95,16 @@ def run(package, report, expected, observation):
                 row.update(owner.diagnostic_counters())
                 row['nonzero_exit'] = owner.returncode is not None and owner.returncode != 0
                 row['quota_exit'] = owner.returncode == 0xC0000044  # STATUS_QUOTA_EXCEEDED.
+                row['job_wait_status'] = int(owner._kernel.WaitForSingleObject(owner._job, 0))
+                row['quota_job_signaled'] = row['job_wait_status'] == 0
                 row['job_empty'] = owner.process_ids() == ()
         except Exception:
             row.setdefault('code', 'OTHER_ERROR')
         row['total_ms'] = round((time.monotonic() - started) * 1000)
         rows.append(row)
         report.write_text(json.dumps(safe_summary({'trials': rows, 'wall_watchdog_seconds': observation})), encoding='utf-8')
-    return all('code' not in row and row.get('quota_exit') and row.get('job_empty') for row in rows)
+    return all('code' not in row and row.get('quota_exit') and row.get('quota_job_signaled')
+               and row.get('job_empty') for row in rows)
 
 
 def main():
