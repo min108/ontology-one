@@ -144,6 +144,11 @@ jobs:
             Remove-LocalUser -Name $qaUser -ErrorAction SilentlyContinue
             $password = $null; $secure = $null; $credential = $null
           }
+      - name: Print bounded native acceptance summary
+        if: always()
+        shell: pwsh
+        run: |
+          python .github/scripts/summarize_windows_acceptance.py --reports out/reports
       - name: Preserve only safe diagnostics and candidate dependency lock
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

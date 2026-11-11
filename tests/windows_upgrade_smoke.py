@@ -75,6 +75,9 @@ def run(package, baseline, report):
         with httpx.Client(base_url=f'http://127.0.0.1:{new.api_port}',trust_env=False,timeout=30) as client:
             response=client.post('/api/auth/login',json={'username':old.username,'password':old.password})
             require(response.status_code==200 and not response.json()['must_change_password'],'UPGRADED_ACCOUNT_NOT_PRESERVED')
+            user=response.json()['user']
+            require(user.get('role')=='admin','UPGRADED_ACCOUNT_ROLE_CHANGED')
+            require(user.get('home_tenant_id')=='hq','UPGRADED_ACCOUNT_HOME_TENANT_CHANGED')
             response=client.get('/api/entities/'+old.entity)
             require(response.status_code==200,'UPGRADED_ASSET_MISSING')
             value=response.json()
@@ -97,7 +100,7 @@ def run(package, baseline, report):
         check('old_services_stopped',old.stopped)
         check('cold_copy_keeps_source_and_credentials',copied)
         check('new_version_migration_and_shared_broker',new.start)
-        check('original_login_role_asset_and_version',verify_existing)
+        check('original_login_role_home_tenant_asset_and_version',verify_existing)
         check('new_version_stop',new.stopped)
         check('existing_target_not_overwritten',reject_existing_target)
         check('restart_preserves_copied_account_and_asset',new.persistence)
