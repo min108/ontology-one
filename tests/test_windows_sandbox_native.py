@@ -442,14 +442,19 @@ print(json.dumps({'denied':denied}))
             self.assertEqual(caught.exception.code, 'TIMEOUT')
             self.assertEqual(owner.process_ids(), ())
 
-    def test_cpu_user_time_limit_terminates_before_wall_timeout(self):
+    def test_cpu_user_time_limit_terminates_within_observation_budget(self):
         limits = native.ProcessLimits(memory_bytes=192 * 1024 * 1024,
                                       active_processes=1, cpu_time_seconds=.1)
         with self.sandbox('while True:\n    pass\n', limits=limits) as (owner, *_):
-            # A TIMEOUT exception is a failed test: only the kernel's CPU limit
-            # may stop this case, not the parent's five-second wall watchdog.
+            # Windows periodically checks Job CPU time, rather than promising
+            # immediate termination at the configured quota. This independent
+            # 15-second observation budget covers the delay measured by the
+            # focused native probe; it is not an OS timing guarantee and does
+            # not change the product's five-second per-case wall watchdog.
+            # https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information
+            # TIMEOUT still fails: only kernel quota termination may pass.
             try:
-                owner.communicate(b'{}', timeout=5, max_stdout=1024, max_stderr=1024)
+                output, errors = owner.communicate(b'{}', timeout=15, max_stdout=1024, max_stderr=1024)
             except native.WindowsProcessError as error:
                 # Only fixed native codes and numeric process counters reach
                 # the CI summary. No command, payload or pipe content is kept.
@@ -460,9 +465,13 @@ print(json.dumps({'denied':denied}))
                     pass
                 print(json.dumps({'native_cpu_limit_failure': {'code': error.code, **counters}}), flush=True)
                 raise
-            self.assertIsNotNone(owner.returncode)
-            self.assertNotEqual(owner.returncode, 0)
+            self.assertEqual(owner.returncode, 0xC0000044)  # STATUS_QUOTA_EXCEEDED.
+            self.assertGreaterEqual(owner.diagnostic_counters()['user_cpu_ms'], 100)
+            self.assertEqual((output, errors), (b'', b''))
             self.assertEqual(owner.process_ids(), ())
+            # Job-time quota signals the still-owned Job; ordinary empty/parent
+            # terminated Jobs do not. communicate() never resets Job limits.
+            self.assertEqual(owner._kernel.WaitForSingleObject(owner._job, 0), 0)
 
     def test_output_limit_terminates_the_entire_owned_job(self):
         script = "import sys,time\nsys.stdout.write('x'*131072);sys.stdout.flush();time.sleep(30)\n"
