@@ -55,9 +55,10 @@ FAILED (failures=1, errors=1, skipped=10)
     def test_cpu_failure_keeps_only_fixed_code_and_numeric_metadata(self):
         raw = json.dumps({'native_cpu_limit_failure': {'code': 'TIMEOUT', 'user_cpu_ms': 12,
             'stdout_bytes': 0, 'message': 'PRIVATE_NATIVE_MESSAGE', 'command': 'PRIVATE_COMMAND'}})
-        result = log_summary(raw, self.paths, self.tests, self.classes, self.symbols)
-        self.assertEqual(result['cpu_limit_failure'], {'code': 'TIMEOUT', 'user_cpu_ms': 12, 'stdout_bytes': 0})
-        self.assertNotIn('PRIVATE_', json.dumps(result))
+        for prefix in ('', 'PRIVATE_TEST_HEADER ... '):
+            result = log_summary(prefix + raw, self.paths, self.tests, self.classes, self.symbols)
+            self.assertEqual(result['cpu_limit_failure'], {'code': 'TIMEOUT', 'user_cpu_ms': 12, 'stdout_bytes': 0})
+            self.assertNotIn('PRIVATE_', json.dumps(result))
 
     def test_missing_malformed_and_oversized_reports_never_emit_raw_content(self):
         with tempfile.TemporaryDirectory() as temporary:

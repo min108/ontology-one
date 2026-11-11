@@ -124,9 +124,13 @@ def log_summary(text, paths, tests, classes, symbols=None):
     symbols = set() if symbols is None else symbols
     result = {'failed_tests': [], 'frames': [], 'exception_types': [], 'error_codes': []}
     for line in text.splitlines():
-        if line.startswith('{"native_cpu_limit_failure":'):
+        marker = line.find('{"native_cpu_limit_failure":')
+        if marker >= 0:
             try:
-                value = json.loads(line)['native_cpu_limit_failure']
+                # unittest's verbose test name may precede flushed stdout on
+                # the same redirected line. Only the structured suffix enters
+                # metadata filtering; the surrounding text is never exported.
+                value = json.loads(line[marker:])['native_cpu_limit_failure']
                 result['cpu_limit_failure'] = metadata(value, symbols, classes)
             except Exception:
                 pass
