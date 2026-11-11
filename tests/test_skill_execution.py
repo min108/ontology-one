@@ -84,6 +84,8 @@ class SocketProtocolTests(unittest.TestCase):
             def execute(self, body, disconnected):
                 rows = [{'name': case['name'], 'status': 'passed', 'code': 'PASSED', 'duration_ms': 1} for case in body['test_cases']]
                 return {'outcome': 'passed', 'mode': 'isolated_python', 'report': {'cases': rows, 'passed': len(rows), 'failed': 0, 'duration_ms': 1}}
+            def execute_readonly(self, body, disconnected):
+                return {'outcome': 'passed', 'output': body['input'], 'code': 'PASSED'}
         self.runner = FakeRunner()
         self.server = service.RunnerServer(self.path, self.runner)
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={'poll_interval': .01})
@@ -135,6 +137,31 @@ class SocketProtocolTests(unittest.TestCase):
             result = client.execute_tests(body['files'], body['entrypoint'], body['test_cases'])
         self.assertEqual(result['outcome'], 'unavailable')
         self.assertNotIn('PRIVATE', json.dumps(result))
+
+    def test_readonly_output_uses_distinct_protocol_and_preserves_unicode(self):
+        body = request()
+        value = {'机构': '总部', '金额': 0}
+        result = client.execute_readonly_skill(body['files'], body['entrypoint'], value)
+        self.assertEqual(result, {'outcome': 'passed', 'output': value, 'code': 'PASSED'})
+        status, _, _ = client._exchange('POST', '/run', {'files': body['files'],
+            'entrypoint': body['entrypoint'], 'input': value, 'timeout_seconds': 30, 'command': 'not-allowed'})
+        self.assertEqual(status, 400)
+
+    def test_readonly_failure_and_cancellation_never_return_partial_output(self):
+        body = request()
+        for response in ({'outcome': 'failed', 'code': 'SCRIPT_ERROR', 'output': 'PRIVATE'},
+                         {'outcome': 'passed', 'code': 'PASSED', 'output': float('inf')},
+                         {'outcome': 'passed', 'code': 'PASSED', 'output': 'x' * 65537}):
+            with self.subTest(response_type=type(response['output']).__name__), patch.object(client,
+                    '_exchange', return_value=(200, response, None)):
+                result = client.execute_readonly_skill(body['files'], body['entrypoint'], {})
+                self.assertEqual(result['outcome'], 'unavailable')
+                self.assertIsNone(result['output'])
+        stopped = threading.Event(); stopped.set()
+        with patch.object(client, '_exchange') as exchange:
+            result = client.execute_readonly_skill(body['files'], body['entrypoint'], {}, cancelled=stopped)
+        exchange.assert_not_called()
+        self.assertEqual(result['code'], 'CANCELLED')
 
 
 if __name__ == '__main__':

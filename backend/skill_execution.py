@@ -16,7 +16,7 @@ import stat
 import time
 
 MAX_REQUEST = 3 * 1024 * 1024
-MAX_RESPONSE = 32 * 1024
+MAX_RESPONSE = 128 * 1024
 _CODES = frozenset({'PASSED', 'ASSERTION_FAILED', 'STDOUT_NOT_JSON', 'SCRIPT_ERROR', 'TIMEOUT',
                     'CANCELLED', 'OUTPUT_LIMIT', 'RESOURCE_LIMIT', 'RUNNER_BUSY', 'RUNNER_UNAVAILABLE',
                     'INVALID_TEST_REQUEST', 'NOT_RUN'})
@@ -162,3 +162,48 @@ def execute_tests(files, entrypoint, test_cases, timeout_seconds=30, cancelled=N
         return _safe_report(body, test_cases)
     except (OSError, ValueError, TypeError, KeyError, RecursionError, OverflowError, UnicodeError):
         return _failure(test_cases, 'RUNNER_UNAVAILABLE', began, unavailable=True)
+
+
+def execute_readonly_skill(files, entrypoint, input, *, timeout=30, cancelled=None):
+    """Return one bounded JSON value in memory after sandbox cleanup completes.
+
+    Authorization, publication proofs and JSON schemas are enforced by the
+    caller before/after execution. No code runs outside the existing sandbox.
+    Test reports keep their existing metadata-only contract.
+    """
+    failed = lambda code: {'outcome': 'unavailable' if code == 'RUNNER_UNAVAILABLE' else 'failed',
+                           'output': None, 'code': code}
+    if _cancelled(cancelled):
+        return failed('CANCELLED')
+    if type(timeout) not in (int, float) or not 1 <= timeout <= 30:
+        return failed('INVALID_TEST_REQUEST')
+    try:
+        if os.name == 'nt':
+            from .windows_skill_runner import execute_tests as windows_execute
+            captured = []
+            result = windows_execute(files, entrypoint, [{'name': 'readonly', 'input': input,
+                'expected_output': None}], timeout, cancelled, _capture=captured)
+            if result['outcome'] == 'passed' and len(captured) == 1 and not _cancelled(cancelled):
+                return {'outcome': 'passed', 'output': captured.pop(), 'code': 'PASSED'}
+            captured.clear()
+            codes = result.get('report', {}).get('cases', [])
+            return failed('CANCELLED' if _cancelled(cancelled) else codes[0]['code'] if codes else 'RUNNER_UNAVAILABLE')
+        status, body, interrupted = _exchange('POST', '/run',
+            {'files': files, 'entrypoint': entrypoint, 'input': input, 'timeout_seconds': timeout},
+            timeout=timeout, cancelled=cancelled)
+        if interrupted or _cancelled(cancelled):
+            return failed(interrupted or 'CANCELLED')
+        if status != 200:
+            return failed({429: 'RUNNER_BUSY', 400: 'INVALID_TEST_REQUEST'}.get(status, 'RUNNER_UNAVAILABLE'))
+        if (not isinstance(body, dict) or set(body) != {'outcome', 'output', 'code'} or
+                body['code'] not in _CODES or body['outcome'] not in {'passed', 'failed', 'unavailable'} or
+                body['outcome'] != ('passed' if body['code'] == 'PASSED' else
+                                    'unavailable' if body['code'] == 'RUNNER_UNAVAILABLE' else 'failed')):
+            raise ValueError()
+        from .windows_skill_runner import _value
+        _value(body['output'])
+        if body['outcome'] != 'passed' and body['output'] is not None:
+            raise ValueError()
+        return body
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, OverflowError, UnicodeError):
+        return failed('RUNNER_UNAVAILABLE')

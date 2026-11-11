@@ -222,13 +222,13 @@ class LauncherTests(unittest.TestCase):
 
     def test_initialized_marker_must_be_private_and_match_this_installation(self):
         settings = launcher.get_installation()
-        for marker in ({'installation_id': 'foreign', 'version': '0.5.0'},
+        for marker in ({'installation_id': 'foreign', 'version': launcher.APP_VERSION},
                        {'installation_id': settings['installation_id'], 'version': '0.4.0'}, {}, []):
             launcher.write_json(launcher.READY, marker)
             with self.assertRaises(launcher.LaunchError) as failure:
                 launcher.bootstrap_input(True)
             self.assertEqual(failure.exception.code, 'LOCAL_STATE_INVALID')
-        launcher.write_json(launcher.READY, {'installation_id': settings['installation_id'], 'version': '0.5.0'})
+        launcher.write_json(launcher.READY, {'installation_id': settings['installation_id'], 'version': launcher.APP_VERSION})
         with patch.object(launcher, 'secure_open', wraps=launcher.secure_open) as opened:
             self.assertEqual(launcher.bootstrap_input(True), {})
             self.assertTrue(all(call.kwargs.get('require_private') for call in opened.call_args_list))
@@ -247,11 +247,39 @@ class LauncherTests(unittest.TestCase):
                                    'ONTOLOGY_BOOTSTRAP_PASSWORD': 'Synthetic9-Password'}):
             self.assertEqual(launcher.bootstrap_input(True)['username'], 'Group.Admin')
 
+    def test_broker_health_requires_exact_service_version_and_bypasses_proxy(self):
+        from unittest.mock import MagicMock
+        response=MagicMock()
+        response.__enter__.return_value=response
+        response.status=200
+        opener=MagicMock()
+        opener.open.return_value=response
+        with patch.object(launcher.urllib.request,'build_opener',return_value=opener) as configured:
+            for value, expected in (({'ready':True,'service':'ontology-agent','version':launcher.APP_VERSION},True),
+                    ({'ready':True,'service':'other','version':launcher.APP_VERSION},False),
+                    ({'ready':True,'service':'ontology-agent','version':'0.5.0'},False),
+                    ({'ready':False,'service':'ontology-agent','version':launcher.APP_VERSION},False)):
+                response.read.return_value=json.dumps(value).encode()
+                self.assertEqual(launcher.agent_health('http://127.0.0.1:18000'),expected)
+            self.assertEqual(configured.call_args.args[0].proxies,{})
+
+    def test_old_initialized_marker_requires_completed_matching_upgrade_receipt(self):
+        settings=launcher.get_installation()
+        launcher.write_json(launcher.READY,{'installation_id':settings['installation_id'],'version':'0.5.0'})
+        with self.assertRaises(launcher.LaunchError):launcher.bootstrap_input(True)
+        receipt={'schema_version':1,'state':'copied','from_version':'0.5.0','to_version':launcher.APP_VERSION,
+                 'installation_id':settings['installation_id'],'source_manifest_sha256':'a'*64}
+        launcher.write_json(launcher.LOCAL/'upgrade-receipt.json',receipt)
+        self.assertEqual(launcher.bootstrap_input(True),{})
+        receipt['installation_id']='foreign'
+        launcher.write_json(launcher.LOCAL/'upgrade-receipt.json',receipt)
+        with self.assertRaises(launcher.LaunchError):launcher.bootstrap_input(True)
+
 
 class WindowsEntryEncodingTests(unittest.TestCase):
     def test_windows_entries_preserve_unicode_paths_without_cmd_reexpansion(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ('启动平台.bat', '关闭平台.bat'):
+        for name in ('启动平台.bat', '关闭平台.bat', '升级平台.bat'):
             raw = (root / name).read_bytes()
             raw.decode('ascii')
             self.assertIn(b'DisableDelayedExpansion', raw)

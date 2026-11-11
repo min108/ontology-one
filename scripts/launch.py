@@ -10,11 +10,13 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
+sys.path.insert(0,str(ROOT))
+from backend.version import APP_VERSION
 
 
 def main():
     if os.name == 'nt':
-        raise SystemExit('0.5.0维护锁需要Linux；Windows请按README使用Docker Compose。')
+        raise SystemExit('Windows请使用完整原生运行包，并双击“启动平台.bat”。')
     if not os.environ.get('MYSQL_HOST') and not os.environ.get('ONTOLOGY_MYSQL_URL'):
         raise SystemExit('请配置已迁移的MYSQL_*环境变量；完整容器启动请按README执行docker compose。')
     if not (ROOT / 'frontend/dist/index.html').is_file():
@@ -30,7 +32,7 @@ def main():
                         return
             except OSError:
                 time.sleep(1)
-    print('Ontology One 0.5.0 · MCP服务与受控语义查询预览版：' + url, flush=True)
+    print(f'Ontology One {APP_VERSION} · 集团本体平台：' + url, flush=True)
     threading.Thread(target=open_browser, daemon=True).start()
     subprocess.run([sys.executable, '-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', str(port), '--workers', os.getenv('ONTOLOGY_API_WORKERS', '4')], check=True)
 

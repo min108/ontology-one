@@ -14,5 +14,7 @@ frontend/dist/
 
 # All workspace data is generated locally.
 data/
+.platform-control/
+upgrade-copy-*/
 .DS_Store
 source-credentials.json

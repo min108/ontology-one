@@ -3,32 +3,30 @@ from contextlib import contextmanager
 import hashlib
 import ipaddress
 import json
-import os
-from pathlib import Path
 import re
 from urllib.parse import urlsplit, urlunsplit
 import uuid
 
-import httpx
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from .db import connect, entity_json, log, now
-from .storage import scoped_path, open_file, write_bytes, assert_storage_write
+from .storage import scoped_path, write_bytes, assert_storage_write
 from .security.context import require_context
-from .platform_io import file_lock
 
 router = APIRouter()
-DEFAULT_BASE_URL = 'https://api.deepseek.com'
-DEFAULT_MODEL = 'deepseek-chat'
+from .skill_harness import DEFAULT_BASE_URL, DEFAULT_MODEL
 MAX_CONFIG_BYTES = 16_384
-MAX_REQUEST_BYTES = 2 * 1024 * 1024
+MAX_REQUEST_BYTES = 256 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_CONTENT_BYTES = 128 * 1024
 COMPLETION_TIMEOUT = 90
 
 _ERROR_MESSAGES = {
-    'AI_NOT_CONFIGURED': '尚未配置模型密钥，请在系统设置中配置。',
+    'AI_NOT_CONFIGURED': '尚未配置 Harness 模型服务，请在系统设置中配置并测试。',
+    'AI_BUSY': '本机构模型任务繁忙，请稍后重试。',
+    'AI_RATE_LIMIT': '模型服务当前限流，请稍后重试。',
+    'AI_RUNTIME_UNAVAILABLE': '受控 Harness 运行时暂不可用，请联系管理员检查运行环境。',
     'AI_CONFIG_INVALID': '模型配置无法安全读取，请联系机构管理员重新配置。',
     'AI_CONFIG_CHANGED': '调用期间模型配置已变化，本次结果未采用，请重新发起。',
     'AI_INPUT_INVALID': '本次模型输入格式或大小超过限制，请缩小处理范围。',
@@ -135,7 +133,11 @@ class AIConfiguration(BaseModel):
 
 
 def config_path(*, create=False):
-    return scoped_path('data/runtime/ai.json', allowed=('data/runtime',), create_parent=create)
+    # Compatibility routes and all AI helpers share the governed Harness store.
+    # Legacy ai.json is deliberately not loaded: its OpenAI endpoint/credential
+    # must not silently be redirected into a different protocol.
+    from .skill_harness import _config_path
+    return _config_path(create=create)
 
 
 def _principal(principal=None):
@@ -162,47 +164,28 @@ def _signature(value):
 
 
 def config():
-    path = config_path()
-    if not path.is_file():
-        return {'api_key': '', 'base_url': DEFAULT_BASE_URL, 'model': DEFAULT_MODEL,
-                'online_verified': False, 'revision': ''}
+    from .skill_harness import _configuration
     try:
-        with open_file(path, 'rb', require_private=True) as stream:
-            raw = stream.read(MAX_CONFIG_BYTES + 1)
-        if len(raw) > MAX_CONFIG_BYTES:
-            raise ValueError()
-        value = _loads(raw)
-        if not isinstance(value, dict) or set(value) - {'api_key', 'base_url', 'model', 'online_verified', 'revision', 'verified_revision'}:
-            raise ValueError()
-        checked = AIConfiguration.model_validate({key: value.get(key, default) for key, default in
-            (('api_key', ''), ('base_url', DEFAULT_BASE_URL), ('model', DEFAULT_MODEL))}, strict=True)
-        if checked.base_url is None or checked.model is None:
-            raise ValueError()
-        revision = value.get('revision', '')
-        if not isinstance(revision, str) or (revision and not re.fullmatch(r'[a-f0-9]{32}', revision)):
-            raise ValueError()
-        if type(value.get('online_verified', False)) is not bool:
-            raise ValueError()
-        current = {'api_key': checked.api_key or '', 'base_url': checked.base_url, 'model': checked.model,
-                   'revision': revision, 'online_verified': False}
-        # Legacy verification did not bind the checked configuration. Preserve
-        # usable legacy settings, but require a fresh test to show verified.
-        current['online_verified'] = bool(current['api_key']) and value.get('online_verified') is True and value.get('verified_revision') == _signature(current)
-        return current
-    except (ValueError, TypeError, OSError, RecursionError):
+        value = _configuration()
+        return {key: value[key] for key in ('api_key', 'base_url', 'model', 'revision')} | {
+            'online_verified': value['verified']}
+    except HTTPException:
         raise AIError('AI_CONFIG_INVALID') from None
 
 
 @contextmanager
 def _config_lock():
-    path = config_path(create=True).with_name('.ai.lock')
-    with open_file(path, 'a+b') as stream, file_lock(stream):
+    from .skill_harness import _config_lock as shared_lock
+    with shared_lock():
         yield
 
 
 def _public_status(current):
+    legacy = not current['api_key'] and scoped_path('data/runtime/ai.json', allowed=('data/runtime',)).exists()
     return {'configured': bool(current['api_key']), 'model': current['model'], 'base_url': current['base_url'],
-            'online_verified': current['online_verified'], 'mode': 'online_available' if current['api_key'] else 'retrieval_only'}
+            'online_verified': current['online_verified'], 'mode': 'online_available' if current['api_key'] else 'retrieval_only',
+            'migration_required': legacy,
+            'configuration_notice': '检测到旧版在线 AI 配置，请在统一 Harness 设置中重新配置并测试 Messages 模型服务。' if legacy else ''}
 
 
 def _check_call(principal, signature):
@@ -211,17 +194,15 @@ def _check_call(principal, signature):
         raise AIError('AI_CONFIG_CHANGED')
 
 
-def _request_body(messages, json_mode, current):
+def _request_body(messages, json_mode, current=None):
+    """Validate the legacy message contract before entering the fixed SDK task."""
     try:
-        if (type(json_mode) is not bool or not isinstance(messages, list) or not 1 <= len(messages) <= 100
+        if (type(json_mode) is not bool or not isinstance(messages, list) or not 1 <= len(messages) <= 24
                 or any(not isinstance(message, dict) or set(message) != {'role', 'content'}
                        or message['role'] not in {'system', 'user', 'assistant'} or not isinstance(message['content'], str)
                        for message in messages)):
             raise ValueError()
-        body = {'model': current['model'], 'messages': messages, 'temperature': 0.2, 'max_tokens': 6000}
-        if json_mode:
-            body['response_format'] = {'type': 'json_object'}
-        raw = _json(body)
+        raw = _json({'messages': messages, 'json_mode': json_mode})
         if len(raw) > MAX_REQUEST_BYTES:
             raise ValueError()
         return raw
@@ -230,51 +211,48 @@ def _request_body(messages, json_mode, current):
 
 
 async def _run_completion(messages, json_mode, principal, current):
+    from .ai_harness import complete_task
     signature = _signature(current)
     await asyncio.to_thread(_check_call, principal, signature)
     if not current['api_key']:
         raise AIError('AI_NOT_CONFIGURED')
-    body = _request_body(messages, json_mode, current)
+    _request_body(messages, json_mode)
     failure = None
     try:
         async with asyncio.timeout(COMPLETION_TIMEOUT):
-            async with httpx.AsyncClient(timeout=COMPLETION_TIMEOUT, follow_redirects=False) as client:
-                # Stream raw bytes and reject compression so neither compressed
-                # nor decompressed provider responses can bypass the byte limit.
-                async with client.stream('POST', current['base_url'] + '/chat/completions',
-                        headers={'Authorization': 'Bearer ' + current['api_key'], 'Content-Type': 'application/json',
-                                 'Accept': 'application/json', 'Accept-Encoding': 'identity'}, content=body) as response:
-                    if response.status_code != 200:
-                        raise AIError('AI_PROVIDER_REJECTED')
-                    if response.headers.get('content-encoding', 'identity').lower() not in {'', 'identity'}:
-                        raise AIError('AI_RESPONSE_INVALID')
-                    declared_size = response.headers.get('content-length', '')
-                    if declared_size.isdigit() and int(declared_size) > MAX_RESPONSE_BYTES:
-                        raise AIError('AI_RESPONSE_LIMIT')
-                    raw = bytearray()
-                    async for chunk in response.aiter_raw(chunk_size=65536):
-                        raw.extend(chunk)
-                        if len(raw) > MAX_RESPONSE_BYTES:
-                            raise AIError('AI_RESPONSE_LIMIT')
-        parsed = _loads(raw)
-        choice = parsed['choices'][0]
-        if choice.get('finish_reason') == 'length':
-            raise AIError('AI_OUTPUT_INCOMPLETE')
-        content = choice['message']['content']
+            content = await complete_task(principal, messages, json_mode=json_mode)
         if not isinstance(content, str) or not content.strip() or current['api_key'] in content:
             raise AIError('AI_RESPONSE_INVALID')
         if len(content.encode('utf-8')) > MAX_CONTENT_BYTES:
             raise AIError('AI_RESPONSE_LIMIT')
-    except (TimeoutError, httpx.TimeoutException):
+        if json_mode and not isinstance(_loads(content), dict):
+            raise AIError('AI_RESPONSE_INVALID')
+    except TimeoutError:
         failure = AIError('AI_TIMEOUT')
-    except httpx.RequestError:
-        failure = AIError('AI_CONNECTION_FAILED')
+    except HTTPException as exc:
+        if exc.status_code in (401, 403):
+            raise
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        code = detail.get('code', '')
+        errors = {'HARNESS_NOT_CONFIGURED': 'AI_NOT_CONFIGURED',
+                  'HARNESS_CONFIG_CHANGED': 'AI_CONFIG_CHANGED',
+                  'HARNESS_TIMEOUT': 'AI_TIMEOUT', 'HARNESS_LIMIT': 'AI_INPUT_INVALID',
+                  'HARNESS_OUTPUT_LIMIT': 'AI_OUTPUT_INCOMPLETE',
+                  'HARNESS_PROVIDER_AUTH': 'AI_PROVIDER_REJECTED',
+                  'HARNESS_PROVIDER_QUOTA': 'AI_PROVIDER_REJECTED',
+                  'HARNESS_PROVIDER_REQUEST': 'AI_PROVIDER_REJECTED',
+                  'HARNESS_PROVIDER_RATE_LIMIT': 'AI_RATE_LIMIT',
+                  'HARNESS_BUSY': 'AI_BUSY',
+                  'HARNESS_CLEANUP_FAILED': 'AI_RUNTIME_UNAVAILABLE',
+                  'HARNESS_PROVIDER_UNAVAILABLE': 'AI_CONNECTION_FAILED',
+                  'HARNESS_UNAVAILABLE': 'AI_RUNTIME_UNAVAILABLE'}
+        failure = AIError(errors.get(code, 'AI_RESPONSE_INVALID'))
     except AIError as exc:
         failure = exc
     except Exception:
         failure = AIError('AI_RESPONSE_INVALID')
-    # An upstream failure must not permit callers to return cached evidence or
-    # a local draft after the initiating identity or workspace was revoked.
+    # Includes job-lease revocation and exact configuration changes; a failed
+    # runtime call must never enable returning stale citations/local drafts.
     await asyncio.to_thread(_check_call, principal, signature)
     if failure is not None:
         raise failure from None
@@ -293,7 +271,7 @@ def status():
 
 
 def _save_configuration(body):
-    require_admin()
+    principal = require_admin()
     with _config_lock():
         current = config()
         endpoint = body.base_url if body.base_url is not None else current['base_url']
@@ -306,7 +284,11 @@ def _save_configuration(body):
         elif body.api_key:
             current['api_key'] = body.api_key
         require_admin()
-        write_bytes(config_path(create=True), _json(current))
+        stored = {key: current[key] for key in ('api_key', 'base_url', 'model', 'revision')}
+        stored['verified'] = False
+        write_bytes(config_path(create=True), _json(stored))
+    from .security.store import append_audit
+    append_audit(principal, 'harness_configured', '', 'success', {'configured': bool(current['api_key']), 'verified': False})
     return _public_status(current)
 
 
@@ -337,21 +319,37 @@ def _mark_verified(principal, signature):
         current = config()
         if _signature(current) != signature:
             raise AIError('AI_CONFIG_CHANGED')
-        current.update(online_verified=True, verified_revision=signature)
+        stored = {key: current[key] for key in ('api_key', 'base_url', 'model', 'revision')}
+        stored['verified'] = True
         require_admin()
-        write_bytes(config_path(create=True), _json(current))
+        write_bytes(config_path(create=True), _json(stored))
+
 
 
 @router.post('/ai/test')
-async def test():
+async def test(request: Request = None):
     principal = await asyncio.to_thread(require_admin)
+    current = await asyncio.to_thread(config)
+    task = asyncio.create_task(_run_completion(
+        [{'role': 'user', 'content': '请仅回复：连接成功。'}], False, principal, current))
+    watcher = None
+    if request is not None:
+        from .skill_harness import _disconnect_guard
+        watcher = asyncio.create_task(_disconnect_guard(request, task))
     try:
-        current = await asyncio.to_thread(config)
-        await _run_completion([{'role': 'user', 'content': '请仅回复：连接成功。'}], False, principal, current)
+        await task
         await asyncio.to_thread(_mark_verified, principal, _signature(current))
-        return {'ok': True, 'message': '已验证模型接口可用。'}
+        return {'ok': True, 'message': '已验证受控 Harness 与模型连接。'}
     except AIError as exc:
         raise HTTPException(409 if exc.code == 'AI_CONFIG_CHANGED' else 502, str(exc)) from None
+    finally:
+        if watcher is not None:
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
 
 # Search complete business content before selecting results.  Chinese adjacent
 # character phrases preserve terms such as project milestones and contract totals.

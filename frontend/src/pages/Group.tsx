@@ -1,3 +1,4 @@
+import {useSearchParams} from 'react-router-dom';
 import {useEffect, useMemo, useRef, useState, FormEvent} from 'react';
 import {ReactFlow, Background, Controls, Handle, Position, MarkerType, Node, NodeProps, Edge} from '@xyflow/react';
 import {ArrowRight, Building2, Check, ChevronLeft, ChevronRight, CircleHelp, Eye, Files, Layers3, Link2, LockKeyhole, Network, Plus, RefreshCw, Search, ShieldCheck, X} from 'lucide-react';
@@ -160,7 +161,12 @@ export default function Group() {
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const [searchParams,setSearchParams]=useSearchParams();
+  const parseSelection=()=>{const tenantId=searchParams.get('tenant_id')||'',entityId=searchParams.get('entity_id')||'';return tenantId&&entityId&&tenantId.length<=191&&entityId.length<=191?{tenantId,entityId}:null};
+  const [selection, updateSelection] = useState<Selection | null>(parseSelection);
+  useEffect(()=>{updateSelection(parseSelection())},[searchParams]);
+  function setSelection(value:Selection|null){updateSelection(value);const parameters=new URLSearchParams(searchParams);if(value){parameters.set('tenant_id',value.tenantId);parameters.set('entity_id',value.entityId)}else{parameters.delete('tenant_id');parameters.delete('entity_id')}setSearchParams(parameters,{replace:true})}
+
   const parameters = new URLSearchParams({q: search, kind, tenant_id: tenantId, page: String(page), page_size: '20'});
   const results = useApi<FederationSearch>(tab === 'search' ? '/federation/search?' + parameters : '');
   const graphParameters = new URLSearchParams({q: search, kind, tenant_id: tenantId, limit: '150'});

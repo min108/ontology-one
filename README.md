@@ -1,8 +1,8 @@
 # Ontology One · 集团本体平台
 
-`0.5.0` 技能开发与 Harness 创作工程预览版。React / TypeScript 前端、FastAPI 服务、MySQL 8 持久化，提供素材整理、数据/规则/技能/知识建模、审核发布、图谱、数据导入、项目任务、版本还原与机构备份。
+`0.6.0` Harness 只读智能体与统一 AI 工程版。React / TypeScript 前端、FastAPI 服务、MySQL 8 持久化，提供素材整理、数据/规则/技能/知识建模、审核发布、图谱、数据导入、项目任务、版本还原与机构备份。
 
-本版继承真实账户、机构隔离、外部源映射和 MCP 服务，新增 Agent Skills 技能包治理、隔离脚本测试及官方 DeepSeek Harness 辅助创作。仓库只保留运行、部署和验证必需的代码与说明；不含原始资料包、业务数据、上传原件、模型密钥或运行凭据。首次部署创建指定的51个机构目录与空工作区，业务成果由用户建立。
+本版继承真实账户、机构隔离、外部源映射和 MCP 服务，提供 Agent Skills 技能包治理、隔离脚本执行及官方 DeepSeek Harness 辅助创作，并将本体应用与既有 AI 功能统一接入受控 Harness。仓库只保留运行、部署和验证必需的代码与说明；不含原始资料包、业务数据、上传原件、模型密钥或运行凭据。首次部署创建指定的51个机构目录与空工作区，业务成果由用户建立。
 
 ## 账户与数据边界
 
@@ -20,7 +20,7 @@
 
 ## Windows 10 1903+/Windows 11 64 位便携运行
 
-Windows 发行资产为 `ontology-one-0.5.0-windows-x64.zip`，与 GitHub 自动生成的源码 ZIP 不同。完整发行包内置固定版本的 Python、MySQL、官方 Harness、应用依赖和编译后的前端；用户电脑无需预装 Python、Node.js、MySQL、Docker 或 WSL，启动时不下载安装依赖。
+Windows 发行资产为 `ontology-one-0.6.0-windows-x64.zip`，与 GitHub 自动生成的源码 ZIP 不同。完整发行包内置固定版本的 Python、MySQL、官方 Harness、应用依赖和编译后的前端；用户电脑无需预装 Python、Node.js、MySQL、Docker 或 WSL，启动时不下载安装依赖。
 
 最低系统版本为 Windows 10 1903（内部版本18362），或 Windows 11，均须为64位。为支持中文目录，发行构建仅向 MySQL 三个可执行文件的嵌入资源清单加入进程级 `activeCodePage=UTF-8`，保留其它清单内容；记录官方原始文件、衍生文件摘要及转换步骤，并随包提供对应源码。不修改用户的系统区域设置或全局代码页。
 
@@ -31,6 +31,8 @@ Windows 发行资产为 `ontology-one-0.5.0-windows-x64.zip`，与 GitHub 自动
 本地 MySQL 默认只监听 `127.0.0.1:18765`，数据库初次设密阶段关闭TCP网络。数据库随机凭据、控制令牌与模型配置只授予当前Windows用户和SYSTEM访问。正常关闭及重复启停保留 `data/`；已有数据或凭据异常时不会自动删除、重置数据库。端口被其他程序占用时明确报错，不按进程名或旧PID强杀。首次失败会回收本次启动的进程；查阅 `data/local/last-result.json` 中的固定错误码以及本实例数据库日志进行诊断，不在聊天或Git中提交私有配置。
 
 便携模式用于本机体验及单机部署，默认不开放局域网访问。组织强制安全策略若禁止PowerShell、AppContainer或包内程序执行，启动或隔离测试会明确失败。BAT使用ASCII/CRLF，中文PowerShell入口使用UTF-8 BOM；直接从源码检出不能代替带runtime的发行包。升级前关闭平台并备份，保留原目录及其 `data/`，避免把新包覆盖到仍运行的实例。
+
+已有0.5.0数据时，先关闭旧平台，将0.6.0解压到另一个全新目录；在新目录双击 `升级平台.bat`，按提示选择旧0.5.0根目录，再启动新平台。升级会在持有旧实例停止锁期间复制账户、机构数据库及资产，并校验私有权限；目标已有data时拒绝覆盖。旧目录保留为升级前恢复点。仅支持相同固定MySQL运行时的0.5.0→0.6.0冷复制，不共享两个版本正在运行的数据目录。
 
 ## Linux 容器部署
 
@@ -45,14 +47,14 @@ docker compose exec api python scripts/bootstrap_admin.py --username group.admin
 
 初始化命令交互输入初始登录密码，不在命令行或日志中保存明文。打开 `http://127.0.0.1:8765`，首次登录必须改密。没有内置固定账号或默认密码。`.env` 不得提交。修改端口时同时调整 `ONTOLOGY_TRUSTED_ORIGINS`；跨机器提供服务须配置可信 HTTPS 反向代理、精确来源白名单及 `ONTOLOGY_COOKIE_SECURE=1`。
 
-镜像多阶段编译前端，应用以非root用户运行。Compose分开运行数据库迁移、4个API进程及持久任务worker。只有迁移容器取得数据库schema owner凭据，用于安装审计禁止修改/删除的触发器；API和worker只获得本部署 `ontology_one_v020_*` 命名空间权限，不获得全局SUPER。默认每API进程的身份库连接上限16、全部机构业务连接总上限16（含空闲连接）；Compose项目名和数据库前缀保留v020以兼容原有卷，应用版本为0.5.0。MySQL设置256个连接，为4个API进程、worker、最多16个MCP临时执行进程及运维留出预算。MCP临时进程独立创建连接，扩容API或MCP并发时须同步核对数据库总连接预算。数据库管理员仍拥有恢复和变更数据库约束的能力。
+镜像多阶段编译前端，应用以非root用户运行。Compose分开运行数据库迁移、4个API进程、单进程内部智能体服务及持久任务worker。只有迁移容器取得数据库schema owner凭据，用于安装审计禁止修改/删除的触发器；API和worker只获得本部署 `ontology_one_v020_*` 命名空间权限，不获得全局SUPER。默认每API进程的身份库连接上限16、全部机构业务连接总上限16（含空闲连接）；Compose项目名和数据库前缀保留v020以兼容原有卷，应用版本由根目录VERSION文件确定（当前0.6.0）。MySQL设置256个连接，为4个API进程、worker、最多16个MCP临时执行进程及运维留出预算。MCP临时进程独立创建连接，扩容API或MCP并发时须同步核对数据库总连接预算。数据库管理员仍拥有恢复和变更数据库约束的能力。
 
 升级已有部署前备份，停止API/worker，再运行迁移并启动：
 
 ```bash
-docker compose stop api worker
+docker compose stop api agent worker
 docker compose up --build --force-recreate migrate
-docker compose up -d --no-deps api worker
+docker compose up -d --no-deps agent api worker
 ```
 
 本版支持单机或共用同一存储卷的部署。维护锁要求所有API、worker和恢复命令使用同一卷；不包含跨主机分布式锁、自动故障转移或经验证的高可用方案。
@@ -204,7 +206,7 @@ export ONTOLOGY_SKILL_RUNNER_SOCKET=/tmp/ontology-skill-runner.sock
 
 本版使用用户指定的官方 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)，固定源码`dsh-v0.2.1-rc.2`与`deepseek-harness-sdk==0.2.1rc2`、同版`deepseek-harness-runtime-bin`。来源、提交及Linux/Windows x64二进制校验摘要见`ops/harness-runtime.lock.json`。运行前校验官方SDK及二进制摘要，不自动追踪上游最新版。
 
-机构管理员在技能开发配置独立的Harness模型服务。官方适配器使用Messages协议（`/v1/messages`与`x-api-key`），默认地址`https://api.deepseek.com/anthropic`、模型`deepseek-v4-flash`。现有OpenAI格式的`/chat/completions`地址不能直接套用。密钥仅在当前机构的受控运行配置保存，界面不回显，备份和交付包不包含；更换服务地址必须重新提供对应密钥或明确清除旧密钥。模型服务未配置或连接失败时，手工开发仍可使用。
+机构管理员在技能开发配置独立的Harness模型服务。官方适配器使用Messages协议（`/v1/messages`与`x-api-key`），默认地址`https://api.deepseek.com/anthropic`、模型`deepseek-flash`。现有OpenAI格式的`/chat/completions`地址不能直接套用。密钥仅在当前机构的受控运行配置保存，界面不回显，备份和交付包不包含；更换服务地址必须重新提供对应密钥或明确清除旧密钥。模型服务未配置或连接失败时，手工开发仍可使用。
 
 Harness通过真实官方运行时完成多轮创作，只获得固定的内存工具`read_skill_file`和`propose_skill_files`，可阅读当前包、提出说明/脚本/测试修改。模型看不到平台数据库凭据、源系统令牌或外部业务查询行；内置终端、主机文件、通用网络工具及动态插件加载均关闭。包内文字是待处理内容，不能扩展工具权限。修改建议保留在本次响应和当前页面内存中，用户明确采纳后才保存为草稿，审核与发布始终由平台执行。
 
@@ -262,20 +264,32 @@ RUN_FEDERATION_MYSQL_TESTS=1 RUN_JOBS_MYSQL_TESTS=1 \
 离线灾后恢复必须停止所有共享此存储卷的API和worker，仅允许恢复到同机构的空工作区（允许目录根节点）。控制库、非空工作区、跨机构备份和无机构标记的旧备份均被拒绝。备份请另存到受控存储，定期验证恢复。
 
 ```bash
-docker compose stop api worker
+docker compose stop api agent worker
 # 将backup.zip挂载到临时容器，只读访问；交互输入真实管理员登录密码
 docker compose run --rm --no-deps -v /absolute/path/backup.zip:/tmp/backup.zip:ro api \
   python scripts/restore_backup.py /tmp/backup.zip --tenant-id sub-01 \
   --maintenance --username group.admin --reason '灾后恢复'
-docker compose up -d --no-deps api worker
+docker compose up -d --no-deps agent api worker
 ```
 
 恢复命令用目录派生目标库，检查完整表/列白名单及文件路径，记录审计。总部超管可恢复任一机构，本机构管理员只能恢复自身。所有服务必须共用维护锁存储；恢复过程中不应在另一卷启动旁路实例。
 
-Git源码分发包不包含工作区、便携runtime或Docker镜像；Windows完整运行包通过独立Release资产下载。源码打包：先构建前端，再运行 `.venv/bin/python scripts/package_release.py --output work/ontology-one-0.5.0.zip`。Linux内网容器部署需预先准备依赖和镜像；Windows运行包已内置应用运行依赖。两者均不依赖云托管平台，在线模型和外部数据源只在对应功能调用时访问。Windows二进制分发附带许可、固定依赖摘要和同版本MySQL对应源码资产，二次分发时保留这些资产。
+Git源码分发包不包含工作区、便携runtime或Docker镜像；Windows完整运行包通过独立Release资产下载。源码打包：先构建前端，再运行 `.venv/bin/python scripts/package_release.py --output work/ontology-one-0.6.0.zip`。Linux内网容器部署需预先准备依赖和镜像；Windows运行包已内置应用运行依赖。两者均不依赖云托管平台，在线模型和外部数据源只在对应功能调用时访问。Windows二进制分发附带许可、固定依赖摘要和同版本MySQL对应源码资产，二次分发时保留这些资产。
 
-## 后续交付顺序
+## 版本边界
 
-0.5.0完成第四批技能治理，并提前引入Harness承担技能创作。0.6继续把现有AI辅助和本体应用迁入同一受控运行通道，接入已发布技能和授权MCP查询。当前其他AI小功能仍保留原有行为；技能作者通道不会执行任意业务查询或自动发布成果。
+0.5.0保留技能治理、技能创作和原生Windows便携交付的独立快照。0.6.0在其基础上增加下面的受控本体应用与统一AI通道；历史版本、对应源码和运行包分别发布，不覆盖旧版本。
+
+## Harness 本体应用与统一 AI
+
+「本体应用」提供临时多轮会话。用户明确选择本次可使用的已发布技能和授权数据映射，再提出业务问题；模型可以发现本体、穿透关系、解释来源、执行受控单源查询与跨源分步关联、加载技能说明并运行已发布的只读Python入口。总部集团查询沿用现有集团授权；范围选择不会授予新权限。界面展示调用状态、数据归属、映射与来源版本，支持取消运行和结束会话。
+
+智能体运行在独立的内部单进程服务，多个API进程转交到同一服务，避免临时会话随负载分配丢失。该服务不向局域网或公网开放端口；仍独立校验登录会话、CSRF、当前机构和授权。运行上下文、问题、答复、查询行和技能输出只保留在有时限的服务内存中；进程重启后丢失，浏览器不写入本地持久存储。审计只保存工具名、结果码、耗时和数字用量，不保存提示词、问题、源端查询行或模型原文。每次调用、结果返回及历史重读都重新核验相关授权和版本；失效后抑制旧结果。在线模型使用当前登录账号所属机构的服务配置；总部从总部工作区通过集团授权读取其他机构成果，不借用其他机构的模型凭据。
+
+模型不能直接调用终端、任意文件、任意网络、任意SQL或本体写入接口。技能脚本只通过现有Linux容器或Windows LPAC执行，继承只读、断网、进程/内存/CPU/输出限制，执行前后检查发布证明、版本及输入输出契约。脚本结果仅用于当前内存中的推理，不自动保存为本体成果。技能说明与源系统文字均不能扩展工具权限。
+
+素材提取、建模建议、经验整理、映射识别等既有AI辅助也使用同一固定版本Harness任务运行器及统一配置。仍由原业务流程执行人工确认、保存和审核。旧`ai.json`不会自动转为新的Messages凭据；升级后管理员在模型设置中重新确认一次Harness服务地址与密钥。已明确配置的模型名称保留，接口密钥不进入Git、发行包或备份。
+
+自动化验证使用合成模型响应与合成业务数据，真实DeepSeek连通性、模型效果和调优记录须单独标记；合成测试通过不代表真实模型效果已经验收。
 
 GitHub历史版本分别保留在`release/0.2.0`、`release/0.3.0`、`release/0.4.0`及对应`v0.2.0`、`v0.3.0`、`v0.4.0`标签，各版源码可独立拉取；本版开发不覆盖历史标签。

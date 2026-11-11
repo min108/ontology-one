@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse,sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from backend.version import APP_VERSION
 from backend.security.store import initialize_control,list_tenants
 from backend.federation import initialize_federation
 from backend.jobs import ensure_queue
@@ -16,4 +17,4 @@ if __name__ == '__main__':
         initialize_control();initialize_federation();ensure_queue()
         if args.provision_all:
             for tenant in list_tenants():ensure_tenant_schema(tenant['id'])
-    print('0.5.0账户目录、审计约束与后台队列初始化完成。')
+    print(f'{APP_VERSION}账户目录、审计约束与后台队列初始化完成。')

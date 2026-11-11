@@ -1,7 +1,12 @@
-"""Legacy AI client boundaries; only synthetic config and mock HTTP are used."""
+"""Legacy feature compatibility through the controlled official Harness task.
+
+Synthetic adapter fixtures are used; native SDK/worker contracts are tested in
+separate suites. These tests verify config, authorization and response boundaries.
+"""
 import asyncio
 from contextlib import ExitStack
 from dataclasses import replace
+import inspect
 import json
 import multiprocessing
 import os
@@ -14,37 +19,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 import httpx
 
-from backend import ai, authority, projects
+from backend import ai, authority, projects, skill_harness
 from backend.security.context import Principal, use_context
-
+from backend.storage import scoped_path
 
 KEY = 'synthetic-test-key-not-a-real-credential'
 MESSAGES = [{'role': 'user', 'content': '合成样例，仅回复测试成功。'}]
 HTTP_CLIENT = httpx.AsyncClient
-
-
-class Chunks(httpx.AsyncByteStream):
-    def __init__(self, raw, chunk_size=8192):
-        self.raw, self.chunk_size = raw, chunk_size
-        self.consumed = 0
-        self.closed = False
-
-    async def __aiter__(self):
-        for start in range(0, len(self.raw), self.chunk_size):
-            chunk = self.raw[start:start + self.chunk_size]
-            self.consumed += len(chunk)
-            yield chunk
-
-    async def aclose(self):
-        self.closed = True
-
-
-def response(content='测试成功。', *, raw=None, status=200, headers=None, finish='stop'):
-    body = raw if raw is not None else json.dumps({'choices': [{'message': {'content': content}, 'finish_reason': finish}]}).encode()
-    stream = Chunks(body)
-    result = httpx.Response(status, stream=stream, headers=headers or {})
-    result.test_stream = stream
-    return result
 
 
 def child_save(entered, finished):
@@ -55,22 +36,22 @@ def child_save(entered, finished):
 
 class Fixture:
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix='ai-runtime-unit-')
+        self.temporary = tempfile.TemporaryDirectory(prefix='ai-harness-unit-')
         self.stack = ExitStack()
         self.stack.enter_context(patch.dict(os.environ, {'ONTOLOGY_STORAGE_ROOT': self.temporary.name}))
         self.principal = Principal('user-test', 'synthetic-admin', 'test-ai', 'test-ai', 'admin', False,
                                    'session-test', 1, 'unused_test_database')
         self.stack.enter_context(use_context(self.principal))
         self.disabled = False
-
         def validate(principal, require_write=False):
             if self.disabled:
                 raise HTTPException(401, '登录已失效，请重新登录。')
             if require_write and principal.readonly:
                 raise HTTPException(403, '只读身份不可写入。')
             return principal
-
         self.validator = self.stack.enter_context(patch('backend.jobs.assert_execution_principal_current', side_effect=validate))
+        self.stack.enter_context(patch('backend.skill_harness.assert_principal_current', side_effect=validate))
+        self.audit = self.stack.enter_context(patch('backend.security.store.append_audit'))
 
     def tearDown(self):
         self.stack.close()
@@ -81,76 +62,79 @@ class Fixture:
         return ai.config()
 
     def mock_network(self, handler):
-        original = httpx.AsyncClient
-        transport = httpx.MockTransport(handler)
-        return patch.object(ai.httpx, 'AsyncClient', side_effect=lambda **kwargs: original(transport=transport, **kwargs))
+        # Endpoint authorization tests retain a synthetic failure callback. No
+        # HTTP client or provider transport exists in the compatibility layer.
+        async def invoke(*args, **kwargs):
+            result = handler(None)
+            return await result if inspect.isawaitable(result) else result
+        return patch('backend.ai_harness.complete_task', side_effect=invoke)
 
 
 class ConfigurationTests(Fixture, unittest.TestCase):
-    def test_status_is_backward_compatible_without_credentials_or_fingerprint(self):
-        self.assertEqual(set(ai.status()), {'configured', 'model', 'base_url', 'online_verified', 'mode'})
+    def test_shared_config_status_is_safe_and_preserves_legacy_fields(self):
         self.configured()
-        self.assertNotIn(KEY, json.dumps(ai.status()))
+        self.assertEqual(ai.config_path(), skill_harness._config_path())
+        shared = skill_harness._configuration()
+        self.assertEqual(shared['api_key'], KEY)
+        self.assertEqual(ai.status()['base_url'], skill_harness.DEFAULT_BASE_URL)
+        self.assertEqual(ai.status()['model'], skill_harness.DEFAULT_MODEL)
         self.assertTrue(ai.status()['configured'])
         self.assertFalse(ai.status()['online_verified'])
+        self.assertNotIn(KEY, json.dumps(ai.status()))
+        self.assertFalse(ai.status()['migration_required'])
+        self.assertEqual(self.audit.call_args.args[1], 'harness_configured')
 
-    def test_strict_url_and_model_secret_validation(self):
-        invalid_urls = ['http://example.com', 'https://user:pass@example.com', 'https://example.com?key=x',
-                        'https://example.com/#x', 'https://example.com\\x', 'https://example.com/%2e',
-                        'https://example.com/../x', 'https://example.com:0', 'https://example.com:65536',
-                        'https://example.com:', 'https://bad..host', 'https://example.com\n',
-                        'https://例子.公司', 'https:///missing', 'https://example.com/?']
-        for value in invalid_urls:
-            with self.subTest(value=value), self.assertRaises(ValueError):
-                ai.AIConfiguration(base_url=value)
+    def test_legacy_openai_config_is_detected_without_being_reused(self):
+        legacy = scoped_path('data/runtime/ai.json', allowed=('data/runtime',), create_parent=True)
+        ai.write_bytes(legacy, json.dumps({'api_key': KEY, 'base_url': 'https://legacy.example', 'model': 'old-model'}).encode())
+        self.assertFalse(ai.status()['configured'])
+        self.assertTrue(ai.status()['migration_required'])
+        self.assertIn('Messages', ai.status()['configuration_notice'])
+        self.assertNotIn(KEY, json.dumps(ai.status()))
+        self.configured()
+        self.assertFalse(ai.status()['migration_required'])
+
+    def test_strict_url_model_and_secret_validation(self):
+        for value in ['http://example.com', 'https://user:pass@example.com', 'https://example.com?key=x',
+                      'https://example.com/#x', 'https://example.com\\x', 'https://example.com/%2e',
+                      'https://example.com/../x', 'https://example.com:0', 'https://example.com:65536',
+                      'https://example.com:', 'https://bad..host', 'https://example.com\n',
+                      'https://例子.公司', 'https:///missing', 'https://example.com/?']:
+            with self.subTest(value=value), self.assertRaises(ValueError): ai.AIConfiguration(base_url=value)
         self.assertEqual(ai.AIConfiguration(base_url='https://EXAMPLE.com:443/v1/').base_url, 'https://example.com/v1')
         for value in [True, 3, [], 'bad model', '', '../model?key=x']:
-            with self.subTest(model=value), self.assertRaises(ValueError):
-                ai.AIConfiguration(model=value)
+            with self.subTest(value=value), self.assertRaises(ValueError): ai.AIConfiguration(model=value)
         for value in [True, 123, {}, 'short', 'spaces are invalid', 'has\nnewline', '非ASCII密钥字符串']:
-            with self.subTest(secret=value), self.assertRaises(ValueError):
-                ai.AIConfiguration(api_key=value)
+            with self.subTest(value=value), self.assertRaises(ValueError): ai.AIConfiguration(api_key=value)
 
-    def test_endpoint_change_cannot_reuse_key_without_explicit_input(self):
+    def test_endpoint_change_requires_explicit_new_key_or_clear(self):
         before = self.configured()
-        for endpoint in ['https://elsewhere.example', 'https://api.deepseek.com/v1', 'https://api.deepseek.com:9443']:
-            with self.subTest(endpoint=endpoint), self.assertRaises(HTTPException):
-                ai._save_configuration(ai.AIConfiguration(base_url=endpoint))
-            self.assertEqual(ai.config(), before)
+        with self.assertRaises(HTTPException): ai._save_configuration(ai.AIConfiguration(base_url='https://elsewhere.example'))
+        self.assertEqual(ai.config(), before)
         ai._save_configuration(ai.AIConfiguration(base_url='https://elsewhere.example', clear_key=True))
         self.assertFalse(ai.status()['configured'])
         ai._save_configuration(ai.AIConfiguration(api_key='new-synthetic-endpoint-key'))
-        self.assertEqual(ai.config()['base_url'], 'https://elsewhere.example')
+        self.assertEqual(skill_harness._configuration()['base_url'], 'https://elsewhere.example')
 
-    def test_blank_key_keeps_existing_key_and_clear_is_explicit(self):
+    def test_blank_key_keeps_and_clear_removes_shared_key(self):
         before = self.configured()
         ai._save_configuration(ai.AIConfiguration(api_key='', model='another-model'))
         self.assertEqual(ai.config()['api_key'], before['api_key'])
-        with self.assertRaises(ValueError):
-            ai.AIConfiguration(api_key=KEY, clear_key=True)
+        with self.assertRaises(ValueError): ai.AIConfiguration(api_key=KEY, clear_key=True)
         ai._save_configuration(ai.AIConfiguration(clear_key=True))
-        self.assertEqual(ai.config()['api_key'], '')
+        self.assertEqual(skill_harness._configuration()['api_key'], '')
 
-    def test_verification_is_bound_to_full_configuration_and_revision(self):
-        current = self.configured()
-        signature = ai._signature(current)
+    def test_verification_binds_full_configuration_and_updates_shared_status(self):
+        current = self.configured(); signature = ai._signature(current)
         ai._mark_verified(self.principal, signature)
         self.assertTrue(ai.status()['online_verified'])
+        self.assertTrue(skill_harness._configuration()['verified'])
         ai._save_configuration(ai.AIConfiguration(model='changed-model'))
-        with self.assertRaises(ai.AIError) as caught:
-            ai._mark_verified(self.principal, signature)
+        with self.assertRaises(ai.AIError) as caught: ai._mark_verified(self.principal, signature)
         self.assertEqual(caught.exception.code, 'AI_CONFIG_CHANGED')
-        self.assertFalse(ai.status()['online_verified'])
+        self.assertFalse(skill_harness._configuration()['verified'])
 
-    def test_legacy_configuration_is_usable_but_unbound_verification_is_reset(self):
-        path = ai.config_path(create=True)
-        ai.write_bytes(path, json.dumps({'api_key': KEY, 'model': 'legacy-model', 'base_url': 'https://example.com', 'online_verified': True}).encode())
-        self.assertEqual(ai.config()['model'], 'legacy-model')
-        self.assertFalse(ai.status()['online_verified'])
-        ai._mark_verified(self.principal, ai._signature(ai.config()))
-        self.assertTrue(ai.status()['online_verified'])
-
-    def test_invalid_secret_input_never_appears_in_validation_response(self):
+    def test_invalid_config_input_never_echoes_secret(self):
         app = FastAPI(); app.include_router(ai.router)
         with TestClient(app) as client:
             for body in [{'api_key': {'nested': KEY}}, {'api_key': KEY, 'clear_key': True},
@@ -165,17 +149,14 @@ class ConfigurationTests(Fixture, unittest.TestCase):
             self.assertEqual(oversized.status_code, 413)
 
     @unittest.skipUnless('fork' in multiprocessing.get_all_start_methods(), 'Linux process lock test')
-    def test_configuration_writes_serialize_across_processes_and_preserve_latest_key(self):
-        self.configured()
-        context = multiprocessing.get_context('fork')
+    def test_config_writes_share_the_harness_cross_process_lock(self):
+        self.configured(); context = multiprocessing.get_context('fork')
         entered, finished = context.Event(), context.Event()
         process = context.Process(target=child_save, args=(entered, finished))
         try:
-            with ai._config_lock():
-                process.start()
-                self.assertTrue(entered.wait(2))
-                self.assertFalse(finished.wait(.1))
-                value = ai.config()
+            with skill_harness._config_lock():
+                process.start(); self.assertTrue(entered.wait(2)); self.assertFalse(finished.wait(.1))
+                value = skill_harness._configuration()
                 value.update(api_key='newest-synthetic-secret', revision=uuid.uuid4().hex)
                 ai.write_bytes(ai.config_path(create=True), ai._json(value))
             process.join(3)
@@ -184,147 +165,93 @@ class ConfigurationTests(Fixture, unittest.TestCase):
             self.assertEqual(ai.config()['api_key'], 'newest-synthetic-secret')
             self.assertEqual(ai.config()['model'], 'concurrent-model')
         finally:
-            if process.is_alive():
-                process.terminate(); process.join(2)
+            if process.is_alive(): process.terminate(); process.join(2)
 
 
 class CompletionTests(Fixture, unittest.IsolatedAsyncioTestCase):
-    async def test_success_preserves_chat_contract_and_json_mode(self):
+    async def test_delegates_only_to_official_governed_task_contract(self):
         self.configured()
-        seen = []
-        async def handle(request):
-            seen.append(request)
-            return response()
-        with self.mock_network(handle):
-            self.assertEqual(await ai.complete(MESSAGES, json_mode=True), '测试成功。')
-        self.assertEqual(str(seen[0].url), 'https://api.deepseek.com/chat/completions')
-        self.assertEqual(seen[0].headers['Authorization'], 'Bearer ' + KEY)
-        body = json.loads(seen[0].content)
-        self.assertEqual(body['response_format'], {'type': 'json_object'})
-        self.assertEqual(body['messages'], MESSAGES)
+        with patch('backend.ai_harness.complete_task', new=AsyncMock(return_value='{"结果":"成功"}')) as run:
+            self.assertEqual(await ai.complete(MESSAGES, json_mode=True), '{"结果":"成功"}')
+        run.assert_awaited_once_with(self.principal, MESSAGES, json_mode=True)
 
-    async def test_reviewer_and_readonly_assistance_do_not_require_write_access(self):
+    async def test_reviewer_readonly_assistance_does_not_require_write(self):
         self.configured()
-        with use_context(replace(self.principal, role='reviewer', readonly=True)), self.mock_network(lambda _: response()):
-            self.assertEqual(await ai.complete(MESSAGES), '测试成功。')
+        with use_context(replace(self.principal, role='reviewer', readonly=True)), patch('backend.ai_harness.complete_task', new=AsyncMock(return_value='成功')):
+            self.assertEqual(await ai.complete(MESSAGES), '成功')
 
-    async def test_account_revocation_during_network_discards_result(self):
+    async def test_identity_revocation_discards_both_success_and_failure(self):
         self.configured()
-        async def handle(_):
-            self.disabled = True
-            return response('must not be returned')
-        with self.mock_network(handle), self.assertRaises(HTTPException) as caught:
-            await ai.complete(MESSAGES)
-        self.assertEqual(caught.exception.status_code, 401)
-
-    async def test_upstream_failure_cannot_hide_account_revocation(self):
-        self.configured()
-        for failure in ('timeout', 'connection', 'rejected', 'malformed'):
+        for error in (None, HTTPException(502, {'code': 'HARNESS_PROVIDER_UNAVAILABLE'}), RuntimeError(KEY)):
             self.disabled = False
-            async def handle(_):
+            async def run(*args, **kwargs):
                 self.disabled = True
-                if failure == 'timeout':
-                    raise httpx.ReadTimeout('synthetic timeout')
-                if failure == 'connection':
-                    raise httpx.ConnectError('synthetic unavailable')
-                return response(raw=b'invalid', status=503 if failure == 'rejected' else 200)
-            with self.subTest(failure=failure), self.mock_network(handle), self.assertRaises(HTTPException) as caught:
+                if error is not None: raise error
+                return 'must not return'
+            with self.subTest(error=type(error).__name__), patch('backend.ai_harness.complete_task', side_effect=run), self.assertRaises(HTTPException) as caught:
                 await ai.complete(MESSAGES)
             self.assertEqual(caught.exception.status_code, 401)
 
-    async def test_config_change_during_network_discards_result(self):
+    async def test_config_changes_discard_returned_text(self):
         self.configured()
-        async def handle(_):
+        async def run(*args, **kwargs):
             ai._save_configuration(ai.AIConfiguration(model='changed-during-call'))
-            return response('must not be returned')
-        with self.mock_network(handle), self.assertRaises(ai.AIError) as caught:
+            return 'must not return'
+        with patch('backend.ai_harness.complete_task', side_effect=run), self.assertRaises(ai.AIError) as caught:
             await ai.complete(MESSAGES)
         self.assertEqual(caught.exception.code, 'AI_CONFIG_CHANGED')
 
-    async def test_connection_test_cannot_mark_new_config_verified(self):
+    async def test_connection_test_marks_only_its_exact_config(self):
         self.configured()
-        async def handle(_):
+        async def changed(*args, **kwargs):
             ai._save_configuration(ai.AIConfiguration(model='new-not-tested'))
-            return response()
-        with self.mock_network(handle), self.assertRaises(HTTPException) as caught:
+            return '成功'
+        with patch('backend.ai_harness.complete_task', side_effect=changed), self.assertRaises(HTTPException) as caught:
             await ai.test()
         self.assertEqual(caught.exception.status_code, 409)
         self.assertFalse(ai.status()['online_verified'])
-
-    async def test_connection_test_marks_only_successful_configuration_verified(self):
-        self.configured()
-        with self.mock_network(lambda _: response()):
+        with patch('backend.ai_harness.complete_task', new=AsyncMock(return_value='成功')):
             self.assertTrue((await ai.test())['ok'])
-        self.assertTrue(ai.status()['online_verified'])
+        self.assertTrue(skill_harness._configuration()['verified'])
 
-    async def test_timeout_error_is_safe_and_does_not_claim_a_saved_task(self):
-        self.configured()
-        async def handle(_):
-            raise httpx.ReadTimeout('unsafe-provider-detail-' + KEY)
-        with self.mock_network(handle), self.assertRaises(ai.AIError) as caught:
+    async def test_timeout_and_cancellation_reap_adapter_task(self):
+        self.configured(); completed = asyncio.Event()
+        async def slow(*args, **kwargs):
+            try: await asyncio.Event().wait()
+            finally: completed.set()
+        with patch('backend.ai_harness.complete_task', side_effect=slow), patch.object(ai, 'COMPLETION_TIMEOUT', .01), self.assertRaises(ai.AIError) as caught:
             await ai.complete(MESSAGES)
-        self.assertEqual(caught.exception.code, 'AI_TIMEOUT')
-        self.assertNotIn('已保存', str(caught.exception))
-        self.assertNotIn(KEY, str(caught.exception))
+        self.assertEqual(caught.exception.code, 'AI_TIMEOUT'); self.assertTrue(completed.is_set())
+        completed.clear()
+        with patch('backend.ai_harness.complete_task', side_effect=slow):
+            task = asyncio.create_task(ai.complete(MESSAGES)); await asyncio.sleep(.02); task.cancel()
+            with self.assertRaises(asyncio.CancelledError): await task
+        self.assertTrue(completed.is_set())
 
-    async def test_whole_call_timeout_covers_slow_provider(self):
+    async def test_safe_runtime_errors_are_mapped_without_raw_details(self):
         self.configured()
-        async def handle(_):
-            await asyncio.sleep(10)
-            return response()
-        with self.mock_network(handle), patch.object(ai, 'COMPLETION_TIMEOUT', .01), self.assertRaises(ai.AIError) as caught:
-            await ai.complete(MESSAGES)
-        self.assertEqual(caught.exception.code, 'AI_TIMEOUT')
-
-    async def test_provider_errors_and_redirects_never_echo_body_or_follow_location(self):
-        self.configured()
-        for status in (302, 401, 403, 500):
-            received = []
-            def handle(request):
-                received.append(request)
-                return response(raw=KEY.encode(), status=status, headers={'Location': 'https://other.example/'})
-            with self.subTest(status=status), self.mock_network(handle), self.assertRaises(ai.AIError) as caught:
+        for code, expected in [('HARNESS_TIMEOUT', 'AI_TIMEOUT'), ('HARNESS_PROVIDER_AUTH', 'AI_PROVIDER_REJECTED'),
+                               ('HARNESS_PROVIDER_QUOTA', 'AI_PROVIDER_REJECTED'), ('HARNESS_PROVIDER_UNAVAILABLE', 'AI_CONNECTION_FAILED'),
+                               ('HARNESS_OUTPUT_LIMIT', 'AI_OUTPUT_INCOMPLETE'), ('HARNESS_BUSY', 'AI_BUSY'),
+                               ('HARNESS_PROVIDER_RATE_LIMIT', 'AI_RATE_LIMIT'), ('HARNESS_UNAVAILABLE', 'AI_RUNTIME_UNAVAILABLE'),
+                               ('HARNESS_FAILED', 'AI_RESPONSE_INVALID')]:
+            with self.subTest(code=code), patch('backend.ai_harness.complete_task', new=AsyncMock(side_effect=HTTPException(502, {'code': code, 'unsafe': KEY}))), self.assertRaises(ai.AIError) as caught:
                 await ai.complete(MESSAGES)
-            self.assertEqual(caught.exception.code, 'AI_PROVIDER_REJECTED')
-            self.assertEqual(len(received), 1)
-            self.assertNotIn(KEY, str(caught.exception))
+            self.assertEqual(caught.exception.code, expected); self.assertNotIn(KEY, str(caught.exception))
 
-    async def test_response_limit_is_enforced_while_streaming_and_closes_response(self):
+    async def test_response_must_be_bounded_text_and_json_mode_requires_object(self):
         self.configured()
-        received = response(raw=b'x' * (ai.MAX_RESPONSE_BYTES + 100_000))
-        with self.mock_network(lambda _: received), self.assertRaises(ai.AIError) as caught:
-            await ai.complete(MESSAGES)
-        self.assertEqual(caught.exception.code, 'AI_RESPONSE_LIMIT')
-        self.assertLessEqual(received.test_stream.consumed, ai.MAX_RESPONSE_BYTES + 65536)
-        self.assertTrue(received.test_stream.closed)
+        for value, json_mode in [('',False), (KEY,False), ({'unexpected':'object'},False),
+                                 ('x' * (ai.MAX_CONTENT_BYTES + 1),False), ('[1,2]',True), ('{"x":1,"x":2}',True), ('NaN',True)]:
+            with self.subTest(kind=type(value).__name__, json_mode=json_mode), patch('backend.ai_harness.complete_task', new=AsyncMock(return_value=value)), self.assertRaises(ai.AIError):
+                await ai.complete(MESSAGES, json_mode=json_mode)
 
-    async def test_declared_response_size_rejects_before_reading(self):
+    async def test_invalid_input_is_rejected_before_task_creation(self):
         self.configured()
-        received = response(headers={'Content-Length': str(ai.MAX_RESPONSE_BYTES + 1)})
-        with self.mock_network(lambda _: received), self.assertRaises(ai.AIError) as caught:
-            await ai.complete(MESSAGES)
-        self.assertEqual(caught.exception.code, 'AI_RESPONSE_LIMIT')
-        self.assertEqual(received.test_stream.consumed, 0)
-
-    async def test_malformed_compressed_truncated_and_secret_echo_responses_fail_closed(self):
-        self.configured()
-        cases = [response(raw=b'{"choices":[],"choices":[]}'), response(raw=b'NaN'),
-                 response(raw=b'{invalid-json'), response(raw=b'{"choices":{}}'),
-                 response(content={'unexpected': 'object'}), response(content=''),
-                 response(content=KEY), response(headers={'Content-Encoding': 'gzip'}),
-                 response(finish='length'), response(content='x' * (ai.MAX_CONTENT_BYTES + 1))]
-        for index, received in enumerate(cases):
-            with self.subTest(index=index), self.mock_network(lambda _: received), self.assertRaises(ai.AIError) as caught:
-                await ai.complete(MESSAGES)
-            self.assertNotIn(KEY, str(caught.exception))
-            self.assertIn(caught.exception.code, {'AI_RESPONSE_INVALID', 'AI_OUTPUT_INCOMPLETE', 'AI_RESPONSE_LIMIT'})
-
-    async def test_invalid_or_oversize_input_never_reaches_provider(self):
-        self.configured()
-        for messages in [[], [{'role': 'tool', 'content': 'x'}], [{'role': 'user', 'content': 'x' * ai.MAX_REQUEST_BYTES}]]:
-            with self.subTest(size=len(str(messages))), self.mock_network(lambda _: self.fail('Network must not be called')), self.assertRaises(ai.AIError) as caught:
+        for messages in [[], [{'role':'tool','content':'x'}], [{'role':'user','content':'x' * ai.MAX_REQUEST_BYTES}]]:
+            with self.subTest(size=len(str(messages))), patch('backend.ai_harness.complete_task', new=AsyncMock()) as run, self.assertRaises(ai.AIError) as caught:
                 await ai.complete(messages)
-            self.assertEqual(caught.exception.code, 'AI_INPUT_INVALID')
+            self.assertEqual(caught.exception.code, 'AI_INPUT_INVALID'); run.assert_not_awaited()
 
 
 class EndpointAuthorizationTests(Fixture, unittest.IsolatedAsyncioTestCase):

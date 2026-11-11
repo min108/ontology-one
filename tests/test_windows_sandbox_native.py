@@ -626,5 +626,16 @@ print(json.dumps({'marker':args['marker']}))
                     os.environ['ONTOLOGY_SKILL_TEMP_DIR'] = previous
 
 
+    def test_product_readonly_execution_returns_json_after_cleanup(self):
+        from backend.skill_execution import execute_readonly_skill
+        files = {'SKILL.md': '---\nname: readonly-output\ndescription: Bounded JSON output.\n---\n只读换算。\n',
+                 'scripts/main.py': 'import json,sys\nv=json.load(sys.stdin)\njson.dump({"机构":v["机构"],"结果":v["金额"]*100},sys.stdout,ensure_ascii=False)\n'}
+        with tempfile.TemporaryDirectory(prefix='Ontology readonly 技能 ') as root:
+            with patch.dict(os.environ, {'ONTOLOGY_SKILL_TEMP_DIR': root}):
+                result = execute_readonly_skill(files, 'scripts/main.py', {'机构': '中信银行', '金额': 7})
+            self.assertEqual(result, {'outcome': 'passed', 'output': {'机构': '中信银行', '结果': 700}, 'code': 'PASSED'})
+            self.assertEqual(list(Path(root).glob('request-*')), [])
+
+
 if __name__ == '__main__':
     unittest.main()

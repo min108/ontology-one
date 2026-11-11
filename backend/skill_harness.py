@@ -36,7 +36,7 @@ from .storage import scoped_path, read_bytes, write_bytes, open_file
 router = APIRouter(prefix='/skills/harness', tags=['技能开发 Harness'])
 SDK_VERSION = '0.2.1rc2'
 DEFAULT_BASE_URL = 'https://api.deepseek.com/anthropic'
-DEFAULT_MODEL = 'deepseek-v4-flash'
+DEFAULT_MODEL = 'deepseek-flash'
 MAX_REQUEST_BYTES = 1024 * 1024
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024 + 256 * 1024
 MAX_DRAFT_BYTES = 512 * 1024
@@ -53,18 +53,18 @@ SDK_HASHES = {
 RUNTIME_SHA256 = 'b6f70327db1392b4ff879b8be26c87349b14933c1b4f7a90b391446bb005aae8'
 WINDOWS_RUNTIME_SHA256 = 'f9ed01f241df37c50c702d81b6c226d576210b8f3947699735ca90285ea13365'
 SAFE_ERRORS = {
-    'HARNESS_NOT_CONFIGURED': (409, '请先由本机构管理员配置技能开发的 Harness 模型接入。'),
+    'HARNESS_NOT_CONFIGURED': (409, '请先由本机构管理员配置 Harness 模型接入。'),
     'HARNESS_UNAVAILABLE': (503, '受控 Harness 运行时或内存工作区暂不可用，请检查部署配置。'),
-    'HARNESS_BUSY': (429, '技能开发正在处理其他请求，请稍后重试。'),
-    'HARNESS_TIMEOUT': (504, '技能生成超过时限，运行已终止；请缩小任务后重试。'),
-    'HARNESS_LIMIT': (413, '技能上下文或模型结果超过限制，请缩小文件或任务范围。'),
-    'HARNESS_FAILED': (502, 'Harness 未完成技能生成，请核对模型配置、连接和任务范围。'),
-    'HARNESS_CLEANUP_FAILED': (503, '受控运行的清理未完成，技能生成已暂停，请联系管理员检查运行环境。'),
+    'HARNESS_BUSY': (429, '智能体服务正在处理其他请求，请稍后重试。'),
+    'HARNESS_TIMEOUT': (504, '智能体任务超过时限，运行已终止；请缩小任务后重试。'),
+    'HARNESS_LIMIT': (413, '任务上下文或模型结果超过限制，请缩小文件或任务范围。'),
+    'HARNESS_FAILED': (502, 'Harness 未完成当前任务，请核对模型配置、连接和任务范围。'),
+    'HARNESS_CLEANUP_FAILED': (503, '受控运行的清理未完成，智能体服务已暂停，请联系管理员检查运行环境。'),
     'HARNESS_INCOMPLETE': (502, 'Harness 未完成有效提案，请缩小任务或调整说明后重试。'),
     'HARNESS_CONFIG_CHANGED': (409, '模型配置在运行期间已变化，本次结果未返回，请重新发起。'),
     'HARNESS_NO_PROPOSAL': (422, '模型尚未形成可采纳的技能提案，请补充业务条件或调整任务要求。'),
     'HARNESS_OUTPUT_LIMIT': (502, '模型输出达到上限，提案未完成；请缩小本次修改范围。'),
-    'HARNESS_CANCELLED': (409, '技能生成已取消，提案未保存。'),
+    'HARNESS_CANCELLED': (409, '智能体任务已取消，本次结果未保存。'),
     'HARNESS_PROVIDER_AUTH': (502, '模型服务拒绝认证，请由管理员核对密钥及模型使用权限。'),
     'HARNESS_PROVIDER_QUOTA': (502, '模型账户额度不足，请由管理员核对账户余额或配额。'),
     'HARNESS_PROVIDER_RATE_LIMIT': (429, '模型服务触发调用限流，请稍后重试。'),
@@ -170,7 +170,7 @@ def _principal(principal=None, *, admin=False, build=False):
             or (admin and principal.role != 'admin')
             or (build and principal.role not in {'admin', 'modeler'})
             or ((admin or build) and principal.readonly)):
-        raise HTTPException(403, '当前身份无权管理或使用技能开发模型。')
+        raise HTTPException(403, '当前身份无权管理或使用模型服务。')
     return assert_principal_current(principal, require_write=admin or build)
 
 
@@ -295,9 +295,14 @@ def harness_status():
     if EXECUTOR.cleanup_failed:
         available, reason = False, SAFE_ERRORS['HARNESS_CLEANUP_FAILED'][1]
     configured = bool(config['api_key'])
+    migration_required = False
+    if not configured:
+        migration_required = scoped_path('data/runtime/ai.json', allowed=('data/runtime',)).exists()
     return {'available': available, 'configured': configured, 'verified': config['verified'],
+            'migration_required': migration_required,
+            'configuration_notice': '原有在线AI配置使用不同协议，请在统一Harness配置中重新确认Messages地址和密钥。' if migration_required else '',
             'version': SDK_VERSION, 'protocol': 'deepseek-messages', 'base_url': config['base_url'],
-            'model': config['model'], 'reason': reason or ('' if configured else '尚未配置本机构的技能开发模型。'),
+            'model': config['model'], 'reason': reason or ('' if configured else '尚未配置本机构的 Harness 模型服务。'),
             'limits': {'timeout_seconds': DEFAULT_TIMEOUT, 'max_model_steps': 8, 'max_output_tokens': 8192,
                        'max_context_bytes': MAX_DRAFT_BYTES, 'max_concurrent_per_process': EXECUTOR.maximum},
             'retention': {'proposal': 'response_only', 'session': 'temporary_memory', 'audit': 'metadata_only'}}

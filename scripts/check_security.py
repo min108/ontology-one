@@ -110,6 +110,11 @@ class Sandbox:
         self.root = Path(self.temp.name)
         self.storage = self.root / 'private-storage'
         shutil.copytree(self.source / 'backend', self.root / 'backend', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        # A copied application must retain its authoritative release identity;
+        # version-aware runtime modules must not silently fall back to a
+        # different release merely because the acceptance root is disposable.
+        if (self.source / 'VERSION').is_file():
+            shutil.copyfile(self.source / 'VERSION', self.root / 'VERSION')
         if self.frontend_dist:
             shutil.copytree(self.frontend_dist, self.root / 'frontend' / 'dist')
         digest = hashlib.sha256()

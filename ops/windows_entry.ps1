@@ -1,4 +1,4 @@
-﻿param([ValidateSet('start', 'stop')][string]$Action = 'start')
+﻿param([ValidateSet('start', 'stop', 'upgrade')][string]$Action = 'start')
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding

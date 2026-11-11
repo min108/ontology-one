@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.platform_io import (atomic_write, ensure_private_directory, file_lock,
                                  promote_private_directory, reject_reparse_points, secure_open)
+from backend.version import APP_VERSION
 
 LOCAL = ROOT / 'data' / 'local'
 STATE = LOCAL / 'runtime-state.json'
@@ -54,12 +55,18 @@ _ERRORS = {
     'DATABASE_START_FAILED': '本地数据库未能启动。请检查端口和 data/mysql 下的数据库错误日志。',
     'MIGRATION_FAILED': '数据库迁移或管理员初始化失败；已停止本次启动的进程，保留数据供诊断。如首次初始化曾中断，请使用当时设置的管理员账号和密码重试，平台不会重置已有账号。',
     'API_START_FAILED': '平台接口未就绪；已停止本次启动的进程。',
+    'AGENT_START_FAILED': '智能体会话服务未就绪；已停止本次启动的进程。',
     'CHILD_EXITED': '平台服务意外退出；已回收本安装实例的其他进程，数据予以保留。',
     'CONTROL_UNAVAILABLE': '无法连接本安装实例的控制通道；不会依据旧PID终止任何进程。',
     'START_TIMEOUT': '启动超过等待时间；已请求本安装实例停止，请检查运行状态。',
     'START_CANCELLED': '本次启动已取消，正在回收本安装实例的进程。',
     'INSTANCE_BUSY': '本安装实例正在执行另一项启动或关闭操作，请稍后重试。',
     'LOCAL_STATE_INVALID': '本安装实例的私有配置不完整或无效；为保护现有数据，未重置数据库凭据。',
+    'UPGRADE_SOURCE_BUSY': '请先关闭旧版平台，再重试升级。升级期间旧版不得启动。',
+    'UPGRADE_TARGET_NOT_EMPTY': '新版目录已存在 data，未覆盖任何数据。请使用重新解压的完整新版运行包。',
+    'UPGRADE_SOURCE_INVALID': '旧版目录或私有数据校验未通过；未修改旧版数据。请选择已完成初始化的0.5.0运行包目录。',
+    'UPGRADE_SOURCE_CHANGED': '复制期间旧版数据发生变化；本次升级已中止，旧版数据保留。',
+    'UPGRADE_UNSUPPORTED': '此升级入口仅支持0.5.0到0.6.0，并要求两版使用相同固定MySQL运行时。',
     'INTERNAL_ERROR': '启动器未能完成操作；未终止其他程序，也未删除已有数据。',
 }
 
@@ -205,7 +212,8 @@ def check_runtime():
     require_supported_windows()
     try:
         manifest = json.loads((ROOT / 'runtime' / 'manifest.json').read_text(encoding='utf-8-sig'))
-        if manifest['schema_version'] != 1 or manifest['platform'] != 'win_amd64':
+        if (manifest['schema_version'] != 1 or manifest['platform'] != 'win_amd64'
+                or manifest['application_version'] != APP_VERSION):
             raise LaunchError('RUNTIME_INVALID')
         python = runtime_path(manifest['python']['executable'])
         if not python.samefile(sys.executable):
@@ -333,6 +341,27 @@ def assert_port_free(port):
             probe.bind(('127.0.0.1', port))
         except OSError:
             raise LaunchError('PORT_BUSY') from None
+
+
+def internal_service_port():
+    """An ephemeral loopback port; never persisted or exposed as a public URL."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        probe.bind(('127.0.0.1', 0))
+        return probe.getsockname()[1]
+
+
+def agent_health(url):
+    direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with direct.open(url + '/internal/health', timeout=1) as response:
+            if response.status != 200:
+                return False
+            data = json.loads(response.read(1025))
+            return data == {'ready': True, 'service': 'ontology-agent', 'version': APP_VERSION}
+    except (OSError, ValueError):
+        return False
 
 
 def control(operation, *, timeout=2):
@@ -622,13 +651,26 @@ class Supervisor:
                 pass
             raise LaunchError('START_CANCELLED' if self.stop_event.is_set() else 'MIGRATION_FAILED', diagnostic=diagnostic) from None
         self.finish_child('migration'); bootstrap.clear()
-        write_json(READY, {'installation_id': self.settings['installation_id'], 'version': '0.5.0'})
+        write_json(READY, {'installation_id': self.settings['installation_id'], 'version': APP_VERSION})
+        self.phase_to('starting_agent')
+        agent_url = 'http://127.0.0.1:' + str(internal_service_port())
+        agent_environment = application_environment(self.settings)
+        agent = self.persistent('agent', [self.runtime['python'], '-I', '-X', 'utf8', '-B', '-m', 'uvicorn',
+            'backend.agent_service:app', '--app-dir', str(ROOT), '--host', '127.0.0.1',
+            '--port', agent_url.rsplit(':', 1)[1], '--workers', '1', '--no-access-log'], agent_environment)
+        def agent_ready():
+            if agent.poll() is not None:
+                raise LaunchError('AGENT_START_FAILED')
+            return agent_health(agent_url)
+        self.wait_until(agent_ready, 60, 'AGENT_START_FAILED')
         self.phase_to('starting_api')
         environment = application_environment(self.settings)
+        environment['ONTOLOGY_AGENT_SERVICE_URL'] = agent_url
         api = self.persistent('api', [self.runtime['python'], '-I', '-X', 'utf8', '-B', '-m', 'uvicorn', 'backend.main:app',
             '--app-dir', str(ROOT), '--host', '127.0.0.1', '--port', str(self.settings['api_port']),
             '--workers', '2', '--no-access-log'], environment)
-        self.persistent('worker', [self.runtime['python'], '-I', '-X', 'utf8', '-B', ROOT / 'scripts' / 'run_worker.py'], environment)
+        self.persistent('worker', [self.runtime['python'], '-I', '-X', 'utf8', '-B', ROOT / 'scripts' / 'run_worker.py'],
+                        application_environment(self.settings))
         def ready():
             if api.poll() is not None or self.children['worker'].poll() is not None:
                 raise LaunchError('API_START_FAILED')
@@ -641,12 +683,12 @@ class Supervisor:
         self.wait_until(ready, 60, 'API_START_FAILED')
         self.phase_to('ready')
         while not self.stop_event.wait(.5):
-            if any(self.children[name].poll() is not None for name in ('mysql', 'api', 'worker')):
+            if any(self.children[name].poll() is not None for name in ('mysql', 'api', 'agent', 'worker')):
                 raise LaunchError('CHILD_EXITED')
 
     def cleanup(self):
         self.phase_to('stopping')
-        for name in ('api', 'worker', 'migration', 'mysql_bootstrap_probe', 'mysql_bootstrap_shutdown', 'mysql_secure', 'mysql_initialize'):
+        for name in ('api', 'agent', 'worker', 'migration', 'mysql_bootstrap_probe', 'mysql_bootstrap_shutdown', 'mysql_secure', 'mysql_initialize'):
             child = self.children.get(name)
             if child:
                 with suppress(Exception): child.terminate_tree()
@@ -696,8 +738,12 @@ def bootstrap_input(non_interactive):
         try:
             marker, settings = read_json(READY), read_json(SETTINGS)
             if (not isinstance(marker, dict) or set(marker) != {'installation_id', 'version'}
-                    or marker['installation_id'] != settings['installation_id'] or marker['version'] != '0.5.0'):
+                    or marker['installation_id'] != settings['installation_id']):
                 raise ValueError('Invalid initialization marker')
+            if marker['version'] != APP_VERSION:
+                from ops.windows_upgrade import compatible_marker
+                if not compatible_marker(marker, settings, read_json(LOCAL / 'upgrade-receipt.json')):
+                    raise ValueError('Invalid upgrade receipt')
             return {}
         except (OSError, ValueError, KeyError, TypeError):
             raise LaunchError('LOCAL_STATE_INVALID') from None
@@ -751,7 +797,8 @@ def start(args, runtime):
                 print({'starting': '准备启动', 'initializing_database': '首次初始化本地数据库',
                        'securing_database': '设置并验证数据库访问凭据', 'promoting_database': '保存初始化数据库',
                        'starting_database': '启动本地数据库', 'migrating': '迁移机构工作区并初始化账户',
-                       'starting_api': '启动平台服务', 'stopping': '正在回收本次启动进程'}.get(phase, phase), flush=True)
+                       'starting_agent': '启动智能体会话服务', 'starting_api': '启动平台服务',
+                       'stopping': '正在回收本次启动进程'}.get(phase, phase), flush=True)
             progress = active.get('migration', {})
             current = (progress.get('completed_tenants'), progress.get('total_tenants'))
             if not args.json and current != migration_progress and all(type(value) is int for value in current) and current[1]:
@@ -768,6 +815,8 @@ def start(args, runtime):
 
 
 def stop():
+    if not LOCAL.exists():
+        return {'running': False, 'ready': False, 'phase': 'stopped'}
     active = control('stop')
     if active is None:
         # Only call a missing supervisor stopped when its lifetime lock is free.
@@ -789,6 +838,8 @@ def stop():
 
 
 def current_status():
+    if not LOCAL.exists():
+        return {'running': False, 'ready': False, 'phase': 'stopped'}
     active = control('status')
     if active is not None:
         return active
@@ -806,19 +857,20 @@ def main():
         if hasattr(stream, 'reconfigure'):
             stream.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(description='Ontology One 原生Windows启动器')
-    parser.add_argument('command', nargs='?', choices=('start', 'stop', 'status', 'supervise'), default='start')
+    parser.add_argument('command', nargs='?', choices=('start', 'stop', 'status', 'supervise', 'upgrade'), default='start')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--non-interactive', action='store_true')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--port', type=int)
     parser.add_argument('--mysql-port', type=int)
+    parser.add_argument('--from', dest='source', type=Path)
     args = parser.parse_args()
     try:
         if os.name != 'nt' or sys.maxsize <= 2**32:
             raise LaunchError('WINDOWS_REQUIRED')
         check_local_volume()
-        runtime = check_runtime() if args.check or args.command in ('start', 'supervise') else None
+        runtime = check_runtime() if args.check or args.command in ('start', 'supervise', 'upgrade') else None
         if args.check:
             result = {'ready': True, 'platform': 'win_amd64', 'runtime_valid': True}
         elif args.command == 'supervise':
@@ -830,16 +882,40 @@ def main():
         elif args.command == 'status':
             result = current_status()
         else:
-            ensure_private_directory(LOCAL)
             try:
-                with secure_open(LOCAL / 'command.lock', 'a+b') as stream, file_lock(stream, blocking=False):
-                    result = start(args, runtime) if args.command == 'start' else stop()
+                # Outside data so an upgrade can atomically create data while
+                # concurrent new-version starts/stops are excluded.
+                gate = ensure_private_directory(ROOT / '.platform-control')
+                with secure_open(gate / 'command.lock', 'a+b') as stream, file_lock(stream, blocking=False):
+                    if args.command == 'upgrade':
+                        from ops.windows_upgrade import upgrade, UpgradeError
+                        source = args.source
+                        if source is None and not args.non_interactive:
+                            source = Path(input('请粘贴已关闭的0.5.0运行包目录：').strip().strip('"'))
+                        if source is None:
+                            raise LaunchError('UPGRADE_SOURCE_INVALID')
+                        try:
+                            result = upgrade(source, ROOT)
+                        except UpgradeError as exc:
+                            raise LaunchError(exc.code) from None
+                        except (OSError, ValueError, TypeError, KeyError):
+                            raise LaunchError('UPGRADE_SOURCE_INVALID') from None
+                    else:
+                        if args.command == 'start':
+                            ensure_private_directory(LOCAL)
+                        if LOCAL.exists():
+                            with secure_open(LOCAL / 'command.lock', 'a+b') as legacy, file_lock(legacy, blocking=False):
+                                result = start(args, runtime) if args.command == 'start' else stop()
+                        else:
+                            result = stop()
             except BlockingIOError:
                 raise LaunchError('INSTANCE_BUSY') from None
         if args.json or args.check or args.command == 'status':
             print(json.dumps(result, ensure_ascii=False))
         elif result.get('ready'):
             print(f"平台已就绪：http://127.0.0.1:{result['api_port']}\n关闭时请双击“关闭平台.bat”；关闭本窗口不会停止平台。")
+        elif result.get('upgraded'):
+            print('旧版数据已复制到本目录，原0.5.0目录保持不变。请双击“启动平台.bat”，继续使用原账号和密码。')
         else:
             print('本安装实例已关闭，数据库和文件均已保留。')
         return 0

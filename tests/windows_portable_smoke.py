@@ -193,6 +193,9 @@ class Acceptance:
     def start(self):
         result = self.command('start', '--no-browser', '--non-interactive', '--port', str(self.api_port), '--mysql-port', str(self.mysql_port))
         require(result.get('ready') is True and result.get('api_port') == self.api_port, 'START_NOT_READY')
+        manifest=json.loads((self.package/'runtime/manifest.json').read_text(encoding='utf-8'))
+        if manifest['application_version']!='0.5.0':
+            require(result.get('processes',{}).get('agent',{}).get('alive') is True,'SHARED_AGENT_NOT_RUNNING')
         return result
 
     def stopped(self):

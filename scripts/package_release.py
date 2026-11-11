@@ -1,12 +1,15 @@
-"""Create a portable, fresh-workspace 0.5.0 release without credentials or personal data."""
+"""Create a fresh-workspace release without credentials or personal data."""
 from pathlib import Path
 import argparse
 import json
 import zipfile
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from backend.version import APP_VERSION
 EXCLUDED = {'node_modules', '.git', '.venv', '__pycache__', 'work', 'runtime', 'uploads'}
-TOP_FILES = ['README.md', 'requirements.txt', 'docker-compose.yml', '启动平台.bat', 'start.sh', '.gitignore', 'Dockerfile', '.dockerignore', '.env.example']
+TOP_FILES = ['VERSION', 'README.md', 'requirements.txt', 'docker-compose.yml', '启动平台.bat', '关闭平台.bat', '升级平台.bat', 'start.sh', '.gitignore', 'Dockerfile', '.dockerignore', '.env.example']
 
 
 def create_release(destination: Path):
@@ -24,7 +27,7 @@ def create_release(destination: Path):
             if path.name.startswith('.env') or path.name == 'source-credentials.json' or path.suffix in {'.pyc', '.tsbuildinfo', '.db', '.log'}:
                 continue
             files.append(path)
-    prefix = 'Ontology-One-0.5.0/'
+    prefix = f'Ontology-One-{APP_VERSION}/'
     with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in sorted(set(files)):
             archive.write(path, prefix + path.relative_to(ROOT).as_posix())

@@ -124,7 +124,7 @@ class JobsMySQLTests(unittest.TestCase):
             for p,marker,other in [(a,'甲机构','乙机构'),(b,'乙机构','甲机构')]:
                 with use_context(p):
                     synthetic_key='fixture-'+p.tenant_id+'-secret'
-                    write_bytes(ai.config_path(create=True),json.dumps({'api_key':synthetic_key,'model':'fixture-model'}).encode())
+                    write_bytes(ai.config_path(create=True),json.dumps({'api_key':synthetic_key,'model':'fixture-model','base_url':ai.DEFAULT_BASE_URL,'revision':secrets.token_hex(16),'verified':False}).encode())
                     assert ai.config()['api_key']==synthetic_key
                     response=system.backup()
                     with zipfile.ZipFile(response.path) as archive:

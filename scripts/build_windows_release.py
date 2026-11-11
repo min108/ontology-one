@@ -29,7 +29,8 @@ except ImportError:
     from windows_mysql_utf8 import transform_mysql_executable
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.5.0'
+sys.path.insert(0, str(ROOT))
+from backend.version import APP_VERSION as VERSION
 HOSTS = {'www.python.org', 'cdn.mysql.com', 'files.pythonhosted.org', 'download.visualstudio.microsoft.com', 'visualstudio.microsoft.com', 'codeload.github.com'}
 VC_FILES = {'concrt140.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll',
             'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'}
@@ -116,7 +117,7 @@ def extract(archive, destination, *, mysql=False):
 
 
 def source_files(package):
-    names = ['README.md', 'requirements.txt', '.env.example', '启动平台.bat', '关闭平台.bat', '停止平台.bat']
+    names = ['VERSION', 'README.md', 'requirements.txt', '.env.example', '启动平台.bat', '关闭平台.bat', '停止平台.bat', '升级平台.bat']
     for name in names:
         if (ROOT/name).is_file(): shutil.copy2(ROOT/name, package/name)
     for directory in ('backend', 'ops', 'scripts', 'tests'):
@@ -173,6 +174,10 @@ def install_vc(lock, package, harness_directory, supplied, bootstrap):
 
 def build(args):
     if sys.platform != 'win32': raise ValueError('Native Windows packaging must run on Windows')
+    package_info = json.loads((ROOT/'frontend/package.json').read_text(encoding='utf-8'))
+    package_lock = json.loads((ROOT/'frontend/package-lock.json').read_text(encoding='utf-8'))
+    if any(value != VERSION for value in (package_info['version'], package_lock['version'], package_lock['packages']['']['version'])):
+        raise ValueError('Frontend and application versions differ')
     if args.bootstrap_lock and os.getenv('GITHUB_REF','').startswith('refs/tags/'):
         raise ValueError('Tag/release builds cannot bootstrap dependency locks')
     commit = os.getenv('ONTOLOGY_BUILD_COMMIT')
@@ -216,7 +221,8 @@ def build(args):
     diagnostic=("import sys,json,importlib.util; from pathlib import Path; root=Path(sys.argv[1]); "
         "print(json.dumps({'phase':'embedded_application_import','sys_path':sys.path,'prefix':sys.prefix,"
         "'backend_exists':(root/'backend/__init__.py').is_file(),'pth':(root/'runtime/python/python312._pth').read_text()}),flush=True); "
-        "import backend; assert Path(backend.__file__).resolve().is_relative_to(root/'backend')")
+        "import backend; assert Path(backend.__file__).resolve().is_relative_to(root/'backend'); "
+        "from backend.version import APP_VERSION; assert APP_VERSION==root.joinpath('VERSION').read_text().strip()")
     subprocess.run([str(python),'-I','-X','utf8','-B','-c',diagnostic,str(package.resolve())],cwd=args.cache.resolve(),env=env,check=True)
     harness=package/runtime['harness']['executable']
     if not harness.is_file() or digest(harness)!=runtime['harness']['sha256']: raise ValueError('Official Windows Harness executable digest differs')

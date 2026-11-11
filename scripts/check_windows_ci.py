@@ -15,6 +15,7 @@ import sys
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--package',type=Path,required=True);parser.add_argument('--report-dir',type=Path,required=True)
+    parser.add_argument('--upgrade-baseline',type=Path,required=True)
     args=parser.parse_args();package=args.package.resolve();reports=args.report_dir.resolve();reports.mkdir(parents=True,exist_ok=True)
     if os.name!='nt' or ctypes.windll.shell32.IsUserAnAdmin():raise SystemExit('Native acceptance requires a standard Windows user')
     if 'DEEPSEEK_API_KEY' in os.environ:raise SystemExit('Provider credentials are forbidden in CI')
@@ -36,7 +37,9 @@ def main():
     modules=['tests.test_platform_io','tests.test_windows_process','tests.test_windows_async_process',
         'tests.test_mcp_transport','tests.test_skill_harness','tests.test_windows_sandbox_native',
         'tests.test_windows_launcher','tests.test_windows_initialize','tests.test_windows_distribution',
-        'tests.test_source_adapters','tests.test_windows_mysql_utf8']
+        'tests.test_source_adapters','tests.test_windows_mysql_utf8',
+        'tests.test_harness_worker_modes','tests.test_windows_upgrade']
+    modules += sorted('tests.' + path.stem for path in (package/'tests').glob('test_agent*.py'))
     manifest=json.loads((package/'runtime/manifest.json').read_text(encoding='utf-8'))
     diagnostics={'source_commit':manifest['source_commit'],'sys_path':sys.path,'prefix':sys.prefix,
         'backend_exists':(package/'backend/__init__.py').is_file(),
@@ -46,7 +49,10 @@ def main():
              'system_python_required':False,'model':'synthetic_fixture_only','checks':[]}
     commands=[('native_units',[str(python),'-I','-X','utf8','-B','-m','unittest',*modules,'-v'],600),
               ('portable_smoke',[str(python),'-I','-X','utf8','-B',str(package/'tests/windows_portable_smoke.py'),
-                '--package',str(package),'--report',str(reports/'windows-portable-smoke.json')],1800)]
+                '--package',str(package),'--report',str(reports/'windows-portable-smoke.json')],1800),
+              ('upgrade_smoke',[str(python),'-I','-X','utf8','-B',str(package/'tests/windows_upgrade_smoke.py'),
+                '--package',str(package),'--baseline',str(args.upgrade_baseline.resolve()),
+                '--report',str(reports/'windows-upgrade-smoke.json')],1500)]
     try:
         import backend
         if not Path(backend.__file__).resolve().is_relative_to(package/'backend'):
@@ -60,12 +66,13 @@ def main():
                 except TimeoutError:code=124
             results['checks'].append({'name':name,'exit_code':code,'passed':code==0,
                                       'status':'passed' if code==0 else 'failed'})
-            if name=='native_units' and code!=0:
+            if code!=0:
                 # Installation takes several minutes and cannot make a failed
                 # isolation suite releasable. Do not repeat it for diagnostics;
                 # a green native suite must still run the entire startup smoke.
-                results['checks'].append({'name':'portable_smoke','exit_code':None,
-                    'passed':False,'status':'not_run','reason':'native_units_failed'})
+                for pending,_,_ in commands[len(results['checks']):]:
+                    results['checks'].append({'name':pending,'exit_code':None,
+                        'passed':False,'status':'not_run','reason':name+'_failed'})
                 break
     finally:
         # This uses the instance's authenticated stop API; it never selects PIDs.

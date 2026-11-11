@@ -20,6 +20,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import JSONResponse
 
+from .version import APP_VERSION
 from .mcp_contracts import (MAX_RESULT_BYTES, TOOL_DESCRIPTIONS, TOOL_MODELS,
                             ToolEnvelope, ToolFailure, bounded_envelope,
                             parse_tool, safe_failure)
@@ -293,7 +294,7 @@ class MCPApplication:
                 }[result.status])],
             )
 
-        self.server = Server('Ontology One', version='0.5.0', on_list_tools=list_tools,
+        self.server = Server('Ontology One', version=APP_VERSION, on_list_tools=list_tools,
                              on_call_tool=call_tool, get_tool_input_schema=schemas.get)
         # Low-level Server installs only OpenTelemetry by default. The public
         # middleware list lets this endpoint opt out even when an exporter is

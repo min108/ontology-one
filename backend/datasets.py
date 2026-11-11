@@ -1,6 +1,7 @@
 """Unit-owned source tables, traceable mappings and immutable import batches."""
 from __future__ import annotations
 
+import asyncio
 import csv
 import hashlib
 import io
@@ -781,6 +782,7 @@ def mapping_recognitions(dataset_id: str, sheet_name: str = ""):
 
 @router.post("/datasets/{dataset_id}/mapping-recognize")
 async def recognize_mappings(dataset_id: str, body: RecognitionBody):
+    principal = await asyncio.to_thread(ai._principal)
     if not ai.config().get("api_key"):
         raise HTTPException(503, "尚未配置在线AI。请先到系统设置配置模型并验证连接；原字段和已确认对应不会改变。")
     with db() as conn:
@@ -833,7 +835,9 @@ async def recognize_mappings(dataset_id: str, body: RecognitionBody):
                     stages[key] = "语境核对"
                 else:
                     failures[key] = "模型漏答或重复回答该字段；可只重试此字段"
-        except Exception:
+        except Exception as exc:
+            if isinstance(exc, HTTPException) and exc.status_code in (401, 403, 409):
+                raise
             for field in batch:
                 failures[field["column_name"]] = "本批在线识别未完成；已完成的其他字段仍可复核，请重试失败字段"
     # Unresolved answers receive a second complete-dictionary retrieval, not an invented dictionary gap.
@@ -868,7 +872,9 @@ async def recognize_mappings(dataset_id: str, body: RecognitionBody):
                 else:
                     raw[key] = options[0]
                     stages[key] = "全字典补检索后复核"
-        except Exception:
+        except Exception as exc:
+            if isinstance(exc, HTTPException) and exc.status_code in (401, 403, 409):
+                raise
             for field in batch:
                 failures[field["column_name"]] = "补检索复核未完成；不能据此认定字典缺口，请单独重试"
     results = []
@@ -921,12 +927,15 @@ async def recognize_mappings(dataset_id: str, body: RecognitionBody):
     payload = {"items": results, "sheet_name": body.sheet_name, "model": ai.config().get("model"), "mode": "online", "workflow_version": "context-retrieval-v2",
                "state": "partial" if failures else "completed", "input_scope": "单位、当前工作表与表头、一行含义、本地统计的值形态、全字典检索所得标准定义；不传输原始明细值",
                "dictionary_count": len(standards), "failed_columns": list(failures), "applied_columns": []}
+    from .jobs import assert_execution_principal_current
+    await asyncio.to_thread(assert_execution_principal_current, principal, require_write=True)
     with db() as conn:
         latest = get_entity(conn, dataset_id)
         if latest["version"] != entity["version"]:
             raise HTTPException(409, "识别期间台账已更新，本轮结果未应用，请刷新后重新识别")
         conn.execute("INSERT INTO dataset_ai_reviews(id,dataset_id,sheet_name,dataset_version,payload,created_at) VALUES(?,?,?,?,?,?)", (review_id, dataset_id, body.sheet_name, entity["version"], jd(payload), now()))
         log(conn, dataset_id, "AI批量识别", f"{body.sheet_name}：识别{len(results)}个字段，可复核{sum(x['can_apply'] for x in results)}项，待重试{len(failures)}项；等待人工复核")
+    await asyncio.to_thread(ai._principal, principal)
     return dict(payload, id=review_id, dataset_version=entity["version"], created_at=now())
 
 

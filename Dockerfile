@@ -25,7 +25,7 @@ COPY tests/ ./tests/
 # Keep the reviewed source and deployment recipe available for the HQ release export.
 # .dockerignore excludes local secrets, tenant files, caches and dependency directories.
 COPY frontend/ ./frontend/
-COPY README.md docker-compose.yml Dockerfile .dockerignore .gitignore .env.example start.sh 启动平台.bat ./
+COPY VERSION README.md docker-compose.yml Dockerfile .dockerignore .gitignore .env.example start.sh 启动平台.bat ./
 COPY --from=frontend /build/dist ./frontend/dist/
 # Uploaded/check-out sources may have owner-only modes; the unprivileged runtime
 # must be able to import them. Runtime tenant data is created separately as 0700/0600.

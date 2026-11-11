@@ -1021,3 +1021,5 @@ def demote_restored_skills(conn):
         entity, document = _document(conn, entity['id'])
         _sync_relations(conn, entity, document)
         _history_event(conn, entity, document, '工作区恢复后重新测试和审核')
+
+

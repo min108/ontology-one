@@ -246,7 +246,7 @@ if WINDOWS:
         finally:
             _Free(descriptor)
 
-    def _assert_private_handle(handle):
+    def _assert_private_handle(handle, *, require_protected=True):
         owner, acl, descriptor = wintypes.LPVOID(), wintypes.LPVOID(), wintypes.LPVOID()
         error = _GetSecurity(handle, 1, 0x1 | 0x4, ctypes.byref(owner), None, ctypes.byref(acl), None, ctypes.byref(descriptor))
         if error:
@@ -258,7 +258,7 @@ if WINDOWS:
             control, revision = wintypes.WORD(), wintypes.DWORD()
             if not _DescriptorControl(descriptor, ctypes.byref(control), ctypes.byref(revision)):
                 _win_error()
-            if not acl or not control.value & 0x1000:
+            if not acl or (require_protected and not control.value & 0x1000):
                 raise PermissionError(errno.EACCES, 'Private protected DACL is required')
             size = _AclSize()
             if not _AclInfo(acl, ctypes.byref(size), ctypes.sizeof(size), 2):
@@ -621,7 +621,7 @@ def atomic_write(path, data, *, overwrite=True, before_commit=None):
                     pass
 
 
-def _permissions(path, *, restrict):
+def _permissions(path, *, restrict, require_protected=True):
     value = _absolute(path)
     with _directory(value.parent) as parent:
         if WINDOWS:
@@ -630,7 +630,7 @@ def _permissions(path, *, restrict):
             access = _READ_CONTROL | _READ_ATTRIBUTES | (_WRITE_DAC if restrict else 0)
             handle = _open_handle(value, access, directory=directory, parent=parent)
             try:
-                _set_private(handle, directory) if restrict else _assert_private_handle(handle)
+                _set_private(handle, directory) if restrict else _assert_private_handle(handle, require_protected=require_protected)
             finally:
                 _Close(handle)
         else:
@@ -649,5 +649,10 @@ def restrict_permissions(path):
     _permissions(path, restrict=True)
 
 
-def assert_private(path):
-    _permissions(path, restrict=False)
+def assert_private(path, *, require_protected=True):
+    """Check owner and private identities; protected inheritance is the default.
+
+    Cold database import may inspect vendor-created descendants that inherit an
+    already pinned private root. It must still reject every foreign ACE/owner.
+    """
+    _permissions(path, restrict=False, require_protected=require_protected)

@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pymysql
+from backend.version import APP_VERSION
 from backend.db import mysql_config, ensure_tenant_schema
 from backend.security.store import initialize_control, list_tenants
 from backend.federation import initialize_federation
@@ -44,7 +45,7 @@ def main(progress=None):
             cursor.execute(r"GRANT ALL PRIVILEGES ON `ontology\_one\_v020\_%`.* TO 'ontology_runtime'@'%'")
             conn.commit()
     report('provisioned', len(tenants), len(tenants))
-    print('0.5.0迁移完成；51个空机构工作区与受限运行账号已就绪。')
+    print(f'{APP_VERSION}迁移完成；51个空机构工作区与受限运行账号已就绪。')
 
 
 if __name__ == '__main__':

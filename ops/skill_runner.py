@@ -220,7 +220,7 @@ class DockerRunner:
             args.extend(['--env', key + '='])
         return [*args, self.image_id]
 
-    def case(self, files, entrypoint, case, deadline, disconnected):
+    def case(self, files, entrypoint, case, deadline, disconnected, *, capture=None):
         began = time.monotonic()
         name = 'ontology-skill-' + self.namespace + '-' + uuid.uuid4().hex[:20]
         process = None
@@ -295,7 +295,9 @@ class DockerRunner:
                     try:
                         actual = strict_json(output)
                         valid_value(actual)
-                        code = 'PASSED' if json_equal(actual, case['expected_output']) else 'ASSERTION_FAILED'
+                        code = 'PASSED' if capture is not None or json_equal(actual, case['expected_output']) else 'ASSERTION_FAILED'
+                        if capture is not None:
+                            capture.append(actual)
                     except (ValueError, TypeError, RecursionError, UnicodeError):
                         code = 'STDOUT_NOT_JSON'
                 return code, round((time.monotonic() - began) * 1000)
@@ -332,6 +334,17 @@ class DockerRunner:
         return {'outcome': 'passed' if passed == len(rows) else 'failed', 'mode': 'isolated_python',
                 'report': {'cases': rows, 'passed': passed, 'failed': len(rows) - passed,
                            'duration_ms': round((time.monotonic() - began) * 1000)}}
+
+    def execute_readonly(self, body, disconnected):
+        captured = []
+        code, _ = self.case(body['files'], body['entrypoint'], {'input': body['input']},
+            time.monotonic() + body['timeout_seconds'], disconnected, capture=captured)
+        if code == 'PASSED' and len(captured) == 1 and not disconnected() and not self.stop.is_set():
+            return {'outcome': 'passed', 'output': captured.pop(), 'code': 'PASSED'}
+        captured.clear()
+        if code == 'PASSED':
+            code = 'CANCELLED'
+        return {'outcome': 'unavailable' if code == 'RUNNER_UNAVAILABLE' else 'failed', 'output': None, 'code': code}
 
 
 class RunnerServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
@@ -405,7 +418,7 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(200, {'available': bool(self.server.runner.image_id) and not self.server.runner.stop.is_set() and not self.server.runner.unhealthy.is_set()})
 
     def do_POST(self):
-        if (self.path != '/test' or self.headers.get('Transfer-Encoding') is not None
+        if (self.path not in {'/test', '/run'} or self.headers.get('Transfer-Encoding') is not None
                 or self.headers.get('Content-Type', '').split(';')[0] != 'application/json'
                 or len(self.headers.get_all('Content-Length', [])) != 1):
             self.respond(400, {'code': 'INVALID_TEST_REQUEST'}); return
@@ -416,7 +429,16 @@ class Handler(BaseHTTPRequestHandler):
             raw = self.rfile.read(size)
             if len(raw) != size:
                 raise ValueError()
-            body = validate_request(strict_json(raw))
+            body = strict_json(raw)
+            if self.path == '/run':
+                if not isinstance(body, dict) or set(body) != {'files', 'entrypoint', 'input', 'timeout_seconds'}:
+                    raise ValueError()
+                if type(body['timeout_seconds']) not in (int, float) or not 1 <= body['timeout_seconds'] <= 30:
+                    raise ValueError()
+                validate_request({'files': body['files'], 'entrypoint': body['entrypoint'],
+                    'test_cases': [{'name': 'readonly', 'input': body['input'], 'expected_output': None}]})
+            else:
+                body = validate_request(body)
         except (ValueError, TypeError, RecursionError, UnicodeError, OSError):
             self.respond(400, {'code': 'INVALID_TEST_REQUEST'}); return
         runner = self.server.runner
@@ -425,7 +447,8 @@ class Handler(BaseHTTPRequestHandler):
         if not runner.gate.acquire(blocking=False):
             self.respond(429, {'code': 'RUNNER_BUSY'}); return
         try:
-            result = runner.execute(body, self.disconnected)
+            result = (runner.execute_readonly(body, self.disconnected) if self.path == '/run'
+                      else runner.execute(body, self.disconnected))
             self.respond(200, result)
         except Exception:
             self.respond(503, {'code': 'RUNNER_UNAVAILABLE'})

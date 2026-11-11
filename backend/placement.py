@@ -160,6 +160,7 @@ def history(asset_id: str):
 
 @router.post("/placement/{asset_id}/suggest")
 async def suggest(asset_id: str, body: SuggestRequest):
+    principal = await asyncio.to_thread(ai._principal)
     if body.mode not in ("online", "local"):
         raise HTTPException(400, "请选择在线AI关联定位或本地关联检索。")
     with closing(connect()) as c:
@@ -202,19 +203,25 @@ async def suggest(asset_id: str, body: SuggestRequest):
             if raw and not suggestions:
                 raise ValueError("模型建议未通过出处或关系类型校验，未生成可审定关系。请调整检索范围后重试。")
         except Exception as exc:
-            raise HTTPException(502, str(exc)) from exc
+            if isinstance(exc, HTTPException) and exc.status_code in (401, 403, 409):
+                raise
+            message = str(exc) if isinstance(exc, ai.AIError) else '在线关联建议未完成，请调整范围后重试。'
+            raise HTTPException(502, message) from None
     elif candidates:
         for target in candidates[:8]:
             suggestions.append({"id": "S-" + uuid.uuid4().hex[:10], "target_id": target["id"], "target_version": target["version"], "direction": "outgoing", "relation_type": default_relation(e, target), "reason": target["origin"] + "；请核对主体、事项期间与适用条件，再决定是否建立关联。", "evidence": target["excerpt"][:240], "confidence": "unassessed"})
     result = {"mode": body.mode, "asset_snapshot": snapshot(e), "candidates": candidates, "suggestions": suggestions, "query": body.query,
               "note": "建议仅代表有限候选范围内的关联方案，须人工核对，不是事实认定。" if body.mode == "online" else "本次为本地文字检索与类型提示，未使用在线AI、未判断最佳位置。"}
     job_id, stamp = "PLACEMENT-" + uuid.uuid4().hex[:16], now()
+    from .jobs import assert_execution_principal_current
+    await asyncio.to_thread(assert_execution_principal_current, principal, require_write=True)
     with closing(connect()) as c, c:
         current = source_asset(c, asset_id)
         if current["version"] != e["version"]:
             raise HTTPException(409, "分析期间资产内容已变化，请基于新版本重新定位。")
         c.execute("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?)", (job_id, "asset_placement", asset_id, "ready", 100, "关联建议待人工审定", dump(result), stamp, stamp))
         log(c, asset_id, "生成关联建议" if body.mode == "online" else "检索关联候选", f"基于V{e['version']}，返回{len(suggestions)}项，尚未写入图谱")
+    await asyncio.to_thread(ai._principal, principal)
     return {"job_id": job_id, **result}
 
 

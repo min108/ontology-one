@@ -155,7 +155,7 @@ def _failure(cases, code, began, unavailable=False):
     return _result(safe, [(code, 0)] * len(safe), began, unavailable)
 
 
-def execute_tests(files, entrypoint, test_cases, timeout_seconds=30, cancelled=None):
+def execute_tests(files, entrypoint, test_cases, timeout_seconds=30, cancelled=None, *, _capture=None):
     began = time.monotonic()
     if _cancelled(cancelled): return _failure(test_cases, 'CANCELLED', began)
     try:
@@ -202,7 +202,9 @@ def execute_tests(files, entrypoint, test_cases, timeout_seconds=30, cancelled=N
                     else:
                         try:
                             actual = _strict_json(output); _value(actual)
-                            code = 'PASSED' if _equal(actual, case['expected_output']) else 'ASSERTION_FAILED'
+                            code = 'PASSED' if _capture is not None or _equal(actual, case['expected_output']) else 'ASSERTION_FAILED'
+                            if _capture is not None:
+                                _capture.append(actual)
                         except (ValueError, TypeError, UnicodeError, RecursionError, OverflowError):
                             code = 'STDOUT_NOT_JSON'
                 except WindowsProcessError as exc:

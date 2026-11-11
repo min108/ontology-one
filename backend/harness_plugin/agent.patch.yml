@@ -1,0 +1,36 @@
+# Platform-owned composition; callers and skill packages cannot change this file.
+- id: persistent-bash
+  disabled: true
+- id: persistent-pwsh
+  disabled: true
+- id: terminal-bash
+  disabled: true
+- id: terminal-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- id: mcp-resources
+  disabled: true
+- id: compaction-basic
+  disabled: true
+- id: image-offload
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- id: llm-retry
+  disabled: true
+- id: session-log-deepseek
+  config:
+    enabled: false
+- id: llm-deepseek
+  config:
+    streamIdleTimeoutMs: 15000
+    thinking: disabled
+- id: agent-loop
+  config:
+    maxParallelToolCalls: 1
+- insert:
+    - id: ontology-controlled-agent
+      name: __PLATFORM_PLUGIN_PATH__

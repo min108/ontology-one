@@ -6,6 +6,8 @@
 frontend/dist
 work
 data
+.platform-control
+upgrade-copy-*
 .env*
 *.zip
 **/source-credentials.json

@@ -5,7 +5,8 @@ SQL, executable expression, caller-supplied identity or result persistence exist
 """
 from __future__ import annotations
 
-from contextlib import closing
+from contextlib import closing, contextmanager
+from contextvars import ContextVar
 import json
 import math
 from typing import Any
@@ -24,14 +25,21 @@ from .security.store import assert_principal_current
 ONTOLOGY_KINDS = ('data', 'rule', 'skill', 'knowledge', 'organization')
 
 
+_SESSION_POLICY = ContextVar('ontology_mcp_session_policy', default=None)
+
+
 def _auth():
+    policy = _SESSION_POLICY.get()
+    if policy is not None:
+        return policy
     from .security import applications
     return applications
 
 
 def _principal():
     principal = require_context()
-    if getattr(principal, 'identity_kind', 'session') != 'application':
+    if (getattr(principal, 'identity_kind', 'session') != 'application'
+            and not (_SESSION_POLICY.get() is not None and principal.identity_kind == 'session')):
         raise ToolFailure('FORBIDDEN', '此工具入口仅接受已登记的应用身份。')
     return assert_principal_current(principal)
 
@@ -417,3 +425,60 @@ def dispatch_tool(name: str, arguments: ToolInput | dict, request_id: str) -> To
     assert_principal_current(principal)
     return bounded_envelope(ToolEnvelope(request_id=request_id, status='partial' if warnings else 'ok',
                                         data=data, provenance=receipts, warnings=warnings))
+
+
+class _SessionPolicy:
+    """Internal adapter: a real session intersects explicit source selections.
+
+    Neither HTTP headers nor MCP arguments can construct or activate this scope.
+    It never creates an application identity or grants its caller any authority.
+    """
+    def __init__(self, principal, mapping_ids):
+        self.principal = principal
+        self.mapping_ids = frozenset(mapping_ids)
+
+    def _current(self, principal):
+        if principal != self.principal or principal.identity_kind != 'session' or principal.must_change_password or principal.readonly:
+            raise HTTPException(403, '当前会话无权调用此本体工具。')
+        return assert_principal_current(principal)
+
+    def require_tool(self, principal, name):
+        self._current(principal)
+        if name not in _HANDLERS:
+            raise ToolFailure('UNKNOWN_TOOL', '工具不在受控只读目录中。')
+
+    def require_mapping(self, principal, mapping_id):
+        self._current(principal)
+        if mapping_id not in self.mapping_ids:
+            raise ToolFailure('FORBIDDEN', '此映射未被本次运行明确选用。')
+        with closing(connect()) as conn:
+            row = conn.execute('SELECT source_id FROM source_mappings WHERE id=?', (mapping_id,)).fetchone()
+            if not row:
+                raise ToolFailure('STALE_MAPPING', '映射不存在。')
+            sources._authorize(conn, row['source_id'], 'query')
+
+    def application_permissions(self, principal):
+        self._current(principal)
+        # Each actual access rechecks current source grants; the selection is
+        # an upper bound, never a persisted permission cache.
+        return {'mapping_ids': self.mapping_ids}
+
+
+@contextmanager
+def session_tool_scope(principal, mapping_ids):
+    from .security.context import use_context
+    if principal.identity_kind != 'session' or len(mapping_ids) > 20:
+        raise HTTPException(403, '本体工具会话无效。')
+    policy = _SessionPolicy(principal, mapping_ids)
+    policy._current(principal)
+    token = _SESSION_POLICY.set(policy)
+    try:
+        with use_context(principal):
+            yield
+    finally:
+        _SESSION_POLICY.reset(token)
+
+
+def dispatch_as_session(principal, mapping_ids, name, arguments, request_id):
+    with session_tool_scope(principal, mapping_ids):
+        return dispatch_tool(name, arguments, request_id)

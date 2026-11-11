@@ -16,6 +16,8 @@ REVIEW = frozenset({'admin', 'reviewer'})
 
 # Paths are the existing business contract, including downloads.
 READ_PATHS = (
+    '/api/agent/capabilities', '/api/agent/options', '/api/agent/sessions',
+    '/api/agent/sessions/{ident}', '/api/agent/sessions/{ident}/runs/{run_id}',
     '/api/skills',
     '/api/skills/options',
     '/api/skills/harness/status',
@@ -104,6 +106,10 @@ READ_PATHS = (
 CONTROL_PREFIXES = ("/api/auth/", "/api/admin/", "/api/federation/")
 
 WRITE_RULES = (
+    ('POST', '/api/agent/sessions', ROLES),
+    ('POST', '/api/agent/sessions/{ident}/turns', ROLES),
+    ('POST', '/api/agent/sessions/{ident}/runs/{run_id}/cancel', ROLES),
+    ('DELETE', '/api/agent/sessions/{ident}', ROLES),
     ('POST', '/api/skills', BUILD),
     ('POST', '/api/skills/import', BUILD),
     ('PUT', '/api/skills/{id}', BUILD),
@@ -246,7 +252,7 @@ def authorize(principal, method: str, path: str, body: Mapping | None = None) ->
         return Decision(True)
     # Cross-tenant read grants are consumed only by dedicated federation routes.
     # Never expose the original raw business APIs through a read-only context.
-    if principal.readonly:
+    if principal.readonly and not path.startswith('/api/agent/'):
         return Decision(False, 403, '跨机构只读授权请通过集团资产检索入口访问。')
     if method in {'GET', 'HEAD'}:
         if path in {'/docs', '/redoc', '/openapi.json'}:

@@ -10,6 +10,7 @@ from contextlib import closing
 from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from .version import APP_VERSION
 from .security.context import require_context, use_context
 from .security.store import authenticate_session, assert_principal_current, append_audit
 from .db import connect, business_readonly, entity_json
@@ -38,7 +39,7 @@ class ToolCall(BaseModel):
 def capabilities():
     p = assert_principal_current(require_context())
     from .mcp_contracts import TOOL_MODELS, CONTRACT_VERSION, RETENTION
-    return {'version': '0.5.0', 'transport': 'authenticated-http', 'mcp_transport': 'streamable-http',
+    return {'version': APP_VERSION, 'transport': 'authenticated-http', 'mcp_transport': 'streamable-http',
             'mcp_client': {'transport': 'streamable-http', 'sdk_version': '2.3.0', 'profile': 'ontology-source/1'},
             'mcp_server': {'enabled': True, 'endpoint': '/mcp/', 'contract_version': CONTRACT_VERSION,
                            'identity': 'delegated-application', 'tools': list(TOOL_MODELS),
