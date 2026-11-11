@@ -37,5 +37,5 @@ jobs:
           artifact-ids: '13838649561'
           merge-multiple: true
           path: qa-reports
-      - name: Verify the accepted bytes and publish without overwriting history
-        run: python .github/scripts/publish_accepted_07.py publish
+      - name: Verify the accepted bytes and finish only the existing validated draft
+        run: python .github/scripts/publish_accepted_07.py resume

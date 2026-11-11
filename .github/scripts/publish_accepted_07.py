@@ -22,6 +22,7 @@ MYSQL = 'mysql-8.4.13-corresponding-source.tar.gz'
 SUMS = 'SHA256SUMS.txt'
 ZIP_SHA = 'e03c9ff117b13762fb5db37181d73daea25c3814eb07dd7e29dfd384d5d505fc'
 ZIP_BYTES = 206961985
+DRAFT_RELEASE_ID = 441408050
 ARTIFACTS = {13838634705: 'windows-distribution-' + SOURCE,
              13838649561: 'windows-native-reports-' + SOURCE}
 
@@ -57,7 +58,8 @@ class GitHub:
         status = int(match.group(1))
         if optional and status == 404:
             return None
-        require(result.returncode == 0 and 200 <= status < 300, 'GITHUB_OPERATION_FAILED')
+        require(result.returncode == 0 and 200 <= status < 300,
+                'GITHUB_OPERATION_FAILED:' + method + ':' + endpoint.split('?', 1)[0] + ':HTTP' + str(status))
         parts = re.split(r'\r?\n\r?\n', result.stdout, maxsplit=1)
         require(len(parts) == 2, 'GITHUB_RESPONSE_INVALID')
         return json.loads(parts[1]) if parts[1].strip() else None
@@ -144,9 +146,10 @@ def verify_files(assets, reports):
     return hashes
 
 
-def ensure_refs(gh):
+def ensure_refs(gh, *, create=True):
     tag = gh.api('git/ref/tags/' + TAG, optional=True)
     branch = gh.api('git/ref/heads/' + BRANCH, optional=True)
+    require(create or tag is not None and branch is not None, 'ACCEPTED_REFS_MISSING')
     if branch is not None:
         require(branch.get('object', {}).get('type') == 'commit' and branch['object'].get('sha') == SOURCE, 'BRANCH_SOURCE_CONFLICT')
     if tag is not None:
@@ -171,20 +174,20 @@ def ensure_refs(gh):
     require(branch.get('object', {}).get('type') == 'commit' and branch['object'].get('sha') == SOURCE, 'BRANCH_SOURCE_CONFLICT')
 
 
-def publish(gh, assets, reports, notes):
-    verify_run(gh)
-    hashes = verify_files(assets, reports)
-    require(gh.api('releases/tags/' + TAG, optional=True) is None, 'RELEASE_ALREADY_EXISTS')
-    ensure_refs(gh)
-    notes.write_text('集团本体管理平台 0.7.0\n\n本包直接复用原生 Windows 验收通过的同一份产物，未重新构建。\n'
-                     '来源提交：' + SOURCE + '\n验收记录：https://github.com/' + REPO + '/actions/runs/' + str(RUN) + '\n\n'
-                     '原生单元282项（272通过、10平台跳过），便携启停13/13，正式0.6.0→0.7.0升级11/11。\n'
-                     '提供中文对话技能建设、真实公开正文流、后台队列与恢复、统一智能配置及可选模拟资料。\n'
-                     '升级时关闭旧平台，将新包解压到全新目录，运行升级平台.bat并选择旧0.6.0目录；旧目录保留。\n'
-                     '请保留SHA256SUMS.txt及随附MySQL对应源码。历史版本不覆盖。\n', encoding='utf-8')
-    gh.create_release(assets, notes)
-    release = gh.api('releases/tags/' + TAG)
-    require(release.get('tag_name') == TAG and release.get('draft') is True, 'DRAFT_RELEASE_MISMATCH')
+def release_by_tag(gh):
+    # The tag endpoint excludes drafts. Use the authenticated release list and
+    # fail closed instead of treating an unreadable draft as an absent release.
+    releases = gh.api('releases?per_page=100')
+    require(isinstance(releases, list) and len(releases) < 100, 'RELEASE_LIST_INVALID')
+    matches = [item for item in releases if item.get('tag_name') == TAG]
+    require(len(matches) <= 1, 'RELEASE_TAG_NOT_UNIQUE')
+    return matches[0] if matches else None
+
+
+def publish_draft(gh, release, assets, hashes, *, expected_id=None):
+    require(release.get('tag_name') == TAG and release.get('draft') is True
+            and release.get('target_commitish') == SOURCE
+            and (expected_id is None or release.get('id') == expected_id), 'DRAFT_RELEASE_MISMATCH')
     observed = release.get('assets', [])
     require(len(observed) == 3 and {x.get('name') for x in observed} == {ZIP, MYSQL, SUMS}, 'RELEASE_ASSET_SET_INVALID')
     for item in observed:
@@ -197,9 +200,37 @@ def publish(gh, assets, reports, notes):
                       'zip_sha256': hashes[ZIP], 'zip_bytes': ZIP_BYTES, 'rebuilt': False}))
 
 
+def publish(gh, assets, reports, notes):
+    verify_run(gh)
+    hashes = verify_files(assets, reports)
+    require(release_by_tag(gh) is None, 'RELEASE_ALREADY_EXISTS')
+    ensure_refs(gh)
+    notes.write_text('集团本体管理平台 0.7.0\n\n本包直接复用原生 Windows 验收通过的同一份产物，未重新构建。\n'
+                     '来源提交：' + SOURCE + '\n验收记录：https://github.com/' + REPO + '/actions/runs/' + str(RUN) + '\n\n'
+                     '原生单元282项（272通过、10平台跳过），便携启停13/13，正式0.6.0→0.7.0升级11/11。\n'
+                     '提供中文对话技能建设、真实公开正文流、后台队列与恢复、统一智能配置及可选模拟资料。\n'
+                     '升级时关闭旧平台，将新包解压到全新目录，运行升级平台.bat并选择旧0.6.0目录；旧目录保留。\n'
+                     '请保留SHA256SUMS.txt及随附MySQL对应源码。历史版本不覆盖。\n', encoding='utf-8')
+    gh.create_release(assets, notes)
+    release = release_by_tag(gh)
+    require(release is not None, 'DRAFT_RELEASE_MISSING')
+    publish_draft(gh, release, assets, hashes)
+
+
+def resume(gh, assets, reports):
+    """Only finish the specific fully uploaded draft left by the first run."""
+    verify_run(gh)
+    hashes = verify_files(assets, reports)
+    ensure_refs(gh, create=False)
+    release = gh.api('releases/' + str(DRAFT_RELEASE_ID))
+    listed = release_by_tag(gh)
+    require(listed is not None and listed.get('id') == DRAFT_RELEASE_ID, 'DRAFT_RELEASE_NOT_UNIQUE')
+    publish_draft(gh, release, assets, hashes, expected_id=DRAFT_RELEASE_ID)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=('verify-run', 'publish'))
+    parser.add_argument('action', choices=('verify-run', 'publish', 'resume'))
     parser.add_argument('--assets', type=Path, default=Path('release-assets'))
     parser.add_argument('--reports', type=Path, default=Path('qa-reports'))
     args = parser.parse_args()
@@ -208,8 +239,10 @@ def main():
     if args.action == 'verify-run':
         verify_run(gh)
         print('ACCEPTED_QA_RUN_VERIFIED')
-    else:
+    elif args.action == 'publish':
         publish(gh, args.assets, args.reports, Path('accepted-release-notes.txt'))
+    else:
+        resume(gh, args.assets, args.reports)
 
 
 if __name__ == '__main__':

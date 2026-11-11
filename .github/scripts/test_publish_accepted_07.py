@@ -38,14 +38,14 @@ class FakeGitHub:
                 self.tag = {'object': {'type': 'tag', 'sha': self.tag_object['sha']}}
             else:self.branch = {'object': {'type': 'commit', 'sha': data['sha']}}
             return {}
-        if endpoint.startswith('releases/tags/'): return self.release
-        if endpoint == 'releases/100' and method == 'PATCH':self.release['draft'] = False;return self.release
-        if endpoint == 'releases/100': return self.release
+        if endpoint == 'releases?per_page=100':return [self.release] if self.release else []
+        if endpoint.startswith('releases/') and method == 'PATCH':self.release['draft'] = False;return self.release
+        if endpoint.startswith('releases/'): return self.release
         raise AssertionError(endpoint)
     def create_release(self, assets, notes):
         self.calls.append(('CREATE_RELEASE', p.TAG, None))
         assert self.release is None
-        self.release = {'id': 100, 'tag_name': p.TAG, 'draft': True, 'assets': [
+        self.release = {'id': 100, 'tag_name': p.TAG, 'target_commitish':p.SOURCE, 'draft': True, 'assets': [
             {'name': name, 'state': 'uploaded', 'digest': 'sha256:' + p.sha(assets / name),
              'size': (assets / name).stat().st_size} for name in (p.ZIP, p.MYSQL, p.SUMS)]}
 
@@ -122,9 +122,36 @@ class PublisherTests(unittest.TestCase):
             with self.subTest(wrong=wrong),self.assertRaises(p.Rejected):p.ensure_refs(gh)
             self.assertTrue(all(x[0]=='GET' for x in gh.calls))
     def test_existing_release_is_never_overwritten_or_reuploaded(self):
-        gh=FakeGitHub();gh.release={'id':1,'draft':False}
+        gh=FakeGitHub();gh.release={'id':1,'tag_name':p.TAG,'draft':False}
         with self.assertRaises(p.Rejected):p.publish(gh,self.assets,self.reports,self.root/'notes')
         self.assertTrue(all(x[0]=='GET' for x in gh.calls))
+
+    def prepared_draft(self):
+        gh=FakeGitHub()
+        gh.create_release(self.assets,self.root/'notes')
+        gh.release['id']=p.DRAFT_RELEASE_ID
+        gh.tag={'object':{'type':'tag','sha':'a'*40}}
+        gh.branch={'object':{'type':'commit','sha':p.SOURCE}}
+        gh.calls.clear()
+        return gh
+
+    def test_resume_correct_specific_draft_only_patches_without_creating_or_uploading(self):
+        gh=self.prepared_draft()
+        p.resume(gh,self.assets,self.reports)
+        writes=[call for call in gh.calls if call[0]!='GET']
+        self.assertEqual(writes,[('PATCH','releases/'+str(p.DRAFT_RELEASE_ID),{'draft':False,'make_latest':'true'})])
+        self.assertFalse(gh.release['draft'])
+
+    def test_resume_wrong_draft_source_or_assets_cannot_patch(self):
+        for change in ('id','tag','source','digest','published'):
+            gh=self.prepared_draft()
+            if change=='id':gh.release['id']=1
+            elif change=='tag':gh.release['tag_name']='v0.6.0'
+            elif change=='source':gh.release['target_commitish']='b'*40
+            elif change=='digest':gh.release['assets'][0]['digest']='sha256:'+'b'*64
+            else:gh.release['draft']=False
+            with self.subTest(change=change),self.assertRaises(p.Rejected):p.resume(gh,self.assets,self.reports)
+            self.assertTrue(all(call[0]=='GET' for call in gh.calls))
 
 
 if __name__=='__main__':unittest.main()
