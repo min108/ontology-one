@@ -448,7 +448,18 @@ print(json.dumps({'denied':denied}))
         with self.sandbox('while True:\n    pass\n', limits=limits) as (owner, *_):
             # A TIMEOUT exception is a failed test: only the kernel's CPU limit
             # may stop this case, not the parent's five-second wall watchdog.
-            owner.communicate(b'{}', timeout=5, max_stdout=1024, max_stderr=1024)
+            try:
+                owner.communicate(b'{}', timeout=5, max_stdout=1024, max_stderr=1024)
+            except native.WindowsProcessError as error:
+                # Only fixed native codes and numeric process counters reach
+                # the CI summary. No command, payload or pipe content is kept.
+                counters = {}
+                try:
+                    counters = owner.diagnostic_counters()
+                except native.WindowsProcessError:
+                    pass
+                print(json.dumps({'native_cpu_limit_failure': {'code': error.code, **counters}}), flush=True)
+                raise
             self.assertIsNotNone(owner.returncode)
             self.assertNotEqual(owner.returncode, 0)
             self.assertEqual(owner.process_ids(), ())

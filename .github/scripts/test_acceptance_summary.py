@@ -33,13 +33,15 @@ Traceback (most recent call last):
   File "C:\\Users\\PRIVATE_USER\\app\\ops\\windows_upgrade.py", line 120, in upgrade
     raise ValueError('PRIVATE_SOURCE_LINE')
 PermissionError: [WinError 5] PRIVATE_EXCEPTION_MESSAGE
+backend.windows_process.WindowsProcessError: PROCESS_IO_FAILED
+backend.windows_process.WindowsProcessError: PRIVATE_PROCESS_MESSAGE
   File "C:\\PRIVATE_FILE.py", line 4, in secret
 ERROR: tests.test_agent_runtime (unittest.loader._FailedTest.tests.test_agent_runtime)
 ERROR: PRIVATE_TEST (PRIVATE_CLASS)
 Ran 222 tests in 12.0s
 FAILED (failures=1, errors=1, skipped=10)
 '''
-        result = log_summary(raw, self.paths, self.tests, self.classes)
+        result = log_summary(raw, self.paths, self.tests, self.classes, self.symbols)
         encoded = json.dumps(result)
         self.assertNotIn('PRIVATE_', encoded)
         self.assertNotIn('C:', encoded)
@@ -47,7 +49,15 @@ FAILED (failures=1, errors=1, skipped=10)
         self.assertEqual(result['tests_run'], 222)
         self.assertEqual(result['skipped'], 10)
         self.assertIn('tests.test_agent_runtime', result['failed_tests'])
-        self.assertEqual(result['exception_types'], ['PermissionError'])
+        self.assertEqual(result['exception_types'], ['PermissionError', 'WindowsProcessError'])
+        self.assertEqual(result['error_codes'], ['PROCESS_IO_FAILED'])
+
+    def test_cpu_failure_keeps_only_fixed_code_and_numeric_metadata(self):
+        raw = json.dumps({'native_cpu_limit_failure': {'code': 'TIMEOUT', 'user_cpu_ms': 12,
+            'stdout_bytes': 0, 'message': 'PRIVATE_NATIVE_MESSAGE', 'command': 'PRIVATE_COMMAND'}})
+        result = log_summary(raw, self.paths, self.tests, self.classes, self.symbols)
+        self.assertEqual(result['cpu_limit_failure'], {'code': 'TIMEOUT', 'user_cpu_ms': 12, 'stdout_bytes': 0})
+        self.assertNotIn('PRIVATE_', json.dumps(result))
 
     def test_missing_malformed_and_oversized_reports_never_emit_raw_content(self):
         with tempfile.TemporaryDirectory() as temporary:

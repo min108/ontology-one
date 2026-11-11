@@ -120,9 +120,16 @@ def report_summary(value, labels, symbols, classes):
     return result
 
 
-def log_summary(text, paths, tests, classes):
-    result = {'failed_tests': [], 'frames': [], 'exception_types': []}
+def log_summary(text, paths, tests, classes, symbols=None):
+    symbols = set() if symbols is None else symbols
+    result = {'failed_tests': [], 'frames': [], 'exception_types': [], 'error_codes': []}
     for line in text.splitlines():
+        if line.startswith('{"native_cpu_limit_failure":'):
+            try:
+                value = json.loads(line)['native_cpu_limit_failure']
+                result['cpu_limit_failure'] = metadata(value, symbols, classes)
+            except Exception:
+                pass
         match = re.fullmatch(r'Ran (\d{1,6}) tests? in [0-9.]+s', line)
         if match:
             result['tests_run'] = int(match[1])
@@ -145,9 +152,14 @@ def log_summary(text, paths, tests, classes):
                     if frame not in result['frames'] and len(result['frames']) < 64:
                         result['frames'].append(frame)
                     break
-        match = re.match(r'^([A-Za-z][A-Za-z0-9_]*)(?::|$)', line)
-        if match and match[1] in classes and match[1] not in result['exception_types']:
-            result['exception_types'].append(match[1])
+        match = re.fullmatch(r'((?:[A-Za-z][A-Za-z0-9_]*\.)*[A-Za-z][A-Za-z0-9_]*)(?:: ?(.*))?', line)
+        if match:
+            name = match[1].rsplit('.', 1)[-1]
+            if name in classes:
+                if name not in result['exception_types']:
+                    result['exception_types'].append(name)
+                if match[2] in symbols and match[2] not in result['error_codes']:
+                    result['error_codes'].append(match[2])
     return result
 
 
@@ -161,7 +173,7 @@ def summarize(reports, root=ROOT):
             result['reports'][name] = {'status': 'unavailable'}
     for name in LOGS:
         try:
-            result['logs'][name] = log_summary(read(reports / name), paths, tests, classes)
+            result['logs'][name] = log_summary(read(reports / name), paths, tests, classes, symbols)
         except Exception:
             result['logs'][name] = {'status': 'unavailable'}
     try:
