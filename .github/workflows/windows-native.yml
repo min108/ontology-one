@@ -12,6 +12,25 @@ concurrency:
   group: native-windows-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  prior-diagnostics:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'qa/controlled-harness-0.6.0'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      # Temporary QA21 diagnostic replay; remove after its fixed failure code
+      # is diagnosed. The previous report never contains provider credentials.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: '13825416368'
+          run-id: '42951027299'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior-diagnostics
+          merge-multiple: true
+      - name: Print bounded previous native diagnostics
+        run: python .github/scripts/summarize_windows_acceptance.py --reports prior-diagnostics/reports
   windows:
     runs-on: windows-2022
     timeout-minutes: 60
