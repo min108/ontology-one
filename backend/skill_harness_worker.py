@@ -372,6 +372,11 @@ def main():
                        'Use only read_skill_file and propose_skill_files. Read relevant files, then propose bounded changes; do not execute code. '
                        'Use synthetic examples only. Never change tenant dependencies, source grants, tool grants, review state or publication. '
                        'This tool returns a proposal for human review; it does not save or publish. '
+                       'Follow the user\'s explicit change scope and preservation requirements even when general development guidance suggests improvements. '
+                       'If the request must be refused or essential information is missing and the user requires preserving the draft, '
+                       'submit empty changes={}, delete_paths=[] and manifest_patch={}, with only the refusal boundary or clarification in summary. '
+                       'Do not rewrite SKILL.md, scripts, tests or schemas as a side effect of that refusal or clarification. '
+                       'Preserve every user-frozen file and manifest field exactly; do not complete or improve unrelated content. '
                        'Keep portable manifest changes in manifest_patch. Do not request shell, filesystem, network or MCP tools. '
                        'At most eight model steps are available. End after submitting the proposal.\n'
                        'Authorized draft context:\n' + _json(context_info) + '\nUser development instruction:\n' + body['instruction'])

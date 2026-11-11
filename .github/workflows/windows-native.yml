@@ -151,6 +151,15 @@ jobs:
             echo 'Release v0.5.0 already exists; refusing to overwrite.'
             exit 1
           fi
+          release_branch='release/0.5.0'
+          if ! branch_sha=$(gh api "repos/$GH_REPO/git/ref/heads/$release_branch" --jq '.object.sha' 2>/dev/null); then
+            gh api --method POST "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$release_branch" -f "sha=$GITHUB_SHA" >/dev/null
+            branch_sha=$(gh api "repos/$GH_REPO/git/ref/heads/$release_branch" --jq '.object.sha')
+          fi
+          if [[ "$branch_sha" != "$GITHUB_SHA" ]]; then
+            echo 'Release branch points to a different commit; refusing to change it.'
+            exit 1
+          fi
           cat > release-notes.txt <<'NOTES'
           Ontology One 0.5.0 includes a native Windows x64 distribution with its own Python, MySQL and pinned official Harness runtime.
           Download the Windows ZIP and retain the accompanying SHA256SUMS. The MySQL source archive accompanies its GPL distribution.
