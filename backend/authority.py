@@ -428,6 +428,10 @@ async def assist(body: AssistRequest):
     skeleton = Spec(type=body.type, subtype=body.subtype).model_dump()
     prompt = ('你是组织内部权责规范整理助手。将提供的自由形式资料整理为可人工编辑的规范草稿。仅输出 JSON 对象 {title,summary,spec,warnings}。'
               'spec 严格遵循给定结构，type 不得改变。workflow 审批流用 start/step/decision/end，宏观组织图用 unit，position 用可自定义 sections。'
+              'spec_schema 是实际接口的完整 JSON Schema；spec_structure 是默认值骨架。nodes、edges、sections 的元素不能自行改用其他字段名。'
+              '每个节点用 {id,kind,title,org_id,role,person_id,responsibility,authority,control,evidence,time_limit,x,y}；'
+              '每条连线严格用 {id,source,target,label}，source 与 target 是现有节点的 id，条件文字写入 label；不得用 from/to、from_id/to_id 等别名。'
+              'purpose、scope、basis 均须说明；没有正式制度依据时，basis 明确写仅据本次描述、正式依据待核，不得补造制度名称或编号。'
               '必须识别分散在不同句式中的办理主体、先后顺序、条件分支、退回补正、循环复核、并行办理和结束路径；不得把平行职责误画成上下级。'
               '流程必须有且仅有一个 start、至少一个 end；每个非开始结束节点写明原文中的责任主体，不明确则标为待核对。'
               'decision 至少有两条带条件的出线，退回线连到实际补正后的复核节点，并行线须能汇合到后续节点，所有节点均可从开始到达并最终到达结束。'
@@ -438,7 +442,7 @@ async def assist(body: AssistRequest):
     payload = {'type': body.type, 'subtype': body.subtype, 'text': body.text, 'sources': sources,
                'organizations': [{'id': x['id'], 'title': x['title']} for x in organizations],
                'people': [{'id': x['id'], 'name': x['title'], 'org_id': x['org_id'], 'position': x['payload'].get('position')} for x in people],
-               'spec_structure': skeleton}
+               'spec_structure': skeleton, 'spec_schema': Spec.model_json_schema()}
     try:
         result = json.loads(await ai.complete([{'role': 'system', 'content': prompt}, {'role': 'user', 'content': dump(payload)}], json_mode=True))
         if not isinstance(result, dict):
@@ -472,8 +476,8 @@ async def assist(body: AssistRequest):
     except Exception as exc:
         if isinstance(exc, HTTPException) and exc.status_code in (401, 403):
             raise
-        detail = str(exc).strip().replace('\n', ' ')[:180]
-        notice = '在线模型本次不可用或返回结构未通过校验，已自动采用本地结构化解析生成完整编辑稿。'
-        if detail:
-            notice += '原因：' + detail
-        return await response(local, '本地结构化解析（在线结果已回退）', 'local_fallback', [notice])
+        # Validation errors include rejected model values. Keep those values,
+        # provider payloads and exception internals out of the product response.
+        code = 'AUTHORITY_MODEL_OUTPUT_INVALID' if isinstance(exc, (ValueError, TypeError, KeyError)) else 'AUTHORITY_MODEL_UNAVAILABLE'
+        notice = '在线整理未完成或结果未通过校核，已保留本地解析草稿；请对照原文核对内容、办理路径及待确认事项。'
+        return {**await response(local, '本地结构化解析（在线结果已回退）', 'local_fallback', [notice]), 'fallback_code': code}

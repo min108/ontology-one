@@ -26,6 +26,7 @@ from backend.storage import scoped_path
 KEY = 'synthetic-test-key-not-a-real-credential'
 MESSAGES = [{'role': 'user', 'content': '合成样例，仅回复测试成功。'}]
 HTTP_CLIENT = httpx.AsyncClient
+AUTHORITY_CHECKS = authority.checks_for
 
 
 def child_save(entered, finished):
@@ -282,6 +283,25 @@ class EndpointAuthorizationTests(Fixture, unittest.IsolatedAsyncioTestCase):
         async with HTTP_CLIENT(transport=httpx.ASGITransport(app=self.app), base_url='http://local-test') as client:
             return await client.post(path, json=body)
 
+    async def test_project_plan_receives_existing_task_scope_beyond_its_title(self):
+        scope = '仅核对金额单位、实际交付日期与验收日期，形成字段映射；批准权限另待核。'
+        legacy_scope = '保留原文出处和待核事项，不重复编制已有字段映射。'
+        workspace = {'entity': {'title': '合成专题', 'summary': '合成范围', 'version': 3, 'payload': {}},
+                     'tasks': [
+                         {'title': '核对口径', 'summary': '简短摘要不足以界定办理范围',
+                          'payload': {'task_type': 'dictionary', 'instruction': scope}},
+                         {'title': '历史任务', 'summary': legacy_scope, 'payload': {'task_type': 'material'}}]}
+        proposal = {'tasks': [{'title': '核对批准权限依据', 'task_type': 'rule',
+                              'instruction': '依据原文定位批准权限；材料不足项保留待核。'}]}
+        with patch.object(projects, 'workspace', return_value=workspace), \
+                patch.object(ai, 'complete', new=AsyncMock(return_value=json.dumps(proposal))) as complete:
+            response = await self.post('/projects/synthetic-project/plan', {'instruction': '只补充独立缺口'})
+        self.assertEqual(response.status_code, 200, response.text)
+        context = json.loads(complete.await_args.args[0][1]['content'])
+        self.assertEqual([task['instruction'] for task in context['现有任务']], [scope, legacy_scope])
+        self.assertEqual(response.json()['project_version'], 3)
+        self.assertTrue(response.json()['requires_review'])
+
     def denied_without_assets(self, result, status):
         self.assertEqual(result.status_code, status, result.text)
         self.assertEqual(set(result.json()), {'detail'})
@@ -342,6 +362,56 @@ class EndpointAuthorizationTests(Fixture, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(draft.json()['mode'], 'local_fallback')
             plan = await self.post(*self.endpoints[2])
             self.assertEqual(plan.status_code, 502)
+
+    def workflow_contract(self):
+        return authority.Spec(type='workflow', purpose='合成采购付款流程', scope='仅本次虚构材料',
+            basis='仅据本次合成描述，正式依据待核', org_ids=['synthetic-org'], nodes=[
+                {'id': 'start', 'kind': 'start', 'title': '开始'},
+                {'id': 'check', 'kind': 'decision', 'title': '材料齐备吗', 'role': '财务复核', 'responsibility': '复核材料'},
+                {'id': 'correct', 'kind': 'step', 'title': '补正材料', 'role': '经办人', 'responsibility': '补正后重新复核'},
+                {'id': 'end', 'kind': 'end', 'title': '结束'}], edges=[
+                {'id': 'e1', 'source': 'start', 'target': 'check'},
+                {'id': 'e2', 'source': 'check', 'target': 'correct', 'label': '材料不齐'},
+                {'id': 'e3', 'source': 'correct', 'target': 'check', 'label': '补正完成后重新复核'},
+                {'id': 'e4', 'source': 'check', 'target': 'end', 'label': '材料齐备'}]).model_dump()
+
+    async def test_authority_rejects_real_from_to_failure_without_exposing_model_validation_input(self):
+        spec = self.workflow_contract()
+        for edge in spec['edges']:
+            edge['from'] = edge.pop('source')
+            edge['to'] = edge.pop('target')
+        marker = 'SYNTHETIC_PRIVATE_MODEL_VALUE_' + KEY
+        spec['edges'][0]['from'] = marker
+        reply = json.dumps({'title': '合成草稿', 'spec': spec, 'warnings': []})
+        with (patch.object(ai, 'complete', new=AsyncMock(return_value=reply)),
+              patch.object(authority, 'get_entity', return_value={'id': 'synthetic-org', 'title': '合成机构'})):
+            result = await self.post('/authority/assist', {'type': 'workflow', 'text': '合成材料不齐退回补正后重新复核。', 'org_ids': ['synthetic-org']})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()['mode'], 'local_fallback')
+        self.assertEqual(result.json()['fallback_code'], 'AUTHORITY_MODEL_OUTPUT_INVALID')
+        for value in (marker, KEY, 'ValidationError', 'input_value', 'Field required'):
+            self.assertNotIn(value, result.text)
+
+    async def test_authority_sends_actual_edge_schema_and_accepts_valid_conditional_loop_online(self):
+        spec = self.workflow_contract()
+        self.assertEqual(AUTHORITY_CHECKS(spec)['errors'], [])
+        observed = {}
+        async def complete(messages, json_mode=False):
+            observed['payload'] = json.loads(messages[1]['content'])
+            observed['prompt'] = messages[0]['content']
+            self.assertTrue(json_mode)
+            edge_schema = observed['payload']['spec_schema']['$defs']['Edge']
+            self.assertTrue({'id', 'source', 'target'} <= set(edge_schema['required']))
+            self.assertIn('label', edge_schema['properties'])
+            return json.dumps({'title': '合成条件回路', 'summary': '补正后重新复核', 'spec': spec, 'warnings': []})
+        with (patch.object(ai, 'complete', side_effect=complete),
+              patch.object(authority, 'get_entity', return_value={'id': 'synthetic-org', 'title': '合成机构'}),
+              patch.object(authority, 'checks_for', side_effect=AUTHORITY_CHECKS)):
+            result = await self.post('/authority/assist', {'type': 'workflow', 'text': '合成材料不齐退回补正后重新复核。', 'org_ids': ['synthetic-org']})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()['mode'], 'online')
+        self.assertEqual(result.json()['spec']['edges'], spec['edges'])
+        self.assertNotIn('fallback_code', result.json())
 
 
 if __name__ == '__main__':

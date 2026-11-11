@@ -225,6 +225,17 @@ Windows上的每个创作请求由独立Job Object管理，启动前设置1GiB�
 .venv/bin/python scripts/check_harness_live.py --output work/harness-live-smoke.json
 ```
 
+0.6另提供Linux隔离验收入口`scripts/check_controlled_live.py`，复用真实密码登录、CSRF、独立MySQL测试机构、合成MCP源及异人审核发布流程。与上面的技能开发入口组合，覆盖技能开发、既有AI辅助、临时多轮本体应用、授权MCP查询和已发布只读技能执行。默认先执行四个核心场景；`--suite legacy`独立执行九类既有AI业务HTTP样例，`--suite full`执行全部，也可用`--case`单独选择。只读技能必须使用已配置的隔离运行器，不退回普通进程。此入口只采用合成小样本及固定独立判据，不代表企业数据联调或全部自然语言语义已通过；九类完整样本说明见`tests/fixtures/ai_acceptance_cases.json`，结构与出处检查通过后，其自然语言语义仍明确标记待人工复核。
+
+真实调用前在当前环境的密钥设置中注入`DEEPSEEK_API_KEY`，并确认`api.deepseek.com`允许出网；脚本读取后立即从继承环境移除该变量，不将密钥传入CI。私有测试配置、原文及日志仅驻留临时内存文件系统并在结束时清理，长期报告只有固定检查项、状态、时长及实际报告的数值token用量，不保存模型原文、查询行或凭据。默认串行执行，首个失败或环境阻塞后停止，不自动重试。Windows原生运行和0.5→0.6升级仍须独立运行原生Windows验收，不能用Linux结果替代。
+
+```bash
+.venv/bin/python scripts/check_controlled_live.py --list-cases
+.venv/bin/python scripts/check_controlled_live.py --case authorized_mcp --output work/controlled-live-mcp.json
+.venv/bin/python scripts/check_controlled_live.py --output work/controlled-live-small.json
+.venv/bin/python scripts/check_controlled_live.py --suite full --output work/controlled-live-full.json
+```
+
 ## 工程结构与接入边界
 
 - **身份控制库**：组织、账户、角色、授权、会话、安全审计和持久任务队列。服务端根据会话和目录派生数据库名，不采信客户端租户/数据库覆盖。
