@@ -25,7 +25,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: baseline
           merge-multiple: true
-      - name: Repeat unchanged CPU limits as a standard user
+      - name: Observe unchanged CPU limits with a separate diagnostic watchdog
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -53,7 +53,7 @@ jobs:
             $sid = (Get-LocalUser -Name $qaUser).SID.Value
             & icacls.exe $qaRoot /grant "*${sid}:(OI)(CI)F" /T /Q | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Could not grant disposable account directory access' }
-            $arguments = @('-I', '-X', 'utf8', '-B', "`"$entry`"", '--package', "`"$package`"", '--report', "`"$report`"", '--process-sha256', $processHash)
+            $arguments = @('-I', '-X', 'utf8', '-B', "`"$entry`"", '--package', "`"$package`"", '--report', "`"$report`"", '--process-sha256', $processHash, '--observe-seconds', '15')
             $process = Start-Process -FilePath $python -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $qaRoot -RedirectStandardOutput (Join-Path $qaRoot 'private.stdout.log') -RedirectStandardError (Join-Path $qaRoot 'private.stderr.log') -PassThru
             if (-not $process.WaitForExit(600000)) { $process.Kill(); throw 'Focused CPU diagnostic exceeded its time budget' }
             $process.Refresh()

@@ -1,7 +1,8 @@
 """Temporary standard-user CPU diagnostic using verified QA19 runtime bytes.
 
-The kernel budget remains 0.1 user-CPU seconds and the wall watchdog remains
-five seconds. This lane never starts MySQL, contacts a model, or loads keys.
+The kernel budget remains 0.1 user-CPU seconds. A diagnostic-only longer
+observation window can measure the kernel's enforcement delay; it does not
+change the platform's wall watchdog. No MySQL, model, or keys are loaded.
 """
 import argparse
 from contextlib import redirect_stdout
@@ -36,12 +37,16 @@ def safe_summary(value):
             if type(original.get(name)) is bool:
                 row[name] = original[name]
         rows.append(row)
+    observation = value.get('wall_watchdog_seconds', 5)
+    if type(observation) is not int or observation not in (5, 15):
+        observation = 5
     return {'schema_version': 1, 'source_commit': BASELINE, 'standard_user': True,
         'provider_credentials_used': False, 'cpu_limit_seconds': 0.1,
-        'wall_watchdog_seconds': 5, 'trial_count': len(rows), 'trials': rows}
+        'original_test_watchdog_seconds': 5, 'wall_watchdog_seconds': observation,
+        'trial_count': len(rows), 'trials': rows}
 
 
-def run(package, report, expected):
+def run(package, report, expected, observation):
     if os.name != 'nt' or ctypes.windll.shell32.IsUserAnAdmin():
         raise ValueError('STANDARD_USER_REQUIRED')
     if 'DEEPSEEK_API_KEY' in os.environ:
@@ -83,7 +88,7 @@ def run(package, report, expected):
                 communicating = time.monotonic()
                 row['setup_ms'] = round((communicating - started) * 1000)
                 try:
-                    owner.communicate(b'{}', timeout=5, max_stdout=1024, max_stderr=1024)
+                    owner.communicate(b'{}', timeout=observation, max_stdout=1024, max_stderr=1024)
                 except native.WindowsProcessError as error:
                     row['code'] = error.code if error.code in CODES else 'OTHER_ERROR'
                 row['wall_ms'] = round((time.monotonic() - communicating) * 1000)
@@ -94,7 +99,7 @@ def run(package, report, expected):
             row.setdefault('code', 'OTHER_ERROR')
         row['total_ms'] = round((time.monotonic() - started) * 1000)
         rows.append(row)
-        report.write_text(json.dumps(safe_summary({'trials': rows})), encoding='utf-8')
+        report.write_text(json.dumps(safe_summary({'trials': rows, 'wall_watchdog_seconds': observation})), encoding='utf-8')
     return all('code' not in row and row.get('nonzero_exit') and row.get('job_empty') for row in rows)
 
 
@@ -104,6 +109,7 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--process-sha256')
     parser.add_argument('--summarize', action='store_true')
+    parser.add_argument('--observe-seconds', type=int, choices=(5, 15), default=5)
     args = parser.parse_args()
     try:
         if args.summarize:
@@ -113,7 +119,7 @@ def main():
                 raise ValueError('REPORT_LIMIT')
             print(json.dumps(safe_summary(json.loads(raw))))
             return 0
-        return 0 if run(args.package.resolve(), args.report.resolve(), args.process_sha256) else 1
+        return 0 if run(args.package.resolve(), args.report.resolve(), args.process_sha256, args.observe_seconds) else 1
     except Exception:
         print('{"status":"CPU_PROBE_UNAVAILABLE","provider_credentials_used":false}')
         return 1
