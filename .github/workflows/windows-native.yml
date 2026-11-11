@@ -70,30 +70,19 @@ jobs:
         with:
           path: ${{ runner.temp }}/ontology-downloads
           key: ontology-windows-runtime-${{ hashFiles('ops/windows-runtime.lock.json', 'ops/windows-wheels.lock.json') }}
-      - name: Retrieve immutable previous release when available
-        id: baseline
+      - name: Retrieve the published immutable 0.5.0 Windows release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path 'out/upgrade-baseline' | Out-Null
-          gh release download v0.5.0 --repo "$env:GITHUB_REPOSITORY" --pattern 'ontology-one-0.5.0-windows-x64.zip' --dir out/upgrade-baseline *> $null
-          $ready = Test-Path 'out/upgrade-baseline/ontology-one-0.5.0-windows-x64.zip'
-          "ready=$($ready.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          exit 0
-      - name: Retrieve verified QA19 baseline before formal publication
-        if: steps.baseline.outputs.ready != 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          artifact-ids: '13774981630'
-          run-id: '42835020023'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: out/upgrade-baseline
-          merge-multiple: true
+          gh release download v0.5.0 --repo "$env:GITHUB_REPOSITORY" --pattern 'ontology-one-0.5.0-windows-x64.zip' --dir out/upgrade-baseline
+          if ($LASTEXITCODE -ne 0) { throw 'Published 0.5.0 Windows distribution is required' }
       - name: Verify previous Windows distribution bytes
         shell: pwsh
         run: |
-          $expected = '557f407262f6912b862be032bf83c19bbaf52bd63b7a43b1470bae8dd90a59e4'
+          $expected = '42e027e4bc146e51d82e6cf741d5e3a51bc65dc28ce9ccd5033497315ace6c32'
           if ((Get-FileHash 'out/upgrade-baseline/ontology-one-0.5.0-windows-x64.zip' -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Previous distribution checksum mismatch' }
       - name: Native standard-user acceptance without system Python
         shell: pwsh

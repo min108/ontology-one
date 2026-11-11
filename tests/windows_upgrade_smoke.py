@@ -1,4 +1,4 @@
-"""Real QA19 Windows distribution -> current distribution, standard-user upgrade.
+"""Published 0.5.0 Windows distribution -> current distribution, standard-user upgrade.
 
 The baseline archive is SHA256-checked by CI before extraction. Credentials and
 asset bodies stay in process memory; the report contains fixed checks only.
@@ -17,7 +17,7 @@ import time
 from backend.version import APP_VERSION
 from tests.windows_portable_smoke import Acceptance, CheckFailure, require
 
-BASELINE_COMMIT = '8aba44f4b1ccdc33be4fa2a821856047ccefb2ab'
+BASELINE_COMMIT = 'f420985aab6b6708d344985bfb21a4795e6ee928'
 
 
 def tree_digest(root):
