@@ -247,6 +247,18 @@ class LauncherTests(unittest.TestCase):
                                    'ONTOLOGY_BOOTSTRAP_PASSWORD': 'Synthetic9-Password'}):
             self.assertEqual(launcher.bootstrap_input(True)['username'], 'Group.Admin')
 
+    def test_first_start_names_the_login_account_without_echoing_password(self):
+        password='Synthetic9-Password'
+        with patch.dict(os.environ), patch.object(builtins,'print') as printed, \
+                patch.object(launcher.getpass,'getpass',side_effect=[password,password]):
+            os.environ.pop('ONTOLOGY_BOOTSTRAP_USERNAME',None)
+            os.environ.pop('ONTOLOGY_BOOTSTRAP_PASSWORD',None)
+            result=launcher.bootstrap_input(False)
+        messages='\n'.join(str(call.args[0]) for call in printed.call_args_list)
+        self.assertIn('group.admin',messages)
+        self.assertNotIn(password,messages)
+        self.assertEqual(result,{'username':'group.admin','password':password})
+
     def test_broker_health_requires_exact_service_version_and_bypasses_proxy(self):
         from unittest.mock import MagicMock
         response=MagicMock()
@@ -274,6 +286,17 @@ class LauncherTests(unittest.TestCase):
         receipt['installation_id']='foreign'
         launcher.write_json(launcher.LOCAL/'upgrade-receipt.json',receipt)
         with self.assertRaises(launcher.LaunchError):launcher.bootstrap_input(True)
+
+    def test_0_6_initialized_marker_requires_0_6_receipt(self):
+        settings=launcher.get_installation()
+        launcher.write_json(launcher.READY,{'installation_id':settings['installation_id'],'version':'0.6.0'})
+        receipt={'schema_version':1,'state':'copied','from_version':'0.5.0','to_version':launcher.APP_VERSION,
+                 'installation_id':settings['installation_id'],'source_manifest_sha256':'a'*64}
+        launcher.write_json(launcher.LOCAL/'upgrade-receipt.json',receipt)
+        with self.assertRaises(launcher.LaunchError):launcher.bootstrap_input(True)
+        receipt['from_version']='0.6.0'
+        launcher.write_json(launcher.LOCAL/'upgrade-receipt.json',receipt)
+        self.assertEqual(launcher.bootstrap_input(True),{})
 
 
 class WindowsEntryEncodingTests(unittest.TestCase):

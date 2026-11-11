@@ -1,4 +1,4 @@
-"""Published 0.5.0 Windows distribution -> current distribution, standard-user upgrade.
+"""Published 0.6.0 Windows distribution -> current distribution, standard-user upgrade.
 
 The baseline archive is SHA256-checked by CI before extraction. Credentials and
 asset bodies stay in process memory; the report contains fixed checks only.
@@ -17,7 +17,7 @@ import time
 from backend.version import APP_VERSION
 from tests.windows_portable_smoke import Acceptance, CheckFailure, require
 
-BASELINE_COMMIT = 'f420985aab6b6708d344985bfb21a4795e6ee928'
+BASELINE_COMMIT = '7743ac75eb7f27cbc647a4f1630fe13276ebb321'
 
 
 def tree_digest(root):
@@ -33,7 +33,7 @@ def tree_digest(root):
 def run(package, baseline, report):
     require(os.name == 'nt' and not ctypes.windll.shell32.IsUserAnAdmin(), 'STANDARD_WINDOWS_USER_REQUIRED')
     manifest = json.loads((baseline/'runtime/manifest.json').read_text(encoding='utf-8'))
-    require(manifest['application_version']=='0.5.0' and manifest['source_commit']==BASELINE_COMMIT,
+    require(manifest['application_version']=='0.6.0' and manifest['source_commit']==BASELINE_COMMIT,
             'PINNED_REAL_BASELINE_REQUIRED')
     require(not (baseline/'data').exists(), 'FRESH_BASELINE_REQUIRED')
     target = package.parent/'升级目标 Windows !'/f'Ontology-One-{APP_VERSION}-windows-x64'
@@ -94,7 +94,7 @@ def run(package, baseline, report):
 
     before=None
     try:
-        check('real_0_5_first_start',old.start)
+        check('real_0_6_first_start',old.start)
         check('original_account_password_and_asset',old.account_and_crud)
         check('running_source_copy_refused',reject_running_source)
         check('old_services_stopped',old.stopped)
@@ -109,7 +109,7 @@ def run(package, baseline, report):
     finally:
         for fixture in (new,old):
             with suppress(Exception):fixture.stopped()
-        report.write_text(json.dumps({'source_version':'0.5.0','source_commit':BASELINE_COMMIT,
+        report.write_text(json.dumps({'source_version':'0.6.0','source_commit':BASELINE_COMMIT,
             'target_version':APP_VERSION,'standard_user':True,'network_model_calls':0,
             'duration_ms':round((time.monotonic()-began)*1000),'checks':rows,
             'passed':bool(rows) and all(row['status']=='passed' for row in rows)},indent=2)+'\n',encoding='utf-8')

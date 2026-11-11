@@ -55,14 +55,17 @@ def main():
     try:
         _limits()
         payload = _read_frame(sys.stdin.buffer, MAX_INPUT_BYTES)
-        if (not isinstance(payload, dict) or set(payload) != {'principal', 'mapping_ids', 'skill_ids', 'tool', 'arguments', 'request_id'}
+        expected = {'principal', 'mapping_ids', 'skill_ids', 'tool', 'arguments', 'request_id'}
+        if (not isinstance(payload, dict) or set(payload) not in (expected, expected | {'captured_readonly'})
+                or ('captured_readonly' in payload and type(payload['captured_readonly']) is not bool)
                 or not isinstance(payload['request_id'], str) or not 1 <= len(payload['request_id']) <= 100):
             raise ValueError()
         requestid = payload['request_id']
         # Published script execution stays in the parent-owned cooperative
         # sandbox path, whose cancellation cleanup owns its profiles as well.
         # This killable source worker cannot accept a script-execution request.
-        if payload['tool'] == 'skill_execute':
+        from .mcp_contracts import TOOL_MODELS
+        if payload['tool'] not in {*TOOL_MODELS, 'skill_load', 'ontology_read', 'group_search', 'group_graph', '__validate_ledger'}:
             raise ValueError()
         for name, maximum in (('mapping_ids', 64), ('skill_ids', 16)):
             values = payload[name]
@@ -75,7 +78,11 @@ def main():
         principal = Principal(**payload['principal'])
         if principal.identity_kind != 'session' or principal.request_id != requestid:
             raise ValueError()
-        with use_context(principal):
+        from .jobs import readonly_agent_execution
+        alive = [True]
+        owned = (readonly_agent_execution(principal, lambda: alive[0] is True)
+                 if payload.get('captured_readonly') is True else contextlib.nullcontext())
+        with use_context(principal), owned:
             assert_principal_current(principal)
             bridge = SessionToolBridge(principal, payload['mapping_ids'], payload['skill_ids'])
             if payload['tool'] == '__validate_ledger':
@@ -100,6 +107,7 @@ def main():
             error = safe_failure(failure, requestid).error.model_dump(mode='python')
             _write_frame(output, {'ok': False, 'request_id': requestid, 'error': error}, 2048)
     finally:
+        if 'alive' in locals(): alive[0] = False
         os.close(output)
 
 

@@ -60,5 +60,13 @@ services:
     depends_on:
       skill-runner:
         condition: service_healthy
+  agent:
+    environment:
+      ONTOLOGY_SKILL_RUNNER_SOCKET: /run/ontology-skills/runner.sock
+    volumes:
+      - skill_runner_socket:/run/ontology-skills:ro
+    depends_on:
+      skill-runner:
+        condition: service_healthy
 volumes:
   skill_runner_socket:

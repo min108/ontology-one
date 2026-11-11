@@ -1,4 +1,4 @@
-"""Stopped-instance 0.5 -> 0.6 copy. Never modify or run the old installation.
+"""Stopped-instance 0.5/0.6 -> 0.7 copy. Never modify or run the old installation.
 
 The caller owns the new installation's command gate. The old launcher command
 and lifetime locks remain held until a complete private copy is promoted. The
@@ -17,8 +17,8 @@ import tempfile
 from backend import platform_io as io
 from backend.version import APP_VERSION
 
-FROM_VERSION = '0.5.0'
-TO_VERSION = '0.6.0'
+FROM_VERSIONS = ('0.5.0', '0.6.0')
+TO_VERSION = '0.7.0'
 _EPHEMERAL = {'runtime-state.json', 'service.lock', 'command.lock', 'last-result.json',
               'migration-progress.json', 'mysql-init.sql', 'mysql-client.cnf'}
 
@@ -39,11 +39,12 @@ def read_json(path, private=False):
 
 def compatible_marker(marker, settings, receipt):
     """Only an explicit completed copy permits the older initialized marker."""
-    return (APP_VERSION == TO_VERSION and isinstance(receipt, dict)
+    return (APP_VERSION == TO_VERSION and isinstance(marker, dict) and isinstance(settings, dict)
+        and isinstance(receipt, dict)
         and receipt.get('schema_version') == 1 and receipt.get('state') == 'copied'
-        and receipt.get('from_version') == FROM_VERSION and receipt.get('to_version') == APP_VERSION
+        and receipt.get('from_version') in FROM_VERSIONS and receipt.get('to_version') == APP_VERSION
         and receipt.get('installation_id') == marker.get('installation_id') == settings.get('installation_id')
-        and marker.get('version') == FROM_VERSION
+        and marker.get('version') == receipt.get('from_version')
         and isinstance(receipt.get('source_manifest_sha256'), str)
         and re.fullmatch(r'[0-9a-f]{64}', receipt['source_manifest_sha256']) is not None)
 
@@ -108,7 +109,8 @@ def upgrade(source_root, destination_root):
         raise UpgradeError('UPGRADE_TARGET_NOT_EMPTY')
     source_manifest = read_json(source / 'runtime/manifest.json')
     target_manifest = read_json(destination / 'runtime/manifest.json')
-    if (source_manifest.get('application_version') != FROM_VERSION
+    source_version = source_manifest.get('application_version')
+    if (source_version not in FROM_VERSIONS
             or source_manifest.get('platform') != 'win_amd64'
             or target_manifest.get('application_version') != APP_VERSION
             or source_manifest.get('mysql', {}).get('source_sha256') != target_manifest.get('mysql', {}).get('source_sha256')
@@ -127,7 +129,7 @@ def upgrade(source_root, destination_root):
         settings = read_json(local / 'installation.json', True)
         marker = read_json(local / 'initialized.json', True)
         if (not isinstance(settings, dict) or not isinstance(marker, dict)
-                or marker.get('version') != FROM_VERSION
+                or marker.get('version') != source_version
                 or marker.get('installation_id') != settings.get('installation_id')
                 or not re.fullmatch(r'[0-9a-f]{32}', settings.get('installation_id', ''))
                 or any(not re.fullmatch(r'[0-9a-f]{64}', settings.get(name, '')) for name in ('root_password', 'runtime_password'))):
@@ -139,13 +141,13 @@ def upgrade(source_root, destination_root):
             counts = {'files': 0, 'bytes': 0}
             _copy_tree(source / 'data', staging, counts=counts)
             io.assert_private(source / 'data')
-            receipt = {'schema_version': 1, 'state': 'copied', 'from_version': FROM_VERSION,
+            receipt = {'schema_version': 1, 'state': 'copied', 'from_version': source_version,
                 'to_version': APP_VERSION, 'installation_id': settings['installation_id'],
                 'source_manifest_sha256': hashlib.sha256(json.dumps(source_manifest, sort_keys=True).encode()).hexdigest(),
                 **counts}
             io.atomic_write(staging / 'local/upgrade-receipt.json', json.dumps(receipt).encode())
             io.promote_private_directory(staging, data)
-            return {'upgraded': True, 'from_version': FROM_VERSION, 'to_version': APP_VERSION,
+            return {'upgraded': True, 'from_version': source_version, 'to_version': APP_VERSION,
                     'source_preserved': True, **counts}
         finally:
             if staging.exists():

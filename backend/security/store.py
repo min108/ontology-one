@@ -343,6 +343,11 @@ def assert_principal_current(principal, require_write=False):
         return assert_application_current(principal, require_write=require_write)
     if principal.identity_kind != 'session':
         raise HTTPException(401, '身份类型无效。')
+    from .context import has_readonly_session_execution
+    if has_readonly_session_execution(principal):
+        if require_write:
+            raise HTTPException(403, '本体只读任务不能修改业务记录。')
+        return assert_job_principal_current(principal, require_write=False)
     with control_connection() as conn, conn.cursor() as cur:
         current = _joined_principal(_session_row(cur, principal=principal), principal.request_id)
         if not _same_identity(current, principal):
@@ -352,7 +357,7 @@ def assert_principal_current(principal, require_write=False):
         return current
 
 def assert_job_principal_current(principal, require_write=True):
-    """Only a queue-validated lease may use the captured tenant instead of UI scope."""
+    """A validated server-owned task may retain its tenant instead of UI scope."""
     if principal is None or principal.identity_kind != 'session':
         raise HTTPException(401, '任务身份无效。')
     with control_connection() as conn, conn.cursor() as cur:
@@ -374,6 +379,9 @@ def authorized_control_connection(principal, mode='standard'):
     """
     if principal is None or principal.identity_kind != 'session':
         raise HTTPException(403, '控制面修改只接受用户会话。')
+    from .context import has_readonly_session_execution
+    if has_readonly_session_execution(principal):
+        raise HTTPException(403, '本体只读任务不能修改账号、授权或服务配置。')
     with control_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')

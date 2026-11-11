@@ -510,6 +510,8 @@ def patch_source(source_id: str, body: SourcePatch):
         source = _authorize(conn, source_id, 'manage', lock=True, enabled=False)
         _expected(source, body.expected_version)
         changes = body.model_dump(exclude_unset=True, exclude={'expected_version'})
+        if source['kind'] == 'demo' and ('config' in changes or 'credential_ref' in changes):
+            _fail('demo_source_fixed', '内置模拟台账不需要服务地址或密钥，只能调整名称及启停状态。')
         if 'config' in changes:
             changes['config'] = _validate_config(source['kind'], changes['config'])
         affects_mapping = 'config' in changes or 'credential_ref' in changes or changes.get('enabled') is False

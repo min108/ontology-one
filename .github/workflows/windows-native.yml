@@ -70,20 +70,20 @@ jobs:
         with:
           path: ${{ runner.temp }}/ontology-downloads
           key: ontology-windows-runtime-${{ hashFiles('ops/windows-runtime.lock.json', 'ops/windows-wheels.lock.json') }}
-      - name: Retrieve the published immutable 0.5.0 Windows release
+      - name: Retrieve the published immutable 0.6.0 Windows release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path 'out/upgrade-baseline' | Out-Null
-          gh release download v0.5.0 --repo "$env:GITHUB_REPOSITORY" --pattern 'ontology-one-0.5.0-windows-x64.zip' --dir out/upgrade-baseline
-          if ($LASTEXITCODE -ne 0) { throw 'Published 0.5.0 Windows distribution is required' }
+          gh release download v0.6.0 --repo "$env:GITHUB_REPOSITORY" --pattern 'ontology-one-0.6.0-windows-x64.zip' --dir out/upgrade-baseline
+          if ($LASTEXITCODE -ne 0) { throw 'Published 0.6.0 Windows distribution is required' }
       - name: Verify previous Windows distribution bytes
         shell: pwsh
         run: |
-          $expected = '42e027e4bc146e51d82e6cf741d5e3a51bc65dc28ce9ccd5033497315ace6c32'
-          if ((Get-FileHash 'out/upgrade-baseline/ontology-one-0.5.0-windows-x64.zip' -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Previous distribution checksum mismatch' }
+          $expected = '6a89d07786c922047c7e77774f52ab543f9e6cbd12d9d8bf6ed53e8ff39567f3'
+          if ((Get-FileHash 'out/upgrade-baseline/ontology-one-0.6.0-windows-x64.zip' -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Previous distribution checksum mismatch' }
       - name: Native standard-user acceptance without system Python
         shell: pwsh
         run: |
@@ -102,8 +102,8 @@ jobs:
           try {
             New-Item -ItemType Directory -Force -Path $qaRoot,$reports | Out-Null
             Expand-Archive -LiteralPath "out/ontology-one-${env:ONTOLOGY_APP_VERSION}-windows-x64.zip" -DestinationPath $qaRoot
-            Expand-Archive -LiteralPath 'out/upgrade-baseline/ontology-one-0.5.0-windows-x64.zip' -DestinationPath $qaRoot
-            $baselinePackage = Join-Path $qaRoot 'Ontology-One-0.5.0-windows-x64'
+            Expand-Archive -LiteralPath 'out/upgrade-baseline/ontology-one-0.6.0-windows-x64.zip' -DestinationPath $qaRoot
+            $baselinePackage = Join-Path $qaRoot 'Ontology-One-0.6.0-windows-x64'
             $sid = (Get-LocalUser -Name $qaUser).SID.Value
             & icacls.exe $qaRoot /grant "*${sid}:(OI)(CI)F" /T /Q | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Could not grant disposable account directory access' }

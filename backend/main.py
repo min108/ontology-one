@@ -384,6 +384,10 @@ app.mount('/mcp', mcp_app)
 
 from .agent_proxy import router as agent_proxy_router
 app.include_router(agent_proxy_router, prefix='/api')
+from .harness_runs import router as harness_runs_router
+app.include_router(harness_runs_router, prefix='/api')
+from .demo import router as demo_router
+app.include_router(demo_router, prefix='/api')
 
 dist=ROOT/'frontend/dist'
 if dist.exists():

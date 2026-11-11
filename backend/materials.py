@@ -167,7 +167,7 @@ def parse_file(data: bytes, suffix: str) -> tuple[list[dict], list[str]]:
 def read_source(data: bytes, suffix: str) -> tuple[str, list[dict], list[str]]:
     """Keep ingestion separate from semantic segmentation, without rewriting text."""
     blocks, warnings = parse_file(data, suffix)
-    text = decode_text(data) if suffix in {".txt", ".md"} else "\n\n".join(b["content"] for b in blocks)
+    text = decode_text(data) if suffix in {".txt", ".md", ".csv"} else "\n\n".join(b["content"] for b in blocks)
     if len(text) > 2_000_000:
         raise ValueError("材料正文超过 200 万字，请按完整章节分成多份材料后接入")
     offset = 0
@@ -197,8 +197,8 @@ def _upload_receipt(row, digest, material_id):
 async def upload_material(file: UploadFile = File(...), org_id: str = Form(""), domain: str = Form("综合管理"), project_id: str = Form(""), task_id: str = Form(""), matter_id: str = Form(""), upload_token: str = Form("")):
     filename = Path((file.filename or "未命名材料").replace("\\", "/")).name
     suffix = Path(filename).suffix.lower()
-    if suffix not in {".txt", ".md", ".pdf", ".docx", ".html", ".htm"}:
-        raise HTTPException(400, "支持 TXT、Markdown、PDF、Word（.docx）和 HTML。业务表请前往台账接入")
+    if suffix not in {".txt", ".md", ".csv", ".pdf", ".docx", ".html", ".htm"}:
+        raise HTTPException(400, "支持文本、CSV表格、PDF、Word文档和网页文件。业务台账也可通过数据导入建立。")
     data = await file.read(25 * 1024 * 1024 + 1)
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(413, "单份材料不能超过 25 MB，请按章节拆分上传")

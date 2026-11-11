@@ -6,6 +6,7 @@ import {AccessButton} from '../components/AccessButton';
 import {HarnessConfigurationPanel, HarnessStatus} from '../components/HarnessConfiguration';
 import {request, useApi} from '../api';
 import {PageHeader, Card, Badge, useToast} from '../components/ui';
+import DemoWorkspace from '../components/DemoWorkspace';
 
 export default function Settings(){
   const {session}=useAuth(),canManage=!!session?.permissions.manage_users,canPackage=!!session?.user.is_superadmin;
@@ -19,17 +20,18 @@ export default function Settings(){
   }
   return <div className="page"><PageHeader eyebrow="运行与维护" title="系统设置" description="管理本机构的统一模型接入、运行状态与工作区备份。"/>
     <div className="settings-grid"><div className="stack">
-      <Card><div className="section-title"><h2><Sparkles size={19} style={{marginRight:10,color:'var(--brand)'}}/>统一 Harness 模型接入</h2><Badge tone={model.data?.configured?'green':'amber'}>{model.data?.configured?'已配置':'待配置'}</Badge></div>
+      <Card><div className="section-title"><h2><Sparkles size={19} style={{marginRight:10,color:'var(--brand)'}}/>统一智能服务</h2><Badge tone={model.data?.configured?'green':'amber'}>{model.data?.configured?'已配置':'待配置'}</Badge></div>
         {model.error?<div role="alert"><p className="harness-config-error">{model.error}</p><button className="btn" onClick={model.reload}>重新加载</button></div>:<HarnessConfigurationPanel status={model.data} onSaved={model.reload}/>}
       </Card>
       <Card><div className="section-title"><h2>AI 参与业务的方式</h2></div><div className="ai-capability-grid">{[
         {title:'本体智能应用',copy:'围绕业务问题，按授权查阅本体、加载已发布技能并查询数据来源。',path:'/applications'},
-        {title:'Agent Skill 建设',copy:'辅助编写技能说明、脚本与合成用例，核对提案后进入治理流程。',path:'/skill-development'},
+        {title:'业务技能建设',copy:'用日常语言说明需求，生成可阅读、可测试的技能草稿，核对后进入审核流程。',path:'/skill-development'},
         {title:'材料整理与资产萃取',copy:'处理选定原文，提出有来源的结构与候选成果。',path:'/materials'},
         {title:'字段识别与标准补齐',copy:'建议字段含义、单位与对象标识，由建设人员确认。',path:'/datasets'},
         {title:'访谈与经验整理',copy:'根据原话追问、归纳经验，保留相应引用。',path:'/experience'},
         {title:'关联与任务建议',copy:'提出资产关联和工作任务建议，由业务人员核对后采纳。',path:'/projects'},
       ].map(item=><Link className="ai-capability-link" key={item.path} to={item.path}><Sparkles size={16}/><div><strong>{item.title}</strong><p>{item.copy}</p></div></Link>)}</div><p className="small muted" style={{marginTop:16,marginBottom:0}}>本体应用以只读方式运行。建设类 AI 输出保留为建议或草稿，保存、审核和发布沿用平台权限与流程。</p></Card>
+      <DemoWorkspace/>
       {canManage&&<Card className="ia-settings-link"><div><h2><PlugZap size={19}/>集成应用与 MCP 接入</h2><p>登记上层调用方，绑定本机构委托账号，管理工具、映射范围和独立应用令牌。</p></div><Link className="btn" to="/integration-applications">管理集成应用</Link></Card>}
       <Card><h2>当前运行方式</h2><dl className="meta-list"><dt>身份与授权</dt><dd>真实账号登录，按当前机构、角色及源系统授权访问</dd><dt>业务成果</dt><dd>保存在本机构数据库与文件目录，修订保留历史版本</dd><dt>智能体会话</dt><dd>提问、回答和源端查询结果在受控临时会话中处理，结束或过期后清除</dd><dt>调用记录</dt><dd>保留工具名称、耗时、状态和数据归属等审计元数据</dd></dl></Card>
     </div><div className="stack">

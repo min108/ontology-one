@@ -21,3 +21,13 @@ services:
         read_only: true
         bind:
           create_host_path: false
+  agent:
+    environment:
+      ONTOLOGY_SOURCE_CREDENTIALS_FILE: /run/ontology/source-credentials.json
+    volumes:
+      - type: bind
+        source: ${ONTOLOGY_SOURCE_CREDENTIALS_PATH:?Set the absolute credential registry path}
+        target: /run/ontology/source-credentials.json
+        read_only: true
+        bind:
+          create_host_path: false

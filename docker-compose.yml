@@ -1,7 +1,7 @@
 name: ontology-one-v020
 
 x-app: &app
-  image: ontology-one:${ONTOLOGY_APP_VERSION:-0.6.0}
+  image: ontology-one:${ONTOLOGY_APP_VERSION:-0.7.0}
   build: .
   restart: unless-stopped
   init: true
@@ -105,6 +105,12 @@ services:
 
   worker:
     <<: *app
+    environment:
+      <<: *runtime
+      ONTOLOGY_HARNESS_TMP_ROOT: /run/ontology-harness
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /run/ontology-harness:rw,exec,nosuid,nodev,size=256m,mode=1777
     command: ["python", "scripts/run_worker.py"]
     depends_on:
       migrate:

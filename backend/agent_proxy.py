@@ -4,6 +4,7 @@ import re
 from urllib.parse import urlsplit
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 router = APIRouter(prefix='/agent')
 MAX_BYTES = 2 * 1024 * 1024
@@ -26,7 +27,8 @@ def endpoint():
 @router.api_route('/{path:path}', methods=['GET', 'POST', 'DELETE'])
 async def proxy(path: str, request: Request):
     rules = {
-        'GET': (r'capabilities', r'options', r'sessions', r'sessions/[a-f0-9]{32}', r'sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}'),
+        'GET': (r'capabilities', r'options', r'runs', r'sessions', r'sessions/[a-f0-9]{32}', r'sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}',
+                r'sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}/events'),
         'POST': (r'sessions', r'sessions/[a-f0-9]{32}/turns', r'sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}/cancel'),
         'DELETE': (r'sessions/[a-f0-9]{32}',),
     }
@@ -40,6 +42,42 @@ async def proxy(path: str, request: Request):
     async for chunk in request.stream():
         raw.extend(chunk)
         if len(raw) > 64 * 1024: raise HTTPException(413, '智能体请求超过限制。')
+    if request.method == 'GET' and path.endswith('/events'):
+        client = httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(120, connect=2), follow_redirects=False)
+        result = None
+        try:
+            result = await client.send(client.build_request('GET', target, headers=headers), stream=True)
+            if result.status_code != 200:
+                data = await result.aread()
+                if len(data) > MAX_BYTES:
+                    raise HTTPException(502, '智能体服务响应超过限制。')
+                await result.aclose(); await client.aclose()
+                return Response(data, status_code=result.status_code, media_type='application/json', headers={'Cache-Control': 'no-store'})
+            if result.headers.get('content-type', '').split(';', 1)[0] != 'text/event-stream':
+                raise HTTPException(503, '智能体进度暂不可用。')
+        except BaseException as exc:
+            if result is not None: await result.aclose()
+            await client.aclose()
+            if isinstance(exc, httpx.HTTPError):
+                raise HTTPException(503, '智能体进度连接暂不可用。') from None
+            raise
+
+        async def stream():
+            total = 0
+            try:
+                async for chunk in result.aiter_bytes():
+                    total += len(chunk)
+                    if total > 4 * MAX_BYTES:
+                        return
+                    yield chunk
+            except httpx.HTTPError:
+                yield 'event: reset\ndata: {"message":"进度连接暂时中断，请重新打开当前会话。"}\n\n'.encode('utf-8')
+            finally:
+                await result.aclose()
+                await client.aclose()
+
+        return StreamingResponse(stream(), media_type='text/event-stream',
+                                 headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
     try:
         async with httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(30, connect=2), follow_redirects=False) as client:
             async with client.stream(request.method, target, headers=headers, content=bytes(raw)) as result:

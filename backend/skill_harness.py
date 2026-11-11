@@ -30,7 +30,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from .security.context import require_context
-from .security.store import assert_principal_current, append_audit
+from .security.store import append_audit
+from .jobs import assert_execution_principal_current as assert_principal_current
 from .storage import scoped_path, read_bytes, write_bytes, open_file
 
 router = APIRouter(prefix='/skills/harness', tags=['技能开发 Harness'])
@@ -53,24 +54,24 @@ SDK_HASHES = {
 RUNTIME_SHA256 = 'b6f70327db1392b4ff879b8be26c87349b14933c1b4f7a90b391446bb005aae8'
 WINDOWS_RUNTIME_SHA256 = 'f9ed01f241df37c50c702d81b6c226d576210b8f3947699735ca90285ea13365'
 SAFE_ERRORS = {
-    'HARNESS_NOT_CONFIGURED': (409, '请先由本机构管理员配置 Harness 模型接入。'),
-    'HARNESS_UNAVAILABLE': (503, '受控 Harness 运行时或内存工作区暂不可用，请检查部署配置。'),
+    'HARNESS_NOT_CONFIGURED': (409, '请先由本机构管理员在系统设置中配置智能服务。'),
+    'HARNESS_UNAVAILABLE': (503, '智能服务暂不可用，请联系管理员检查平台运行状态。'),
     'HARNESS_BUSY': (429, '智能体服务正在处理其他请求，请稍后重试。'),
     'HARNESS_TIMEOUT': (504, '智能体任务超过时限，运行已终止；请缩小任务后重试。'),
     'HARNESS_LIMIT': (413, '任务上下文或模型结果超过限制，请缩小文件或任务范围。'),
-    'HARNESS_FAILED': (502, 'Harness 未完成当前任务，请核对模型配置、连接和任务范围。'),
+    'HARNESS_FAILED': (502, '智能助手未完成当前任务，请核对服务连接或补充任务要求。'),
     'HARNESS_CLEANUP_FAILED': (503, '受控运行的清理未完成，智能体服务已暂停，请联系管理员检查运行环境。'),
-    'HARNESS_INCOMPLETE': (502, 'Harness 未完成有效提案，请缩小任务或调整说明后重试。'),
+    'HARNESS_INCOMPLETE': (502, '尚未形成完整有效的方案，请缩小任务或补充要求后重试。'),
     'HARNESS_CONFIG_CHANGED': (409, '模型配置在运行期间已变化，本次结果未返回，请重新发起。'),
-    'HARNESS_NO_PROPOSAL': (422, '模型尚未形成可采纳的技能提案，请补充业务条件或调整任务要求。'),
+    'HARNESS_NO_PROPOSAL': (422, '尚未形成可采纳的技能方案，请补充业务条件或调整任务要求。'),
     'HARNESS_OUTPUT_LIMIT': (502, '模型输出达到上限，提案未完成；请缩小本次修改范围。'),
     'HARNESS_CANCELLED': (409, '智能体任务已取消，本次结果未保存。'),
     'HARNESS_PROVIDER_AUTH': (502, '模型服务拒绝认证，请由管理员核对密钥及模型使用权限。'),
     'HARNESS_PROVIDER_QUOTA': (502, '模型账户额度不足，请由管理员核对账户余额或配额。'),
     'HARNESS_PROVIDER_RATE_LIMIT': (429, '模型服务触发调用限流，请稍后重试。'),
-    'HARNESS_PROVIDER_REQUEST': (502, '模型服务不接受当前请求，请核对模型名称、接口协议与工具支持。'),
+    'HARNESS_PROVIDER_REQUEST': (502, '智能服务不接受当前请求，请由管理员核对服务配置。'),
     'HARNESS_PROVIDER_UNAVAILABLE': (503, '模型服务暂不可用或连接中断，本次提案未保存。'),
-    'HARNESS_PROVIDER_RESPONSE': (502, '模型服务响应不符合受控调用协议，本次结果未采纳。'),
+    'HARNESS_PROVIDER_RESPONSE': (502, '智能服务返回的内容暂无法使用，本次结果未采纳。'),
 }
 
 
@@ -469,9 +470,17 @@ class HarnessExecutor:
                 await asyncio.sleep(min(delay, remaining))
                 delay = min(delay * 2, .25)
 
-    async def execute(self, payload, *, timeout_seconds=DEFAULT_TIMEOUT):
+    async def execute(self, payload, *, timeout_seconds=DEFAULT_TIMEOUT, on_event=None):
+        if on_event is None:
+            from .harness_runs import progress_callback
+            on_event = progress_callback()
         if self.cleanup_failed:
             raise _error('HARNESS_CLEANUP_FAILED')
+        if on_event is not None and not self.closing and self.active >= self.maximum:
+            on_event({'type': 'progress', 'stage': 'queued', 'message': '正在排队，等待智能服务。'})
+            began = time.monotonic()
+            while not self.closing and self.active >= self.maximum and time.monotonic() - began < 120:
+                await asyncio.sleep(.1)
         if self.closing or self.active >= self.maximum:
             raise _error('HARNESS_BUSY')
         if len(_json(payload)) > MAX_REQUEST_BYTES:
@@ -479,7 +488,7 @@ class HarnessExecutor:
         root = _work_root()
         self.active += 1
         call = asyncio.current_task(); self.calls.add(call)
-        directory = process = spawn = None
+        directory = process = spawn = progress = None
         tasks = []
         try:
             directory = Path(tempfile.mkdtemp(prefix='ontology-skill-', dir=root))
@@ -492,6 +501,12 @@ class HarnessExecutor:
                 for part in ('home', 'tmp'):
                     (directory / part).mkdir(mode=0o700)
             self._own_orphaned_descendants()
+            if on_event is not None:
+                from .harness_progress import ProgressChannel
+                progress = ProgressChannel(on_event)
+                payload = dict(payload, progress_channel=progress.contract)
+                on_event({'type': 'admitted'})
+                on_event({'type': 'progress', 'stage': 'model', 'message': '正在连接智能服务。'})
             async with asyncio.timeout(timeout_seconds):
                 spawn = asyncio.create_task(self._spawn(directory))
                 process = await asyncio.shield(spawn)
@@ -500,6 +515,8 @@ class HarnessExecutor:
                     raise asyncio.CancelledError()
                 exchange = asyncio.create_task(self._exchange(process, payload))
                 tasks = [exchange]
+                if on_event is not None:
+                    tasks.append(asyncio.create_task(progress.pump(exchange)))
                 if sys.platform != 'win32':
                     tasks.append(asyncio.create_task(self._read_stderr(process.stderr)))
                 result = (await asyncio.gather(*tasks))[0]
@@ -524,6 +541,7 @@ class HarnessExecutor:
                     for task in tasks: task.cancel()
                     if tasks: await asyncio.gather(*tasks, return_exceptions=True)
                     if process is not None: await self._reap(process)
+                    if progress is not None: await progress.close()
                     if directory is not None:
                         await self._remove_workspace(directory)
                 except Exception:

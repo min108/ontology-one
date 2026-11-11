@@ -12,12 +12,15 @@ import json
 import os
 import threading
 import uuid
+import pymysql
 from contextlib import closing
 from contextvars import ContextVar
 from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
 from .security.context import Principal, require_context, use_context
+from .security.context import readonly_session_execution as readonly_agent_execution
+from .security.context import has_readonly_session_execution as has_readonly_agent_execution
 from .security.store import control_connection, assert_principal_current, assert_job_principal_current
 
 router = APIRouter()
@@ -113,6 +116,44 @@ def queue_status(job_id):
     return row
 
 
+def harness_queue_summaries(principal, limit=20):
+    """Own durable AI work in the same activity tray, without business contents."""
+    from datetime import timezone
+    from urllib.parse import quote
+    principal = assert_principal_current(principal)
+    limit = min(max(int(limit), 1), 50)
+    ensure_queue()
+    with control_connection() as connection, connection.cursor() as cursor:
+        cursor.execute("""SELECT job_id,kind,entity_id,status,created_at,updated_at
+            FROM ontology_task_queue WHERE tenant_id=%s
+            AND kind IN ('material_extract','experience_analysis','special_refinement')
+            AND JSON_UNQUOTE(JSON_EXTRACT(principal_json,'$.user_id'))=%s
+            AND JSON_UNQUOTE(JSON_EXTRACT(principal_json,'$.session_id'))=%s
+            AND JSON_UNQUOTE(JSON_EXTRACT(principal_json,'$.auth_version'))=%s
+            ORDER BY updated_at DESC LIMIT %s""",
+            (principal.tenant_id, principal.user_id, principal.session_id,
+             str(principal.auth_version), limit))
+        rows = cursor.fetchall()
+    titles = {'material_extract': '材料智能提炼', 'experience_analysis': '经验原文整理',
+              'special_refinement': '专题跨材料提炼'}
+    result = []
+    for row in rows:
+        entity_id = quote(row['entity_id'], safe='')
+        href = ('/materials/' + entity_id if row['kind'] == 'material_extract' else
+                '/experience?record=' + entity_id if row['kind'] == 'experience_analysis' else
+                '/projects/' + entity_id + '?panel=refinement')
+        status = 'queued' if row['status'] == 'retry' else row['status']
+        stamp = lambda value: value.replace(tzinfo=timezone.utc).isoformat() if value else ''
+        result.append({'id': row['job_id'], 'run_id': row['job_id'], 'kind': row['kind'],
+                       'entity_id': row['entity_id'], 'title': titles[row['kind']],
+                       'href': href, 'status': status,
+                       'stage': status, 'message': {'queued': '任务已保存，正在等待处理。',
+                           'running': '正在处理本次业务材料。', 'completed': '处理已完成，请到业务页面核对。',
+                           'failed': '处理未完成，请到业务页面查看。', 'cancelled': '任务已取消。'}.get(status, '查看任务进度。'),
+                       'created_at': stamp(row['created_at']), 'updated_at': stamp(row['updated_at'])})
+    return result
+
+
 
 def display_job(job):
     """Read-only overlay: revoked tasks cannot write their former tenant records."""
@@ -152,13 +193,35 @@ def assert_job_lease_current():
 
 def assert_execution_principal_current(principal, require_write=False):
     """Only a valid server-owned worker lease may retain its captured workspace."""
+    if has_readonly_agent_execution(principal):
+        # A readonly scope can narrow another owned context, never inherit its
+        # ability to write. The store still revalidates the actual live session.
+        return assert_principal_current(principal, require_write=require_write)
     if _job_lease.get() is None:
+        from .harness_runs import background_principal
+        background = background_principal(principal, require_write=require_write)
+        if background is not None:
+            return background
         return assert_principal_current(principal, require_write=require_write)
     assert_job_lease_current()
     return assert_job_principal_current(principal, require_write=require_write)
 
 
 def _claim():
+    # InnoDB may deadlock while concurrent SKIP LOCKED claims move rows
+    # between status indexes. A 1213 rolls back that transaction entirely;
+    # retry only this claim, before any business/model operation has started.
+    import time
+    for attempt in range(3):
+        try:
+            return _claim_once()
+        except pymysql.err.OperationalError as error:
+            if not error.args or error.args[0] != 1213 or attempt == 2:
+                raise
+            time.sleep(.01 * (attempt + 1))
+
+
+def _claim_once():
     ensure_queue()
     with control_connection() as c, c.cursor() as cur:
         cur.execute("SELECT * FROM ontology_task_queue WHERE ((status IN ('queued','retry') AND available_at<=UTC_TIMESTAMP(6)) OR (status='running' AND lease_until<UTC_TIMESTAMP(6))) AND attempts<max_attempts ORDER BY available_at,created_at LIMIT 1 FOR UPDATE SKIP LOCKED")

@@ -1,0 +1,4 @@
+# Platform-owned observation only; it adds no executable tool or authority.
+- insert:
+    - id: ontology-public-progress
+      name: __PLATFORM_PLUGIN_PATH__

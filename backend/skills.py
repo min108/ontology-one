@@ -10,6 +10,7 @@ from contextlib import closing
 import asyncio
 import hashlib
 import json
+import re
 import time
 import uuid
 import threading
@@ -22,7 +23,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, m
 
 from .db import connect, current_org_id, entity_json, log, now
 from .security.context import require_context
-from .security.store import append_audit, assert_principal_current
+from .security.store import append_audit
+from .jobs import assert_execution_principal_current as assert_principal_current
 
 router = APIRouter(prefix='/skills', tags=['skill-development'])
 BUILD = {'admin', 'modeler'}
@@ -317,7 +319,7 @@ class Manifest(StrictModel):
 class CreateBody(StrictModel):
     title: Annotated[str, Field(min_length=1, max_length=200)]
     summary: Annotated[str, Field(max_length=2000)] = ''
-    package_name: Annotated[str, Field(min_length=1, max_length=64)]
+    package_name: Annotated[str, Field(max_length=64)] = ''
     legacy_entity_id: Identifier | None = None
 
     @field_validator('title')
@@ -595,13 +597,20 @@ def options(q: str = Query('', max_length=200)):
             'runner': runner, 'harness': harness}
 
 
+def _automatic_package_name(title):
+    """An internal portable identifier; business users only need a Chinese title."""
+    words = '-'.join(re.findall('[a-z0-9]+', title.lower()))[:40].strip('-')
+    return (words or 'business-skill') + '-' + uuid.uuid4().hex[:12]
+
+
 @router.post('')
 async def create_skill(request: Request):
     _role(BUILD)
     body = await _body(request, CreateBody)
     def create():
         manifest = Manifest().model_dump(mode='python')
-        files = {'SKILL.md': '---\nname: ' + json.dumps(body.package_name, ensure_ascii=False) + '\ndescription: ' +
+        package_name = body.package_name.strip() or _automatic_package_name(body.title)
+        files = {'SKILL.md': '---\nname: ' + json.dumps(package_name, ensure_ascii=False) + '\ndescription: ' +
                  json.dumps((body.summary or body.title)[:1024], ensure_ascii=False) + '\n---\n\n# ' + body.title + '\n\n请补充技能说明、适用条件与操作步骤。\n'}
         with closing(_connect()) as conn, conn:
             entity, document = _create_document(conn, body.title, body.summary, files, manifest, body.legacy_entity_id)

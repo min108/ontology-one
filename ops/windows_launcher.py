@@ -64,9 +64,9 @@ _ERRORS = {
     'LOCAL_STATE_INVALID': '本安装实例的私有配置不完整或无效；为保护现有数据，未重置数据库凭据。',
     'UPGRADE_SOURCE_BUSY': '请先关闭旧版平台，再重试升级。升级期间旧版不得启动。',
     'UPGRADE_TARGET_NOT_EMPTY': '新版目录已存在 data，未覆盖任何数据。请使用重新解压的完整新版运行包。',
-    'UPGRADE_SOURCE_INVALID': '旧版目录或私有数据校验未通过；未修改旧版数据。请选择已完成初始化的0.5.0运行包目录。',
+    'UPGRADE_SOURCE_INVALID': '旧版目录或私有数据校验未通过；未修改旧版数据。请选择已完成初始化的0.5.0或0.6.0运行包目录。',
     'UPGRADE_SOURCE_CHANGED': '复制期间旧版数据发生变化；本次升级已中止，旧版数据保留。',
-    'UPGRADE_UNSUPPORTED': '此升级入口仅支持0.5.0到0.6.0，并要求两版使用相同固定MySQL运行时。',
+    'UPGRADE_UNSUPPORTED': '此升级入口支持0.5.0或0.6.0到0.7.0，并要求两版使用相同固定MySQL运行时。',
     'INTERNAL_ERROR': '启动器未能完成操作；未终止其他程序，也未删除已有数据。',
 }
 
@@ -749,15 +749,16 @@ def bootstrap_input(non_interactive):
             raise LaunchError('LOCAL_STATE_INVALID') from None
     username = os.environ.get('ONTOLOGY_BOOTSTRAP_USERNAME', 'group.admin')
     password = os.environ.get('ONTOLOGY_BOOTSTRAP_PASSWORD', '')
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.@-]{2,79}', username):
+        raise LaunchError('PASSWORD_REQUIRED')
     if not password and not non_interactive:
-        print('首次运行，请设置总部超管的初始密码（输入不回显）。如初始化曾中断，请沿用当时的账号和密码。')
+        print(f'首次运行，总部超级管理员登录账号：{username}')
+        print('请设置该账号的初始密码（输入不回显）。如初始化曾中断，请沿用当时的账号和密码。')
         password = getpass.getpass('初始密码：')
         if password != getpass.getpass('再次输入：'):
             raise LaunchError('PASSWORD_REQUIRED')
     if (not isinstance(password, str) or not 12 <= len(password) <= 128
             or not re.search(r'[A-Za-z]', password) or not re.search(r'\d', password)):
-        raise LaunchError('PASSWORD_REQUIRED')
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.@-]{2,79}', username):
         raise LaunchError('PASSWORD_REQUIRED')
     return {'username': username, 'password': password}
 
@@ -779,6 +780,7 @@ def start(args, runtime):
     for port in (settings['api_port'], settings['mysql_port']):
         assert_port_free(port)
     bootstrap = bootstrap_input(args.non_interactive)
+    first_start = bool(bootstrap)
     with suppress(OSError): (LOCAL / 'last-result.json').unlink()
     supervisor = subprocess.Popen([str(runtime['python']), '-I', '-X', 'utf8', '-B', str(Path(__file__).resolve()), 'supervise'],
         cwd=str(ROOT), env=base_environment(), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -796,14 +798,16 @@ def start(args, runtime):
                 phase = active['phase']
                 print({'starting': '准备启动', 'initializing_database': '首次初始化本地数据库',
                        'securing_database': '设置并验证数据库访问凭据', 'promoting_database': '保存初始化数据库',
-                       'starting_database': '启动本地数据库', 'migrating': '迁移机构工作区并初始化账户',
+                       'starting_database': '启动本地数据库',
+                       'migrating': '初始化机构工作区并设置管理员账户' if first_start else '检查并更新机构工作区',
                        'starting_agent': '启动智能体会话服务', 'starting_api': '启动平台服务',
                        'stopping': '正在回收本次启动进程'}.get(phase, phase), flush=True)
             progress = active.get('migration', {})
             current = (progress.get('completed_tenants'), progress.get('total_tenants'))
             if not args.json and current != migration_progress and all(type(value) is int for value in current) and current[1]:
                 migration_progress = current
-                print(f'机构工作区迁移：{current[0]}/{current[1]}', flush=True)
+                label = '机构工作区初始化' if first_start else '机构工作区检查更新'
+                print(f'{label}：{current[0]}/{current[1]}', flush=True)
         if supervisor.poll() is not None:
             if (LOCAL / 'last-result.json').exists():
                 receipt = read_json(LOCAL / 'last-result.json')
@@ -891,7 +895,7 @@ def main():
                         from ops.windows_upgrade import upgrade, UpgradeError
                         source = args.source
                         if source is None and not args.non_interactive:
-                            source = Path(input('请粘贴已关闭的0.5.0运行包目录：').strip().strip('"'))
+                            source = Path(input('请粘贴已关闭的0.5.0或0.6.0运行包目录：').strip().strip('"'))
                         if source is None:
                             raise LaunchError('UPGRADE_SOURCE_INVALID')
                         try:
@@ -915,7 +919,7 @@ def main():
         elif result.get('ready'):
             print(f"平台已就绪：http://127.0.0.1:{result['api_port']}\n关闭时请双击“关闭平台.bat”；关闭本窗口不会停止平台。")
         elif result.get('upgraded'):
-            print('旧版数据已复制到本目录，原0.5.0目录保持不变。请双击“启动平台.bat”，继续使用原账号和密码。')
+            print(f'旧版数据已复制到本目录，原{result["from_version"]}目录保持不变。请双击“启动平台.bat”，继续使用原账号和密码。')
         else:
             print('本安装实例已关闭，数据库和文件均已保留。')
         return 0

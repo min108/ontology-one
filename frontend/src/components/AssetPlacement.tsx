@@ -1,3 +1,4 @@
+import {useHarnessResultRestore} from './LegacyHarnessConversation';
 import {AccessButton} from './AccessButton';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -41,6 +42,7 @@ export function AssetPlacement({ entity, onClose, onSaved }: { entity: AssetEnti
   const selected = links.filter(item => item.reviewed);
   const isDraft = ['draft', 'returned'].includes(entity.status || '');
   const load = (value: Proposal) => { setProposal(value); const audits = value.confirmation?.reviews || []; setLinks(value.suggestions.map(item => { const audit = audits.find(v => v.original_suggestion?.id === item.id); return { ...item, ...(audit?.reviewed_link || {}), id: item.id, reviewed: !!audit }; })); setExtra(audits.flatMap(v => [v.source_snapshot, v.target_snapshot]).filter(v => v?.id && v.id !== entity.id).map(v => ({ ...v, excerpt: typeof v.payload?.content === 'string' ? v.payload.content : v.summary || '', origin: '人工审定时的对象快照' }))); setTab('review'); setError(''); };
+  useHarnessResultRestore('placement_suggest',result=>{if(Array.isArray(result?.suggestions)&&Array.isArray(result?.candidates))load(result)},entity.id);
   const generate = async () => {
     setBusy('generate'); setError('');
     try { load(await api(`/placement/${encodeURIComponent(entity.id)}/suggest`, { method: 'POST', body: JSON.stringify({ mode, query: focus.trim(), expected_version: entity.version }) })); history.reload(); }
@@ -63,7 +65,7 @@ export function AssetPlacement({ entity, onClose, onSaved }: { entity: AssetEnti
       toast(`已审定：新增 ${response.created} 条关联，复用已确认 ${response.reused} 条`); onSaved(); onClose();
     } catch (e: any) { setError(e.message); } finally { setBusy(''); }
   };
-  return <Modal title="资产关联定位与人工审定" onClose={() => { if (!busy) onClose(); }} wide>
+  return <Modal title="资产关联定位与人工审定" onClose={() => { if (busy !== 'confirm') onClose(); }} wide>
     <div className="placement-intro"><div className="placement-symbol"><Network size={25} /></div><div><h3>{entity.title}</h3><p>围绕当前内容 V{entity.version || 1}，寻找制度依据、所需数据、分析方法与经验出处的合适连接。</p></div><AiBadge>AI 关联定位</AiBadge></div>
     <div className="placement-workflow"><span><Search size={14} />检索相关对象</span><ChevronRight size={13} /><span><Sparkles size={14} />提出关联方案</span><ChevronRight size={13} /><span><ShieldCheck size={14} />逐项人工审定</span><ChevronRight size={13} /><span><GitBranch size={14} />写入图谱留痕</span></div>
     {!isDraft && <div className="placement-notice"><Info size={15} />当前可预览建议；请先发起修订为草稿，再审定新增关联。</div>}

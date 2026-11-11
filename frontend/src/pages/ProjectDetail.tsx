@@ -1,3 +1,4 @@
+import {useHarnessResultRestore} from '../components/LegacyHarnessConversation';
 import {AccessButton} from '../components/AccessButton';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -13,6 +14,7 @@ import './project-workspace.css';
 
 export default function ProjectDetail(){
  const {id}=useParams();const data=useApi<Workspace>(`/projects/${id}/workspace`);const navigate=useNavigate();const toast=useToast();const [params,setParams]=useSearchParams();const tab=params.get('task_type')||'';const setTab=(value:string)=>{const q=new URLSearchParams(params);value?q.set('task_type',value):q.delete('task_type');setParams(q,{replace:true})};const [formOpen,setFormOpen]=useState(false);const [edit,setEdit]=useState(false);const [form,setForm]=useState<any>({});const [busy,setBusy]=useState(false);const [plan,setPlan]=useState<any[]|null>(null);const [planning,setPlanning]=useState(false);const [instruction,setInstruction]=useState('');const [suggestion,setSuggestion]=useState<any>(null);const [action,setAction]=useState('');const [note,setNote]=useState('');
+ useHarnessResultRestore('project_plan',(result,run)=>{if(Array.isArray(result?.tasks)){setPlan(result.tasks);setPlanning(true);setInstruction(run.instruction||'')}},id||'');
  const w=data.data,e=w?.entity;useEffect(()=>{if(e)setForm({title:e.title,domain:e.domain,owner:e.payload.owner||'',due_date:e.payload.due_date||'',objective:e.payload.objective||e.summary,scope:e.payload.scope||'',expected_outputs:Array.isArray(e.payload.expected_outputs)?e.payload.expected_outputs.join('；'):e.payload.expected_outputs||''})},[e?.version]);
  if(data.loading&&!e)return <Loading/>;if(data.error||!e)return <div className="page"><Empty title="专题暂未能加载" description={data.error}/><AccessButton className="btn" onClick={data.reload}>重试</AccessButton></div>;
  if(e.payload.project_mode==='special_review')return <SpecialProjectDetail/>;

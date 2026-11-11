@@ -38,8 +38,10 @@ def main():
         'tests.test_mcp_transport','tests.test_skill_harness','tests.test_windows_sandbox_native',
         'tests.test_windows_launcher','tests.test_windows_initialize','tests.test_windows_distribution',
         'tests.test_source_adapters','tests.test_windows_mysql_utf8',
-        'tests.test_harness_worker_modes','tests.test_windows_upgrade']
+        'tests.test_harness_worker_modes','tests.test_windows_upgrade',
+        'tests.test_harness_legacy_runs','tests.test_demo']
     modules += sorted('tests.' + path.stem for path in (package/'tests').glob('test_agent*.py'))
+    modules += sorted('tests.' + path.stem for path in (package/'tests').glob('test_harness_runs*.py'))
     manifest=json.loads((package/'runtime/manifest.json').read_text(encoding='utf-8'))
     diagnostics={'source_commit':manifest['source_commit'],'sys_path':sys.path,'prefix':sys.prefix,
         'backend_exists':(package/'backend/__init__.py').is_file(),

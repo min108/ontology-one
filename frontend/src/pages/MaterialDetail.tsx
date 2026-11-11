@@ -1,3 +1,4 @@
+import {useHarnessResultRestore} from '../components/LegacyHarnessConversation';
 import {AccessButton} from '../components/AccessButton';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -35,6 +36,8 @@ export function MaterialDetail() {
   const manualSourceView = sourceSelection.context === sourceContext && sourceSelection.manual;
   function setSourceView(view: string, manual = true) { setSourceSelection({ context: sourceContext, view, manual }); }
   const [segmentOpen, setSegmentOpen] = useState(false);
+  const [restoredSegments, setRestoredSegments] = useState<any>(null);
+  const [segmentRestoreError, setSegmentRestoreError] = useState('');
   const [segmentMode, setSegmentMode] = useState('online');
   const [search, setSearch] = useState('');
   const [sourcePage, setSourcePage] = useState(1);
@@ -62,8 +65,11 @@ export function MaterialDetail() {
   const candidates = data?.candidates.filter(candidate => (!kind || candidate.kind === kind) && (!status || (candidate.status || 'pending') === status)) || [];
   const running = job && ['queued', 'running'].includes(job.status);
 
+  useHarnessResultRestore('material_reading',()=>{setSegmentOpen(true);setSegmentMode('online');detail.reload();},id||'');
+  useHarnessResultRestore('material_segments',result=>{if(Array.isArray(result?.segments)){setRestoredSegments(result);setSegmentRestoreError('')}},id||'');
+
   useEffect(() => {
-    setJob(null); setActiveCandidate(null); setSelected([]); setSearch(''); setSourcePage(1); setSegmentOpen(false); setSourceView(initialSourceView, false);
+    setJob(null); setActiveCandidate(null); setSelected([]); setSearch(''); setSourcePage(1); setSegmentOpen(false);setRestoredSegments(null);setSegmentRestoreError(''); setSourceView(initialSourceView, false);
   }, [id]);
 
   useEffect(() => {
@@ -119,6 +125,11 @@ export function MaterialDetail() {
 
   function openSegmentation(nextMode = 'online') {
     setSegmentMode(nextMode); setSegmentOpen(true);
+  }
+
+  async function confirmRestoredSegments(){
+    if(!restoredSegments||busy)return;setBusy('confirm-restored-segments');setSegmentRestoreError('');
+    try{await api(`/materials/${id}/segment-confirm`,{method:'POST',body:JSON.stringify({preview_id:restoredSegments.id})});setRestoredSegments(null);setSourceView('chunks');setSourcePage(1);detail.reload();source.reload();toast('已按本次分段形成阅读版本，原文和历史引用保留。')}catch(error:any){setSegmentRestoreError(error.message||'本次分段暂未采用，请重新核对。')}finally{setBusy('')}
   }
 
   async function startProcess() {
@@ -224,6 +235,7 @@ export function MaterialDetail() {
     </div>
     <div className="materials-bottom-note"><ShieldCheck size={16} /><p>材料记载、经验判断和正式规则需要分别核对。发布资产确认的是其可使用范围，具体业务结论仍依职责与程序形成。</p></div>
     {processOpen && <Modal title="选择资产萃取方式" onClose={() => !busy && setProcessOpen(false)}><p className="muted">在已确认的分段中识别四类资产候选，保留前提、例外与相邻段落。此步骤不会重新分段。已完成的同类识读会跳过，仅继续未完成部分。</p><div className="materials-mode-options"><label className={mode === 'online' ? 'active' : ''}><input type="radio" name="mode" value="online" checked={mode === 'online'} onChange={() => setMode('online')} /><div><strong className="ai-pill"><Sparkles size={17} /> AI 在线资产萃取</strong><p>结合上下文识别四类资产、适用条件与待核问题。需配置AI连接，原文会发送给所配置的模型服务。</p></div></label><label className={mode === 'local' ? 'active' : ''}><input type="radio" name="mode" value="local" checked={mode === 'local'} onChange={() => setMode('local')} /><div><strong><FileText size={17} /> 本地规则识别</strong><p>根据原文用语提出初步候选，不调用在线模型。结果明确标注本地识别，需要人工逐项校核。</p></div></label></div>{processError && <div className="materials-error">{processError}</div>}<div className="materials-modal-actions"><Link className="btn btn-ghost" to="/settings">查看AI连接设置</Link><AccessButton className={mode === 'online' ? 'btn btn-ai' : 'btn btn-primary'} disabled={!!busy} onClick={startProcess}>{mode === 'online' && <Sparkles size={15} />}{busy ? '正在提交…' : '开始萃取候选'}</AccessButton></div></Modal>}
+    {restoredSegments&&<Modal title="核对原文分段建议" onClose={()=>!busy&&setRestoredSegments(null)} wide><p className="materials-segment-intro">本次建议覆盖原文 {Number(restoredSegments.characters||0).toLocaleString()} 字，共 {restoredSegments.segments.length} 部分。请逐段核对标题、条件和例外；采用后形成新的阅读版本，原始文本和历史引用保留。</p><div className="materials-preview-scroll">{restoredSegments.segments.map((part:any,index:number)=><section key={index}><div><strong>{index+1}. {part.heading||'原文段落'}</strong><span>{part.source_locator||''}</span></div><p>{part.content}</p></section>)}</div>{segmentRestoreError&&<p className="asset-inline-error" role="alert">{segmentRestoreError}</p>}<div className="toolbar" style={{marginTop:18}}><AccessButton className="btn" disabled={!!busy} onClick={()=>setRestoredSegments(null)}>保留当前阅读版本</AccessButton><AccessButton className="btn btn-primary" disabled={!!busy} onClick={confirmRestoredSegments}>{busy==='confirm-restored-segments'?'正在采用…':'采用本次分段'}</AccessButton></div></Modal>}
     {segmentOpen && <Modal title="阅读整理工作台" onClose={() => setSegmentOpen(false)} wide><ReadingWorkbench materialId={id!} initialMode={segmentMode} onConfirmed={() => { setSegmentOpen(false); setSourceView('chunks'); setSourcePage(1); detail.reload(); source.reload(); }} /></Modal>}
     {edit && <Modal title="对照原文修订候选成果" onClose={() => !busy && setEdit(null)} wide><div className="grid-2"><label className="form-field">资产类型<select className="select" value={edit.kind} onChange={event => setEdit({ ...edit, kind: event.target.value })}>{Object.entries(kindNames).map(([key, title]) => <option key={key} value={key}>{title}</option>)}</select></label><label className="form-field">成果名称<input className="input" value={edit.title} onChange={event => setEdit({ ...edit, title: event.target.value })} /></label></div><label className="form-field">内容摘要<textarea className="input" rows={2} value={edit.summary} onChange={event => setEdit({ ...edit, summary: event.target.value })} /></label><label className="form-field">完整内容<textarea className="input materials-edit-content" rows={8} value={edit.content} onChange={event => setEdit({ ...edit, content: event.target.value })} /></label><div className="grid-2"><label className="form-field">适用条件与例外（每行一项）<textarea className="input" rows={4} value={edit.conditions.join('\n')} onChange={event => setEdit({ ...edit, conditions: event.target.value.split('\n') })} /></label><label className="form-field">待核问题（每行一项）<textarea className="input" rows={4} value={edit.questions.join('\n')} onChange={event => setEdit({ ...edit, questions: event.target.value.split('\n') })} /></label></div><fieldset className="materials-source-picker"><legend>引用的原文位置</legend>{displayChunks.map(chunk => <label key={chunk.id}><input type="checkbox" checked={edit.source_chunk_ids.includes(chunk.id)} onChange={event => setEdit({ ...edit, source_chunk_ids: event.target.checked ? [...edit.source_chunk_ids, chunk.id] : edit.source_chunk_ids.filter(value => value !== chunk.id) })} /><span><strong>{chunk.locator}</strong> {chunk.content.slice(0, 110)}</span></label>)}</fieldset>{editError && <div className="materials-error">{editError}</div>}<div className="materials-modal-actions"><AccessButton className="btn" disabled={!!busy} onClick={() => setEdit(null)}>取消</AccessButton><AccessButton className="btn btn-primary" disabled={!!busy} onClick={saveEdit}><Check size={15} />{busy ? '保存中…' : '保存修订'}</AccessButton></div></Modal>}
   </div>;

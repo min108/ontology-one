@@ -113,6 +113,17 @@ class JobsMySQLTests(unittest.TestCase):
                 hit=ai.retrieve('口径说明',limit=5);assert any('乙机构' in x['_text'] for x in hit)
                 assert all('甲机构' not in x['_text'] for x in hit)
             queue(a,'JOB-A');queue(b,'JOB-B')
+            # The global activity tray exposes only the exact login/tenant's
+            # metadata, never another workspace's tasks or queue arguments.
+            with use_context(a):
+                summary=jobs.harness_queue_summaries(a)
+                assert [x['id'] for x in summary]==['JOB-A'],summary
+                assert summary[0]['status']=='queued'
+                assert not any(x in json.dumps(summary,ensure_ascii=False) for x in
+                               ('principal_json','args_json','same.txt','乙机构'))
+            other_login=principal('job-user0')
+            with use_context(other_login):
+                assert jobs.harness_queue_summaries(other_login)==[]
             await asyncio.gather(jobs.run_one(),jobs.run_one())
             await jobs.run_one()
             for p,jid,forbidden in [(a,'JOB-A','乙机构'),(b,'JOB-B','甲机构')]:
@@ -134,8 +145,30 @@ class JobsMySQLTests(unittest.TestCase):
                         assert archive.read('data/uploads/same.txt').decode().startswith(marker)
                     await response.background()
             # A leased task retains its original workspace after its session switches elsewhere.
+            captured_hq=admin
             store.switch_workspace(admin,'dept-01')
             admin_a=store.authenticate_session(newtoken,'test')[0]
+            # Only a live, server-owned readonly context ignores the UI selector;
+            # it retains real session/grant checks and cannot grant any writes.
+            with jobs.readonly_agent_execution(captured_hq,lambda:True):
+                assert store.assert_principal_current(captured_hq).tenant_id=='hq'
+                for write in (lambda: store.assert_principal_current(captured_hq,require_write=True),
+                              lambda: store.authorized_control_connection(captured_hq).__enter__()):
+                    try:write();raise AssertionError('readonly context granted a write')
+                    except HTTPException as error:assert error.status_code==403
+            with jobs.readonly_agent_execution(captured_hq,lambda:False):
+                try:store.assert_principal_current(captured_hq);raise AssertionError('dead owner was accepted')
+                except HTTPException as error:assert error.status_code==409
+            try:store.assert_principal_current(captured_hq);raise AssertionError('plain stale HTTP principal was accepted')
+            except HTTPException as error:assert error.status_code==401
+            shadow_token=store.login('job-admin',password+'x','127.0.0.1','captured-readonly')
+            shadow=store.authenticate_session(shadow_token,'test')[0]
+            store.switch_workspace(shadow,'dept-02')
+            shadow_now=store.authenticate_session(shadow_token,'test')[0]
+            store.revoke_session(shadow_now,shadow_now.session_id)
+            with jobs.readonly_agent_execution(shadow,lambda:True):
+                try:store.assert_principal_current(shadow);raise AssertionError('revoked login was revived')
+                except HTTPException as error:assert error.status_code==401
             queue(admin_a,'JOB-FIXED-WORKSPACE')
             store.switch_workspace(admin_a,'dept-02')
             admin_b=store.authenticate_session(newtoken,'test')[0]

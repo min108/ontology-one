@@ -18,7 +18,7 @@ def current(principal):
     return assert_execution_principal_current(principal, require_write=False)
 
 
-async def execute_controlled(principal, *, mode, metadata, instruction='完成当前只读任务。', timeout_seconds=90):
+async def execute_controlled(principal, *, mode, metadata, instruction='完成当前只读任务。', timeout_seconds=90, on_event=None):
     """Only platform code selects mode/tools. Provider secrets stay in private IPC."""
     with use_context(principal):
         await asyncio.to_thread(current, principal)
@@ -33,7 +33,10 @@ async def execute_controlled(principal, *, mode, metadata, instruction='完成�
         started = time.monotonic()
         await asyncio.to_thread(append_audit, principal, 'harness.' + mode + '.started', '', 'started', {'runtime_version': harness.SDK_VERSION})
         try:
-            result = await harness.EXECUTOR.execute(payload, timeout_seconds=timeout_seconds)
+            options = {'timeout_seconds': timeout_seconds}
+            if on_event is not None:
+                options['on_event'] = on_event
+            result = await harness.EXECUTOR.execute(payload, **options)
             await asyncio.to_thread(current, principal)
             fresh = await asyncio.to_thread(harness._configuration)
             if any(fresh.get(key) != config.get(key) for key in ('revision', 'base_url', 'model', 'api_key')):

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import secrets
 import threading
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -72,12 +73,31 @@ class OfficialRuntimeModesTests(unittest.IsolatedAsyncioTestCase):
                 if turn == 1 and owner.mode == 'task':
                     block = {'type': 'tool_use', 'id': 'submit-1', 'name': 'submit_task_result',
                              'input': {'text': '{"结论":"合成任务完成"}'}}
-                elif turn == 1 and owner.mode == 'agent':
-                    block = {'type': 'tool_use', 'id': 'lookup-1', 'name': 'ontology_search', 'input': {'q': '合成'}}
+                elif turn == 1 and owner.mode in ('agent', 'streaming'):
+                    block = {'type': 'tool_use', 'id': 'lookup-1', 'name': 'ontology_search',
+                             'input': {'q': 'PRIVATE_TOOL_ARGUMENT' if owner.mode == 'streaming' else '合成'}}
                 elif turn == 1 and owner.mode == 'forbidden':
                     block = {'type': 'tool_use', 'id': 'bad-1', 'name': 'bash', 'input': {'command': 'echo forbidden'}}
                 else:
                     block = {'type': 'text', 'text': '根据授权合成资产作答。' if owner.mode != 'task' else 'Done'}
+                if owner.mode == 'streaming' and turn > 1:
+                    self.send_response(200); self.send_header('Content-Type', 'text/event-stream'); self.end_headers()
+                    def emit(value):
+                        self.wfile.write(('event: ' + value['type'] + '\ndata: ' + json.dumps(value, ensure_ascii=False) + '\n\n').encode())
+                        self.wfile.flush()
+                    emit({'type': 'message_start', 'message': {'id': 'streaming-synthetic', 'model': 'deepseek-flash', 'usage': {'input_tokens': 3, 'output_tokens': 0}}})
+                    emit({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'thinking', 'thinking': ''}})
+                    emit({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'thinking_delta', 'thinking': 'PRIVATE_REASONING_MARKER'}})
+                    emit({'type': 'content_block_stop', 'index': 0})
+                    emit({'type': 'content_block_start', 'index': 1, 'content_block': {'type': 'text', 'text': ''}})
+                    for fragment in ('公开合成说明。' * 12, '公开合成依据。' * 12, '公开合成结论。' * 12):
+                        emit({'type': 'content_block_delta', 'index': 1, 'delta': {'type': 'text_delta', 'text': fragment}})
+                        time.sleep(.2)
+                    emit({'type': 'content_block_stop', 'index': 1})
+                    emit({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn'}, 'usage': {'output_tokens': 30}})
+                    owner.provider_stop = time.monotonic()
+                    emit({'type': 'message_stop'})
+                    return
                 data = [{'type':'message_start','message':{'id':'synthetic','model':'deepseek-flash','usage':{'input_tokens':3,'output_tokens':0}}},
                         {'type':'content_block_start','index':0,'content_block':block},
                         {'type':'content_block_stop','index':0},
@@ -136,6 +156,28 @@ class OfficialRuntimeModesTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['text'])
         self.assertEqual(self.bridge_requests,[])
         self.assertIn('is_error',json.dumps(self.requests[-1]))
+
+    async def test_real_public_text_arrives_before_provider_finishes_without_private_frames(self):
+        self.mode, self.provider_stop = 'streaming', None
+        received = []
+        remove = self.executor._remove_workspace
+        async def inspect(directory):
+            # Windows and Linux public text use authenticated in-memory HTTP,
+            # not an answer journal or a plaintext progress file.
+            self.assertFalse([path for path in directory.rglob('*') if path.name.endswith(('.jsonl', '.events'))])
+            await remove(directory)
+        with patch.object(self.executor, '_remove_workspace', side_effect=inspect):
+            result = await self.executor.execute(self.payload('agent'),
+                                                 on_event=lambda event: received.append((time.monotonic(), event)))
+        deltas = [(stamp, event) for stamp, event in received if event.get('type') == 'answer_delta' and event.get('text')]
+        self.assertTrue(deltas)
+        self.assertIsNotNone(self.provider_stop)
+        self.assertLess(deltas[0][0], self.provider_stop)
+        self.assertEqual(''.join(event['text'] for _, event in deltas), result['text'])
+        self.assertEqual(len({event['message_id'] for _, event in deltas}), 1)
+        public = json.dumps([event for _, event in received], ensure_ascii=False)
+        for private in ('PRIVATE_REASONING_MARKER', 'PRIVATE_TOOL_ARGUMENT', self.token, 'synthetic-local-test-only'):
+            self.assertNotIn(private, public)
 
 
 if __name__=='__main__':unittest.main()

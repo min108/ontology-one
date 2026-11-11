@@ -16,8 +16,8 @@ class UpgradeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='版本升级 space ! ')
         self.root = Path(self.temp.name)
-        self.source, self.target = self.root/'旧0.5', self.root/'新0.6'
-        for root, version in ((self.source, '0.5.0'), (self.target, APP_VERSION)):
+        self.source, self.target = self.root/'旧0.6', self.root/'新0.7'
+        for root, version in ((self.source, '0.6.0'), (self.target, APP_VERSION)):
             io.ensure_private_directory(root/'runtime')
             io.atomic_write(root/'runtime/manifest.json', json.dumps({'application_version':version,
                 'platform':'win_amd64','mysql':{'source_sha256':'a'*64}}).encode())
@@ -25,7 +25,7 @@ class UpgradeTests(unittest.TestCase):
         io.ensure_private_directory(self.source/'data/mysql')
         self.settings = {'installation_id':'b'*32,'root_password':'c'*64,'runtime_password':'d'*64,
                          'api_port':8765,'mysql_port':18765}
-        self.marker = {'installation_id':'b'*32,'version':'0.5.0'}
+        self.marker = {'installation_id':'b'*32,'version':'0.6.0'}
         for name, data in (('installation.json',self.settings), ('initialized.json',self.marker)):
             io.atomic_write(self.local/name,json.dumps(data).encode())
         for name in ('command.lock','service.lock','runtime-state.json'):
@@ -45,6 +45,7 @@ class UpgradeTests(unittest.TestCase):
         before={p.relative_to(self.source):p.read_bytes() for p in self.source.rglob('*') if p.is_file()}
         result=upgrade.upgrade(self.source,self.target)
         self.assertTrue(result['source_preserved'])
+        self.assertEqual(result['from_version'],'0.6.0')
         self.assertEqual(before,{p.relative_to(self.source):p.read_bytes() for p in self.source.rglob('*') if p.is_file()})
         copied=self.target/'data/local'
         self.assertEqual(upgrade.read_json(copied/'installation.json',True),self.settings)
@@ -56,6 +57,19 @@ class UpgradeTests(unittest.TestCase):
         with self.assertRaises(upgrade.UpgradeError) as failure:upgrade.upgrade(self.source,self.target)
         self.assertEqual(failure.exception.code,'UPGRADE_TARGET_NOT_EMPTY')
 
+    def test_legacy_0_5_copy_records_its_exact_source_version(self):
+        manifest=upgrade.read_json(self.source/'runtime/manifest.json')
+        manifest['application_version']='0.5.0'
+        io.atomic_write(self.source/'runtime/manifest.json',json.dumps(manifest).encode())
+        self.marker['version']='0.5.0'
+        io.atomic_write(self.local/'initialized.json',json.dumps(self.marker).encode())
+        result=upgrade.upgrade(self.source,self.target)
+        self.assertEqual(result['from_version'],'0.5.0')
+        receipt=upgrade.read_json(self.target/'data/local/upgrade-receipt.json',True)
+        self.assertTrue(upgrade.compatible_marker(self.marker,self.settings,receipt))
+        receipt['from_version']='0.6.0'
+        self.assertFalse(upgrade.compatible_marker(self.marker,self.settings,receipt))
+
     def test_running_source_lock_prevents_copy(self):
         with io.secure_open(self.local/'service.lock','rb') as stream,io.file_lock(stream,blocking=False):
             with self.assertRaises(upgrade.UpgradeError) as failure:upgrade.upgrade(self.source,self.target)
@@ -64,7 +78,7 @@ class UpgradeTests(unittest.TestCase):
 
     def test_invalid_version_database_runtime_and_receipt_are_rejected(self):
         self.assertFalse(upgrade.compatible_marker(self.marker,self.settings,{}))
-        bad={'schema_version':1,'state':'copied','from_version':'0.5.0','to_version':APP_VERSION,
+        bad={'schema_version':1,'state':'copied','from_version':'0.6.0','to_version':APP_VERSION,
              'installation_id':'foreign','source_manifest_sha256':'a'*64}
         self.assertFalse(upgrade.compatible_marker(self.marker,self.settings,bad))
         manifest=upgrade.read_json(self.source/'runtime/manifest.json')
@@ -72,6 +86,17 @@ class UpgradeTests(unittest.TestCase):
         io.atomic_write(self.source/'runtime/manifest.json',json.dumps(manifest).encode())
         with self.assertRaises(upgrade.UpgradeError) as failure:upgrade.upgrade(self.source,self.target)
         self.assertEqual(failure.exception.code,'UPGRADE_UNSUPPORTED')
+
+    def test_unlisted_source_versions_cannot_create_destination_data(self):
+        manifest=upgrade.read_json(self.source/'runtime/manifest.json')
+        for version in ('0.4.0','0.6.1',APP_VERSION):
+            with self.subTest(version=version):
+                manifest['application_version']=version
+                io.atomic_write(self.source/'runtime/manifest.json',json.dumps(manifest).encode())
+                with self.assertRaises(upgrade.UpgradeError) as failure:
+                    upgrade.upgrade(self.source,self.target)
+                self.assertEqual(failure.exception.code,'UPGRADE_UNSUPPORTED')
+                self.assertFalse((self.target/'data').exists())
 
     @unittest.skipUnless(os.name=='nt','Windows inherited DACL validation')
     def test_native_mysql_inherited_private_files_copy_but_foreign_ace_is_rejected(self):

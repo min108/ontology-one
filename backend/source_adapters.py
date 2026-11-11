@@ -100,6 +100,11 @@ def _endpoint(value):
 
 
 def validate_config(kind, config):
+    if kind == 'demo':
+        from .demo_data import SOURCE_CONFIG
+        if config != SOURCE_CONFIG:
+            _fail('SOURCE_CONFIG_INVALID', '模拟台账仅支持内置的固定演示记录。')
+        return {'fixture': SOURCE_CONFIG['fixture'], 'allowed_objects': list(SOURCE_CONFIG['allowed_objects'])}
     if not isinstance(config, dict):
         _fail('SOURCE_CONFIG_INVALID', '数据源配置须为对象。')
     allowed = {'host', 'port', 'database', 'allowed_objects'} if kind == 'mysql' else {'endpoint', 'allowed_objects'} if kind == 'mcp' else None
@@ -720,6 +725,11 @@ def _boundary(operation):
 def discover(source):
     def operation():
         config = validate_config(source.get('kind'), source.get('config'))
+        if source.get('kind') == 'demo':
+            from .demo_data import SOURCE_ID, resources
+            if source.get('id') != SOURCE_ID:
+                _fail('SOURCE_CONFIG_INVALID', '模拟台账标识无效。')
+            return _validate_resources(resources(), config['allowed_objects'])
         credentials = _resolve_credentials(source)
         if source['kind'] == 'mysql':
             return _discover_mysql(config, credentials)
@@ -733,11 +743,16 @@ def discover(source):
 def query(source, resource, selection):
     def operation():
         config = validate_config(source.get('kind'), source.get('config'))
-        credentials = _resolve_credentials(source)
         if not isinstance(resource, dict) or resource.get('key') not in config['allowed_objects']:
             _fail('SOURCE_RESOURCE_DENIED', '资源不在数据源允许访问范围内。', 403)
         normalized = _validate_resources([{key: value for key, value in resource.items() if key in _RESOURCE_KEYS}], config['allowed_objects'])[0]
         selected = _validate_selection(selection, normalized['columns'])
+        if source.get('kind') == 'demo':
+            from .demo_data import SOURCE_ID, query as query_demo, resources
+            if source.get('id') != SOURCE_ID or normalized not in resources():
+                _fail('SOURCE_CONFIG_INVALID', '模拟台账标识或字段定义已变化。')
+            return _validate_result(query_demo(normalized['key'], selected), selected['columns'], selected['limit'])
+        credentials = _resolve_credentials(source)
         if source['kind'] == 'mysql':
             return _query_mysql(config, credentials, normalized, selected)
         result = _mcp_operation(config, credentials, 'query', {'contract_version': '1.0', 'resource': normalized['key'], 'selection': selected}, normalized)

@@ -1,6 +1,7 @@
 """Per-turn authenticated memory bridge to the existing read-only domain tools."""
 from __future__ import annotations
 from contextlib import closing
+from contextvars import copy_context
 import json
 import asyncio
 import concurrent.futures
@@ -13,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import mcp_tools, skill_harness
 from .mcp_contracts import TOOL_MODELS, TOOL_DESCRIPTIONS, safe_failure
 from .security.context import use_context
-from .security.store import assert_principal_current, append_audit
+from .security.store import append_audit
+from .jobs import assert_execution_principal_current as assert_principal_current
 
 MAX_TOOL_BYTES = 256 * 1024
 
@@ -80,6 +82,7 @@ class GroupInput(BaseModel):
 class SessionToolBridge:
     def __init__(self, principal, mapping_ids=(), skill_ids=(), *, cancelled=None, loop=None, deadline=None):
         self.principal = principal
+        self.execution_context = copy_context()
         self.loop = loop
         self.deadline = deadline
         self.pending = {}
@@ -87,6 +90,7 @@ class SessionToolBridge:
         self.metadata_lock = threading.RLock()
         self.mapping_ids, self.skill_ids = frozenset(mapping_ids), frozenset(skill_ids)
         self.cancelled = cancelled or threading.Event()
+        self.stopping = threading.Event()
         self.token = secrets.token_urlsafe(32)
         self.traces, self.receipts, self.skill_versions = [], [], {}
         self.group_versions = {}
@@ -96,7 +100,7 @@ class SessionToolBridge:
         self.server = self.thread = None
 
     def _current(self, *, check_cancel=True):
-        if check_cancel and self.cancelled.is_set():
+        if check_cancel and (self.cancelled.is_set() or self.stopping.is_set()):
             raise HTTPException(409, '运行已取消。')
         if self.principal.identity_kind != 'session' or self.principal.must_change_password:
             raise HTTPException(403, '当前会话不能访问智能体工具。')
@@ -299,6 +303,11 @@ class SessionToolBridge:
         self.receipts = list(indexed.values())
 
     def invoke(self, name, arguments):
+        # HTTP tool callbacks arrive on fresh threads. Copy the server-owned
+        # scope for the complete call, including its preflight and LPAC path.
+        return self.execution_context.copy().run(self._invoke_owned, name, arguments)
+
+    def _invoke_owned(self, name, arguments):
         started = time.monotonic()
         try:
             return self._invoke_checked(name, arguments)
@@ -336,7 +345,7 @@ class SessionToolBridge:
             future = asyncio.run_coroutine_threadsafe(delegate(), self.loop)
             with self.pending_lock:
                 self.pending[future] = done
-            if self.cancelled.is_set(): future.cancel()
+            if self.cancelled.is_set() or self.stopping.is_set(): future.cancel()
             try:
                 result = future.result(timeout=17)
                 value = result['value']
@@ -366,7 +375,7 @@ class SessionToolBridge:
                 self.traces.append({'name': name, 'status': 'error', 'code': value['error']['code'], 'duration_ms': 0})
                 return value
             finally:
-                if self.cancelled.is_set() and not done.is_set():
+                if (self.cancelled.is_set() or self.stopping.is_set()) and not done.is_set():
                     future.cancel()
                     if not done.wait(8): raise RuntimeError('Tool process cleanup failed')
                 if done.is_set():
@@ -422,7 +431,9 @@ class SessionToolBridge:
         return self
 
     def close(self):
-        self.cancelled.set()
+        # Reaping a completed tool channel is different from user cancellation.
+        # Final source proofs must still run under the live parent-run guard.
+        self.stopping.set()
         with self.pending_lock:
             pending = list(self.pending.items())
         for future, _ in pending:

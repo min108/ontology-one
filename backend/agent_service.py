@@ -1,9 +1,13 @@
 """Internal single-worker volatile agent service, protected by real session auth."""
 from contextlib import asynccontextmanager, closing
 import asyncio
+import json
+import time
 from datetime import datetime, timezone
 from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 from .security.context import require_context
 from .security.middleware import SecurityMiddleware
 from .agent_tasks import current
@@ -16,6 +20,8 @@ from .version import APP_VERSION
 
 @asynccontextmanager
 async def _runtime_lifespan(app):
+    from .legacy_harness_runs import register_operations
+    register_operations()
     async def sweep():
         while True:
             await asyncio.sleep(30)
@@ -26,6 +32,8 @@ async def _runtime_lifespan(app):
     finally:
         sweeper.cancel()
         await asyncio.gather(sweeper, return_exceptions=True)
+        from .harness_runs import RUNS
+        await RUNS.close()
         await SESSIONS.close()
         await harness.EXECUTOR.close()
         from .agent_tool_executor import EXECUTOR
@@ -63,6 +71,7 @@ class Turn(Strict):
     skill_ids: list[str] = Field(default_factory=list, max_length=16)
     mapping_ids: list[str] = Field(default_factory=list, max_length=20)
     entity_ids: list[str] = Field(default_factory=list, max_length=50)
+    scope_mode: Literal['selected', 'auto'] = 'selected'
 
 
 async def body(request, model):
@@ -88,21 +97,28 @@ def principal():
 
 def _options():
     p = principal()
-    from . import sources
+    from . import sources, skills as skill_documents
     assets, skills, mappings = [], [], []
     with business_readonly(True), closing(connect()) as conn:
         rows = conn.execute("SELECT id,title,kind,version FROM entities e WHERE " + __import__('backend.mcp_tools', fromlist=['_visible'])._visible() + ' ORDER BY title LIMIT 100').fetchall()
         assets = [dict(r) for r in rows]
-        for row in assets:
-            if row['kind'] == 'skill' and conn.execute('SELECT 1 FROM skill_documents WHERE entity_id=?', (row['id'],)).fetchone():
-                skills.append(dict(row))
+        skill_rows = conn.execute("SELECT e.id,e.title,e.kind,e.version FROM entities e WHERE e.kind='skill' AND " +
+                                  __import__('backend.mcp_tools', fromlist=['_visible'])._visible() + ' ORDER BY e.title LIMIT 101').fetchall()
+        for row in skill_rows:
+            try:
+                entity, document = skill_documents._document(conn, row['id'])
+                skill_documents._validate_current(conn, entity, document, proof=True)
+            except HTTPException:
+                continue
+            skills.append(dict(row))
         if not p.readonly:
-            for row in conn.execute("SELECT id,source_id,title,version FROM source_mappings WHERE status='published' ORDER BY title LIMIT 100").fetchall():
+            for row in conn.execute("SELECT * FROM source_mappings WHERE status='published' ORDER BY title LIMIT 101").fetchall():
                 try:
                     source = sources._authorize(conn, row['source_id'], 'query')
+                    sources._validate_mapping_current(conn, source, sources._mapping(row))
                 except HTTPException:
                     continue
-                mappings.append(dict(row) | {'source_title': source['title']})
+                mappings.append({key: row[key] for key in ('id', 'source_id', 'title', 'version')} | {'source_title': source['title']})
     return {'assets': assets, 'skills': skills, 'mappings': mappings, 'asset_selection': 'context_focus_not_permission_grant'}
 
 
@@ -135,6 +151,16 @@ async def sessions():
     return {'items': [SESSIONS.summary(s) for s in SESSIONS.sessions.values() if s['owner'] == owner]}
 
 
+@router.get('/runs')
+async def runs():
+    p = require_context()
+    if p.tenant_id != p.home_tenant_id:
+        from .security.store import assert_principal_current
+        await asyncio.to_thread(assert_principal_current, p)
+        return {'items': []}
+    return {'items': SESSIONS.runs(principal())}
+
+
 @router.post('/sessions')
 async def create_session(request: Request):
     p = principal()
@@ -146,6 +172,8 @@ async def create_session(request: Request):
 async def get_session(ident: str):
     session = SESSIONS.get(principal(), ident)
     await SESSIONS.validate(session)
+    if SESSIONS.get(principal(), ident) is not session:
+        raise HTTPException(404, '会话已结束。')
     return SESSIONS.detail(session)
 
 
@@ -154,16 +182,71 @@ async def turn(ident: str, request: Request):
     p = principal(); session = SESSIONS.get(p, ident)
     value = await body(request, Turn)
     if not value.message.strip(): raise HTTPException(422, '请填写问题。')
-    return await SESSIONS.start(p, session, value.message, value.skill_ids, value.mapping_ids, value.entity_ids)
+    resource_catalog = None
+    if value.scope_mode == 'auto':
+        available = await asyncio.to_thread(_options)
+        if len(available['skills']) > 16 or len(available['mappings']) > 20:
+            raise HTTPException(422, '可用资料较多，请展开参考范围，选用与本次问题相关的技能或数据来源。')
+        value.skill_ids = [item['id'] for item in available['skills']]
+        value.mapping_ids = [item['id'] for item in available['mappings']]
+        resource_catalog = {'skills': available['skills'], 'data_sources': available['mappings']}
+    return await SESSIONS.start(p, session, value.message, value.skill_ids, value.mapping_ids, value.entity_ids,
+                                resource_catalog=resource_catalog)
 
 
 @router.get('/sessions/{ident}/runs/{run_id}')
 async def run(ident: str, run_id: str):
     session = SESSIONS.get(principal(), ident)
     await SESSIONS.validate(session)
+    if SESSIONS.get(principal(), ident) is not session:
+        raise HTTPException(404, '会话已结束。')
     value = session['runs'].get(run_id)
     if value is None: raise HTTPException(404, '未找到本会话的运行记录。')
     return SESSIONS.run_view(value)
+
+
+@router.get('/sessions/{ident}/runs/{run_id}/events')
+async def events(ident: str, run_id: str, request: Request):
+    p = principal()
+    session = SESSIONS.get(p, ident)
+    await SESSIONS.validate(session)
+    if run_id not in session['runs']:
+        raise HTTPException(404, '未找到本会话的运行记录。')
+
+    async def stream():
+        previous, heartbeat = None, time.monotonic()
+        try:
+            while True:
+                if await request.is_disconnected():
+                    return  # Closing a viewer never cancels its background task.
+                try:
+                    await asyncio.to_thread(current, p)
+                    live = SESSIONS.get(p, ident)
+                    await SESSIONS.validate(live)
+                    await asyncio.to_thread(current, p)
+                    if SESSIONS.sessions.get(ident) is not live:
+                        raise HTTPException(404, '会话已结束。')
+                    value = live['runs'].get(run_id)
+                    if value is None:
+                        raise HTTPException(404, '运行已清除。')
+                    snapshot = json.dumps(SESSIONS.run_view(value), ensure_ascii=False, separators=(',', ':'))
+                except Exception:
+                    yield 'event: reset\ndata: {"message":"会话、来源或访问范围已变化，请重新打开。"}\n\n'
+                    return
+                if snapshot != previous:
+                    previous, heartbeat = snapshot, time.monotonic()
+                    yield 'event: state\ndata: ' + snapshot + '\n\n'
+                elif time.monotonic() - heartbeat >= 10:
+                    heartbeat = time.monotonic()
+                    yield ': keepalive\n\n'
+                if value['status'] != 'running':
+                    return
+                await asyncio.sleep(.5)
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(stream(), media_type='text/event-stream',
+                             headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
 
 
 @router.post('/sessions/{ident}/runs/{run_id}/cancel')
@@ -184,3 +267,5 @@ async def delete(ident: str):
 
 
 app.include_router(router)
+from .harness_runs import service_router
+app.include_router(service_router, prefix='/api')

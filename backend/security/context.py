@@ -28,6 +28,34 @@ class Principal:
 
 
 _current: ContextVar[Principal | None] = ContextVar('ontology_principal', default=None)
+_readonly_execution = ContextVar('ontology_owned_readonly_execution', default=None)
+
+
+@contextmanager
+def readonly_session_execution(principal: Principal, guard):
+    """Server-owned live agent or private-pipe tool scope; never HTTP input.
+
+    The live account, session and grants are still checked by the store. Only
+    the mutable UI workspace selection is replaced by the captured home scope.
+    """
+    if (not isinstance(principal, Principal) or principal.identity_kind != 'session'
+            or principal.tenant_id != principal.home_tenant_id or principal.readonly
+            or principal.must_change_password or not callable(guard)):
+        raise HTTPException(403, '当前身份不能进入本体只读任务。')
+    token = _readonly_execution.set((principal, guard))
+    try:
+        yield
+    finally:
+        _readonly_execution.reset(token)
+
+
+def has_readonly_session_execution(principal: Principal):
+    scope = _readonly_execution.get()
+    if scope is None or scope[0] != principal:
+        return False
+    if scope[1]() is not True:
+        raise HTTPException(409, '本体只读任务已经结束或取消。')
+    return True
 
 
 def get_context() -> Principal | None:

@@ -22,16 +22,20 @@ class AgentToolExecutor(ProcessExecutor):
         return await self._spawn_command([sys.executable, '-X', 'utf8', '-B', '-m', 'backend.agent_tool_worker'], environment)
 
     async def execute(self, principal, mapping_ids, skill_ids, name, args, requestid, *, deadline):
+        from .jobs import has_readonly_agent_execution
         if self.closing or self.active >= self.maximum:
             raise ToolFailure('BUSY', '只读工具正在处理其他请求，请稍后重试。', True)
         if (principal.identity_kind != 'session' or not isinstance(requestid, str)
                 or not 1 <= len(requestid) <= 100):
             raise ToolFailure('FORBIDDEN', '工具需要有效的平台会话。')
+        captured_readonly = has_readonly_agent_execution(principal)
         self.active += 1
         call = asyncio.current_task()
         self.calls.add(call)
         payload = {'principal': asdict(replace(principal, request_id=requestid)), 'mapping_ids': sorted(mapping_ids),
                    'skill_ids': sorted(skill_ids), 'tool': name, 'arguments': args, 'request_id': requestid}
+        if captured_readonly:
+            payload['captured_readonly'] = True
         try:
             value = await self._run_process(payload, deadline)
             if (isinstance(value, dict) and value.get('request_id') == requestid

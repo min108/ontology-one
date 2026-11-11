@@ -16,6 +16,9 @@ REVIEW = frozenset({'admin', 'reviewer'})
 
 # Paths are the existing business contract, including downloads.
 READ_PATHS = (
+    '/api/harness/runs', '/api/harness/runs/{id}', '/api/harness/runs/{id}/events',
+    '/api/agent/runs', '/api/agent/sessions/{ident}/runs/{run_id}/events',
+    '/api/demo/status', '/api/demo/files/{name}',
     '/api/agent/capabilities', '/api/agent/options', '/api/agent/sessions',
     '/api/agent/sessions/{ident}', '/api/agent/sessions/{ident}/runs/{run_id}',
     '/api/skills',
@@ -106,6 +109,12 @@ READ_PATHS = (
 CONTROL_PREFIXES = ("/api/auth/", "/api/admin/", "/api/federation/")
 
 WRITE_RULES = (
+    ('POST', '/api/harness/tasks', ROLES),
+    ('POST', '/api/harness/runs/{id}/cancel', ROLES),
+    ('POST', '/api/skills/{id}/assist-runs', BUILD),
+    ('POST', '/api/demo/load', ADMIN),
+    ('POST', '/api/demo/clear', ADMIN),
+    ('POST', '/api/demo/prepare-mappings', ADMIN),
     ('POST', '/api/agent/sessions', ROLES),
     ('POST', '/api/agent/sessions/{ident}/turns', ROLES),
     ('POST', '/api/agent/sessions/{ident}/runs/{run_id}/cancel', ROLES),
