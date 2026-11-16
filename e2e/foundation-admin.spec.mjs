@@ -313,10 +313,26 @@ test.describe("headquarters superadministrator", () => {
   test("SET01 cross-institution maintenance cannot validate the model", async ({
     page,
   }) => {
-    await page.goto("/admin/model");
-    expect(
-      (await invoke(page, "/auth/workspace", { tenant_id: "dept-01" })).status,
-    ).toBe(200);
+    await ready(page, "/admin/model", "模型与运行");
+    // Use the real Shell transition so old-workspace requests are cancelled
+    // before the server session changes and the destination page mounts.
+    expect((await invoke(page, "/auth/session")).body.workspace.tenant_id).toBe(
+      "hq",
+    );
+    await page.getByRole("combobox", { name: "机构", exact: true }).click();
+    await page.getByRole("option", { name: "办公厅", exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === "/");
+    await expect(
+      page.getByRole("region", { name: "工作台", exact: true }),
+    ).toHaveAttribute("aria-busy", "false");
+    await page.waitForLoadState("networkidle");
+    const session = await invoke(page, "/auth/session");
+    expect(session.status).toBe(200);
+    expect(session.body.user.is_superadmin).toBe(true);
+    expect(session.body.user.home_tenant_id).toBe("hq");
+    expect(session.body.workspace.tenant_id).toBe("dept-01");
+    expect(session.body.workspace.readonly).toBe(false);
+    expect(session.body.permissions.manage_users).toBe(true);
     await ready(page, "/admin/model", "模型与运行");
     await expect(
       page.getByRole("button", { name: "验证服务连接", exact: true }),
