@@ -22,7 +22,7 @@
 | Prettier | 3.10.1；行宽 110 | MIT |
 | Stylelint / standard config | 18.0.0 / 41.0.0 | MIT |
 
-按精确文件记录旧 Python 告警豁免；新路径执行完整选定规则（E、F、I、UP、B、SIM、C4、RUF）。中文标点列入明确的 allowed-confusables。没有运行 ruff check --fix。旧前端文件按清单豁免，在 R1-5 搬入 legacy 后继续隔离。
+按精确文件记录旧 Python 告警豁免；新路径执行完整选定规则（E、F、I、UP、B、SIM、C4、RUF、ANN；包括类型标注）。中文标点列入明确的 allowed-confusables。没有运行 ruff check --fix。旧前端文件按清单豁免，在 R1-5 搬入 legacy 后继续隔离。
 
 设计体系按蓝图选用 Ant Design、@ant-design/x、TanStack Query、Zustand、Vitest/Testing Library、Playwright 与 openapi-typescript；具体兼容版本、许可及字体字重决定在 R1-4 的同一记录中补齐，尚不能宣称设计体系已经完成。
 
