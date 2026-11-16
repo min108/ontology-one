@@ -16,11 +16,14 @@ run frontend sh -c 'npm --prefix frontend ci && npm --prefix frontend run build'
 # 逐条结果：模块.类.方法::方法名 状态（ok / skipped / FAIL / ERROR），排序后可直接 diff baseline-tests.txt
 "$PY" - "$OUT/unittest_all.log" > "$OUT/tests.txt" <<'PY'
 import re, sys
+# 每个用例以“名称 (模块.类.方法)”开头；结果可能被诊断输出挤到后面的行，因此在到下一个用例之前查找结果。
+t = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+heads = list(re.finditer(r'^(test\w*) \(([\w.]+)\)', t, re.M))
 res = {}
-for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
-    m = re.match(r'^(\S+) \((\S+)\)(?: .*)? \.\.\. (ok|skipped|FAIL|ERROR)', line)
-    if m:
-        res[m.group(2) + '::' + m.group(1)] = m.group(3)
+for i, h in enumerate(heads):
+    seg = t[h.end():heads[i + 1].start() if i + 1 < len(heads) else len(t)]
+    s = re.search(r'\.\.\.[\s\S]*?\b(ok|skipped|FAIL|ERROR)\b', seg)
+    res[h.group(2) + '::' + h.group(1)] = s.group(1) if s else 'UNKNOWN'
 for k in sorted(res):
     print(k, res[k])
 PY
