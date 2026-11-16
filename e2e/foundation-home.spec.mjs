@@ -134,7 +134,12 @@ async function homeCapture(page, testInfo, name) {
   const directory = resolve(evidence, "screenshots", "home-a2");
   mkdirSync(directory, { recursive: true });
   const path = resolve(directory, name + ".png");
-  await page.screenshot({ path, fullPage: true, animations: "disabled" });
+  // A fixed drawer is a viewport surface; full-page stitching misplaces its backdrop.
+  await page.screenshot({
+    path,
+    fullPage: !name.startsWith("detail-"),
+    animations: "disabled",
+  });
   await testInfo.attach(name, { path, contentType: "image/png" });
 }
 async function command(page, id, pathname, query = {}) {
