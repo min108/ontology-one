@@ -84,6 +84,14 @@ async function read(page, path) {
   }, path);
 }
 
+async function capture(page, name) {
+  const info = test.info();
+  await page.evaluate(() => document.fonts.ready);
+  const path = info.outputPath(name + ".png");
+  await page.screenshot({ path, fullPage: true, animations: "disabled" });
+  await info.attach(name, { path, contentType: "image/png" });
+}
+
 // Every mutation targets a unique account or organization created by this spec.
 // Seed account passwords, status and sessions are never changed.
 test.describe("identity: login UI", () => {
@@ -115,6 +123,7 @@ test.describe("identity: login UI", () => {
       page.getByText(`${terms.brand.product_name} ${version}`, { exact: true }),
     ).toBeVisible();
     await expect(page.getByText(/group\.admin/)).toHaveCount(0);
+    await capture(page, "identity-login");
     const username = unique("missing");
     await page
       .getByLabel(c.identity_login_account, { exact: true })
@@ -198,6 +207,12 @@ for (const role of roles)
       await expect(
         page.getByText(session.user.username, { exact: true }),
       ).toBeVisible();
+      if (role === "admin") {
+        await expect(
+          page.getByRole("region", exact(c.identity_security)),
+        ).toHaveAttribute("aria-busy", "false");
+        await capture(page, "identity-security");
+      }
       for (const path of ["/admin/orgs", "/admin/audit"]) {
         await page.goto(path);
         await expect(
@@ -235,6 +250,11 @@ test.describe("headquarters: isolated identity mutations", () => {
   test("ADM-01–05: create, edit, reset, disable and enable only a new account", async ({
     page,
   }) => {
+    await load(page, "/admin/users", c.identity_users);
+    await expect(
+      page.getByRole("region", exact(c.identity_users)),
+    ).toHaveAttribute("aria-busy", "false");
+    await capture(page, "identity-users");
     const username = unique("managed");
     await createUser(page, username);
     await button(userRow(page, username), a.identity_edit_user).click();
@@ -469,6 +489,7 @@ test.describe("headquarters: isolated identity mutations", () => {
     await load(page, "/admin/orgs", c.identity_orgs);
     await expect(button(page, a.identity_disable)).toBeDisabled();
     await expect(page.getByRole("button", { name: /删除/ })).toHaveCount(0);
+    await capture(page, "identity-organizations");
     await button(page, a.identity_create_org).click();
     await dialog(page)
       .getByLabel(c.identity_org_name, { exact: true })
@@ -549,6 +570,7 @@ test.describe("headquarters: isolated identity mutations", () => {
     await expect(
       page.getByRole("region", exact(c.identity_audit)),
     ).toHaveAttribute("aria-busy", "false");
+    await capture(page, "identity-audit");
     await page
       .getByLabel(c.identity_audit_raw_action, { exact: true })
       .fill("login");
