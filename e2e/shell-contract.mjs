@@ -59,3 +59,10 @@ export function secondaryPaths(workspace, role, permissions) {
   if (!(workspace in paths)) throw new Error("Unreviewed acceptance workspace");
   return paths[workspace];
 }
+
+export function redirectMatches(value, target) {
+  const url = new URL(value);
+  if (url.searchParams.getAll("via").length > 1) return false;
+  url.searchParams.delete("via");
+  return url.pathname + url.search + url.hash === target;
+}

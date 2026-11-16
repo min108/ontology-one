@@ -4,7 +4,16 @@ import { evidence, target } from "./fixture.mjs";
 
 export default defineConfig({
   testDir: resolve("e2e"),
-  testMatch: target === "legacy" ? "**/legacy.spec.mjs" : "**/*.spec.mjs",
+  testMatch:
+    target === "legacy"
+      ? ["**/legacy.spec.mjs"]
+      : [
+          "**/legacy.spec.mjs",
+          "**/foundation-shell.spec.mjs",
+          ...(process.env.E2E_HARNESS_ACCEPTANCE === "1"
+            ? ["**/foundation-harness.spec.mjs"]
+            : []),
+        ],
   fullyParallel: true,
   workers: Number(process.env.E2E_WORKERS || 3),
   retries: 0,

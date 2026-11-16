@@ -44,7 +44,9 @@ export default async function setup(config) {
       JSON.stringify(
         {
           target,
-          sourceCommit: fixture.source_commit || fixture.source?.commit || null,
+          sourceCommit: process.env.E2E_SOURCE_COMMIT || null,
+          fixtureCommit:
+            fixture.source_commit || fixture.source?.commit || null,
           browserVersion: browser.version(),
           viewport: { width: 1366, height: 768 },
           locale: "zh-CN",

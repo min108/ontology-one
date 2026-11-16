@@ -7,6 +7,7 @@ import {
   secondaryPaths,
   redirects,
   layouts,
+  redirectMatches,
 } from "./shell-contract.mjs";
 
 const browserProblems = new WeakMap();
@@ -60,6 +61,8 @@ async function identity(page) {
 }
 
 async function capture(page, role, name, testInfo) {
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => document.fonts.ready);
   const directory = resolve(evidence, "shell-screenshots", role);
   mkdirSync(directory, { recursive: true });
   const path = resolve(directory, `${name}.png`);
@@ -84,9 +87,7 @@ for (const role of roles) {
         if (expected.length) {
           await expect(secondary(page)).toBeVisible();
           expect(await links(secondary(page))).toEqual(expected);
-          await expect(page).toHaveURL(
-            new RegExp(`${expected[0].replaceAll("/", "\\/")}$`),
-          );
+          await expect(page).toHaveURL((url) => url.pathname === expected[0]);
         } else await expect(secondary(page)).toHaveCount(0);
         await expect(
           primary(page).locator(`a[href="${path}"]`),
@@ -126,7 +127,13 @@ for (const role of roles) {
           secondary(page).locator('a[href="/assets"]'),
         ).toBeVisible();
         await secondary(page).locator('a[href="/graph"]').click();
-        await expect(page).toHaveURL(/\/graph$/);
+        await expect(page).toHaveURL((url) => url.pathname === "/graph");
+        // Graph has a separate retained-route acceptance; capture the stable materials view.
+        await primary(page).locator('a[href="/build"]').click();
+        await expect(page).toHaveURL((url) => url.pathname === "/materials");
+        await expect(
+          page.getByRole("heading", { name: "素材整理", exact: true }),
+        ).toBeVisible();
         await capture(page, role, `shell-${layout.name}`, testInfo);
       });
     }
@@ -138,9 +145,7 @@ test.describe("admin: compatibility redirects", () => {
   for (const [from, to] of redirects) {
     test(`redirect ${from} preserves query and hash`, async ({ page }) => {
       await page.goto(from);
-      await expect(page).toHaveURL(
-        (url) => url.pathname + url.search + url.hash === to,
-      );
+      await expect(page).toHaveURL((url) => redirectMatches(url, to));
       await expect(page.locator("[data-legacy-page]")).toBeVisible();
     });
   }
@@ -155,6 +160,7 @@ test.describe("superadmin: workspace transition", () => {
     expect((await identity(page)).tenant).toBe("hq");
     // The supplied authority fixture is published. Create a distinct draft through its real UI.
     await page
+      .locator("[data-legacy-page] header.page-head")
       .getByRole("button", { name: "新建权责规范", exact: true })
       .click();
     const create = page.getByRole("dialog", {
@@ -167,7 +173,9 @@ test.describe("superadmin: workspace transition", () => {
     await create
       .getByRole("button", { name: "建立编辑稿", exact: true })
       .click();
-    await expect(page).toHaveURL(/\/authority\/[^/?#]+$/);
+    await expect(page).toHaveURL((url) =>
+      /^\/authority\/[^/?#]+$/.test(url.pathname),
+    );
     const title = page.getByLabel("规范名称", { exact: true });
     await expect(title).toBeEditable();
     const edited = "切换取消后仍保留的未保存编辑";
