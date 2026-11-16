@@ -1,0 +1,117 @@
+{
+  "scope": "Local isolated static-page calibration only; not product UI acceptance or canonical Chromium validation",
+  "playwright": "1.65.1",
+  "mechanism": "fresh persistent profile Preferences.partition.default_zoom_level.x = log(1.25)/log(1.2); viewport:null; --window-size=1366,768",
+  "not_used": [
+    "CDP pinch",
+    "deviceScaleFactor emulation",
+    "existing user browser profiles"
+  ],
+  "records": [
+    {
+      "name": "100",
+      "browser": "156.0.8078.79",
+      "preferences": {},
+      "metrics": {
+        "innerWidth": 1366,
+        "innerHeight": 681,
+        "outerWidth": 1366,
+        "outerHeight": 768,
+        "devicePixelRatio": 1,
+        "visualViewport": {
+          "width": 1366,
+          "height": 681,
+          "scale": 1
+        }
+      },
+      "screenshot": {
+        "width": 1366,
+        "height": 681
+      }
+    },
+    {
+      "name": "125-scalar",
+      "browser": "156.0.8078.79",
+      "preferences": {
+        "partition": {
+          "default_zoom_level": 1.2239010857415449
+        }
+      },
+      "metrics": {
+        "innerWidth": 1366,
+        "innerHeight": 681,
+        "outerWidth": 1366,
+        "outerHeight": 768,
+        "devicePixelRatio": 1,
+        "visualViewport": {
+          "width": 1366,
+          "height": 681,
+          "scale": 1
+        }
+      },
+      "screenshot": {
+        "width": 1366,
+        "height": 681
+      },
+      "savedPartition": {
+        "default_zoom_level": 1.2239010857415449
+      }
+    },
+    {
+      "name": "125-partition-map",
+      "browser": "156.0.8078.79",
+      "preferences": {
+        "partition": {
+          "default_zoom_level": {
+            "x": 1.2239010857415449
+          }
+        }
+      },
+      "metrics": {
+        "innerWidth": 1093,
+        "innerHeight": 545,
+        "outerWidth": 1366,
+        "outerHeight": 768,
+        "devicePixelRatio": 1.25,
+        "visualViewport": {
+          "width": 1092.800048828125,
+          "height": 544.7999877929688,
+          "scale": 1
+        }
+      },
+      "screenshot": {
+        "width": 1093,
+        "height": 545
+      },
+      "savedPartition": {
+        "default_zoom_level": {
+          "x": 1.2239010857415449
+        }
+      }
+    }
+  ],
+  "profile_removed": true,
+  "server_and_browsers_closed": true,
+  "files": [
+    {
+      "file": "100.png",
+      "bytes": 11698,
+      "sha256": "32a26037359458b007564d66baeb7afcc7b19cbe8629942af4405358a36cf309"
+    },
+    {
+      "file": "125-partition-map.png",
+      "bytes": 12578,
+      "sha256": "ebf402e70ae2055009549878e3146b2349362f206ae47e545fea66558892d7bb"
+    },
+    {
+      "file": "125-scalar.png",
+      "bytes": 11698,
+      "sha256": "32a26037359458b007564d66baeb7afcc7b19cbe8629942af4405358a36cf309"
+    },
+    {
+      "file": "metrics.json",
+      "bytes": 1644,
+      "sha256": "cc0f55e64c4e2a40b53271159d928b204eb44973a18fe8be996a62c61000602e"
+    }
+  ]
+}

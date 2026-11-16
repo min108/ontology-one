@@ -103,3 +103,12 @@ b3/e85 的真实 SDK 用例均单独通过：真实固定 SDK 0.2.1rc2，本地�
 摘要与文件SHA-256见 [evidence/r1-5-local.json](evidence/r1-5-local.json)。大截图不入库。小包在本worktree `work/evidence-packages-r1-5-nav-final/`：summary430760 bytes；modeler11111169、reviewer11434769、admin11322608（各27截图）；superadmin1448138（2截图）；harness287767（3截图）。每包另有含SHA-256的index，连索引计入30 MiB预算。
 
 本次实际执行使用原并发配置；随后 `d4c5903` 将CI与本地配置改为pages89成功后SDK单worker1，以隔离真实30秒模型业务deadline与截图负载。该调度的静态契约与75/90用例发现已通过，最终exact-head CI需执行新调度。1366为原始CSS视口，1093×614仍明确标等效125%，不能因本轮通过就改称原生缩放。
+
+
+## 后续原生125%校准（未用于替换本次等效截图）
+
+独立一次性profile、静态本地校准页上已验证 Chromium156 的有效偏好是 `Preferences.partition.default_zoom_level: {"x": Math.log(1.25)/Math.log(1.2)}`；直接写scalar不生效，作为负对照保留。`viewport:null` 与相同真实outer1366×768下，100% inner1366×681/dpr1，125% inner1093×545/dpr1.25；两者visualViewport.scale均为1，未使用pinch/CDP设备倍率模拟。PNG实际尺寸分别1366×681与1093×545，如实记录。
+
+指标与原图SHA见 [evidence/native-zoom-calibration.json](evidence/native-zoom-calibration.json)，原图/metrics在 `work/evidence/r1/native-zoom-probe/`，试验脚本在本worktree `work/native-zoom-probe.mjs`。一次性profile、浏览器与本地HTTP服务均已清理。这是机制校准，不是产品页面或canonical浏览器的原生缩放验收。
+
+后续R1-9先测100%时outer与inner的真实差值，再以 `outerHeight = 目标100%内容高度 + 实测浏览器高度差` 校准窗口；当前差值87对应目标inner768时预测outer855，但新浏览器不得硬编码87。然后在同outer窗口启用真实125%，复核inner、dpr、visualViewport.scale和PNG尺寸。此前1093×614截图继续标为等效CSS视口，不篡改旧证据。
