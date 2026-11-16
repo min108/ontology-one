@@ -1,6 +1,14 @@
 @import url('/fonts/fonts.css');
 @import url('./tokens.css');
 
+html {
+  scroll-padding-top: calc(var(--zy-topbar-height) + var(--zy-space-8));
+}
+
+body {
+  margin: var(--zy-none);
+}
+
 .zy-root {
   color: var(--zy-gray-900);
   background: var(--zy-gray-50);

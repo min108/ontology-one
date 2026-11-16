@@ -98,10 +98,6 @@ def generated_contract_error(relative: str, content: str) -> list[str] | None:
 
 def check_tree(root: Path) -> list[str]:
     errors = []
-    config = ROOT / "frontend/eslint.config.js"
-    text = config.read_text(encoding="utf-8")
-    body = text.split("const legacyFiles = [", 1)
-    historical = set(re.findall(r"'src/([^']+)'", body[1].split("];", 1)[0])) if len(body) > 1 else set()
     for path in sorted(root.rglob("*")):
         if path.suffix not in {".ts", ".tsx", ".json"}:
             continue
@@ -113,9 +109,7 @@ def check_tree(root: Path) -> list[str]:
         if generated is not None:
             errors.extend(f"{relative}: {error}" for error in generated)
             continue
-        if relative.startswith("legacy/") or (
-            root.resolve() == (ROOT / "frontend/src").resolve() and relative in historical
-        ):
+        if relative.startswith("legacy/"):
             found = [
                 f"brand outside configuration: {name}"
                 for name in BRANDS

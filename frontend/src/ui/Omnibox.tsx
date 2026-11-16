@@ -1,5 +1,5 @@
-import { Input, Modal, Spin } from 'antd';
-import { useEffect, useId, useRef, useState } from 'react';
+import { Button, Input, Modal, Spin } from 'antd';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { InputRef } from 'antd';
 import { terms } from '../i18n/zh-CN';
 import styles from './Omnibox.module.css';
@@ -17,6 +17,9 @@ export interface OmniboxProps {
   items: OmniboxItem[];
   onSelect: (item: OmniboxItem) => void;
   loading?: boolean;
+  error?: string;
+  onRetry?: () => void;
+  footer?: ReactNode;
 }
 export function Omnibox({
   open,
@@ -26,6 +29,9 @@ export function Omnibox({
   items,
   onSelect,
   loading = false,
+  error,
+  onRetry,
+  footer,
 }: OmniboxProps) {
   const [active, setActive] = useState(0);
   const input = useRef<InputRef>(null);
@@ -41,7 +47,7 @@ export function Omnibox({
     <Modal
       open={open}
       onCancel={() => onOpenChange(false)}
-      footer={null}
+      footer={footer ?? null}
       title={terms.actions.search}
       destroyOnHidden
       afterOpenChange={(visible) => {
@@ -77,6 +83,16 @@ export function Omnibox({
       />
       <p className={styles.hint}>{terms.labels.keyboard_hint}</p>
       {loading && <Spin aria-label={terms.labels.loading} />}
+      {error && (
+        <div role="alert">
+          <p>{error}</p>
+          {onRetry && (
+            <Button aria-label={terms.actions.retry} onClick={onRetry}>
+              {terms.actions.retry}
+            </Button>
+          )}
+        </div>
+      )}
       <ul id={listId} role="listbox" aria-label={terms.labels.search_results} className={styles.list}>
         {items.map((item, index) => (
           <li
@@ -95,7 +111,7 @@ export function Omnibox({
           </li>
         ))}
       </ul>
-      {!loading && !items.length && <p>{terms.labels.no_results}</p>}
+      {!loading && !error && !items.length && <p>{terms.labels.no_results}</p>}
     </Modal>
   );
 }

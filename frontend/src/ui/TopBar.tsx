@@ -8,25 +8,45 @@ export interface TopBarProps {
   workspaceName: string;
   onSearch?: () => void;
   userMenu?: ReactNode;
+  identity?: ReactNode;
+  actions?: ReactNode;
+  searchSlot?: ReactNode;
+  collapsed?: boolean;
 }
-export function TopBar({ workspaceName, onSearch, userMenu }: TopBarProps) {
+export function TopBar({
+  workspaceName,
+  onSearch,
+  userMenu,
+  identity,
+  actions,
+  searchSlot,
+  collapsed = false,
+}: TopBarProps) {
   return (
     <header className={styles.bar}>
-      <a href="/" className={styles.brand} title={brand.product_name_en}>
-        {brand.product_name}
+      <a
+        href="/"
+        className={styles.brand}
+        aria-label={brand.product_name}
+        title={`${brand.product_name} · ${brand.product_name_en}`}
+      >
+        <img src="/citic-mark.svg" alt="" />
+        <span hidden={collapsed}>{brand.product_name}</span>
       </a>
-      <span className={styles.workspace}>{workspaceName}</span>
+      {identity ?? <span className={styles.workspace}>{workspaceName}</span>}
       <div className={styles.actions}>
-        {onSearch && (
-          <Button
-            autoInsertSpace={false}
-            icon={<Search />}
-            onClick={onSearch}
-            aria-label={terms.actions.search}
-          >
-            {terms.actions.search}
-          </Button>
-        )}
+        {searchSlot ??
+          (onSearch && (
+            <Button
+              autoInsertSpace={false}
+              icon={<Search />}
+              onClick={onSearch}
+              aria-label={terms.actions.search}
+            >
+              {terms.actions.search}
+            </Button>
+          ))}
+        {actions}
         {userMenu}
       </div>
     </header>
