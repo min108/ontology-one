@@ -47,3 +47,18 @@ Settings.tsx、HarnessConfiguration.tsx 及独占样式暂未删除，待真实 
 固定检查点 eaf9f87c4ca2630a936fab6ede7ee3590b0a461c，Node 22.23.4，本地 Chromium 156.0.8078.79。第一次 runner 在默认 npm 缓存目录不可写时失败，未创建库/启动服务；改用工作区缓存后隔离安装构建成功。SET 浏览器结果为 **2 通过、1 失败、12 未执行**：模型/备份系统两项 modeler 操作通过，演示重定向的测试 helper 错等新页面 ready 标记导致超时。实际旧 DemoWorkspace 已正常呈现，helper 将按重定向后的 pathname 区分承接组件。全部 4 个创建数据库已清理，API/agent 已停止。此结果不算整包验收完成，原页继续保留。
 
 新增 MySQL 用例已实际通过：真实新配置与原状态一致；新/原机构导出快照与原件相同，密钥不在响应、归档或审计；在线/无锁/错机构/非空工作区拒绝；显式 offline 绑定在独占锁内恢复同机构空库和原件。该测试只删除自己刚创建的独立 namespace 精确库名，测试后全部清理。后端 24 轻单测、1 实际 MySQL；相关后端 73 项通过；新增前端 14 项通过。独立 build、Ruff、词表、令牌、策略覆盖和离线源/构建 URL 检查通过。
+
+## 可复现管理区浏览器命令
+
+配置一次性 MySQL 连接凭据（MYSQL_HOST/PORT/USER/PASSWORD）、Node 22、可写真实 tmpfs ONTOLOGY_HARNESS_TMP_ROOT 后：
+
+```
+python e2e/run_admin.py --api-port 8875 --agent-port 8876 --evidence work/admin-acceptance
+```
+
+可通过 E2E_CHROMIUM 指定本地 Chromium；正式 CI 使用已固定的 Playwright 浏览器。若默认 npm 缓存目录不可写，设置 npm_config_cache 为当前工作区 work/npm-cache。封装创建独立内存合成 Messages 提供方，把临时密钥只传入子进程环境；失败/成功均关闭提供方。底层 runner 固定 HEAD 导出代码、重新安装构建、装载真实 0.7 夹具到独立随机 namespace，结束后清理所创建库与 API/agent。管理区独立 project 不能并入 --harness 的共享部署，因为 SET01 明确验证清除配置。原 75 条路由与全局 SDK 验收继续使用原入口。
+
+为避免单项 helper 失败遮蔽其余操作，独立 admin project 保持单 worker 按序执行，每个独立用例失败后继续后续用例；不增加自动重试，不放宽断言或超时。原五能力契约测试显式从 v2 装配入口取得完整 registry，消除依赖其他测试先 import main 的隐藏顺序依赖。
+
+
+第二次本地浏览器整组（f6a7ccd）：**11 通过、4 失败、0 未执行**。三项失败是相同的演示 URL 断言未考虑旧导航保留的合法 `via` 查询参数；按 pathname `/admin/demo` 和 hash `#demo` 分别精确检查。另一项是测试环境配置的旧 tmpfs 目录已不存在，模型验证正确返回 503，未发生提供方请求。其余真实机构/源码下载、查询草稿与 HQ 演示加载/归档/恢复、跨机构验证禁止均通过。全部数据库和服务已清理。下一轮使用独立真实 `/dev/shm/ontology-r1-8`；不改运行时检查、权限或超时。

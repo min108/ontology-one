@@ -116,7 +116,8 @@ for (const role of roles) {
       page,
     }) => {
       await ready(page, "/settings#demo", "演示资料");
-      await expect(page).toHaveURL(/\/admin\/demo#demo/);
+      expect(new URL(page.url()).pathname).toBe("/admin/demo");
+      expect(new URL(page.url()).hash).toBe("#demo");
       await page.getByText("下载小样本，自己练习上传", { exact: true }).click();
       const downloads = page.locator(".demo-downloads a");
       await expect(downloads).toHaveCount(6);
