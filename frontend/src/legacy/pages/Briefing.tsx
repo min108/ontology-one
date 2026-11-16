@@ -1,4 +1,4 @@
-import {brand} from '../i18n/brand';
+import {brand} from '../../i18n/brand';
 import {useState} from 'react';
 import Markdown from '../components/Markdown';
 import {useHarnessResultRestore} from '../components/LegacyHarnessConversation';

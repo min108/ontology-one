@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": false,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmitOnError": true,
+    "rootDir": "src",
+    "outDir": "node_modules/.cache/legacy-types"
+  },
+  "include": ["src/legacy"],
+  "exclude": []
+}

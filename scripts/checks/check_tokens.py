@@ -44,23 +44,13 @@ def scan_text(text: str) -> list[str]:
     return findings
 
 
-def legacy_paths() -> set[str]:
-    """R1-1 exact reviewed files only; disappears naturally after the R1-5 move."""
-    config = ROOT / "frontend/eslint.config.js"
-    if not config.exists():
-        return set()
-    body = config.read_text(encoding="utf-8").split("const legacyFiles = [", 1)
-    return set(re.findall(r"'src/([^']+)'", body[1].split("];", 1)[0])) if len(body) > 1 else set()
-
-
 def check_tree(root: Path) -> list[str]:
     findings = []
-    historical = legacy_paths() if root.resolve() == (ROOT / "frontend/src").resolve() else set()
     for path in sorted(root.rglob("*")):
         if path.suffix not in {".css", ".ts", ".tsx"}:
             continue
         relative = path.relative_to(root).as_posix()
-        if relative.split("/")[0] in {"legacy", "design"} or relative in historical:
+        if relative.split("/")[0] in {"legacy", "design"}:
             continue
         findings.extend(f"{relative}:{item}" for item in scan_text(path.read_text(encoding="utf-8")))
     return findings
