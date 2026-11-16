@@ -85,6 +85,7 @@ jobs:
           python scripts/checks/check_migrations.py
           python scripts/checks/check_policy_coverage.py
           npm --prefix frontend test -- --run
+          node --test e2e/*.test.mjs
       - name: Backend and pipeline tests
         run: |
           set -euo pipefail
@@ -112,10 +113,48 @@ jobs:
       - name: Original UI browser baseline
         run: python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
       - name: Upload available evidence
+        id: complete-evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: r1-foundation-ci-${{ github.run_id }}
           path: work/evidence/r1/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Prepare readable browser evidence
+        if: always()
+        env:
+          E2E_COMPLETE_ARTIFACT_URL: ${{ steps.complete-evidence.outputs.artifact-url }}
+        run: node e2e/evidence.mjs work/evidence/r1/e2e-legacy-ci work/e2e-ci-packages
+      - name: Upload browser summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-browser-summary-${{ github.run_id }}
+          path: work/e2e-ci-packages/summary/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload legacy modeler screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-legacy-screenshots-modeler-${{ github.run_id }}
+          path: work/e2e-ci-packages/modeler/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload legacy reviewer screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-legacy-screenshots-reviewer-${{ github.run_id }}
+          path: work/e2e-ci-packages/reviewer/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload legacy admin screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-legacy-screenshots-admin-${{ github.run_id }}
+          path: work/e2e-ci-packages/admin/
           if-no-files-found: warn
           retention-days: 30

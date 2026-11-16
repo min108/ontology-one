@@ -1,10 +1,10 @@
 import { resolve } from "node:path";
 import { defineConfig } from "./runtime.mjs";
-import { evidence } from "./fixture.mjs";
+import { evidence, target } from "./fixture.mjs";
 
 export default defineConfig({
   testDir: resolve("e2e"),
-  testMatch: "**/*.spec.mjs",
+  testMatch: target === "legacy" ? "**/legacy.spec.mjs" : "**/*.spec.mjs",
   fullyParallel: true,
   workers: Number(process.env.E2E_WORKERS || 3),
   retries: 0,
