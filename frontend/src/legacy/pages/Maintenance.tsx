@@ -1,3 +1,4 @@
+import {useWorkspaceDialogGuard} from '../../app/useWorkspaceGuard';
 import {AccessButton} from '../components/AccessButton';
 import {usePageState} from '../navigation';
 import {eventLabel} from '../domain';
@@ -35,6 +36,7 @@ export default function Maintenance() {
   const filteredRelations = (relations.data?.items || []).map(r => ({ ...r, payload: relationPayload(r.payload) }));
   const filteredEvents = events.filter(a => `${a.entity_title || a.title} ${a.action} ${a.detail} ${a.actor}`.includes(query));
   function beginAction(entity: BusinessEntity, type: string) { setSelected(entity); setAction(type); setReason(''); }
+  useWorkspaceDialogGuard(selected?.id||'',reason);useWorkspaceDialogGuard(relation?.id||'',relationReason);useWorkspaceDialogGuard(reviewTask?.id||'',taskReason);
   async function applyAction() {
     if (!selected) return;
     if (!reason.trim()) { toast('请填写本次审核或处理意见', 'error'); return; }

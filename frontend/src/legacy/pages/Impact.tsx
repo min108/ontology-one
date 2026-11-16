@@ -1,3 +1,4 @@
+import {useWorkspaceDialogGuard} from '../../app/useWorkspaceGuard';
 import {AccessButton} from '../components/AccessButton';
 import {usePageState} from '../navigation';
 import {useEffect,useMemo,useState} from 'react';
@@ -39,6 +40,7 @@ export default function Impact(){
   const choose=(entity:Entity)=>{const next=new URLSearchParams(sp);next.set('source',entity.id);next.set('tab','scope');next.set('page','1');next.set('history_page','1');next.set('level','all');next.set('relation_status','all');setSp(next);};
   const toggle=(item:Target)=>setSelected(old=>{const next={...old};if(next[item.id])delete next[item.id];else if(Object.keys(next).length<30)next[item.id]=item;else toast('每批最多选择 30 项成果，可分批建立复核任务','error');return next;});
   const selectVisible=()=>setSelected(old=>{const next={...old};for(const item of preview.data?.items||[])if(Object.keys(next).length<30)next[item.id]=item;return next;});
+  useWorkspaceDialogGuard(form?'tasks':'',{reason,instruction,owner,due});
   async function createTasks(e:React.FormEvent){
     e.preventDefault();if(!current||!picked.length)return;
     setBusy(true);

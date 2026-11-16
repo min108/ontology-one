@@ -1,3 +1,4 @@
+import {useWorkspaceDraftGuard} from '../../app/useWorkspaceGuard';
 import {FormEvent, useCallback, useEffect, useRef, useState} from 'react';
 import {Link} from 'react-router-dom';
 import {ArrowRight, Check, Clipboard, Code2, Eye, EyeOff, KeyRound, Layers3, Link2, Plus, RefreshCw, Search, ShieldCheck, Unplug, X} from 'lucide-react';
@@ -96,6 +97,7 @@ function ApplicationEditor({application,options,onClose,onSaved}:{application?:A
  const unavailable=mappings.filter(id=>!options.mappings.some(m=>m.id===id));
  const selectedDelegate=options.users.find(u=>u.id===delegate);
  function toggle<T,>(value:T,items:T[],set:(items:T[])=>void){set(items.includes(value)?items.filter(x=>x!==value):[...items,value]);setConfirmed(false)}
+ useWorkspaceDraftGuard({name,description,delegate,tools,mappings,days});
  async function submit(event:FormEvent) {
   event.preventDefault();setError('');if(!name.trim()){setError('请填写有效的应用名称。');return}if(!delegate||!tools.length||!confirmed)return;
   if(mappings.length>100){setError('一个应用最多显式授权 100 项映射，请缩小范围。');return}
@@ -121,6 +123,7 @@ function ApplicationEditor({application,options,onClose,onSaved}:{application?:A
 
 function CredentialAction({application,action,onClose,onSaved}:{application:Application;action:'rotate'|'revoke';onClose:()=>void;onSaved:(result:Application|Issued)=>void}) {
  const [days,setDays]=useState(30),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),operate=useScopedOperation();
+ useWorkspaceDraftGuard({days,reason});
  async function submit(event:FormEvent){event.preventDefault();setError('');setBusy(true);try{onSaved(await operate<Application|Issued>(href(application.id)+(action==='rotate'?'/credentials':'/revoke'),{expected_version:application.version,reason:reason.trim(),...(action==='rotate'?{expires_days:days}:{})}))}catch(err:any){if(err.name!=='AbortError')setError(errorMessage(err))}finally{setBusy(false)}}
  return <Modal title={action==='rotate'?'轮换应用令牌':'撤销全部应用令牌'} onClose={()=>!busy&&onClose()}><form className="ia-form" onSubmit={submit}><Notice warning>{action==='rotate'?<>为 <strong>{application.name}</strong> 签发新令牌，原有全部有效令牌立即撤销。请同步更新调用方密钥配置。</>:<>撤销 <strong>{application.name}</strong> 的全部令牌后，现有调用方将无法接入。恢复时需重新签发令牌。</>}</Notice>{action==='rotate'&&!application.enabled&&<p className="ia-help">应用当前已停用。轮换不会自动启用应用；新令牌仅在应用启用且委托权限有效时可用。</p>}{action==='rotate'&&<label htmlFor="ia-rotate-ttl">新令牌有效天数<input id="ia-rotate-ttl" aria-label="新令牌有效天数" className="input" required type="number" min={1} max={90} step={1} value={days} onChange={ev=>setDays(Number(ev.target.value))}/><small>1—90 天</small></label>}<label htmlFor="ia-credential-reason">操作原因<textarea id="ia-credential-reason" className="input" required rows={4} minLength={2} maxLength={1000} value={reason} onChange={ev=>setReason(ev.target.value)} placeholder="记录本次轮换或撤销的业务依据。"/></label><InlineError error={error}/><div className="ia-form-actions"><button className="btn" type="button" disabled={busy} onClick={onClose}>取消</button><button className="btn btn-primary" disabled={busy||reason.trim().length<2}>{busy?'正在处理…':action==='rotate'?'确认轮换并签发':'确认撤销全部令牌'}</button></div></form></Modal>;
 }

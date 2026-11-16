@@ -1,3 +1,4 @@
+import {useWorkspaceDialogGuard} from '../../app/useWorkspaceGuard';
 import {useSearchParams} from 'react-router-dom';
 import {useEffect, useMemo, useRef, useState, FormEvent} from 'react';
 import {ReactFlow, Background, Controls, Handle, Position, MarkerType, Node, NodeProps, Edge} from '@xyflow/react';
@@ -118,6 +119,7 @@ function CrossInstitutionLinks({tenants, onOpen, onChanged}: {tenants: Federatio
   const toast = useToast();
   const alive = useRef(true);
   useEffect(() => {alive.current = true; return () => {alive.current = false;};}, []);
+  useWorkspaceDialogGuard(creating?'relation':'',{source,target,relationType,label,reason});useWorkspaceDialogGuard(review?.link.id||'',reviewReason);
   async function create(event: FormEvent) {
     event.preventDefault();
     if (!links.data?.can_create || !source || !target || source.tenant_id === target.tenant_id) return;

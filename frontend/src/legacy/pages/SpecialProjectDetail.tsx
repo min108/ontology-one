@@ -1,3 +1,4 @@
+import {useWorkspaceDialogGuard} from '../../app/useWorkspaceGuard';
 import {AccessButton} from '../components/AccessButton';
 import {useEffect,useState,useRef} from 'react';
 import {Link,useParams,useSearchParams} from 'react-router-dom';
@@ -25,6 +26,7 @@ export default function SpecialProjectDetail(){
  const organizations=useApi<{items:Entity[]}>('/entities?kind=organization&page_size=100');
  useEffect(()=>{if(!d)return;if(d.jobs.some(x=>['running','queued'].includes(x.status))){const t=setInterval(data.reload,1800);return()=>clearInterval(t)}},[d?.jobs.map(x=>x.status).join(',')]);
  useEffect(()=>{if(params.get('evidence')&&d){const e=d.evidence.find(x=>x.id===params.get('evidence'));if(e){setForm({id:e.id,...e.payload});setModal('evidence-review')}}},[params.get('evidence'),d?.project.id]);
+ useWorkspaceDialogGuard(modal,form);
  function navigate(next:string,extra:Record<string,string>={}){const q=new URLSearchParams(params);q.set('panel',next);Object.entries(extra).forEach(([k,v])=>v?q.set(k,v):q.delete(k));setParams(q)}
  function filter(key:string,value:string){const q=new URLSearchParams(params);if(value)q.set(key,value);else q.delete(key);setParams(q,{replace:true})}
  async function mutate(path:string,body:any,method='POST',message='已保存'){setBusy(true);try{const result=await api<any>(path,{method,body:JSON.stringify(body)});toast(message);data.reload();return result}catch(e:any){toast(e.message,'error');return null}finally{setBusy(false)}}

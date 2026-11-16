@@ -12,6 +12,7 @@ const metadataPrefix = 'ontology-one.guard-draft:';
 let transition: Transition = 'idle';
 
 export function registerWorkspaceGuard(readDirty: () => boolean): () => void {
+  if (transition === 'leaving') return () => {};
   const id = Symbol();
   guards.set(id, readDirty);
   return () => {

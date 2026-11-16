@@ -1,3 +1,5 @@
+import {useWorkspaceGuard} from '../app/useWorkspaceGuard';
+import {isWorkspaceLeaving,trackStoredWorkspaceDraft} from '../state/workspace-guard';
 import {createContext,useContext,useEffect,useLayoutEffect,useRef,useState,useCallback,ReactNode} from 'react';
 import {Link,useLocation,useNavigate} from 'react-router-dom';
 import {ArrowLeft,ChevronRight,CornerUpLeft,FolderOpen} from 'lucide-react';
@@ -31,7 +33,8 @@ export function usePageState<T extends Record<string,string>>(defaults:T):[T,(ch
 export function useSessionValue<T>(key:string,initial:T):[T,React.Dispatch<React.SetStateAction<T>>]{
  const storageKey='ontology-one-draft-'+key;
  const [value,setValue]=useState<T>(()=>{try{const stored=sessionStorage.getItem(storageKey);return stored?JSON.parse(stored):initial}catch{return initial}});
- useEffect(()=>{try{sessionStorage.setItem(storageKey,JSON.stringify(value))}catch{}},[storageKey,value]);return [value,setValue];
+ const baseline=useRef(JSON.stringify(initial));useWorkspaceGuard(JSON.stringify(value)!==baseline.current);
+ useEffect(()=>{if(isWorkspaceLeaving())return;try{sessionStorage.setItem(storageKey,JSON.stringify(value));trackStoredWorkspaceDraft(storageKey,JSON.stringify(value)!==baseline.current)}catch{}},[storageKey,value]);return [value,setValue];
 }
 
 /** Capture where a visit came from without interrupting its business handlers. */

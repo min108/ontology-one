@@ -1,3 +1,4 @@
+import {useWorkspaceDraftGuard} from '../../app/useWorkspaceGuard';
 import {FormEvent, useEffect, useRef, useState} from 'react';
 import {CheckCircle2, RefreshCw, ShieldCheck} from 'lucide-react';
 import {api} from '../api';
@@ -17,15 +18,16 @@ export function HarnessConfigurationPanel({status,onSaved}:{status:HarnessStatus
   const [model,setModel]=useState(status?.model||'deepseek-flash');
   const [key,setKey]=useState(''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[clearKey,setClearKey]=useState(false);
   const current=useRef(status); const live=useRef(true); const pending=useRef<AbortController|null>(null);
-  useEffect(()=>{if(status&&!current.current){setBase(status.base_url||'https://api.deepseek.com/anthropic');setModel(status.model||'deepseek-flash')}current.current=status},[status]);
+  useEffect(()=>{if(status&&!current.current){setBase(status.base_url||'https://api.deepseek.com/anthropic');setModel(status.model||'deepseek-flash');commitConfig({base:status.base_url||'https://api.deepseek.com/anthropic',model:status.model||'deepseek-flash',key:'',clearKey:false})}current.current=status},[status]);
   useEffect(()=>{live.current=true;const clear=()=>{setKey('');pending.current?.abort()};window.addEventListener('pagehide',clear);window.addEventListener('ontology:scope-cleared',clear);return()=>{live.current=false;pending.current?.abort();window.removeEventListener('pagehide',clear);window.removeEventListener('ontology:scope-cleared',clear)}},[]);
+  const commitConfig=useWorkspaceDraftGuard({base,model,key,clearKey});
   async function run(action:'save'|'test') {
     if(busy||!canManage||(action==='test'&&!canInvoke))return;
     const controller=new AbortController();pending.current=controller;setBusy(action);setError('');setMessage('');
     try {
       const result=await api<any>('/skills/harness/'+(action==='save'?'config':'test'),{method:'POST',signal:controller.signal,...(action==='save'?{body:JSON.stringify({base_url:base.trim(),model:model.trim(),...(clearKey?{clear_key:true}:key?{api_key:key}:{})})}:{})});
       if(!live.current)return;
-      setKey('');setClearKey(false);setMessage(action==='save'?(clearKey?'已清除本机构保存的模型密钥。后续在线调用须重新配置密钥。':'统一配置已保存，本机构所有智能功能已自动共用。可继续验证连接。'):result.message||'智能服务连接验证成功。');
+      if(action==='save')commitConfig({base,model,key:'',clearKey:false});setKey('');setClearKey(false);setMessage(action==='save'?(clearKey?'已清除本机构保存的模型密钥。后续在线调用须重新配置密钥。':'统一配置已保存，本机构所有智能功能已自动共用。可继续验证连接。'):result.message||'智能服务连接验证成功。');
       onSaved();window.dispatchEvent(new Event('ontology:harness-configured'));
     }catch(e:any){if(live.current&&e.name!=='AbortError')setError(e.message||'模型服务操作未完成，请稍后重试。')}
     finally{if(live.current)setBusy('');pending.current=null}

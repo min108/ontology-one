@@ -1,3 +1,5 @@
+import {useWorkspaceGuard} from '../../app/useWorkspaceGuard';
+import {beginWorkspaceUpload} from '../../state/workspace-guard';
 import {csrfHeaders,workspaceHeaders,registerPendingUpload,assertBusinessReady,notifyUnauthorized} from '../api';
 import {AccessButton} from '../components/AccessButton';
 import { useRef, useState } from 'react';
@@ -44,6 +46,7 @@ export function Materials() {
   const completed = queue.filter(item => item.status === 'success').length;
   const failed = queue.filter(item => item.status === 'error').length;
   const remaining = queue.filter(item => item.status === 'pending' || item.status === 'error').length;
+  useWorkspaceGuard(remaining > 0);
   function facetOptions(field: string, names: Record<string, string>, all: string) {
     const counts = listing.data?.facets?.[field] || {};
     return [{ value: '', label: all, count: Object.values(counts).reduce((a, b) => a + b, 0) }, ...Object.entries(names).filter(([key]) => !['failed', 'running'].includes(key) || counts[key]).map(([value, label]) => ({ value, label, count: counts[value] || 0 }))];
@@ -91,6 +94,7 @@ export function Materials() {
     if (busyRef.current) return;
     const todo = queue.filter(item => (item.status === 'pending' || item.status === 'error') && (!onlyKey || item.key === onlyKey));
     if (!todo.length) return;
+    const finishUpload = beginWorkspaceUpload();
     busyRef.current = true; setBusy(true); setUploadError('');
     let success = 0;
     try {
@@ -104,7 +108,7 @@ export function Materials() {
         } catch (error) { if(error instanceof DOMException&&error.name==='AbortError')break; update(item.key, { status: 'error', error: error instanceof Error ? error.message : '上传失败，可单独重试', progress: 0 }); }
       }
       listing.reload(); toast(`本轮已保存 ${success} / ${todo.length} 份材料；请进入原文后选择分段方式`);
-    } finally { busyRef.current = false; setBusy(false); }
+    } finally { finishUpload(); busyRef.current = false; setBusy(false); }
   }
 
   return <div className="page materials-page">
