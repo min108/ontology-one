@@ -1,0 +1,175 @@
+import { lazy, Suspense } from 'react';
+import { Route, Routes, useNavigate } from 'react-router-dom';
+import { Loading } from '@legacy/components/ui';
+import { LegacyBlock } from '../ui/LegacyBlock';
+import { StateBlock } from '../ui/StateBlock';
+import { terms } from '../i18n/zh-CN';
+import { LegacyPage } from './LegacyPage';
+import { EntityDossierRoute } from './EntityDossierRoute';
+import { LegacyRedirect } from './LegacyRedirect';
+import { WorkspaceLanding } from './WorkspaceLanding';
+import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from './navigation';
+
+const Overview = lazy(() => import('@legacy/pages/Overview'));
+const Security = lazy(() => import('@legacy/pages/Security'));
+const Administration = lazy(() => import('@legacy/pages/Administration'));
+const Settings = lazy(() => import('@legacy/pages/Settings'));
+const DemoWorkspace = lazy(() => import('@legacy/components/DemoWorkspace'));
+const retained = [
+  { path: '/group', component: lazy(() => import('@legacy/pages/Group')) },
+  { path: '/briefing', component: lazy(() => import('@legacy/pages/Briefing')) },
+  { path: '/experience', component: lazy(() => import('@legacy/pages/Experience')) },
+  { path: '/impact', component: lazy(() => import('@legacy/pages/Impact')) },
+  { path: '/work', component: lazy(() => import('@legacy/pages/Work')) },
+  { path: '/materials', component: lazy(() => import('@legacy/pages/Materials')) },
+  { path: '/materials/:id', component: lazy(() => import('@legacy/pages/MaterialDetail')) },
+  { path: '/projects', component: lazy(() => import('@legacy/pages/Projects')) },
+  { path: '/projects/:id', component: lazy(() => import('@legacy/pages/ProjectDetail')) },
+  { path: '/tasks/:id', component: lazy(() => import('@legacy/pages/TaskDetail')) },
+  { path: '/assets', component: lazy(() => import('@legacy/pages/Assets')) },
+  { path: '/authority', component: lazy(() => import('@legacy/pages/Authority')) },
+  {
+    path: '/authority/:id',
+    component: lazy(async () => ({ default: (await import('@legacy/pages/Authority')).AuthorityDetail })),
+  },
+  {
+    path: '/knowledge/collections/:id',
+    component: lazy(async () => ({ default: (await import('@legacy/pages/Knowledge')).KnowledgeCollection })),
+  },
+  { path: '/datasets', component: lazy(() => import('@legacy/pages/Datasets')) },
+  { path: '/datasets/:id', component: lazy(() => import('@legacy/pages/DatasetDetail')) },
+  { path: '/data-sources', component: lazy(() => import('@legacy/pages/DataSources')) },
+  { path: '/data-sources/:sourceId', component: lazy(() => import('@legacy/pages/DataSources')) },
+  { path: '/graph', component: lazy(() => import('@legacy/pages/Graph')) },
+  { path: '/applications', component: lazy(() => import('@legacy/pages/Applications')) },
+  { path: '/maintenance', component: lazy(() => import('@legacy/pages/Maintenance')) },
+  {
+    path: '/integration-applications',
+    component: lazy(() => import('@legacy/pages/IntegrationApplications')),
+  },
+  { path: '/skill-development', component: lazy(() => import('@legacy/pages/SkillDevelopment')) },
+  { path: '/skill-development/:id', component: lazy(() => import('@legacy/pages/SkillDevelopment')) },
+];
+
+// R1-6/7/8 replace these adapters only after their operation checklist passes.
+export const completedAdministration = new Set([
+  '/admin/users',
+  '/admin/model',
+  '/admin/backup',
+  '/admin/demo',
+  '/admin/system',
+]);
+
+export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
+  const navigate = useNavigate();
+  const forbidden = (
+    <StateBlock
+      state="forbidden"
+      action={{ label: terms.actions.shell_back_home, onClick: () => navigate('/') }}
+    />
+  );
+  return (
+    <Suspense
+      fallback={
+        <LegacyBlock page={false}>
+          <Loading />
+        </LegacyBlock>
+      }
+    >
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <LegacyPage>
+              <Overview />
+            </LegacyPage>
+          }
+        />
+        {primaryNavigation(principal.role)
+          .filter((entry) => entry.key !== 'home')
+          .map((entry) => (
+            <Route
+              key={entry.key}
+              path={entry.href}
+              element={
+                <WorkspaceLanding
+                  entries={secondaryNavigation(entry.key, principal, completedAdministration)}
+                />
+              }
+            />
+          ))}
+        {['/security', '/administration', '/settings'].map((path) => (
+          <Route key={path} path={path} element={<LegacyRedirect />} />
+        ))}
+        <Route
+          path="/account/security"
+          element={
+            <LegacyPage>
+              <Security />
+            </LegacyPage>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            principal.role === 'admin' ? (
+              <LegacyPage>
+                <Administration />
+              </LegacyPage>
+            ) : (
+              forbidden
+            )
+          }
+        />
+        {['/admin/model', '/admin/backup', '/admin/system'].map((path) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <LegacyPage>
+                <Settings />
+              </LegacyPage>
+            }
+          />
+        ))}
+        <Route
+          path="/admin/demo"
+          element={
+            <LegacyPage>
+              <DemoWorkspace />
+            </LegacyPage>
+          }
+        />
+        <Route
+          path="/assets/:id"
+          element={
+            <LegacyPage>
+              <EntityDossierRoute />
+            </LegacyPage>
+          }
+        />
+        {retained.map(({ path, component: Page }) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <LegacyPage>
+                <Page />
+              </LegacyPage>
+            }
+          />
+        ))}
+        <Route
+          path="*"
+          element={
+            <StateBlock
+              state="empty"
+              description={terms.labels.shell_not_found}
+              action={{ label: terms.actions.shell_back_home, onClick: () => navigate('/') }}
+            />
+          }
+        />
+      </Routes>
+    </Suspense>
+  );
+}

@@ -42,3 +42,23 @@ python e2e/run.py --target legacy --api-port 8785 --agent-port 8786 \
 `E2E_TARGET` 和 `E2E_DEPENDENCY_ROOT` 仍有效；浏览器依赖默认来自当前检出的 `frontend`，不在历史源码中增加测试依赖。`E2E_CHROMIUM` 指向本机浏览器时，报告记录实际浏览器版本；CI 不设置该变量，以使用锁定的 Playwright Chromium。
 
 `--evidence` 或 `E2E_EVIDENCE_DIR` 可指定本检出 `work/` 内的新空目录。默认报告位置为 `work/evidence/r1/e2e-<目标>-<随机名>/`，包含源码提交、实际测试数、服务日志与精确数据库清理记录。认证状态在该次私有 work 目录中生成，并于退出时移除；不会放入证据目录。失败、零测试、跳过和重试均不能得到成功结果。`-- --grep ...` 可用于诊断筛选，报告记录筛选参数及实际测试数，完整验收运行不加筛选。
+
+## Shell 与可读取证据
+
+R1-5 的定位协议、14 条新增 smoke、等效缩放说明及真实 SDK 浮层待执行流程见 [R1-5-ACCEPTANCE.md](R1-5-ACCEPTANCE.md)。`legacy` 只发现原 75 条；`foundation` 发现 75 + 14 条，实际通过须看 runner 的执行报告。
+
+CI 保留总证据，并增加摘要及三角色独立截图产物，每份源内容限 30 MiB。可对既有结果拆包而不重跑浏览器：
+
+```bash
+node --test e2e/*.test.mjs
+E2E_COMPLETE_ARTIFACT_URL=https://github.com/OWNER/REPO/actions/runs/RUN/artifacts/ID \
+  node e2e/evidence.mjs work/evidence/r1/e2e-legacy-ci work/e2e-ci-packages
+```
+
+目的目录必须不存在；每包索引列出实际包含文件、SHA-256 与总产物链接。只收明确列出的 JSON/日志和角色 PNG，不收临时认证态、trace、HTML 或重复附件。
+
+
+完整 foundation + SDK 验收使用 `python e2e/run.py --target foundation --harness`。
+Playwright 先运行 `foundation-pages`（89条），成功后单独以1个worker运行依赖项目 `harness-sdk`（1条）。
+CI采用同一命令与调度。页面项目失败导致SDK依赖不执行时，整体仍失败；不放宽模型业务deadline，也不以重试/跳过获得成功。
+指定 `--grep` 或 `--project` 时Playwright仍可能运行完整依赖项目；诊断若显式使用 `--no-deps`，只代表该次筛选结果，不能作为全套90条验收。

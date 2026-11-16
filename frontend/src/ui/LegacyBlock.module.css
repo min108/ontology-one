@@ -1,0 +1,12 @@
+.block,
+.contents {
+  line-height: normal;
+}
+
+.block {
+  min-width: 0;
+}
+
+.contents {
+  display: contents;
+}

@@ -73,8 +73,8 @@ jobs:
           docker build -f ops/skill-runner.Dockerfile -t ontology-skill-test:0.5.0 .
       - name: Code checks
         run: |
-          ruff format --check backend scripts ops tests migrations .github/scripts e2e/run.py
-          ruff check backend scripts ops tests migrations .github/scripts e2e/run.py
+          ruff format --check backend scripts ops tests migrations .github/scripts e2e
+          ruff check backend scripts ops tests migrations .github/scripts e2e
           npm --prefix frontend run lint
           npm --prefix frontend run format:check
           npm --prefix frontend run lint:styles
@@ -85,6 +85,7 @@ jobs:
           python scripts/checks/check_migrations.py
           python scripts/checks/check_policy_coverage.py
           npm --prefix frontend test -- --run
+          node --test e2e/*.test.mjs
       - name: Backend and pipeline tests
         run: |
           set -euo pipefail
@@ -111,11 +112,104 @@ jobs:
         run: frontend/node_modules/.bin/playwright install --with-deps chromium
       - name: Original UI browser baseline
         run: python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
+      - name: Foundation Shell browser acceptance
+        run: python e2e/run.py --target foundation --harness --evidence work/evidence/r1/e2e-foundation-ci
       - name: Upload available evidence
+        id: complete-evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: r1-foundation-ci-${{ github.run_id }}
           path: work/evidence/r1/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Prepare readable browser evidence
+        if: always()
+        env:
+          E2E_COMPLETE_ARTIFACT_URL: ${{ steps.complete-evidence.outputs.artifact-url }}
+        run: node e2e/evidence.mjs work/evidence/r1/e2e-legacy-ci work/e2e-ci-packages
+      - name: Upload browser summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-browser-summary-${{ github.run_id }}
+          path: work/e2e-ci-packages/summary/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload legacy modeler screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-legacy-screenshots-modeler-${{ github.run_id }}
+          path: work/e2e-ci-packages/modeler/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload legacy reviewer screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-legacy-screenshots-reviewer-${{ github.run_id }}
+          path: work/e2e-ci-packages/reviewer/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload legacy admin screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-legacy-screenshots-admin-${{ github.run_id }}
+          path: work/e2e-ci-packages/admin/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Prepare readable foundation browser evidence
+        if: always()
+        env:
+          E2E_COMPLETE_ARTIFACT_URL: ${{ steps.complete-evidence.outputs.artifact-url }}
+        run: node e2e/evidence.mjs work/evidence/r1/e2e-foundation-ci work/e2e-foundation-ci-packages
+      - name: Upload foundation summary evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-foundation-browser-summary-${{ github.run_id }}
+          path: work/e2e-foundation-ci-packages/summary/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload foundation modeler evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-foundation-browser-modeler-${{ github.run_id }}
+          path: work/e2e-foundation-ci-packages/modeler/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload foundation reviewer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-foundation-browser-reviewer-${{ github.run_id }}
+          path: work/e2e-foundation-ci-packages/reviewer/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload foundation admin evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-foundation-browser-admin-${{ github.run_id }}
+          path: work/e2e-foundation-ci-packages/admin/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload foundation superadmin evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-foundation-browser-superadmin-${{ github.run_id }}
+          path: work/e2e-foundation-ci-packages/superadmin/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload foundation SDK screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-foundation-browser-harness-${{ github.run_id }}
+          path: work/e2e-foundation-ci-packages/harness/
           if-no-files-found: warn
           retention-days: 30

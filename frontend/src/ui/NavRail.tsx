@@ -44,7 +44,15 @@ export function NavRail({
             className={`${styles.item} ${currentKey === item.key ? styles.current : ''}`}
             aria-current={currentKey === item.key ? 'page' : undefined}
             onClick={(event) => {
-              if (onNavigate && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) {
+              if (
+                onNavigate &&
+                !event.defaultPrevented &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                !event.shiftKey &&
+                !event.altKey &&
+                event.button === 0
+              ) {
                 event.preventDefault();
                 onNavigate(item.href);
               }

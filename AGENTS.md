@@ -28,7 +28,7 @@
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。
-- `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。0.7.0 外壳/页面仍原位，R1-5 整体移入 legacy。
+- `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。app 包已承载新六工作区外壳、路由、状态与请求层；原82文件整体移入legacy，旧App/main通过90项浏览器对照后退役，剩80。旧样式构建期加作用域，门户使用独立legacy-root。
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
 - `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；`ops/offline/`：准备依赖并在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
@@ -55,6 +55,8 @@ npm --prefix frontend run lint
 npm --prefix frontend run format:check
 npm --prefix frontend run lint:styles
 npm --prefix frontend test -- --run
+npm --prefix frontend run test:isolation
+python scripts/checks/check_legacy_shrink.py
 python scripts/gen_terms.py --check
 python scripts/gen_api_types.py --check
 python scripts/checks/check_migrations.py
@@ -78,6 +80,7 @@ npm --prefix frontend run build
 - 备份恢复有表白名单、原件绑定和可信结构版本；新增结构必须同步分类和对应恢复定义，保留旧版，不能放宽成列集合并集。服务启动不迁移；已有部署失败必须停止共享实例后离线完整恢复。
 - 两个打包脚本会排除名为 runtime/data/work/uploads 的目录；R5 的新 runtime 包需先调整规则。
 - 产品中文显示名变更不影响仓库、包、Cookie、环境变量、库名前缀、Compose 项目名、MCP 或 Windows 文件等技术标识。
+- 新Shell懒加载保留旧组件期间，所有异步URL写入必须校验固定路由所有权；NavigationProvider补via前校验真实浏览器完整URL。会话请求使用专用AbortController，旧401/409不能先触发全局副作用。
 - Linux 的 39 个 Windows 原生跳过不能称为原生验收完成；真实模型密钥只从 DEEPSEEK_API_KEY 读取，不进入文件、日志、提交或截图。
 
 ## 7 禁止事项

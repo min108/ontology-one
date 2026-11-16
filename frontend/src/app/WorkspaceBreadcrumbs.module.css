@@ -1,0 +1,8 @@
+.breadcrumb {
+  margin-bottom: var(--zy-space-4);
+  overflow-wrap: anywhere;
+}
+
+.breadcrumb ol {
+  flex-wrap: wrap;
+}
