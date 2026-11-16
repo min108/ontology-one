@@ -24,3 +24,7 @@
 首次生成来源e89357b的[CI 43847090819](https://github.com/min108/ontology-one/actions/runs/43847090819)：offline job完整通过，实际断网结果及构件已核验，依赖包包含images.tar。foundation尚未完成时，静态审查确认新profile的正常未登录401会进入登录后视觉错误计数；9830eb1调整测试准备为同一真实BrowserContext.request先登录（使用真实浏览器User-Agent与共享cookie），再导航。所有页面错误及后续401继续完整记录，未过滤或清空错误；界面登录由身份操作测试覆盖。33项Node工具契约通过。后续正常推送重跑最终矩阵，首次不算完整浏览器或视觉验收。
 
 [完整命令](../../../e2e/REPRODUCE.md)与[生成、下载、审查、比较流程](../../../e2e/CANONICAL-CAPTURE.md)由CI执行。下一步：专门capture提交及两个job实测，下载并核验33包、逐图审查63图；基线和compare策略同提交，再等待精确提交的foundation与offline均通过。最终SHA、run、构件摘要、十门结论和外部条件统一写入R1-REPORT。
+
+第二次生成来源2e58656的[CI 43848798791](https://github.com/min108/ontology-one/actions/runs/43848798791)：offline通过；核心浏览器92通过、1失败、13依赖项未执行。唯一失败是Home假设HQ为空，但前序Shell已经真实创建并保留了一个HQ权责草稿；overview正确返回1，目录根不计入四类业务成果。没有修改产品计数、删除草稿或将0放宽成1。b196ec3让同一总部管理员经真实机构选择切至原夹具中未被前序修改的sub-01，继续严格验证API/UI均0、权限、空态提示、演示入口和返回后机构/计数；原75和Shell测试不变。
+
+在完整组合提交b196ec327e013cc77b7f51c4153016070ad3f36e上，本地Chromium156.0.8078.79实际执行核心106/106（349.56秒）及独立管理15/15（81.14秒），均零失败/重试/跳过。核心五库、管理四库全部清理，两服务和私有认证状态清理，真实SDK进程回收验证通过。日志为work/evidence/r1/{core,admin}-combination-diagnostic，聚合为work/r1-preflight/r1-9-integrated/local-combination-summary.json。这是组合诊断，不冒称规范Chromium159或视觉验收；后续CI仍须完整复跑210矩阵。
