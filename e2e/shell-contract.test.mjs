@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { secondaryPaths, redirects, layouts } from "./shell-contract.mjs";
+import {
+  secondaryPaths,
+  redirects,
+  layouts,
+  redirectMatches,
+} from "./shell-contract.mjs";
 
 test("unrecognized role and workspace never inherit acceptance expectations", () => {
   assert.throws(() => secondaryPaths("/admin", "unknown", []), /role/);
@@ -29,4 +34,32 @@ test("redirect vectors preserve both query and hash, equivalent layout is labele
   }
   assert.equal(layouts[1].width, Math.round(layouts[0].width / 1.25));
   assert.match(layouts[1].zoom, /not native/);
+});
+
+test("only one navigation via token may be added; original query and hash remain exact", () => {
+  const target = "/admin/model?probe=model#connection";
+  assert(
+    redirectMatches(
+      "http://localhost/admin/model?probe=model&via=token#connection",
+      target,
+    ),
+  );
+  assert(
+    !redirectMatches(
+      "http://localhost/admin/model?via=token#connection",
+      target,
+    ),
+  );
+  assert(
+    !redirectMatches(
+      "http://localhost/admin/model?probe=model&via=token#other",
+      target,
+    ),
+  );
+  assert(
+    !redirectMatches(
+      "http://localhost/admin/model?probe=model&via=one&via=two#connection",
+      target,
+    ),
+  );
 });

@@ -7,6 +7,7 @@ import {
   secondaryPaths,
   redirects,
   layouts,
+  redirectMatches,
 } from "./shell-contract.mjs";
 
 const browserProblems = new WeakMap();
@@ -84,9 +85,7 @@ for (const role of roles) {
         if (expected.length) {
           await expect(secondary(page)).toBeVisible();
           expect(await links(secondary(page))).toEqual(expected);
-          await expect(page).toHaveURL(
-            new RegExp(`${expected[0].replaceAll("/", "\\/")}$`),
-          );
+          await expect(page).toHaveURL((url) => url.pathname === expected[0]);
         } else await expect(secondary(page)).toHaveCount(0);
         await expect(
           primary(page).locator(`a[href="${path}"]`),
@@ -126,7 +125,7 @@ for (const role of roles) {
           secondary(page).locator('a[href="/assets"]'),
         ).toBeVisible();
         await secondary(page).locator('a[href="/graph"]').click();
-        await expect(page).toHaveURL(/\/graph$/);
+        await expect(page).toHaveURL((url) => url.pathname === "/graph");
         await capture(page, role, `shell-${layout.name}`, testInfo);
       });
     }
@@ -138,9 +137,7 @@ test.describe("admin: compatibility redirects", () => {
   for (const [from, to] of redirects) {
     test(`redirect ${from} preserves query and hash`, async ({ page }) => {
       await page.goto(from);
-      await expect(page).toHaveURL(
-        (url) => url.pathname + url.search + url.hash === to,
-      );
+      await expect(page).toHaveURL((url) => redirectMatches(url, to));
       await expect(page.locator("[data-legacy-page]")).toBeVisible();
     });
   }
@@ -167,7 +164,9 @@ test.describe("superadmin: workspace transition", () => {
     await create
       .getByRole("button", { name: "建立编辑稿", exact: true })
       .click();
-    await expect(page).toHaveURL(/\/authority\/[^/?#]+$/);
+    await expect(page).toHaveURL((url) =>
+      /^\/authority\/[^/?#]+$/.test(url.pathname),
+    );
     const title = page.getByLabel("规范名称", { exact: true });
     await expect(title).toBeEditable();
     const edited = "切换取消后仍保留的未保存编辑";

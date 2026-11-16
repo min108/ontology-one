@@ -9,11 +9,12 @@ import {
   realpathSync,
   writeFileSync,
 } from "node:fs";
-import { basename, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const summaryFiles = [
   "runner.json",
+  "harness-result.json",
   "environment.json",
   "results.json",
   "npm-ci.log",
@@ -72,15 +73,23 @@ export function packageEvidence(
   const groups = {
     summary: summaryFiles.filter((name) => existsSync(resolve(source, name))),
   };
-  for (const role of roles) {
-    const directory = resolve(source, "screenshots", role);
-    groups[role] = [];
-    if (!existsSync(directory)) continue;
-    if (lstatSync(directory).isSymbolicLink())
-      throw new Error("Evidence cannot contain symbolic directories");
-    groups[role] = readdirSync(directory)
-      .filter((name) => name.endsWith(".png"))
-      .map((name) => `screenshots/${role}/${name}`);
+  for (const role of [...roles, "superadmin"]) {
+    const paths = [];
+    for (const kind of ["screenshots", "shell-screenshots"]) {
+      const parent = resolve(source, kind);
+      const directory = resolve(parent, role);
+      if (existsSync(parent) && lstatSync(parent).isSymbolicLink())
+        throw new Error("Evidence cannot contain symbolic directories");
+      if (!existsSync(directory)) continue;
+      if (lstatSync(directory).isSymbolicLink())
+        throw new Error("Evidence cannot contain symbolic directories");
+      paths.push(
+        ...readdirSync(directory)
+          .filter((name) => name.endsWith(".png"))
+          .map((name) => `${kind}/${role}/${name}`),
+      );
+    }
+    if (roles.includes(role) || paths.length) groups[role] = paths;
   }
   // Validate every source and size before copying any package.
   for (const [group, paths] of Object.entries(groups)) {
@@ -100,11 +109,11 @@ export function packageEvidence(
   for (const [group, record] of Object.entries(index.packages)) {
     const directory = resolve(destination, group);
     mkdirSync(directory, { recursive: true });
-    for (const file of record.files)
-      copyFileSync(
-        resolve(source, file.path),
-        resolve(directory, basename(file.path)),
-      );
+    for (const file of record.files) {
+      const destinationPath = resolve(directory, file.path);
+      mkdirSync(dirname(destinationPath), { recursive: true });
+      copyFileSync(resolve(source, file.path), destinationPath);
+    }
     writeFileSync(
       resolve(directory, "index.json"),
       JSON.stringify({ completeArtifact, ...record }, null, 2) + "\n",

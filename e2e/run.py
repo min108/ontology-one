@@ -26,6 +26,11 @@ from types import TracebackType
 
 import pymysql
 
+if __package__:
+    from .harness_fixture import HarnessFixture, validate_harness_result
+else:
+    from harness_fixture import HarnessFixture, validate_harness_result
+
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_COMMIT = "1359118dd672431dcd0cde2eb81f2b0f994eef37"
 
@@ -200,8 +205,13 @@ def main() -> int:
     parser.add_argument("--api-port", type=int, default=8765)
     parser.add_argument("--agent-port", type=int, default=8766)
     parser.add_argument("--evidence", type=Path, default=os.getenv("E2E_EVIDENCE_DIR"))
+    parser.add_argument(
+        "--harness", action="store_true", help="Exercise real SDK with a local synthetic Messages provider"
+    )
     parser.add_argument("playwright_args", nargs=argparse.REMAINDER, help="Arguments after -- are passed to Playwright")
     args = parser.parse_args()
+    if args.harness and (args.target != "foundation" or not Path("/proc").is_dir()):
+        raise ValueError("Harness browser acceptance requires foundation on Linux with process observation")
     check_ports(args.api_port, args.agent_port)
     fixture = args.fixture.resolve()
     manifest = json.loads((fixture / "manifest.json").read_text())
@@ -214,6 +224,11 @@ def main() -> int:
     environment = child_environment(
         dict(os.environ), namespace, work, api_port=args.api_port, agent_port=args.agent_port
     )
+    environment["E2E_HARNESS_ACCEPTANCE"] = "1" if args.harness else "0"
+    environment.pop("E2E_HARNESS_URL", None)
+    environment.pop("E2E_HARNESS_CONTROL", None)
+    if args.harness:
+        environment["ONTOLOGY_HARNESS_ALLOW_LOOPBACK_TEST"] = "1"
     evidence = (
         args.evidence.resolve() if args.evidence else ROOT / "work/evidence/r1" / f"e2e-{args.target}-{namespace}"
     )
@@ -261,6 +276,7 @@ def main() -> int:
     }
     processes: list[subprocess.Popen] = []
     logs = []
+    harness: HarnessFixture | None = None
     try:
         run_command(
             ["npm", "--prefix", str(source / "frontend"), "ci", "--no-audit", "--no-fund"],
@@ -301,6 +317,14 @@ def main() -> int:
                     health_path, key = ("/internal/health", "ready") if name == "agent" else ("/api/health", "ok")
                     wait_health(process, f"http://127.0.0.1:{port}{health_path}", key)
                 scope.record_created()
+                if args.harness:
+                    harness = HarnessFixture(
+                        environment["E2E_BASE_URL"],
+                        work / "storage",
+                        manifest["browser"]["accounts"]["admin"],
+                        processes[0].pid,
+                    )
+                    environment.update(harness.start())
                 extra = args.playwright_args[1:] if args.playwright_args[:1] == ["--"] else args.playwright_args
                 run_command(
                     ["node", str(cli), "test", "--config", "e2e/playwright.config.mjs", *extra],
@@ -310,9 +334,13 @@ def main() -> int:
                 )
                 report["playwright_args"] = extra
                 report["browser_tests"] = browser_counts(evidence / "results.json")
+                if args.harness:
+                    validate_harness_result(evidence / "harness-result.json")
                 report["status"] = "passed"
             finally:
                 terminate_processes(processes)
+                if harness is not None:
+                    harness.close()
     except Exception as error:
         report["status"] = "failed"
         report["error_type"] = type(error).__name__
@@ -326,6 +354,12 @@ def main() -> int:
             cleaned_databases=sorted(scope.cleaned),
             services_stopped=all(process.poll() is not None for process in processes),
         )
+        if harness is not None:
+            report["harness"] = {
+                "sdk_connection_verified": harness.verified,
+                "sdk_version": harness.sdk_version,
+                **harness.provider.state(),
+            }
         (evidence / "runner.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"Browser acceptance {report['status']}: {evidence}")
     return 0 if report["status"] == "passed" else 1
