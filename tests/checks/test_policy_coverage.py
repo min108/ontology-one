@@ -1,6 +1,8 @@
 """A route becomes accessible only after an explicit policy review."""
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import APIRouter, FastAPI
 
@@ -51,6 +53,38 @@ class PolicyCoverageTests(unittest.TestCase):
         self.assertTrue(check_routes(app))
 
     def test_permissive_authorizer_is_detected(self) -> None:
-        from types import SimpleNamespace
-
         self.assertTrue(default_deny_errors(lambda *_args: SimpleNamespace(allowed=True)))
+
+    def test_registered_v2_route_passes_with_a_different_parameter_name(self) -> None:
+        app = FastAPI()
+        app.add_api_route("/api/v2/capabilities/{capability_id}:invoke", lambda: None, methods=["POST"])
+        self.assertEqual(check_routes(app), [])
+
+    def test_v2_registration_cannot_be_inferred_from_its_prefix(self) -> None:
+        app = FastAPI()
+        app.add_api_route("/api/v2/unreviewed", lambda: None, methods=["POST"])
+        self.assertIn("POST /api/v2/unreviewed", "\n".join(check_routes(app)))
+
+    def test_v2_registration_is_method_specific(self) -> None:
+        app = FastAPI()
+        app.add_api_route("/api/v2/capabilities/{id}:invoke", lambda: None, methods=["GET"])
+        self.assertTrue(check_routes(app))
+
+    def test_removed_v2_registration_fails(self) -> None:
+        app = FastAPI()
+        app.add_api_route("/api/v2/capabilities/{id}:invoke", lambda: None, methods=["POST"])
+        with patch("backend.security.policy.V2_RULES", ()):
+            self.assertTrue(check_routes(app))
+
+    def test_legacy_read_table_cannot_register_a_v2_endpoint(self) -> None:
+        app = FastAPI()
+        app.add_api_route("/api/v2/unreviewed", lambda: None, methods=["GET"])
+        with patch("backend.security.policy.READ_PATHS", ("/api/v2/unreviewed",)):
+            self.assertTrue(check_routes(app))
+
+    def test_v2_default_allow_is_detected_for_all_five_roles(self) -> None:
+        with patch("backend.security.policy.authorize_v2", return_value=SimpleNamespace(allowed=True)):
+            errors = default_deny_errors()
+        self.assertTrue(errors)
+        for role in ("admin", "modeler", "reviewer", "analyst", "viewer"):
+            self.assertTrue(any(error.startswith(role + " ") and "/api/v2/" in error for error in errors))
