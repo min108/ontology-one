@@ -1,3 +1,4 @@
+import {useWorkspaceGuard,useWorkspaceDialogGuard} from '../../app/useWorkspaceGuard';
 import {AccessButton} from '../components/AccessButton';
 import { Fragment, ReactNode, useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -237,6 +238,7 @@ function RelationsPanel({ entity }: { entity: AssetEntity }) {
 
 function VersionHistory({ id, refresh, onRestored, managed=false }: { id: string; refresh: number; onRestored:()=>void; managed?:boolean }) {
   const {session}=useAuth(),toast=useToast(),[restoring,setRestoring]=useState<number|null>(null),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  useWorkspaceDialogGuard(restoring===null?'':String(restoring),reason);
   async function restore(){if(restoring===null||!reason.trim())return;setBusy(true);setError('');try{await api(`/entities/${encodeURIComponent(id)}/restore`,{method:'POST',body:JSON.stringify({version:restoring,reason:reason.trim()})});setRestoring(null);toast('历史版本已还原为新草稿，原有历史记录保留');onRestored()}catch(e:any){setError(e.message)}finally{setBusy(false)}}
   const versions = useApi<any>(`/entities/${encodeURIComponent(id)}/versions`, [id, refresh]);
   const rows = asArray(versions.data);
@@ -314,6 +316,7 @@ function ActionModal({ entity, action, onClose, onSaved }: { entity: AssetEntity
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  useWorkspaceGuard(!!reason);
   const descriptions: Record<ActionName, string> = { submit: '将当前内容提交审核，并记录本次提交的说明。', approve: '确认当前业务内容、来源和适用边界，并记录审核意见。', return: '说明需要补充或修正的内容，供下一轮修订处理。', publish: '将当前版本发布为可复用资产，并保留发布说明。', revise: '基于当前内容开启新的修订，保留既有版本以便回溯。', archive: '结束该资产的日常使用，保留内容与关系记录。' };
   const submit = async () => {
     if (!reason.trim()) { setError('请填写办理意见，便于记录责任与处理依据。'); return; }

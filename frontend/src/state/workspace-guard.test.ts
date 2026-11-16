@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { useWorkspaceGuard } from '../app/useWorkspaceGuard';
+import {
+  useWorkspaceDraftGuard,
+  useWorkspaceGuard,
+  useWorkspaceInstructionGuard,
+} from '../app/useWorkspaceGuard';
 import {
   beginWorkspaceUpload,
   isWorkspaceConfirmationOpen,
@@ -19,6 +23,50 @@ afterEach(() => {
 });
 
 describe('workspace guard lifecycle', () => {
+  it('accepts only the matching task instruction and retains newer input', () => {
+    const { rerender } = renderHook(
+      ({ value }) => useWorkspaceInstructionGuard(value, 'project_plan', 'p1'),
+      { initialProps: { value: '' } },
+    );
+    rerender({ value: 'plan' });
+    const accepted = (entity_id: string, instruction: string) =>
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('ontology:harness-run-started', {
+            detail: { operation: 'project_plan', instruction, run: { entity_id } },
+          }),
+        );
+      });
+    accepted('p2', 'plan');
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    accepted('p1', 'plan');
+    expect(readWorkspaceGuards()).toMatchObject({ dirtyCount: 0, uploadCount: 0 });
+    rerender({ value: 'new instruction' });
+    accepted('p1', 'plan');
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    rerender({ value: '' });
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
+  });
+  it('only commits the submitted snapshot, preserving edits made during save', () => {
+    const { result, rerender } = renderHook(
+      ({ title, search }) => {
+        void search;
+        return useWorkspaceDraftGuard({ title });
+      },
+      { initialProps: { title: 'saved', search: '' } },
+    );
+    rerender({ title: 'saved', search: 'filter' });
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
+    rerender({ title: 'submitted', search: '' });
+    const submitted = { title: 'submitted' };
+    // A failed request does not call commit.
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    rerender({ title: 'newer edit', search: '' });
+    act(() => result.current(submitted));
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    rerender({ title: 'submitted', search: '' });
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
+  });
   it('reads current dirty state and unregisters exactly once', () => {
     let dirty = false;
     const unregister = registerWorkspaceGuard(() => dirty);
@@ -40,6 +88,16 @@ describe('workspace guard lifecycle', () => {
     rerender({ dirty: false });
     expect(readWorkspaceGuards().dirtyCount).toBe(0);
     unmount();
+  });
+  it('mounted editors re-register after a non-leaving scope clear', () => {
+    const { rerender, unmount } = renderHook(({ dirty }) => useWorkspaceGuard(dirty), {
+      initialProps: { dirty: false },
+    });
+    act(clear);
+    rerender({ dirty: true });
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    unmount();
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
   });
   it('upload lease spans file gaps and survives editor unmount', async () => {
     const finish = beginWorkspaceUpload();
@@ -90,6 +148,9 @@ describe('workspace guard lifecycle', () => {
   });
   it('late draft effect cannot recreate storage metadata while leaving', () => {
     setWorkspaceTransition('leaving');
+    const unregister = registerWorkspaceGuard(() => true);
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
+    unregister();
     trackStoredWorkspaceDraft('ontology-one-draft-a', true);
     expect(sessionStorage.length).toBe(0);
   });

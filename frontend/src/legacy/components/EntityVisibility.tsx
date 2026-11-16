@@ -1,3 +1,4 @@
+import {useWorkspaceDraftGuard} from '../../app/useWorkspaceGuard';
 import {useEffect, useRef, useState} from 'react';
 import {Building2, Check, Eye, LockKeyhole, RefreshCw} from 'lucide-react';
 import {api, useApi, statusLabel} from '../api';
@@ -23,9 +24,10 @@ export default function EntityVisibility({entityId, tenantId, canEdit = false, o
   const alive = useRef(true);
   useEffect(() => {alive.current = true; return () => {alive.current = false;};}, []);
   useEffect(() => {
-    if (detail.data) setSelection(detail.data.entity.visibility);
+    if (detail.data) {setSelection(detail.data.entity.visibility);commitVisibility(detail.data.entity.visibility)}
     setError('');
   }, [detail.data, entityId, tenantId]);
+  const commitVisibility=useWorkspaceDraftGuard(selection);
   if (!path) return null;
   if (detail.loading) return <aside className="entity-visibility" aria-busy="true"><Building2 size={17}/><span>正在核对机构归属与可见范围…</span></aside>;
   if (detail.error || !detail.data) return <aside className="entity-visibility entity-visibility-error" role="status"><span>机构归属信息暂时未能加载。{detail.error}</span><button type="button" className="btn btn-ghost" onClick={detail.reload}><RefreshCw size={14}/>重试</button></aside>;
@@ -38,7 +40,7 @@ export default function EntityVisibility({entityId, tenantId, canEdit = false, o
     try {
       await api(path + '/visibility', {method: 'POST', body: JSON.stringify({visibility: selection})});
       if (!alive.current || currentIdentity.current !== savingIdentity) return;
-      detail.reload(); onUpdated?.(); toast('成果可见范围已更新');
+      commitVisibility(selection);detail.reload(); onUpdated?.(); toast('成果可见范围已更新');
     } catch (e: any) {if (alive.current && currentIdentity.current === savingIdentity) setError(e.message || '可见范围未能更新，请重试。');}
     finally {if (alive.current && currentIdentity.current === savingIdentity) setSaving(false);}
   }

@@ -1,3 +1,4 @@
+import {useWorkspaceGuard} from '../../app/useWorkspaceGuard';
 import {FormEvent, ReactNode, useEffect, useRef, useState} from 'react';
 import {Link, useSearchParams} from 'react-router-dom';
 import {ArrowUpRight, BookOpen, CheckCircle2, ChevronDown, Clock3, Database, Layers3, MessageSquareText, PanelLeft, Plus, Search, Send, ShieldCheck, Sparkles, Square, Trash2, Workflow, X} from 'lucide-react';
@@ -43,6 +44,7 @@ export default function Applications(){
   useEffect(()=>{live.current=true;const clear=()=>{generation.current++;for(const controller of requests.current)controller.abort();requests.current.clear();setSession(null);setRun(null);setActiveRun('');setQuestion('');setExpandedRuns({});setSkillIds([]);setMappingIds([]);setEntityIds([]);setError('');setConnection('')};window.addEventListener('ontology:scope-cleared',clear);window.addEventListener('pagehide',clear);return()=>{live.current=false;generation.current++;for(const controller of requests.current)controller.abort();window.removeEventListener('ontology:scope-cleared',clear);window.removeEventListener('pagehide',clear)}},[]);
   useEffect(()=>{const reload=()=>capabilities.reload();window.addEventListener('ontology:harness-configured',reload);return()=>window.removeEventListener('ontology:harness-configured',reload)},[capabilities.reload]);
   useEffect(()=>{const media=window.matchMedia('(max-width:760px)');const collapse=()=>{if(media.matches)setHistory(false)};media.addEventListener('change',collapse);return()=>media.removeEventListener('change',collapse)},[]);
+  useWorkspaceGuard(!!question.trim());
   async function scoped<T,>(path:string,init:RequestInit={}){const controller=new AbortController(),current=generation.current;requests.current.add(controller);try{const result=await api<T>(path,{...init,signal:controller.signal});if(!live.current||current!==generation.current)throw new DOMException('机构已切换','AbortError');return result}finally{requests.current.delete(controller)}}
   function clearCurrent(){setExpandedRuns({});followOutput.current=true;generation.current++;for(const controller of requests.current)controller.abort();requests.current.clear();setSession(null);setRun(null);setActiveRun('');setQuestion('');setError('');setConnection('');setSkillIds([]);setMappingIds([]);setEntityIds([]);setAutomatic(true)}
   function reportError(e:any){if(e.name==='AbortError')return;if([401,403,404,409].includes(e.status)){clearCurrent();catalog.reload()}setError(e.message||'操作未完成，请稍后重试。')}

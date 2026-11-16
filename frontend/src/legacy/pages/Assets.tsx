@@ -1,3 +1,4 @@
+import {beginWorkspaceUpload} from '../../state/workspace-guard';
 import {useAuth} from '../auth';
 import {AccessButton} from '../components/AccessButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -122,11 +123,11 @@ function AssetImportControl({kind,onImported}:{kind:'data'|'rule'|'skill';onImpo
   if(!file||busy)return;
   if(!/\.xlsx$/i.test(file.name)){setError('请上传 .xlsx 文件；旧版 .xls 请先另存为 .xlsx。');setResult(null);setOpen(true);return}
   if(file.size>30*1024*1024){setError('文件超过 30 MB，请按业务领域分批导入。');setResult(null);setOpen(true);return}
-  setOpen(true);setBusy(true);setError('');setResult(null);
+  setOpen(true);const finishUpload=beginWorkspaceUpload();setBusy(true);setError('');setResult(null);
   const form=new FormData();form.append('file',file);
   try{const r=await api<ImportResult>('/asset-import/'+kind,{method:'POST',body:form});setResult(r);onImported()}
   catch(e:any){setError(e?.message||'导入未完成，请检查文件后重试。')}
-  finally{setBusy(false);if(input.current)input.current.value=''}
+  finally{finishUpload();setBusy(false);if(input.current)input.current.value=''}
  }
  return <><a className="btn btn-ghost" href={'/api/asset-import/template/'+kind} download><Download size={15}/>下载标准模板</a><AccessButton className="btn btn-primary" disabled={busy} onClick={()=>{setError('');setResult(null);input.current?.click()}}><Upload size={15}/>{busy?'正在导入…':'Excel 一键导入'}</AccessButton><input disabled={!canEdit} ref={input} className="asset-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label={`选择${name}台账`} onChange={e=>importFile(e.target.files?.[0])}/>
  {open&&<Modal title={`${name} · Excel 台账导入`} onClose={()=>!busy&&setOpen(false)}><div className="asset-import-dialog"><div className="asset-import-guide"><FileSpreadsheet size={22}/><div><strong>保留原表字段即可直接导入</strong><p>支持系统标准模板与多工作表台账。整批校验通过后一次写入；同编号更新保留历史版本，来源工作表和行号随资产保存。</p></div></div>{busy&&<Loading label={`正在校验并导入${name}，请勿关闭页面…`}/>} {result&&<div className="asset-import-success"><CheckCircle2 size={24}/><div><h3>台账导入完成</h3><p>{result.message}</p><dl><div><dt>本次读取</dt><dd>{number(result.total)} 项</dd></div><div><dt>新增</dt><dd>{number(result.created)} 项</dd></div><div><dt>同编号更新</dt><dd>{number(result.updated)} 项</dd></div></dl><Link to={'/materials/'+encodeURIComponent(result.material_id)}>查看已保存的来源台账<ArrowUpRight size={14}/></Link></div></div>}{error&&<div className="asset-import-error" role="alert"><strong>本次未导入任何资产</strong><p>{error}</p><small>请按提示修正工作簿；也可以重新下载标准空模板填写。</small></div>}<div className="asset-import-footer"><a className="btn btn-ghost" href={'/api/asset-import/template/'+kind} download><Download size={14}/>下载空模板</a>{!busy&&<AccessButton className="btn btn-primary" onClick={()=>input.current?.click()}><Upload size={14}/>{result||error?'重新选择台账':'选择台账'}</AccessButton>}{!busy&&(result||error)&&<AccessButton className="btn btn-ghost" onClick={()=>setOpen(false)}>完成</AccessButton>}</div></div></Modal>}

@@ -1,3 +1,4 @@
+import {useWorkspaceDraftGuard,useWorkspaceDialogGuard} from '../../app/useWorkspaceGuard';
 import {AccessButton} from '../components/AccessButton';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -15,6 +16,7 @@ export const isDone=(e:BusinessEntity)=>['completed','published','archived'].inc
 
 export function TaskForm({project,types,onClose,onCreated,initial}: {project:BusinessEntity;types:TaskType[];onClose:()=>void;onCreated:(w:Workspace)=>void;initial?:any}) {
  const [form,setForm]=useState({title:initial?.title||'',task_type:initial?.task_type||'material',owner:project.payload.owner||'',due_date:project.payload.due_date||'',instruction:initial?.instruction||''});const [busy,setBusy]=useState(false);const toast=useToast();const type=types.find(x=>x.value===form.task_type);
+ useWorkspaceDraftGuard(form);
  async function save(){setBusy(true);try{const w=await api<Workspace>(`/projects/${project.id}/tasks`,{method:'POST',body:JSON.stringify(form)});toast('任务已建立，可配置具体办理对象');onCreated(w)}catch(e:any){toast(e.message,'error')}finally{setBusy(false)}}
  return <Modal wide title={initial?'审定并建立任务':'分解专题任务'} onClose={onClose}><div className="pw-form"><p className="pw-callout">选择任务类型后，系统会配置对应核对清单和成果要求。材料、台账与资产清单可在任务建立后逐项配置。</p><label className="form-field">任务类型</label><div className="pw-type-grid">{types.map(t=><AccessButton key={t.value} className={'pw-type-option '+(t.value===form.task_type?'selected':'')} onClick={()=>setForm({...form,task_type:t.value})}><strong>{t.label}</strong><span>{t.description}</span></AccessButton>)}</div><label className="form-field">任务名称<input className="input" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="如：核对公务接待报销规则" maxLength={150}/></label><div className="grid-2"><label className="form-field">责任人<input className="input" value={form.owner} onChange={e=>setForm({...form,owner:e.target.value})}/></label><label className="form-field">办理期限<input className="input" type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}/></label></div><label className="form-field">具体办理要求<textarea rows={4} className="input" value={form.instruction} onChange={e=>setForm({...form,instruction:e.target.value})} placeholder="写明要梳理哪些事项、需要哪些材料、成果如何验收。"/></label>{initial?.rationale&&<p className="pw-callout">AI 拆分理由：{initial.rationale}。请逐项核实后建立。</p>}<div className="pw-template-checks"><strong>本类任务验收要点</strong>{type?.checks.map(x=><span key={x}><Check size={14}/>{x}</span>)}</div><div className="pw-actions"><AccessButton className="btn" onClick={onClose}>取消</AccessButton><AccessButton className="btn btn-primary" disabled={busy||!form.title.trim()||!form.instruction.trim()} onClick={save}>{busy?'正在建立…':'确认建立任务'}</AccessButton></div></div></Modal>
 }
@@ -24,6 +26,7 @@ export function ObjectManager({entity,objects,onChange,readOnly=false,taskMode=f
  const found=useApi<{items:BusinessEntity[];total:number}>(`/entities?kind=${kind}&page_size=15&q=${encodeURIComponent(query)}`,[adding]);
  const options=[{value:'',label:'全部清单',count:objects.length},...['work_object','source_material','dataset','produced_asset'].map(x=>({value:x,label:roleLabel(x),count:objects.filter(o=>o.role===x).length}))];
  const visible=objects.filter(x=>!tab||x.role===tab);
+ useWorkspaceDialogGuard(adding?'objects':'',{selected,role,required});
  async function link(){setBusy(true);try{await api(`/work/${entity.id}/objects`,{method:'POST',body:JSON.stringify({target_id:selected,role,required})});setAdding(false);setSelected('');toast('关联已保存，图谱同步更新');onChange()}catch(e:any){toast(e.message,'error')}finally{setBusy(false)}}
  async function update(x:WorkObject,b:any){setBusy(true);try{await api(`/work/${entity.id}/objects/${x.id}`,{method:'PATCH',body:JSON.stringify(b)});onChange();toast(b.remove?'已移出清单，资产本身仍保留':'核对记录已保存')}catch(e:any){toast(e.message,'error')}finally{setBusy(false)}}
  const context=`project_id=${encodeURIComponent(entity.kind==='project'?entity.id:entity.payload.project_id||'')}${entity.kind==='task'?'&task_id='+encodeURIComponent(entity.id):''}`;

@@ -1,3 +1,4 @@
+import {useWorkspaceDraftGuard} from '../../app/useWorkspaceGuard';
 import {FormEvent, useEffect, useRef, useState} from 'react';
 import {Link, useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {ArrowLeft, ArrowRight, Check, Database, FileClock, GitBranch, KeyRound, Link2, Play, Plus, RefreshCw, Search, Server, ShieldCheck, Trash2, X} from 'lucide-react';
@@ -52,6 +53,7 @@ function SourceDirectory() {
 function SourceEditor({source,onClose,onSaved}:{source?:Source;onClose:()=>void;onSaved:(source:Source)=>void}) {
  const [form,setForm] = useState({title:source?.title||'',kind:source?.kind||'mysql',host:source?.config?.host||'',port:String(source?.config?.port||3306),database:source?.config?.database||'',endpoint:source?.config?.endpoint||'',objects:(source?.config?.allowed_objects||[]).join('\n'),credential:source?.credential_ref||''});
  const [busy,setBusy] = useState(false), [error,setError] = useState('');
+ useWorkspaceDraftGuard(form);
  const set = (key:string,value:string) => setForm(f=>({...f,[key]:value}));
  async function save(event:FormEvent) {
   event.preventDefault();setError('');
@@ -121,6 +123,7 @@ function MappingEditor({source,resource,mapping,onClose,onSaved}:{source:Source;
  const [form,setForm]=useState({title:mapping?.title||resource.name+' · 本体映射',business_meaning:mapping?.business_meaning||'',grain:mapping?.grain||'',object_key:mapping?.object_key||[],relation_keys:mapping?.relation_keys||[] as RelationKey[],fields:mapping?.fields||[] as Field[]});
  const [confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  useEffect(()=>{if(standards.data)setKnown(prev=>({...prev,...Object.fromEntries(standards.data!.items.map(s=>[s.id,s]))}))},[standards.data]);
+ useWorkspaceDraftGuard(form);
  const set=(key:string,value:unknown)=>{setForm(prev=>({...prev,[key]:value}));setConfirmed(false)};
  function updateField(column:string,patch:Partial<Field>){set('fields',form.fields.map(f=>f.column===column?{...f,...patch}:f))}
  function toggleField(column:Column,selected:boolean){if(selected){const safe=/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column.name)?column.name:'field_'+(form.fields.length+1);set('fields',[...form.fields,{column:column.name,field:/^[a-zA-Z_]/.test(safe)?safe:'field_'+(form.fields.length+1),asset_id:'',meaning:column.comment||'',unit:''}])}else{setForm(f=>({...f,fields:f.fields.filter(x=>x.column!==column.name),object_key:f.object_key.filter(x=>x!==column.name)}));setConfirmed(false)}}

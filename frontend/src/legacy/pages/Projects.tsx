@@ -1,3 +1,4 @@
+import {useWorkspaceDraftGuard} from '../../app/useWorkspaceGuard';
 import {AccessButton} from '../components/AccessButton';
 import {useState} from 'react';
 import {Link,useNavigate,useSearchParams} from 'react-router-dom';
@@ -15,6 +16,7 @@ export default function Projects(){
  const [params,setParams]=useSearchParams();const query=params.get('q')||'',status=params.get('status')||'',source=params.get('source')||'',domain=params.get('domain')||'',mode=params.get('mode')||'';
  const setFilter=(key:string,value:string)=>{const q=new URLSearchParams(params);value?q.set(key,value):q.delete(key);setParams(q,{replace:true})};
  const [creating,setCreating]=useState(false),[busy,setBusy]=useState(false);const [form,setForm]=useState({project_mode:'co_build',title:'',domain:'本体建设',owner:'',due_date:'',objective:'',scope:'',expected_outputs:'',work_period:'',work_type:'项目交付'});const toast=useToast(),navigate=useNavigate();
+ useWorkspaceDraftGuard(form);
  const searched=items.filter(p=>(!mode||modeOf(p)===mode)&&(!domain||p.domain===domain)&&`${p.title} ${p.summary} ${p.payload.owner||''}`.includes(query));const filtered=searched.filter(p=>(!status||p.status===status)&&(!source||p.source_kind===source));const domains=Array.from(new Set(items.map(p=>p.domain))),states=Array.from(new Set(searched.map(p=>p.status))),sources=Array.from(new Set(searched.map(p=>p.source_kind)));
  async function create(){setBusy(true);try{if(form.project_mode==='special_review'){const w=await api<any>('/special-projects',{method:'POST',body:JSON.stringify({...form,original_work_status:'原业务工作已结束'})});toast('专项整理档案已建立，可批量归集本次工作资料');navigate(`/projects/${w.project.id}?panel=materials`)}else{const e=await api<BusinessEntity>('/entities',{method:'POST',body:JSON.stringify({kind:'project',title:form.title.trim(),summary:form.objective.trim(),domain:form.domain,status:'draft',source_kind:'user',payload:{...form,expected_outputs:form.expected_outputs.split(/[；;\n]/).filter(Boolean),progress:0}})});toast('共建专题已建立，请继续明确工作任务');navigate(`/projects/${e.id}`)}}catch(e:any){toast(e.message,'error')}finally{setBusy(false)}}
  return <div className="page biz-page pw-page"><PageHeader eyebrow="围绕业务目标组织工作 / PROJECT STUDIO" title="专题工作室" description="日常资产共建与一次专项成果整理，各有清晰工作路径。任务、原件、事项、依据与成果持续相连。" actions={<AccessButton className="btn btn-primary" onClick={()=>{setForm({...form,project_mode:mode||'co_build'});setCreating(true)}}><Plus size={17}/>发起专题</AccessButton>}/>

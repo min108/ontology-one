@@ -1,3 +1,4 @@
+import {useWorkspaceGuard,useWorkspaceDraftGuard} from '../../app/useWorkspaceGuard';
 import {useHarnessResultRestore} from './LegacyHarnessConversation';
 import {AccessButton} from './AccessButton';
 import { useState } from 'react';
@@ -38,10 +39,11 @@ export function AssetPlacement({ entity, onClose, onSaved }: { entity: AssetEnti
   const [reviewNote, setReviewNote] = useState('');
   const [search, setSearch] = useState('');
   const [extra, setExtra] = useState<Candidate[]>([]);
+  const commitLinks=useWorkspaceDraftGuard(links);useWorkspaceGuard(!!reviewNote.trim());
   const allCandidates = [...(proposal?.candidates || []), ...extra.filter(item => !proposal?.candidates.some(prior => prior.id === item.id))];
   const selected = links.filter(item => item.reviewed);
   const isDraft = ['draft', 'returned'].includes(entity.status || '');
-  const load = (value: Proposal) => { setProposal(value); const audits = value.confirmation?.reviews || []; setLinks(value.suggestions.map(item => { const audit = audits.find(v => v.original_suggestion?.id === item.id); return { ...item, ...(audit?.reviewed_link || {}), id: item.id, reviewed: !!audit }; })); setExtra(audits.flatMap(v => [v.source_snapshot, v.target_snapshot]).filter(v => v?.id && v.id !== entity.id).map(v => ({ ...v, excerpt: typeof v.payload?.content === 'string' ? v.payload.content : v.summary || '', origin: '人工审定时的对象快照' }))); setTab('review'); setError(''); };
+  const load = (value: Proposal) => { setProposal(value); const audits = value.confirmation?.reviews || []; const loadedLinks=value.suggestions.map(item => { const audit = audits.find(v => v.original_suggestion?.id === item.id); return { ...item, ...(audit?.reviewed_link || {}), id: item.id, reviewed: !!audit }; });setLinks(loadedLinks);commitLinks(loadedLinks);setExtra(audits.flatMap(v => [v.source_snapshot, v.target_snapshot]).filter(v => v?.id && v.id !== entity.id).map(v => ({ ...v, excerpt: typeof v.payload?.content === 'string' ? v.payload.content : v.summary || '', origin: '人工审定时的对象快照' }))); setTab('review'); setError(''); };
   useHarnessResultRestore('placement_suggest',result=>{if(Array.isArray(result?.suggestions)&&Array.isArray(result?.candidates))load(result)},entity.id);
   const generate = async () => {
     setBusy('generate'); setError('');
