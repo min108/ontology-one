@@ -33,7 +33,7 @@
 - `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。app 包已承载新六工作区外壳、路由、状态与请求层；原82文件整体移入legacy，旧App/main通过90项浏览器对照后退役，R1-8退役Settings、HarnessConfiguration与专属CSS，R1-6退役Overview，R1-7退役Security、Administration、auth.css后剩73；legacy/auth.tsx只留会话兼容桥。旧样式构建期加作用域，门户使用独立legacy-root。
 - `frontend/src/features/{auth,account,admin,identity}`：新登录、账号安全、账号与授权、机构目录与审计；`state/preferences.ts`串行保存本人视图偏好，阻止迟到读取覆盖用户选择。12项真实操作对照后退役旧身份UI，原会话桥及共享CSS保留。
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
-- `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；`ops/offline/`：准备依赖并在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
+- `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；check_results.py逐项核对最终210次浏览器执行与清理。visual_baselines.py验证33包/63图及逐图审查，流程见e2e/CANONICAL-CAPTURE.md。`ops/offline/`：准备依赖和可迁移镜像，在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
 - `docs/blueprint/`：蓝图、进度、轮次记录与 ADR；`work/`：不入库的日志、临时数据与证据。
 - e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；新业务前端域正在后续工作包集成，离线工具须在最终依赖上重新验证。
@@ -52,13 +52,14 @@ npm --prefix frontend ci
 npm --prefix frontend run dev
 RUN_HARNESS_SDK_TESTS=1 RUN_FEDERATION_MYSQL_TESTS=1 RUN_JOBS_MYSQL_TESTS=1 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m unittest discover -s .github/scripts -p 'test_*.py'
-.venv/bin/ruff format --check backend scripts ops tests migrations .github/scripts e2e/run.py
-.venv/bin/ruff check backend scripts ops tests migrations .github/scripts e2e/run.py
+.venv/bin/ruff format --check backend scripts ops tests migrations .github/scripts e2e
+.venv/bin/ruff check backend scripts ops tests migrations .github/scripts e2e
 npm --prefix frontend run lint
 npm --prefix frontend run format:check
 npm --prefix frontend run lint:styles
 npm --prefix frontend test -- --run
 npm --prefix frontend run test:isolation
+node --test e2e/*.test.mjs
 python scripts/checks/check_legacy_shrink.py
 python scripts/gen_terms.py --check
 python scripts/gen_api_types.py --check
@@ -88,6 +89,7 @@ npm --prefix frontend run build
 - 产品中文显示名变更不影响仓库、包、Cookie、环境变量、库名前缀、Compose 项目名、MCP 或 Windows 文件等技术标识。
 - 新Shell懒加载保留旧组件期间，所有异步URL写入必须校验固定路由所有权；NavigationProvider补via前校验真实浏览器完整URL。会话请求使用专用AbortController，旧401/409不能先触发全局副作用。
 - Linux 的 39 个 Windows 原生跳过不能称为原生验收完成；真实模型密钥只从 DEEPSEEK_API_KEY 读取，不进入文件、日志、提交或截图。
+- 视觉capture仅是生成，不能作为验收通过；先逐图打开审查，再将基线与compare模式同提交。真实125%使用官方完整Chromium的原生profile偏好，不能以headless-shell、pinch或模拟DPR替代。跨机离线包必须带images.tar，联网prepare使用--export-images。
 
 ## 7 禁止事项
 

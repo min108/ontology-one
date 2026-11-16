@@ -7,13 +7,11 @@ import json
 import os
 import shutil
 import subprocess
-import tarfile
 from pathlib import Path
 
-from bundle import make_manifest, verify_manifest, verify_source_locks
+from bundle import make_manifest, snapshot_source, verify_manifest, verify_source_locks
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED = {"node_modules", ".git", ".venv", "__pycache__", "dist", "work", "data", "uploads"}
 
 
 def run(command: list[str]) -> str:
@@ -38,6 +36,26 @@ def main() -> int:
         help="Reuse a verified bundle only when dependency locks and tool Dockerfile are unchanged",
     )
     args = parser.parse_args()
+    source_changes = run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            "--",
+            "backend",
+            "frontend",
+            "scripts",
+            "ops",
+            "migrations",
+            "VERSION",
+            "requirements.txt",
+        ]
+    )
+    if source_changes:
+        parser.error("Commit application/dependency changes before preparing evidence for an exact source SHA")
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
         parser.error("Output must be empty; use a fresh directory to regenerate changed dependencies")
@@ -65,13 +83,17 @@ def main() -> int:
             for name, tag in {"runner": "ontology-offline-tools:r1", "mysql": "mysql:8.4"}.items()
         }
     (output / "images.json").write_text(json.dumps(images, indent=2) + "\n")
-    with tarfile.open(output / "source.tar", "w") as archive:
-        for name in ("backend", "frontend", "scripts", "ops", "VERSION", "requirements.txt"):
-            source = ROOT / name
-            paths = sorted(source.rglob("*")) if source.is_dir() else [source]
-            for path in paths:
-                if path.is_file() and not EXCLUDED.intersection(path.relative_to(ROOT).parts):
-                    archive.add(path, arcname=path.relative_to(ROOT), recursive=False)
+    snapshot_source(ROOT, output / "source.tar")
+    (output / "source.json").write_text(
+        json.dumps(
+            {
+                "commit": run(["git", "-C", str(ROOT), "rev-parse", "HEAD"]),
+                "version": (ROOT / "VERSION").read_text().strip(),
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     preparation = (
         "mkdir /src; tar -xf /bundle/source.tar -C /src; "
         "python -m pip download --only-binary=:all: -r /src/requirements.txt -d /bundle/wheels; "

@@ -26,6 +26,10 @@ test("group and administration secondary items require their stated authorizatio
   }
 });
 test("redirect vectors preserve both query and hash, equivalent layout is labeled honestly", () => {
+  assert.deepEqual(
+    redirects.map((entry) => entry[2]),
+    ["账号安全", "账号与权限", "模型与运行", "演示资料"],
+  );
   for (const [from, to] of redirects) {
     const source = new URL(from, "http://localhost");
     const target = new URL(to, "http://localhost");

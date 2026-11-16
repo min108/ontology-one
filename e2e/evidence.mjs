@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { visualLayouts, visualModes, visualPages } from "./visual-contract.mjs";
 
 const summaryFiles = [
   "runner.json",
@@ -92,12 +93,52 @@ export function packageEvidence(
     if (roles.includes(role) || paths.length) groups[role] = paths;
   }
   const harnessScreenshots = resolve(source, "harness-screenshots");
+  const replacements = resolve(source, "screenshots", "legacy-replacements");
+  if (existsSync(replacements)) {
+    if (lstatSync(replacements).isSymbolicLink())
+      throw new Error("Evidence cannot contain symbolic directories");
+    for (const page of [
+      "overview-modeler",
+      "login-empty",
+      "security-admin",
+      "settings-admin",
+      "administration-hq",
+    ]) {
+      const path = `screenshots/legacy-replacements/${page}.png`;
+      if (existsSync(resolve(source, path)))
+        groups[`replacement-${page}`] = [path];
+    }
+  }
   if (existsSync(harnessScreenshots)) {
     if (lstatSync(harnessScreenshots).isSymbolicLink())
       throw new Error("Evidence cannot contain symbolic directories");
     groups.harness = readdirSync(harnessScreenshots)
       .filter((name) => name.endsWith(".png"))
       .map((name) => `harness-screenshots/${name}`);
+  }
+  for (const layout of visualLayouts) {
+    for (const page of ["login", ...visualPages.map((item) => item.name)]) {
+      const paths = [];
+      const states =
+        page === "login"
+          ? ["login--unauthenticated"]
+          : visualModes.map((mode) => `${mode}--${page}`);
+      for (const state of states) {
+        const relative = `visual/${layout.name}/${state}`;
+        for (const parent of ["visual", `visual/${layout.name}`, relative]) {
+          if (
+            existsSync(resolve(source, parent)) &&
+            lstatSync(resolve(source, parent)).isSymbolicLink()
+          )
+            throw new Error("Evidence cannot contain symbolic directories");
+        }
+        for (const name of ["actual.png", "metrics.json", "axe.json"]) {
+          if (existsSync(resolve(source, relative, name)))
+            paths.push(`${relative}/${name}`);
+        }
+      }
+      if (paths.length) groups[`visual-${layout.name}-${page}`] = paths;
+    }
   }
   // Validate every source and size before copying any package.
   for (const [group, paths] of Object.entries(groups)) {

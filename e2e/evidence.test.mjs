@@ -12,12 +12,68 @@ import { test } from "node:test";
 import { packageEvidence } from "./evidence.mjs";
 
 function fixture(t) {
+  mkdirSync("work", { recursive: true });
   const root = mkdtempSync(resolve("work", "evidence-contract-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = resolve(root, "source");
   mkdirSync(source);
   return { source, destination: resolve(root, "packages") };
 }
+
+test("visual evidence is independently readable per viewport and page, including axe and native metrics", (t) => {
+  const { source, destination } = fixture(t);
+  for (const mode of ["simple", "professional"]) {
+    const directory = resolve(
+      source,
+      "visual",
+      "1366-native125",
+      `${mode}--home`,
+    );
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(resolve(directory, "actual.png"), "synthetic PNG");
+    writeFileSync(
+      resolve(directory, "metrics.json"),
+      '{"devicePixelRatio":1.25}',
+    );
+    writeFileSync(resolve(directory, "axe.json"), '{"violations":[]}');
+  }
+  const index = packageEvidence(source, destination, "complete-url");
+  assert.equal(index.packages["visual-1366-native125-home"].files.length, 6);
+  assert.equal(index.completeArtifact, "complete-url");
+});
+
+test("five original replacement pages receive separate bounded screenshot packages", (t) => {
+  const { source, destination } = fixture(t);
+  const directory = resolve(source, "screenshots", "legacy-replacements");
+  mkdirSync(directory, { recursive: true });
+  for (const name of [
+    "overview-modeler",
+    "login-empty",
+    "security-admin",
+    "settings-admin",
+    "administration-hq",
+  ])
+    writeFileSync(resolve(directory, `${name}.png`), "synthetic screenshot");
+  const index = packageEvidence(source, destination, "original-complete-url");
+  const groups = Object.keys(index.packages).filter((name) =>
+    name.startsWith("replacement-"),
+  );
+  assert.equal(groups.length, 5);
+  for (const group of groups)
+    assert.equal(index.packages[group].files.length, 1);
+});
+
+test("replacement screenshot directory symlinks cannot bypass package checks", (t) => {
+  const { source, destination } = fixture(t);
+  mkdirSync(resolve(source, "screenshots"));
+  mkdirSync(resolve(source, "private"));
+  writeFileSync(resolve(source, "private", "overview-modeler.png"), "private");
+  symlinkSync(
+    resolve(source, "private"),
+    resolve(source, "screenshots", "legacy-replacements"),
+  );
+  assert.throws(() => packageEvidence(source, destination, ""), /symbolic/);
+});
 
 test("summary is allowlisted, screenshots split by role, complete artifact remains linked", (t) => {
   const { source, destination } = fixture(t);

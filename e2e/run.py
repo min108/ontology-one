@@ -395,6 +395,7 @@ def main() -> int:
             created_databases=sorted(scope.created),
             cleaned_databases=sorted(scope.cleaned),
             services_stopped=all(process.poll() is not None for process in processes),
+            auth_state_removed=not (work / "work/e2e-auth").exists(),
         )
         if harness is not None:
             report["harness"] = {

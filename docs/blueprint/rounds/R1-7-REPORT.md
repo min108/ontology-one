@@ -26,6 +26,8 @@
 
 ## 最后集成调整与下一步
 
+提交后补证：主干完整提交5e6798c1ec47ef838932de9e7b0d9e9aaea36356与原1359118再次实际执行双版本比较，五范围完整HTTP响应相等、98条授权与15条历史审计保留，reserved＝created＝cleaned＝4；结果在work/r1-preflight/r1-7-integrated/identity-v070-comparison.json。随后该提交的[CI 43843536997](https://github.com/min108/ontology-one/actions/runs/43843536997)通过；最终R1-9扩大后的验收范围仍须单独完成。
+
 旧security/administration重定向继续核对原query/hash，只将已退役legacy定位标记改成新页面精确一级标题；四项Shell契约通过。备份页复用固定双位、等宽数字的Timestamp，原始值保留在dateTime，防止瞬时时间遮罩宽度变化，不改变备份数据。比较脚本的精确四库清理与浏览器动态机构清理分别保留，未知同前缀库没有删除授权。
 
 下一步由R1-9在最终组合代码上完成规范浏览器、63张视觉与无障碍矩阵、真实断网构建运行及证据打包。不能将本包Linux结果称为Windows原生通过，也不能把本地合成Messages服务称为真实模型效果。

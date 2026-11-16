@@ -10,7 +10,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from bundle import digest, verify_manifest, verify_source_locks
+from bundle import digest, verify_manifest, verify_source_commit, verify_source_locks
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -23,6 +23,8 @@ def main() -> int:
     bundle, evidence = args.bundle.resolve(), args.evidence.resolve()
     manifest = verify_manifest(bundle)
     verify_source_locks(bundle, ROOT)
+    commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    verify_source_commit(bundle, commit)
     if evidence.exists() and any(evidence.iterdir()):
         parser.error("Evidence output must be empty; use a fresh directory for each attempt")
     evidence.mkdir(parents=True, exist_ok=True)
@@ -78,6 +80,7 @@ def main() -> int:
                     "mysql_network_mode": mode,
                     "runner_network_mode": "container:" + name,
                     "images": manifest["images"],
+                    "source_commit": commit,
                     "bundle_manifest_sha256": digest(bundle / "manifest.json"),
                 },
                 indent=2,

@@ -7,6 +7,22 @@ import json
 import tarfile
 from pathlib import Path
 
+SOURCE_ROOTS = ("backend", "frontend", "scripts", "ops", "migrations", "VERSION", "requirements.txt")
+EXCLUDED = {"node_modules", ".git", ".venv", "__pycache__", "dist", "work", "data", "uploads"}
+
+
+def snapshot_source(root: Path, destination: Path) -> None:
+    """Keep runtime migration definitions with the exact application source."""
+    with tarfile.open(destination, "w") as archive:
+        for name in SOURCE_ROOTS:
+            source = root / name
+            paths = sorted(source.rglob("*")) if source.is_dir() else [source]
+            for path in paths:
+                if path.is_file() and not EXCLUDED.intersection(path.relative_to(root).parts):
+                    if path.is_symlink():
+                        raise ValueError(f"Symlink source cannot enter offline bundle: {path}")
+                    archive.add(path, arcname=path.relative_to(root), recursive=False)
+
 
 def digest(path: Path) -> str:
     with path.open("rb") as stream:
@@ -49,3 +65,8 @@ def verify_source_locks(bundle: Path, checkout: Path) -> None:
             stream = archive.extractfile(name)
             if stream is None or stream.read() != (checkout / name).read_bytes():
                 raise ValueError(f"Offline source snapshot is stale: {name}; regenerate online")
+
+
+def verify_source_commit(bundle: Path, expected_commit: str) -> None:
+    if json.loads((bundle / "source.json").read_text()).get("commit") != expected_commit:
+        raise ValueError("Offline application commit differs from this checkout; regenerate source online")
