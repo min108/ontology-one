@@ -117,3 +117,42 @@ class IdentityContracts(unittest.TestCase):
             for statement in trusted_schema("control", version)["triggers"].values():
                 with self.subTest(version=version):
                     self.assertNotIn("DEFINER", statement.upper())
+
+    def test_hq_directory_contract_preserves_legacy_null_org_id(self) -> None:
+        import json
+        from pathlib import Path
+
+        from backend.api.v2.orgs import Organization
+
+        fixture = json.loads((Path(__file__).parents[1] / "fixtures/v070/control.json").read_text())
+        row = next(row for row in fixture["tables"]["sec_tenants"] if row["id"] == "hq")
+        self.assertIsNone(row["org_id"])
+        value = Organization.model_validate({key: row[key] for key in Organization.model_fields if key in row})
+        self.assertIsNone(value.org_id)
+
+    def test_hq_snapshot_uses_actual_root_id_and_entity_ownership(self) -> None:
+        import json
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        from backend.security.context import use_context
+        from backend.security.directory import _snapshot_root
+        from tests.security.test_permissions import principal
+
+        fixture = Path(__file__).parents[1] / "fixtures/v070"
+        catalog = json.loads((fixture / "control.json").read_text())
+        row = next(row for row in catalog["tables"]["sec_tenants"] if row["id"] == "hq")
+        entity = next(
+            row for row in json.loads((fixture / "hq.json").read_text())["tables"]["entities"] if row["id"] == "hq"
+        )
+        entity["org_id"] = "historical-business-group"
+        cursor = MagicMock()
+        cursor.fetchone.return_value = entity
+        with use_context(principal(home_tenant_id="hq", tenant_id="dept-01", is_superadmin=True)):
+            _snapshot_root(cursor, row, {"name": "Updated headquarters"}, "directory rename")
+        self.assertEqual(cursor.execute.call_args_list[0].args[1], ("hq",))
+        snapshot = json.loads(cursor.execute.call_args_list[1].args[1][2])
+        self.assertEqual(snapshot["owner_tenant_id"], "hq")
+        self.assertEqual(snapshot["owner_org_id"], "hq")
+        self.assertEqual(snapshot["org_id"], entity["org_id"])
+        self.assertIsNone(row["org_id"])

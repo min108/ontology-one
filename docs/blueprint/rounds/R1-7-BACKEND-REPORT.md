@@ -75,3 +75,9 @@ sec_user_prefs为控制库用户偏好，进入完整部署备份/恢复，不�
 最终838项完整重跑由root在集成主干执行；本报告所属提交是最终交付代码，不把较早834项完整运行冒称为此提交的一遍全绿。前端strict编译、浏览器和A.2由对应包及root执行。本包未重建前端。工作日志位于ignored work/，不包含真实凭据。Linux的39个Windows原生跳过仍不是原生验收；两个Windows冒烟代码仅更新已授权断言，原生执行由负责人验证。前端types最终由root在R1-7/8组合后重生成，旧legacy/api.ts不改。
 
 受限恢复测试使用仅本测试命名空间数据库权限的账户（无SUPER/SET_ANY_DEFINER）；因测试服务器开启binlog且原log_bin_trust_function_creators=0，用例以root临时保存/开启/最后恢复该变量，避免把数据库既有触发器前提误判为新增DEFINER权限。生产工具不修改该变量。
+
+## 真实身份 E2E 后的总部兼容修复
+
+身份浏览器发现GET /api/v2/orgs返回500：真实0.7控制目录中HQ的org_id为null，而DTO原先要求string。现明确允许null，未迁移或覆盖任何旧org_id。顺带核实原db.ensure_tenant_schema及真实HQ夹具：业务根ID恒为tenant id（hq），不能使用可空的目录org_id定位。根快照两归属字段均取目标tenant id，符合1359118的entity_json投影语义；目录org_id=None、实体自身org_id='hq'各自原样保留，不修改全局entity_json。
+
+新增4项回归，修复前纯契约两项分别以DTO校验失败和根查询参数None失败；修复后共6项定向通过（24.213秒），包含真实迁移HTTP读取、从dept-01工作区调用HQ改名/归属/事务回滚，以及已有反方向HQ调用dept-01的归属和回滚。API生成物同步，Ruff/生成一致性通过。日志work/hq-null-red.log、work/hq-null-green.log。包内可收集数相应为842（新增70）；完整集成结果仍由root独立核验，不据此追加全量通过声明。

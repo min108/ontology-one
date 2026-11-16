@@ -17,7 +17,7 @@ class Organization(StrictModel):
     id: str
     name: str
     category: Category
-    org_id: str
+    org_id: str | None
     status: str
     parent_id: str | None = None
     short_name: str = ""

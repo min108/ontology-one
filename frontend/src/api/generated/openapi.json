@@ -1291,8 +1291,15 @@
             "title": "Org Code"
           },
           "org_id": {
-            "title": "Org Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Id"
           },
           "parent_id": {
             "anyOf": [

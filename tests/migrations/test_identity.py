@@ -538,3 +538,62 @@ class IdentityMigration(unittest.TestCase):
                 conn = db.Connection(raw)
                 conn.execute("SET GLOBAL log_bin_trust_function_creators=?", (original_trust,))
                 conn.execute("DROP USER ?@'%'", (username,))
+
+    def test_hq_directory_http_preserves_legacy_null_org_id(self) -> None:
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from backend.api.v2.errors import install_errors
+        from backend.api.v2.routes import router
+        from backend.security.middleware import SecurityMiddleware
+
+        self.prepare()
+        _principal, raw = self.login()
+        app = FastAPI()
+        app.include_router(router)
+        app.add_middleware(SecurityMiddleware)
+        install_errors(app)
+        with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+            client.cookies.set("ontology_session", raw)
+            response = client.get("/api/v2/orgs")
+            self.assertEqual(response.status_code, 200, response.text)
+            hq = next(row for row in response.json()["items"] if row["id"] == "hq")
+            self.assertIsNone(hq["org_id"])
+            self.assertEqual(hq["name"], store.get_tenant("hq")["name"])
+            self.assertEqual(response.json()["total"], len(store.list_tenants()))
+
+    def test_hq_rename_and_rollback_keep_real_root_and_legacy_catalog(self) -> None:
+        self.prepare()
+        person, raw_token = self.login()
+        store.switch_workspace(person, "dept-01")
+        person = store.authenticate_session(raw_token, "cross-workspace-rename")[0]
+        self.assertEqual(person.tenant_id, "dept-01")
+        before = store.get_tenant("hq")
+        self.assertIsNone(before["org_id"])
+        with use_context(person):
+            directory.manage(person, OrgManageInput(action="update", org_id="hq", name="Renamed headquarters"))
+        after = store.get_tenant("hq")
+        self.assertEqual(
+            (before["id"], before["org_id"], before["db_name"]), (after["id"], after["org_id"], after["db_name"])
+        )
+        with closing(db._raw_connection(after["db_name"])) as raw:
+            conn = db.Connection(raw)
+            entity = conn.execute("SELECT * FROM entities WHERE id='hq'").fetchone()
+            self.assertEqual(entity["title"], "Renamed headquarters")
+            self.assertEqual(entity["org_id"], "hq")
+            history = json.loads(
+                conn.execute("SELECT snapshot FROM versions WHERE entity_id='hq' ORDER BY id DESC LIMIT 1").fetchone()[
+                    0
+                ]
+            )
+            self.assertEqual(history["title"], before["name"])
+            self.assertEqual((history["owner_tenant_id"], history["owner_org_id"]), ("hq", "hq"))
+        hashes = backup.snapshot_database(after["db_name"])["hashes"]
+        with (
+            use_context(person),
+            patch.object(store, "_audit", side_effect=RuntimeError("audit failed")),
+            self.assertRaises(RuntimeError),
+        ):
+            directory.manage(person, OrgManageInput(action="update", org_id="hq", name="Must roll back"))
+        self.assertEqual(store.get_tenant("hq"), after)
+        self.assertEqual(backup.snapshot_database(after["db_name"])["hashes"], hashes)

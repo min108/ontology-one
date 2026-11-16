@@ -192,14 +192,14 @@ def _snapshot_root(cur: DictCursor, row: dict, changes: dict, reason: str) -> No
     # Both databases are on this server: one InnoDB transaction includes the
     # root snapshot, root update, directory update and append-only audit.
     database = migrations.database_name(row["db_name"])
-    cur.execute(f"SELECT * FROM `{database}`.entities WHERE id=%s FOR UPDATE", (row["org_id"],))
+    cur.execute(f"SELECT * FROM `{database}`.entities WHERE id=%s FOR UPDATE", (row["id"],))
     old = cur.fetchone()
     if old is None:
         raise HTTPException(409, "机构根节点不存在，请先离线检查工作区。")
     snapshot = db.entity_json(old)
     # The request may be in HQ while this root belongs to another database.
     snapshot["owner_tenant_id"] = row["id"]
-    snapshot["owner_org_id"] = row["org_id"]
+    snapshot["owner_org_id"] = row["id"]
     cur.execute(
         f"INSERT INTO `{database}`.versions(entity_id,version,snapshot,created_at,reason) VALUES(%s,%s,%s,%s,%s)",
         (old["id"], old["version"], json.dumps(snapshot, ensure_ascii=False), db.now(), reason),
