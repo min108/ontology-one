@@ -239,7 +239,15 @@ _EVIDENCE_REVIEW = re.compile(r"^/api/special-projects/[^/]+/evidence(?:/[^/]+)?
 
 
 # Empty permission tuples mean authenticated use; per-capability keys are checked by the gateway.
-V2_RULES = (("POST", "/api/v2/capabilities/{id}:invoke", ()),)
+V2_RULES = (
+    ("POST", "/api/v2/capabilities/{id}:invoke", ()),
+    ("GET", "/api/v2/system/model", ()),
+    ("GET", "/api/v2/system/metadata", ()),
+    ("POST", "/api/v2/system/model:test", ("admin.model",)),
+    ("GET", "/api/v2/system/backup", ("admin.settings",)),
+    ("GET", "/api/v2/system/backups", ("admin.settings",)),
+    ("GET", "/api/v2/system/release", ("admin.settings",)),
+)
 _V2 = tuple((method, _pattern(path), permissions) for method, path, permissions in V2_RULES)
 
 

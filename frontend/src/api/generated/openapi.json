@@ -1,6 +1,23 @@
 {
   "components": {
     "schemas": {
+      "BackupList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeBackup"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BackupList",
+        "type": "object"
+      },
       "EmptyInput": {
         "additionalProperties": false,
         "properties": {},
@@ -56,6 +73,25 @@
           "error"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "ExportOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "download_url",
+          "filename"
+        ],
+        "title": "ExportOutput",
         "type": "object"
       },
       "IdentityOutput": {
@@ -192,6 +228,121 @@
         "title": "ListResponse[Organization]",
         "type": "object"
       },
+      "MigrationSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "integer"
+          },
+          "pending": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending",
+            "type": "array"
+          }
+        },
+        "required": [
+          "current",
+          "pending"
+        ],
+        "title": "MigrationSummary",
+        "type": "object"
+      },
+      "ModelConfiguration": {
+        "additionalProperties": false,
+        "description": "Keep original validation; require explicit fields on the new binding.",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "clear_key": {
+            "default": false,
+            "title": "Clear Key",
+            "type": "boolean"
+          },
+          "model": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base_url",
+          "model"
+        ],
+        "title": "ModelConfiguration",
+        "type": "object"
+      },
+      "ModelStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "default": false,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "base_url": {
+            "default": "",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "configuration_notice": {
+            "default": "",
+            "title": "Configuration Notice",
+            "type": "string"
+          },
+          "configured": {
+            "default": false,
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "migration_required": {
+            "default": false,
+            "title": "Migration Required",
+            "type": "boolean"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          },
+          "version": {
+            "default": "",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "ModelStatus",
+        "type": "object"
+      },
       "NextAction": {
         "additionalProperties": false,
         "properties": {
@@ -286,6 +437,49 @@
         "title": "ReadinessOutput",
         "type": "object"
       },
+      "RestoreInput": {
+        "additionalProperties": false,
+        "properties": {
+          "archive": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Archive",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RestoreInput",
+        "type": "object"
+      },
+      "RestoreOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "rows",
+          "files"
+        ],
+        "title": "RestoreOutput",
+        "type": "object"
+      },
       "SearchInput": {
         "additionalProperties": false,
         "properties": {
@@ -337,6 +531,67 @@
         ],
         "title": "SearchOutput",
         "type": "object"
+      },
+      "SystemMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "control": {
+            "$ref": "#/components/schemas/MigrationSummary"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "product_name_en": {
+            "title": "Product Name En",
+            "type": "string"
+          },
+          "runtime_mode": {
+            "title": "Runtime Mode",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/MigrationSummary"
+          }
+        },
+        "required": [
+          "product_name",
+          "product_name_en",
+          "version",
+          "runtime_mode",
+          "control",
+          "workspace"
+        ],
+        "title": "SystemMetadata",
+        "type": "object"
+      },
+      "UpgradeBackup": {
+        "additionalProperties": false,
+        "properties": {
+          "control_version": {
+            "title": "Control Version",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "created_at",
+          "control_version",
+          "verified"
+        ],
+        "title": "UpgradeBackup",
+        "type": "object"
       }
     }
   },
@@ -366,10 +621,16 @@
               "schema": {
                 "anyOf": [
                   {
+                    "$ref": "#/components/schemas/ModelConfiguration"
+                  },
+                  {
                     "$ref": "#/components/schemas/EmptyInput"
                   },
                   {
                     "$ref": "#/components/schemas/SearchInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RestoreInput"
                   }
                 ],
                 "title": "Body"
@@ -385,6 +646,9 @@
                 "schema": {
                   "anyOf": [
                     {
+                      "$ref": "#/components/schemas/ModelStatus"
+                    },
+                    {
                       "$ref": "#/components/schemas/IdentityOutput"
                     },
                     {
@@ -398,6 +662,12 @@
                     },
                     {
                       "$ref": "#/components/schemas/SearchOutput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ExportOutput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RestoreOutput"
                     }
                   ],
                   "title": "Response Invoke Api V2 Capabilities  Id  Invoke Post"
@@ -478,6 +748,118 @@
           }
         },
         "summary": "Invoke"
+      }
+    },
+    "/api/v2/system/backup": {
+      "get": {
+        "operationId": "download_backup_api_v2_system_backup_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Download Backup"
+      }
+    },
+    "/api/v2/system/backups": {
+      "get": {
+        "operationId": "backups_api_v2_system_backups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Backups"
+      }
+    },
+    "/api/v2/system/metadata": {
+      "get": {
+        "operationId": "metadata_api_v2_system_metadata_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemMetadata"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metadata"
+      }
+    },
+    "/api/v2/system/model": {
+      "get": {
+        "operationId": "model_status_api_v2_system_model_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Model Status"
+      }
+    },
+    "/api/v2/system/model:test": {
+      "post": {
+        "operationId": "test_model_api_v2_system_model_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Test Model Api V2 System Model Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Model"
+      }
+    },
+    "/api/v2/system/release": {
+      "get": {
+        "operationId": "download_release_api_v2_system_release_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Download Release"
       }
     }
   }

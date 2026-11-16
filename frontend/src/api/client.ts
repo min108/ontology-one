@@ -31,7 +31,8 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
 /** Same-origin JSON requests, protected until the response body has finished. */
-export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+type ResponseFormat = 'json' | 'blob';
+async function request<T>(path: string, init: RequestInit, format?: ResponseFormat): Promise<T> {
   if (
     !path.startsWith('/') ||
     path.startsWith('//') ||
@@ -72,7 +73,7 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
     let parseError: unknown;
     if (response.status !== 204) {
       try {
-        body = await response.json();
+        body = format === 'blob' && response.ok ? await response.blob() : await response.json();
       } catch (error) {
         parseError = error;
       }
@@ -129,4 +130,12 @@ export function invokeCapability<T = unknown>(
     body: JSON.stringify(body),
     signal: options.signal,
   });
+}
+
+/** JSON and binary responses share cancellation through the complete body read. */
+export function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  return request<T>(path, init);
+}
+export function apiBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  return request<Blob>(path, init, 'blob');
 }

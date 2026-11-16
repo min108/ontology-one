@@ -1,0 +1,13 @@
+{
+  "target": "foundation",
+  "sourceCommit": "5c83f28370c4cf04a9528549a5edca18cb2d2459",
+  "fixtureCommit": "1359118dd672431dcd0cde2eb81f2b0f994eef37",
+  "browserVersion": "156.0.8078.79",
+  "viewport": {
+    "width": 1366,
+    "height": 768
+  },
+  "locale": "zh-CN",
+  "timezoneId": "Asia/Shanghai",
+  "reducedMotion": "reduce"
+}

@@ -142,11 +142,15 @@ for (const role of roles) {
 
 test.describe("admin: compatibility redirects", () => {
   test.use({ storageState: resolve(authDirectory, "admin.json") });
-  for (const [from, to] of redirects) {
+  for (const [from, to, heading] of redirects) {
     test(`redirect ${from} preserves query and hash`, async ({ page }) => {
       await page.goto(from);
       await expect(page).toHaveURL((url) => redirectMatches(url, to));
-      await expect(page.locator("[data-legacy-page]")).toBeVisible();
+      if (heading)
+        await expect(
+          page.getByRole("heading", { name: heading, exact: true, level: 1 }),
+        ).toBeVisible();
+      else await expect(page.locator("[data-legacy-page]")).toBeVisible();
     });
   }
 });

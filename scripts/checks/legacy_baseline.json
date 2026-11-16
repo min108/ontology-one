@@ -86,6 +86,9 @@
   ],
   "retired": [
     "App.tsx",
-    "main.tsx"
+    "main.tsx",
+    "pages/Settings.tsx",
+    "components/HarnessConfiguration.tsx",
+    "components/harness-configuration.css"
   ]
 }

@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_sensitive_json_duplicate_members_are_rejected_before_configuration (tests.admin.test_management.ManagementTests.test_sensitive_json_duplicate_members_are_rejected_before_configuration) (body_kind=0)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/work/r1-worktrees/r1-8-admin/tests/admin/test_management.py", line 253, in test_sensitive_json_duplicate_members_are_rejected_before_configuration
+    self.assertEqual(response.status_code, 422, response.text)
+AssertionError: 200 != 422 : {"available":false,"configured":false,"verified":false,"version":"","reason":"","migration_required":false,"configuration_notice":"","base_url":"","model":""}
+
+----------------------------------------------------------------------
+Ran 1 test in 0.051s
+
+FAILED (failures=1)

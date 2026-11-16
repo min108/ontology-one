@@ -1,0 +1,22 @@
+
+Running 15 tests using 1 worker
+
+(node:249781) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [foundation-admin] › e2e/foundation-admin.spec.mjs:47:5 › modeler › SET01 model status, role controls and original settings redirect (3.3s)
+  ✓   2 [foundation-admin] › e2e/foundation-admin.spec.mjs:75:5 › modeler › SET04-09 backup rights, offline instructions, release link and real system health (2.8s)
+  ✓   3 [foundation-admin] › e2e/foundation-admin.spec.mjs:115:5 › modeler › SET03 demo route, six downloads, three copyable questions and manifest remain (3.3s)
+  ✓   4 [foundation-admin] › e2e/foundation-admin.spec.mjs:47:5 › reviewer › SET01 model status, role controls and original settings redirect (2.9s)
+  ✓   5 [foundation-admin] › e2e/foundation-admin.spec.mjs:75:5 › reviewer › SET04-09 backup rights, offline instructions, release link and real system health (3.1s)
+  ✓   6 [foundation-admin] › e2e/foundation-admin.spec.mjs:115:5 › reviewer › SET03 demo route, six downloads, three copyable questions and manifest remain (3.2s)
+  ✓   7 [foundation-admin] › e2e/foundation-admin.spec.mjs:47:5 › admin › SET01 model status, role controls and original settings redirect (1.8s)
+  ✓   8 [foundation-admin] › e2e/foundation-admin.spec.mjs:75:5 › admin › SET04-09 backup rights, offline instructions, release link and real system health (2.8s)
+  ✓   9 [foundation-admin] › e2e/foundation-admin.spec.mjs:115:5 › admin › SET03 demo route, six downloads, three copyable questions and manifest remain (3.3s)
+  ✓  10 [foundation-admin] › e2e/foundation-admin.spec.mjs:159:3 › administrator operations › SET01 saves, verifies with actual SDK, clears key and retains typed input on errors (5.5s)
+  ✓  11 [foundation-admin] › e2e/foundation-admin.spec.mjs:226:3 › administrator operations › SET07-08 real archive download and all online restore calls remain blocked (2.0s)
+  ✓  12 [foundation-admin] › e2e/foundation-admin.spec.mjs:246:3 › administrator operations › SET03 query draft preparation keeps the original governance gate (2.1s)
+  ✓  13 [foundation-admin] › e2e/foundation-admin.spec.mjs:269:3 › headquarters superadministrator › SET10 source export is visible and downloads a real archive (9.0s)
+  ✓  14 [foundation-admin] › e2e/foundation-admin.spec.mjs:282:3 › headquarters superadministrator › SET03 own-institution demo load, archive and restore retain original ids (5.4s)
+  ✓  15 [foundation-admin] › e2e/foundation-admin.spec.mjs:313:3 › headquarters superadministrator › SET01 cross-institution maintenance cannot validate the model (2.1s)
+
+  15 passed (1.0m)

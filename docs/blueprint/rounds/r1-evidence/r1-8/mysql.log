@@ -1,0 +1,6 @@
+test_real_configuration_archive_and_exclusive_empty_workspace_restore (tests.admin.test_mysql_management.ManagementMySQL.test_real_configuration_archive_and_exclusive_empty_workspace_restore) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 7.972s
+
+OK

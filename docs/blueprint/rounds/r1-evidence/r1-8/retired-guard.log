@@ -1,0 +1,18 @@
+
+> ontology-one@1.0.0 test
+> vitest --run src/app/legacy-workspace-guards.test.tsx --maxWorkers=1
+
+
+ RUN  v5.1.0 /workspace/work/r1-worktrees/r1-8-admin/frontend
+
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  16:06:44
+   Duration  4.89s (import 42%, environment 28%, tests 16%, transform 10%, setup 4%)
+
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice

@@ -13,8 +13,10 @@ import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from
 const Overview = lazy(() => import('@legacy/pages/Overview'));
 const Security = lazy(() => import('@legacy/pages/Security'));
 const Administration = lazy(() => import('@legacy/pages/Administration'));
-const Settings = lazy(() => import('@legacy/pages/Settings'));
-const DemoWorkspace = lazy(() => import('@legacy/components/DemoWorkspace'));
+const ModelPage = lazy(() => import('../features/admin/model/ModelPage'));
+const BackupPage = lazy(() => import('../features/admin/backup/BackupPage'));
+const SystemPage = lazy(() => import('../features/admin/system/SystemPage'));
+const DemoPage = lazy(() => import('../features/admin/demo/DemoPage'));
 const retained = [
   { path: '/group', component: lazy(() => import('@legacy/pages/Group')) },
   { path: '/briefing', component: lazy(() => import('@legacy/pages/Briefing')) },
@@ -121,25 +123,10 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
             )
           }
         />
-        {['/admin/model', '/admin/backup', '/admin/system'].map((path) => (
-          <Route
-            key={path}
-            path={path}
-            element={
-              <LegacyPage>
-                <Settings />
-              </LegacyPage>
-            }
-          />
-        ))}
-        <Route
-          path="/admin/demo"
-          element={
-            <LegacyPage>
-              <DemoWorkspace />
-            </LegacyPage>
-          }
-        />
+        <Route path="/admin/model" element={<ModelPage />} />
+        <Route path="/admin/backup" element={<BackupPage />} />
+        <Route path="/admin/system" element={<SystemPage />} />
+        <Route path="/admin/demo" element={<DemoPage />} />
         <Route
           path="/assets/:id"
           element={

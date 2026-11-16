@@ -1,0 +1,32 @@
+{
+  "target": "foundation",
+  "source_commit": "5c83f28370c4cf04a9528549a5edca18cb2d2459",
+  "fixture_commit": "1359118dd672431dcd0cde2eb81f2b0f994eef37",
+  "namespace": "e2e_r1_e8cb98d014c70a985dfb3005",
+  "node": "v22.23.4",
+  "work": "/workspace/work/r1-worktrees/r1-8-admin/work/e2e-runs/e2e_r1_e8cb98d014c70a985dfb3005",
+  "status": "passed",
+  "playwright_args": [
+    "--config",
+    "e2e/admin.config.mjs"
+  ],
+  "browser_tests": {
+    "expected": 15,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0
+  },
+  "created_databases": [
+    "e2e_r1_e8cb98d014c70a985dfb3005_control",
+    "e2e_r1_e8cb98d014c70a985dfb3005_t_01f46005243480ad13fa34e7",
+    "e2e_r1_e8cb98d014c70a985dfb3005_t_3c95e740f994531cee9cca0e",
+    "e2e_r1_e8cb98d014c70a985dfb3005_t_45756293a2fe9f0692455149"
+  ],
+  "cleaned_databases": [
+    "e2e_r1_e8cb98d014c70a985dfb3005_control",
+    "e2e_r1_e8cb98d014c70a985dfb3005_t_01f46005243480ad13fa34e7",
+    "e2e_r1_e8cb98d014c70a985dfb3005_t_3c95e740f994531cee9cca0e",
+    "e2e_r1_e8cb98d014c70a985dfb3005_t_45756293a2fe9f0692455149"
+  ],
+  "services_stopped": true
+}

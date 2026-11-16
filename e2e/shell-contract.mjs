@@ -13,8 +13,12 @@ export const redirects = [
     "/account/security?probe=security#password",
   ],
   ["/administration?probe=users#members", "/admin/users?probe=users#members"],
-  ["/settings?probe=model#connection", "/admin/model?probe=model#connection"],
-  ["/settings?probe=demo#demo", "/admin/demo?probe=demo#demo"],
+  [
+    "/settings?probe=model#connection",
+    "/admin/model?probe=model#connection",
+    "模型与运行",
+  ],
+  ["/settings?probe=demo#demo", "/admin/demo?probe=demo#demo", "演示资料"],
 ];
 export const layouts = [
   { name: "1366", width: 1366, height: 768, zoom: "native 100%" },

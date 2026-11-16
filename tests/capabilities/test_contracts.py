@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+from backend.api.v2.routes import registry
 from backend.capabilities.context import CapabilityContext
-from backend.capabilities.registry import registry
 from backend.core.errors import ApiError
 from backend.security.permissions import permissions_for
 from tests.security.test_permissions import principal
@@ -11,9 +11,20 @@ from tests.security.test_permissions import principal
 class ContractTests(unittest.TestCase):
     def test_all_five_contracts_have_valid_models(self) -> None:
         self.assertEqual(
-            set(registry.entries), {"session.whoami", "meta.kinds", "org.tree", "agent.readiness", "semantic.search"}
+            set(registry.entries),
+            {
+                "session.whoami",
+                "meta.kinds",
+                "org.tree",
+                "agent.readiness",
+                "semantic.search",
+                "model.configure",
+                "backup.export",
+                "backup.restore",
+            },
         )
-        for item in registry.entries.values():
+        for ident in ("session.whoami", "meta.kinds", "org.tree", "agent.readiness", "semantic.search"):
+            item = registry.entries[ident]
             for model in (item.input, item.output):
                 self.assertEqual(model.model_json_schema()["additionalProperties"], False)
             self.assertEqual(item.effect, "read")
@@ -36,7 +47,13 @@ class ContractTests(unittest.TestCase):
                         RuntimeError if role != "unknown" and set(item.permissions) <= ctx.permissions else ApiError
                     )
                     with self.assertRaises(expected):
-                        registry.invoke(item.id, ctx, {})
+                        registry.invoke(
+                            item.id,
+                            ctx,
+                            {"base_url": "https://model.test/anthropic", "model": "test"}
+                            if item.id == "model.configure"
+                            else {},
+                        )
 
     def test_kind_vocabulary_has_sixteen_entries(self) -> None:
         from backend.capabilities.read import KINDS

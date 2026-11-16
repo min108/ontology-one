@@ -6,7 +6,7 @@ import { Modal } from '@legacy/components/ui';
 import { UploadDatasetModal } from '@legacy/pages/Datasets';
 import { AuthorityDetail } from '@legacy/pages/Authority';
 import { blankAuthoritySpec } from '@legacy/pages/authority-types';
-import { HarnessConfigurationPanel } from '@legacy/components/HarnessConfiguration';
+import { ModelForm } from '../features/admin/model/ModelPage';
 import DataSources from '@legacy/pages/DataSources';
 import { readWorkspaceGuards, setWorkspaceTransition } from '../state/workspace-guard';
 
@@ -21,6 +21,20 @@ vi.mock('@legacy/api', () => ({
     data: queryData.get(path) || { items: [{ id: 'org', title: 'Org' }] },
     reload: vi.fn(),
   }),
+}));
+vi.mock('../api/client', () => ({
+  api: request,
+  invokeCapability: () => Promise.resolve({ message: 'diagnostics', checks: [] }),
+}));
+vi.mock('../state/session', () => ({
+  useSessionStore: (select: (state: unknown) => unknown) =>
+    select({
+      session: {
+        permissions: { manage_users: true },
+        workspace: { tenant_id: 'org', readonly: false },
+        user: { id: 'user', home_tenant_id: 'org' },
+      },
+    }),
 }));
 vi.mock('@legacy/components/AuthorityFlowEditor', () => ({ default: () => null }));
 vi.mock('@legacy/components/LegacyHarnessConversation', () => ({ useHarnessResultRestore: () => {} }));
@@ -114,13 +128,23 @@ describe('legacy draft and modal cooperation', () => {
     fireEvent.click(screen.getAllByRole('checkbox')[1]);
     expect(readWorkspaceGuards().dirtyCount).toBe(0);
   });
-  it('loading saved model settings does not mark an already typed new key as saved', () => {
-    const { rerender } = render(<HarnessConfigurationPanel status={null} onSaved={vi.fn()} />);
+  it('loading saved model settings does not mark an already typed new key as saved', async () => {
+    const initial = { available: true, configured: false, verified: false, base_url: '', model: '' };
+    const { rerender } = render(
+      <MemoryRouter>
+        <ModelForm initial={initial} />
+      </MemoryRouter>,
+    );
+    await screen.findByText('diagnostics');
     fireEvent.change(document.querySelector<HTMLInputElement>('input[type="password"]')!, {
       target: { value: 'unsaved-example' },
     });
     expect(readWorkspaceGuards().dirtyCount).toBe(1);
-    rerender(<HarnessConfigurationPanel status={{ model: 'configured-model' }} onSaved={vi.fn()} />);
+    rerender(
+      <MemoryRouter>
+        <ModelForm initial={{ ...initial, model: 'configured-model' }} />
+      </MemoryRouter>,
+    );
     expect(readWorkspaceGuards().dirtyCount).toBe(1);
   });
   it('Authority reverts, keeps failed saves dirty, and suppresses a second leave prompt', async () => {

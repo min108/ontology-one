@@ -223,8 +223,11 @@ class SecurityMiddleware:
         original_receive = receive
         policy_body = needs_body(method, path)
         skill_body = method not in SAFE_METHODS and (path == "/api/skills" or path.startswith("/api/skills/"))
-        if policy_body or skill_body:
-            if policy_body and headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+        model_body = method == "POST" and path == "/api/v2/capabilities/model.configure:invoke"
+        if policy_body or skill_body or model_body:
+            if (policy_body or model_body) and headers.get("content-type", "").split(";", 1)[
+                0
+            ].strip().lower() != "application/json":
                 await error(415, "此操作须使用 JSON 请求。")
                 return
             chunks, size = [], 0
@@ -236,13 +239,24 @@ class SecurityMiddleware:
                     continue
                 chunk = message.get("body", b"")
                 size += len(chunk)
-                if size > (MAX_SKILL_BODY if skill_body else MAX_POLICY_BODY):
+                limit = 16384 if model_body else MAX_SKILL_BODY if skill_body else MAX_POLICY_BODY
+                if size > limit:
                     await error(413, "请求正文超过此操作的大小限制。")
                     return
                 chunks.append(chunk)
                 if not message.get("more_body", False):
                     break
             raw = b"".join(chunks)
+            if model_body:
+                # Preserve the original sensitive configuration parser: the
+                # generic FastAPI decoder would otherwise collapse duplicates.
+                from ..skill_harness import _loads
+
+                try:
+                    _loads(raw)
+                except (ValueError, TypeError, RecursionError):
+                    await error(422, "模型配置格式无效，请核对服务地址、模型标识及密钥。")
+                    return
             if policy_body:
                 try:
                     body = json.loads(raw)
