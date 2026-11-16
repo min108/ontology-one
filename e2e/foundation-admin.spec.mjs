@@ -4,7 +4,7 @@ import { authDirectory, roles } from "./fixture.mjs";
 
 // Sensitive configuration bodies must never enter trace artifacts.
 test.use({ trace: "off", permissions: ["clipboard-read", "clipboard-write"] });
-test.describe.configure({ mode: "serial" });
+// One worker in admin.config keeps operations ordered; independent cases still run after a failure.
 const errors = new WeakMap();
 test.beforeEach(async ({ page }) => {
   const found = [];
