@@ -284,6 +284,12 @@ describe('identity administration pages', () => {
     expect(screen.getByRole('button', { name: terms.actions.identity_edit_org })).toBeDisabled();
     expect(screen.getByRole('button', { name: terms.actions.identity_enable })).toBeEnabled();
   });
+  it('does not create institutions before the directory has loaded successfully', async () => {
+    request.mockRejectedValue(new Error('offline'));
+    wrapper(<OrganizationsPage />, '/admin/orgs');
+    await screen.findByText(terms.labels.identity_error_preserved);
+    expect(screen.getByRole('button', { name: terms.actions.identity_create_org })).toBeDisabled();
+  });
   it('gives an offline next step for a failed institution without offering online activation', async () => {
     request.mockResolvedValue({ items: [{ ...orgs[1], status: 'provision_failed' }], total: 1 });
     wrapper(<OrganizationsPage />, '/admin/orgs');

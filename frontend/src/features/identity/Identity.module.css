@@ -6,6 +6,7 @@
 
 .grid {
   display: grid;
+  align-items: start;
   grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
   gap: var(--zy-space-6);
 }

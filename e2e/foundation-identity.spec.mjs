@@ -595,5 +595,12 @@ test.describe("headquarters: isolated identity mutations", () => {
     ).toBeVisible();
     await button(page, a.identity_reset).click();
     await expect(page).toHaveURL((url) => !url.searchParams.has("action"));
+    // The preceding real management operations make this serial acceptance scope exceed one page.
+    const all = await read(page, "/api/v2/audit?page=1&page_size=30");
+    expect(all.total).toBeGreaterThan(30);
+    await page.getByTitle("2", { exact: true }).click();
+    await expect(page).toHaveURL((url) => url.searchParams.get("page") === "2");
+    const next = await read(page, "/api/v2/audit?page=2&page_size=30");
+    await expect(page.locator("tbody tr")).toHaveCount(next.items.length);
   });
 });

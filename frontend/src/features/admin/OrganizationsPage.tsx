@@ -99,7 +99,7 @@ function OrganizationDirectory() {
         primaryAction={{
           label: action.identity_create_org,
           onClick: () => setEditing({ action: 'create' }),
-          disabled: narrow,
+          disabled: narrow || query.isPending || query.isError,
         }}
       />
       <p className={styles.help}>{copy.identity_org_no_inheritance}</p>
@@ -193,7 +193,7 @@ function OrganizationDirectory() {
             action={{
               label: action.identity_create_org,
               onClick: () => setEditing({ action: 'create' }),
-              disabled: narrow,
+              disabled: narrow || query.isPending || query.isError,
             }}
           />
         )}
