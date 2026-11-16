@@ -1,4 +1,5 @@
 """Real pipe threads with mock Job owners; no Windows kernel claim on Linux."""
+
 import asyncio
 import itertools
 import os
@@ -94,7 +95,7 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await process.stdout.readline(), b'{"ok":true}\n')
         core.exit()
         self.assertEqual(await process.wait(), 0)
-        self.assertEqual(await process.stdout.read(), b'')
+        self.assertEqual(await process.stdout.read(), b"")
 
     async def test_cancelling_read_does_not_create_or_lose_reader_thread(self):
         core, process = self.process()
@@ -104,38 +105,38 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
         waiting.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await waiting
-        core.child_stdout.write(b'after-cancel\n')
-        self.assertEqual(await process.stdout.readline(), b'after-cancel\n')
+        core.child_stdout.write(b"after-cancel\n")
+        self.assertEqual(await process.stdout.readline(), b"after-cancel\n")
         self.assertEqual(tuple(process._threads), threads)
 
     async def test_output_limit_kills_job_and_does_not_echo_output(self):
         core, process = self.process(max_stdout=8)
-        core.child_stdout.write(b'secret-value-exceeds-limit')
+        core.child_stdout.write(b"secret-value-exceeds-limit")
         with self.assertRaises(adapter.WindowsProcessIOError) as caught:
             await process.stdout.read()
-        self.assertEqual(str(caught.exception), 'WINDOWS_PROCESS_OUTPUT_LIMIT')
+        self.assertEqual(str(caught.exception), "WINDOWS_PROCESS_OUTPUT_LIMIT")
         self.assertEqual(core.terminations, 1)
 
     async def test_total_output_limit_survives_consuming_previous_chunks(self):
         core, process = self.process(max_stdout=8)
-        core.child_stdout.write(b'1234')
-        self.assertEqual(await process.stdout.read(4), b'1234')
-        core.child_stdout.write(b'56789')
+        core.child_stdout.write(b"1234")
+        self.assertEqual(await process.stdout.read(4), b"1234")
+        core.child_stdout.write(b"56789")
         with self.assertRaises(adapter.WindowsProcessIOError):
             await process.stdout.read(5)
 
     async def test_line_limit_tracks_a_line_across_chunks_and_reads(self):
         core, process = self.process(max_stdout=32, max_line_bytes=6)
-        core.child_stdout.write(b'1234')
-        self.assertEqual(await process.stdout.read(4), b'1234')
-        core.child_stdout.write(b'567\n')
+        core.child_stdout.write(b"1234")
+        self.assertEqual(await process.stdout.read(4), b"1234")
+        core.child_stdout.write(b"567\n")
         with self.assertRaises(adapter.WindowsProcessIOError):
             await process.stdout.readline()
 
     async def test_separate_stderr_limit_notifies_stdout_waiter(self):
         core, process = self.process(max_stderr=4)
         waiting = asyncio.create_task(process.stdout.readline())
-        core.child_stderr.write(b'12345')
+        core.child_stderr.write(b"12345")
         with self.assertRaises(adapter.WindowsProcessIOError):
             await waiting
 
@@ -144,26 +145,26 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
         core.stdin = PartialWriter(core.stdin)
         process = adapter.AsyncWindowsProcess(core)
         self.owners.append((core, process))
-        process.stdin.write(b'partial-write\n')
+        process.stdin.write(b"partial-write\n")
         await process.stdin.drain()
-        self.assertEqual(core.child_stdin.readline(), b'partial-write\n')
+        self.assertEqual(core.child_stdin.readline(), b"partial-write\n")
         process.stdin.close()
         await process.stdin.wait_closed()
-        self.assertEqual(core.child_stdin.read(1), b'')
+        self.assertEqual(core.child_stdin.read(1), b"")
 
     async def test_input_limit_kills_job_without_queuing_excess(self):
         core, process = self.process(max_stdin=4)
         with self.assertRaises(adapter.WindowsProcessIOError) as caught:
-            process.stdin.write(b'12345')
-        self.assertEqual(str(caught.exception), 'WINDOWS_PROCESS_INPUT_LIMIT')
+            process.stdin.write(b"12345")
+        self.assertEqual(str(caught.exception), "WINDOWS_PROCESS_INPUT_LIMIT")
         self.assertEqual(core.terminations, 1)
         self.assertEqual(process.stdin.total, 0)
 
     async def test_cancel_blocked_stdin_drain_then_close_reaps_writer(self):
         core, process = self.process()
-        process.stdin.write(b'x' * (512 * 1024))
+        process.stdin.write(b"x" * (512 * 1024))
         waiting = asyncio.create_task(process.stdin.drain())
-        await asyncio.sleep(.01)
+        await asyncio.sleep(0.01)
         self.assertFalse(waiting.done())
         waiting.cancel()
         with self.assertRaises(asyncio.CancelledError):
@@ -189,8 +190,8 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
         await process.aclose()
         self.assertEqual(first.terminations, 1)
         self.assertIsNone(second.returncode)
-        second.child_stdout.write(b'sibling\n')
-        self.assertEqual(await sibling.stdout.readline(), b'sibling\n')
+        second.child_stdout.write(b"sibling\n")
+        self.assertEqual(await sibling.stdout.readline(), b"sibling\n")
 
     async def test_cancel_during_native_spawn_waits_for_owner_and_cleans_it(self):
         entered, release = threading.Event(), threading.Event()
@@ -201,8 +202,8 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
             release.wait(3)
             return core
 
-        with patch.object(adapter, '_spawn', side_effect=delayed):
-            task = asyncio.create_task(adapter.async_spawn(['trusted.exe'], cwd='.', env={}))
+        with patch.object(adapter, "_spawn", side_effect=delayed):
+            task = asyncio.create_task(adapter.async_spawn(["trusted.exe"], cwd=".", env={}))
             await asyncio.to_thread(entered.wait, 2)
             task.cancel()
             release.set()
@@ -222,7 +223,7 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
             release.wait(3)
             original()
 
-        with patch.object(core, 'terminate_tree', side_effect=delayed):
+        with patch.object(core, "terminate_tree", side_effect=delayed):
             task = asyncio.create_task(process.aclose())
             await asyncio.to_thread(entered.wait, 2)
             task.cancel()
@@ -235,17 +236,21 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(thread.is_alive() for thread in process._threads))
 
     async def test_invalid_limits_fail_before_native_spawn(self):
-        for options in ({'max_stdout': 0}, {'max_stderr': True},
-                        {'max_line_bytes': 0}, {'max_stdin': 65 * 1024 * 1024}):
-            with self.subTest(options=options), patch.object(adapter, '_spawn') as spawn:
+        for options in (
+            {"max_stdout": 0},
+            {"max_stderr": True},
+            {"max_line_bytes": 0},
+            {"max_stdin": 65 * 1024 * 1024},
+        ):
+            with self.subTest(options=options), patch.object(adapter, "_spawn") as spawn:
                 with self.assertRaises(ValueError):
-                    await adapter.async_spawn(['trusted.exe'], cwd='.', env={}, **options)
+                    await adapter.async_spawn(["trusted.exe"], cwd=".", env={}, **options)
                 spawn.assert_not_called()
 
     async def test_pipe_notifications_are_coalesced_until_the_loop_handles_them(self):
         _, process = self.process()
         event = asyncio.Event()
-        with patch.object(process._loop, 'call_soon_threadsafe') as notify:
+        with patch.object(process._loop, "call_soon_threadsafe") as notify:
             for _ in range(1000):
                 process._notify(event)
             self.assertEqual(notify.call_count, 1)
@@ -264,15 +269,17 @@ class WindowsAsyncProcessTests(unittest.IsolatedAsyncioTestCase):
             core.exit(125)
             original_close()
 
-        with patch.object(core, 'terminate_tree', side_effect=OSError('private native error')), \
-                patch.object(core, 'close', side_effect=kill_on_close), \
-                patch.object(adapter, '_JOIN_SECONDS', .02):
+        with (
+            patch.object(core, "terminate_tree", side_effect=OSError("private native error")),
+            patch.object(core, "close", side_effect=kill_on_close),
+            patch.object(adapter, "_JOIN_SECONDS", 0.02),
+        ):
             with self.assertRaises(adapter.WindowsProcessIOError) as caught:
                 await process.aclose()
-        self.assertEqual(str(caught.exception), 'WINDOWS_PROCESS_CLEANUP_FAILED')
+        self.assertEqual(str(caught.exception), "WINDOWS_PROCESS_CLEANUP_FAILED")
         self.assertEqual(core.closes, 1)
         self.assertFalse(any(thread.is_alive() for thread in process._threads))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

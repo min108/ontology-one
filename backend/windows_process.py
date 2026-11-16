@@ -5,6 +5,7 @@ it belongs to its non-breakaway, kill-on-close Job Object. AppContainer failures
 are terminal; there is no ordinary-process fallback. This module imports on
 other systems for contract tests, but every native operation fails closed there.
 """
+
 from __future__ import annotations
 
 import ctypes as C
@@ -30,22 +31,42 @@ _ERROR_MODE_LOCK = threading.Lock()
 
 class WindowsProcessError(OSError):
     """Safe fixed diagnostic: never embeds command lines, paths or child output."""
-    def __init__(self, code='PROCESS_UNAVAILABLE', *, native_error=None, operation=None, token_info_class=None, access_mask=None):
+
+    def __init__(
+        self, code="PROCESS_UNAVAILABLE", *, native_error=None, operation=None, token_info_class=None, access_mask=None
+    ):
         self.code = code
         self.native_error = native_error if type(native_error) is int and 0 <= native_error <= 0xFFFFFFFF else None
-        self.operation = operation if operation in {'CreateProcessW', 'AssignProcessToJobObject',
-            'UpdateProcThreadAttribute', 'ResumeThread', 'OpenProcessToken', 'GetTokenInformation',
-            'DuplicateToken', 'AccessCheck', 'DeriveCapabilitySidsFromName'} else None
-        self.token_info_class = token_info_class if type(token_info_class) is int and token_info_class in {29, 30, 31, 46} else None
+        self.operation = (
+            operation
+            if operation
+            in {
+                "CreateProcessW",
+                "AssignProcessToJobObject",
+                "UpdateProcThreadAttribute",
+                "ResumeThread",
+                "OpenProcessToken",
+                "GetTokenInformation",
+                "DuplicateToken",
+                "AccessCheck",
+                "DeriveCapabilitySidsFromName",
+            }
+            else None
+        )
+        self.token_info_class = (
+            token_info_class if type(token_info_class) is int and token_info_class in {29, 30, 31, 46} else None
+        )
         self.access_mask = access_mask if type(access_mask) is int and 0 <= access_mask <= 0xFFFFFFFF else None
         super().__init__(code)
 
     def diagnostic(self):
         # Opt-in native acceptance logging only; ordinary API reports still use
         # the fixed code. Numeric errors avoid FormatMessage/path disclosure.
-        result = {'code': self.code, 'operation': self.operation, 'win32_error': self.native_error}
-        if self.token_info_class is not None: result['token_info_class'] = self.token_info_class
-        if self.access_mask is not None: result['access_mask'] = self.access_mask
+        result = {"code": self.code, "operation": self.operation, "win32_error": self.native_error}
+        if self.token_info_class is not None:
+            result["token_info_class"] = self.token_info_class
+        if self.access_mask is not None:
+            result["access_mask"] = self.access_mask
         return result
 
 
@@ -57,169 +78,283 @@ class ProcessLimits:
     cpu_rate_percent: int | None = None
 
     def __post_init__(self):
-        if self.memory_bytes is not None and (type(self.memory_bytes) is not int or not 16 * 1024 * 1024 <= self.memory_bytes <= (1 << (8 * C.sizeof(SIZE_T))) - 1):
-            raise ValueError('Invalid memory limit')
-        if self.active_processes is not None and (type(self.active_processes) is not int or not 1 <= self.active_processes <= 256):
-            raise ValueError('Invalid process limit')
-        if self.cpu_time_seconds is not None and (type(self.cpu_time_seconds) not in (int, float) or not math.isfinite(self.cpu_time_seconds) or not 0 < self.cpu_time_seconds <= ((1 << 63) - 1) / 10_000_000):
-            raise ValueError('Invalid CPU limit')
+        if self.memory_bytes is not None and (
+            type(self.memory_bytes) is not int
+            or not 16 * 1024 * 1024 <= self.memory_bytes <= (1 << (8 * C.sizeof(SIZE_T))) - 1
+        ):
+            raise ValueError("Invalid memory limit")
+        if self.active_processes is not None and (
+            type(self.active_processes) is not int or not 1 <= self.active_processes <= 256
+        ):
+            raise ValueError("Invalid process limit")
+        if self.cpu_time_seconds is not None and (
+            type(self.cpu_time_seconds) not in (int, float)
+            or not math.isfinite(self.cpu_time_seconds)
+            or not 0 < self.cpu_time_seconds <= ((1 << 63) - 1) / 10_000_000
+        ):
+            raise ValueError("Invalid CPU limit")
         if self.cpu_time_seconds is not None and not 1 <= round(self.cpu_time_seconds * 10_000_000) <= (1 << 63) - 1:
-            raise ValueError('Invalid CPU limit')
-        if self.cpu_rate_percent is not None and (type(self.cpu_rate_percent) is not int or not 1 <= self.cpu_rate_percent <= 100):
-            raise ValueError('Invalid CPU rate')
+            raise ValueError("Invalid CPU limit")
+        if self.cpu_rate_percent is not None and (
+            type(self.cpu_rate_percent) is not int or not 1 <= self.cpu_rate_percent <= 100
+        ):
+            raise ValueError("Invalid CPU rate")
 
 
 class SECURITY_ATTRIBUTES(C.Structure):
-    _fields_ = [('nLength', DWORD), ('lpSecurityDescriptor', LPVOID), ('bInheritHandle', BOOL)]
+    _fields_ = [("nLength", DWORD), ("lpSecurityDescriptor", LPVOID), ("bInheritHandle", BOOL)]
 
 
 class STARTUPINFOW(C.Structure):
-    _fields_ = [('cb', DWORD), ('lpReserved', C.c_wchar_p), ('lpDesktop', C.c_wchar_p), ('lpTitle', C.c_wchar_p),
-                ('dwX', DWORD), ('dwY', DWORD), ('dwXSize', DWORD), ('dwYSize', DWORD),
-                ('dwXCountChars', DWORD), ('dwYCountChars', DWORD), ('dwFillAttribute', DWORD), ('dwFlags', DWORD),
-                ('wShowWindow', WORD), ('cbReserved2', WORD), ('lpReserved2', LPVOID),
-                ('hStdInput', HANDLE), ('hStdOutput', HANDLE), ('hStdError', HANDLE)]
+    _fields_ = [
+        ("cb", DWORD),
+        ("lpReserved", C.c_wchar_p),
+        ("lpDesktop", C.c_wchar_p),
+        ("lpTitle", C.c_wchar_p),
+        ("dwX", DWORD),
+        ("dwY", DWORD),
+        ("dwXSize", DWORD),
+        ("dwYSize", DWORD),
+        ("dwXCountChars", DWORD),
+        ("dwYCountChars", DWORD),
+        ("dwFillAttribute", DWORD),
+        ("dwFlags", DWORD),
+        ("wShowWindow", WORD),
+        ("cbReserved2", WORD),
+        ("lpReserved2", LPVOID),
+        ("hStdInput", HANDLE),
+        ("hStdOutput", HANDLE),
+        ("hStdError", HANDLE),
+    ]
 
 
 class STARTUPINFOEXW(C.Structure):
-    _fields_ = [('StartupInfo', STARTUPINFOW), ('lpAttributeList', LPVOID)]
+    _fields_ = [("StartupInfo", STARTUPINFOW), ("lpAttributeList", LPVOID)]
 
 
 class PROCESS_INFORMATION(C.Structure):
-    _fields_ = [('hProcess', HANDLE), ('hThread', HANDLE), ('dwProcessId', DWORD), ('dwThreadId', DWORD)]
+    _fields_ = [("hProcess", HANDLE), ("hThread", HANDLE), ("dwProcessId", DWORD), ("dwThreadId", DWORD)]
 
 
 class SECURITY_CAPABILITIES(C.Structure):
-    _fields_ = [('AppContainerSid', LPVOID), ('Capabilities', LPVOID), ('CapabilityCount', DWORD), ('Reserved', DWORD)]
+    _fields_ = [("AppContainerSid", LPVOID), ("Capabilities", LPVOID), ("CapabilityCount", DWORD), ("Reserved", DWORD)]
 
 
 class SID_AND_ATTRIBUTES(C.Structure):
-    _fields_ = [('Sid', LPVOID), ('Attributes', DWORD)]
+    _fields_ = [("Sid", LPVOID), ("Attributes", DWORD)]
 
 
 class TOKEN_GROUPS_ONE(C.Structure):
-    _fields_ = [('GroupCount', DWORD), ('Groups', SID_AND_ATTRIBUTES * 1)]
+    _fields_ = [("GroupCount", DWORD), ("Groups", SID_AND_ATTRIBUTES * 1)]
 
 
 class JOBOBJECT_BASIC_LIMIT_INFORMATION(C.Structure):
-    _fields_ = [('PerProcessUserTimeLimit', C.c_int64), ('PerJobUserTimeLimit', C.c_int64), ('LimitFlags', DWORD),
-                ('MinimumWorkingSetSize', SIZE_T), ('MaximumWorkingSetSize', SIZE_T), ('ActiveProcessLimit', DWORD),
-                ('Affinity', SIZE_T), ('PriorityClass', DWORD), ('SchedulingClass', DWORD)]
+    _fields_ = [
+        ("PerProcessUserTimeLimit", C.c_int64),
+        ("PerJobUserTimeLimit", C.c_int64),
+        ("LimitFlags", DWORD),
+        ("MinimumWorkingSetSize", SIZE_T),
+        ("MaximumWorkingSetSize", SIZE_T),
+        ("ActiveProcessLimit", DWORD),
+        ("Affinity", SIZE_T),
+        ("PriorityClass", DWORD),
+        ("SchedulingClass", DWORD),
+    ]
 
 
 class IO_COUNTERS(C.Structure):
-    _fields_ = [(name, C.c_uint64) for name in ('ReadOperationCount', 'WriteOperationCount', 'OtherOperationCount',
-                                              'ReadTransferCount', 'WriteTransferCount', 'OtherTransferCount')]
+    _fields_ = [
+        (name, C.c_uint64)
+        for name in (
+            "ReadOperationCount",
+            "WriteOperationCount",
+            "OtherOperationCount",
+            "ReadTransferCount",
+            "WriteTransferCount",
+            "OtherTransferCount",
+        )
+    ]
 
 
 class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(C.Structure):
-    _fields_ = [('BasicLimitInformation', JOBOBJECT_BASIC_LIMIT_INFORMATION), ('IoInfo', IO_COUNTERS),
-                ('ProcessMemoryLimit', SIZE_T), ('JobMemoryLimit', SIZE_T), ('PeakProcessMemoryUsed', SIZE_T), ('PeakJobMemoryUsed', SIZE_T)]
+    _fields_ = [
+        ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+        ("IoInfo", IO_COUNTERS),
+        ("ProcessMemoryLimit", SIZE_T),
+        ("JobMemoryLimit", SIZE_T),
+        ("PeakProcessMemoryUsed", SIZE_T),
+        ("PeakJobMemoryUsed", SIZE_T),
+    ]
 
 
 class JOBOBJECT_BASIC_ACCOUNTING_INFORMATION(C.Structure):
-    _fields_ = [('TotalUserTime', C.c_int64), ('TotalKernelTime', C.c_int64), ('ThisPeriodTotalUserTime', C.c_int64),
-                ('ThisPeriodTotalKernelTime', C.c_int64), ('TotalPageFaultCount', DWORD), ('TotalProcesses', DWORD),
-                ('ActiveProcesses', DWORD), ('TotalTerminatedProcesses', DWORD)]
+    _fields_ = [
+        ("TotalUserTime", C.c_int64),
+        ("TotalKernelTime", C.c_int64),
+        ("ThisPeriodTotalUserTime", C.c_int64),
+        ("ThisPeriodTotalKernelTime", C.c_int64),
+        ("TotalPageFaultCount", DWORD),
+        ("TotalProcesses", DWORD),
+        ("ActiveProcesses", DWORD),
+        ("TotalTerminatedProcesses", DWORD),
+    ]
 
 
 class JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(C.Structure):
-    _fields_ = [('ControlFlags', DWORD), ('CpuRate', DWORD)]
+    _fields_ = [("ControlFlags", DWORD), ("CpuRate", DWORD)]
 
 
 class SERVICE_STATUS_PROCESS(C.Structure):
-    _fields_ = [(name, DWORD) for name in ('dwServiceType', 'dwCurrentState', 'dwControlsAccepted',
-        'dwWin32ExitCode', 'dwServiceSpecificExitCode', 'dwCheckPoint', 'dwWaitHint', 'dwProcessId', 'dwServiceFlags')]
+    _fields_ = [
+        (name, DWORD)
+        for name in (
+            "dwServiceType",
+            "dwCurrentState",
+            "dwControlsAccepted",
+            "dwWin32ExitCode",
+            "dwServiceSpecificExitCode",
+            "dwCheckPoint",
+            "dwWaitHint",
+            "dwProcessId",
+            "dwServiceFlags",
+        )
+    ]
 
 
 class GENERIC_MAPPING(C.Structure):
-    _fields_ = [(name, DWORD) for name in ('GenericRead', 'GenericWrite', 'GenericExecute', 'GenericAll')]
+    _fields_ = [(name, DWORD) for name in ("GenericRead", "GenericWrite", "GenericExecute", "GenericAll")]
 
 
 class FILETIME(C.Structure):
-    _fields_ = [('low', DWORD), ('high', DWORD)]
+    _fields_ = [("low", DWORD), ("high", DWORD)]
 
 
 @lru_cache(maxsize=1)
 def _api():
-    if os.name != 'nt' or C.sizeof(LPVOID) != 8:
-        raise WindowsProcessError('WINDOWS_X64_REQUIRED')
-    kernel = C.WinDLL('kernel32', use_last_error=True)
-    advapi = C.WinDLL('advapi32', use_last_error=True)
-    userenv = C.WinDLL('userenv', use_last_error=True)
-    ole = C.WinDLL('ole32', use_last_error=True)
+    if os.name != "nt" or C.sizeof(LPVOID) != 8:
+        raise WindowsProcessError("WINDOWS_X64_REQUIRED")
+    kernel = C.WinDLL("kernel32", use_last_error=True)
+    advapi = C.WinDLL("advapi32", use_last_error=True)
+    userenv = C.WinDLL("userenv", use_last_error=True)
+    ole = C.WinDLL("ole32", use_last_error=True)
     signatures = {
-        'CloseHandle': (BOOL, [HANDLE]), 'GetCurrentProcess': (HANDLE, []),
-        'GetErrorMode': (DWORD, []), 'SetErrorMode': (DWORD, [DWORD]),
-        'CreateJobObjectW': (HANDLE, [LPVOID, C.c_wchar_p]),
-        'SetInformationJobObject': (BOOL, [HANDLE, C.c_int, LPVOID, DWORD]),
-        'QueryInformationJobObject': (BOOL, [HANDLE, C.c_int, LPVOID, DWORD, LPVOID]),
-        'AssignProcessToJobObject': (BOOL, [HANDLE, HANDLE]), 'TerminateJobObject': (BOOL, [HANDLE, DWORD]),
-        'IsProcessInJob': (BOOL, [HANDLE, HANDLE, C.POINTER(BOOL)]),
-        'TerminateProcess': (BOOL, [HANDLE, DWORD]), 'WaitForSingleObject': (DWORD, [HANDLE, DWORD]),
-        'GetExitCodeProcess': (BOOL, [HANDLE, C.POINTER(DWORD)]), 'ResumeThread': (DWORD, [HANDLE]),
-        'GetProcessTimes': (BOOL, [HANDLE, C.POINTER(FILETIME), C.POINTER(FILETIME), C.POINTER(FILETIME), C.POINTER(FILETIME)]),
-        'GetProcessIoCounters': (BOOL, [HANDLE, C.POINTER(IO_COUNTERS)]),
-        'CreatePipe': (BOOL, [C.POINTER(HANDLE), C.POINTER(HANDLE), C.POINTER(SECURITY_ATTRIBUTES), DWORD]),
-        'SetHandleInformation': (BOOL, [HANDLE, DWORD, DWORD]),
-        'CreateFileW': (HANDLE, [C.c_wchar_p, DWORD, DWORD, C.POINTER(SECURITY_ATTRIBUTES), DWORD, DWORD, HANDLE]),
-        'DuplicateHandle': (BOOL, [HANDLE, HANDLE, HANDLE, C.POINTER(HANDLE), DWORD, BOOL, DWORD]),
-        'InitializeProcThreadAttributeList': (BOOL, [LPVOID, DWORD, DWORD, C.POINTER(SIZE_T)]),
-        'UpdateProcThreadAttribute': (BOOL, [LPVOID, DWORD, SIZE_T, LPVOID, SIZE_T, LPVOID, LPVOID]),
-        'DeleteProcThreadAttributeList': (None, [LPVOID]),
-        'CreateProcessW': (BOOL, [C.c_wchar_p, C.c_wchar_p, LPVOID, LPVOID, BOOL, DWORD, LPVOID, C.c_wchar_p,
-                                  C.POINTER(STARTUPINFOEXW), C.POINTER(PROCESS_INFORMATION)]),
-        'LocalFree': (LPVOID, [LPVOID]),
+        "CloseHandle": (BOOL, [HANDLE]),
+        "GetCurrentProcess": (HANDLE, []),
+        "GetErrorMode": (DWORD, []),
+        "SetErrorMode": (DWORD, [DWORD]),
+        "CreateJobObjectW": (HANDLE, [LPVOID, C.c_wchar_p]),
+        "SetInformationJobObject": (BOOL, [HANDLE, C.c_int, LPVOID, DWORD]),
+        "QueryInformationJobObject": (BOOL, [HANDLE, C.c_int, LPVOID, DWORD, LPVOID]),
+        "AssignProcessToJobObject": (BOOL, [HANDLE, HANDLE]),
+        "TerminateJobObject": (BOOL, [HANDLE, DWORD]),
+        "IsProcessInJob": (BOOL, [HANDLE, HANDLE, C.POINTER(BOOL)]),
+        "TerminateProcess": (BOOL, [HANDLE, DWORD]),
+        "WaitForSingleObject": (DWORD, [HANDLE, DWORD]),
+        "GetExitCodeProcess": (BOOL, [HANDLE, C.POINTER(DWORD)]),
+        "ResumeThread": (DWORD, [HANDLE]),
+        "GetProcessTimes": (
+            BOOL,
+            [HANDLE, C.POINTER(FILETIME), C.POINTER(FILETIME), C.POINTER(FILETIME), C.POINTER(FILETIME)],
+        ),
+        "GetProcessIoCounters": (BOOL, [HANDLE, C.POINTER(IO_COUNTERS)]),
+        "CreatePipe": (BOOL, [C.POINTER(HANDLE), C.POINTER(HANDLE), C.POINTER(SECURITY_ATTRIBUTES), DWORD]),
+        "SetHandleInformation": (BOOL, [HANDLE, DWORD, DWORD]),
+        "CreateFileW": (HANDLE, [C.c_wchar_p, DWORD, DWORD, C.POINTER(SECURITY_ATTRIBUTES), DWORD, DWORD, HANDLE]),
+        "DuplicateHandle": (BOOL, [HANDLE, HANDLE, HANDLE, C.POINTER(HANDLE), DWORD, BOOL, DWORD]),
+        "InitializeProcThreadAttributeList": (BOOL, [LPVOID, DWORD, DWORD, C.POINTER(SIZE_T)]),
+        "UpdateProcThreadAttribute": (BOOL, [LPVOID, DWORD, SIZE_T, LPVOID, SIZE_T, LPVOID, LPVOID]),
+        "DeleteProcThreadAttributeList": (None, [LPVOID]),
+        "CreateProcessW": (
+            BOOL,
+            [
+                C.c_wchar_p,
+                C.c_wchar_p,
+                LPVOID,
+                LPVOID,
+                BOOL,
+                DWORD,
+                LPVOID,
+                C.c_wchar_p,
+                C.POINTER(STARTUPINFOEXW),
+                C.POINTER(PROCESS_INFORMATION),
+            ],
+        ),
+        "LocalFree": (LPVOID, [LPVOID]),
     }
     for name, (result, args) in signatures.items():
-        function = getattr(kernel, name); function.restype, function.argtypes = result, args
+        function = getattr(kernel, name)
+        function.restype, function.argtypes = result, args
     for name, result, args in (
-        ('ConvertStringSecurityDescriptorToSecurityDescriptorW', BOOL, [C.c_wchar_p, DWORD, C.POINTER(LPVOID), LPVOID]),
-        ('SetFileSecurityW', BOOL, [C.c_wchar_p, DWORD, LPVOID]),
-        ('ConvertSidToStringSidW', BOOL, [LPVOID, C.POINTER(LPVOID)]),
-        ('FreeSid', LPVOID, [LPVOID]),
-        ('IsValidSid', BOOL, [LPVOID]),
-        ('GetLengthSid', DWORD, [LPVOID]),
-        ('OpenProcessToken', BOOL, [HANDLE, DWORD, C.POINTER(HANDLE)]),
-        ('GetTokenInformation', BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
-        ('EqualSid', BOOL, [LPVOID, LPVOID]),
-        ('DuplicateToken', BOOL, [HANDLE, C.c_int, C.POINTER(HANDLE)]),
-        ('AccessCheck', BOOL, [LPVOID, HANDLE, DWORD, C.POINTER(GENERIC_MAPPING), LPVOID,
-                               C.POINTER(DWORD), C.POINTER(DWORD), C.POINTER(BOOL)]),
-        ('OpenSCManagerW', HANDLE, [C.c_wchar_p, C.c_wchar_p, DWORD]),
-        ('OpenServiceW', HANDLE, [HANDLE, C.c_wchar_p, DWORD]),
-        ('QueryServiceStatusEx', BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
-        ('CloseServiceHandle', BOOL, [HANDLE]),
+        ("ConvertStringSecurityDescriptorToSecurityDescriptorW", BOOL, [C.c_wchar_p, DWORD, C.POINTER(LPVOID), LPVOID]),
+        ("SetFileSecurityW", BOOL, [C.c_wchar_p, DWORD, LPVOID]),
+        ("ConvertSidToStringSidW", BOOL, [LPVOID, C.POINTER(LPVOID)]),
+        ("FreeSid", LPVOID, [LPVOID]),
+        ("IsValidSid", BOOL, [LPVOID]),
+        ("GetLengthSid", DWORD, [LPVOID]),
+        ("OpenProcessToken", BOOL, [HANDLE, DWORD, C.POINTER(HANDLE)]),
+        ("GetTokenInformation", BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
+        ("EqualSid", BOOL, [LPVOID, LPVOID]),
+        ("DuplicateToken", BOOL, [HANDLE, C.c_int, C.POINTER(HANDLE)]),
+        (
+            "AccessCheck",
+            BOOL,
+            [
+                LPVOID,
+                HANDLE,
+                DWORD,
+                C.POINTER(GENERIC_MAPPING),
+                LPVOID,
+                C.POINTER(DWORD),
+                C.POINTER(DWORD),
+                C.POINTER(BOOL),
+            ],
+        ),
+        ("OpenSCManagerW", HANDLE, [C.c_wchar_p, C.c_wchar_p, DWORD]),
+        ("OpenServiceW", HANDLE, [HANDLE, C.c_wchar_p, DWORD]),
+        ("QueryServiceStatusEx", BOOL, [HANDLE, C.c_int, LPVOID, DWORD, C.POINTER(DWORD)]),
+        ("CloseServiceHandle", BOOL, [HANDLE]),
     ):
-        function = getattr(advapi, name); function.restype, function.argtypes = result, args
+        function = getattr(advapi, name)
+        function.restype, function.argtypes = result, args
     for name, args in (
-        ('CreateAppContainerProfile', [C.c_wchar_p, C.c_wchar_p, C.c_wchar_p, LPVOID, DWORD, C.POINTER(LPVOID)]),
-        ('DeleteAppContainerProfile', [C.c_wchar_p]),
-        ('GetAppContainerFolderPath', [C.c_wchar_p, C.POINTER(LPVOID)]),
+        ("CreateAppContainerProfile", [C.c_wchar_p, C.c_wchar_p, C.c_wchar_p, LPVOID, DWORD, C.POINTER(LPVOID)]),
+        ("DeleteAppContainerProfile", [C.c_wchar_p]),
+        ("GetAppContainerFolderPath", [C.c_wchar_p, C.POINTER(LPVOID)]),
     ):
-        function = getattr(userenv, name); function.restype, function.argtypes = HRESULT, args
+        function = getattr(userenv, name)
+        function.restype, function.argtypes = HRESULT, args
     ole.CoTaskMemFree.restype, ole.CoTaskMemFree.argtypes = None, [LPVOID]
     return kernel, advapi, userenv, ole
 
 
-def _check(value, code='PROCESS_UNAVAILABLE', *, operation=None, token_info_class=None):
+def _check(value, code="PROCESS_UNAVAILABLE", *, operation=None, token_info_class=None):
     if not value:
         # Cleanup Win32 calls can overwrite the thread-local last error.
-        native_error = C.get_last_error() if hasattr(C, 'get_last_error') else None
-        raise WindowsProcessError(code, native_error=native_error, operation=operation, token_info_class=token_info_class)
+        native_error = C.get_last_error() if hasattr(C, "get_last_error") else None
+        raise WindowsProcessError(
+            code, native_error=native_error, operation=operation, token_info_class=token_info_class
+        )
     return value
 
 
 def _environment_block(env):
     if not isinstance(env, dict):
-        raise ValueError('Explicit environment required')
+        raise ValueError("Explicit environment required")
     seen, entries = set(), []
     for key, value in sorted(env.items(), key=lambda item: str(item[0]).upper()):
-        if (not isinstance(key, str) or not key or '=' in key or '\0' in key or key.upper() in seen
-                or not isinstance(value, str) or '\0' in value):
-            raise ValueError('Invalid environment')
-        seen.add(key.upper()); entries.append(key + '=' + value)
-    return '\0'.join(entries) + '\0\0'
+        if (
+            not isinstance(key, str)
+            or not key
+            or "=" in key
+            or "\0" in key
+            or key.upper() in seen
+            or not isinstance(value, str)
+            or "\0" in value
+        ):
+            raise ValueError("Invalid environment")
+        seen.add(key.upper())
+        entries.append(key + "=" + value)
+    return "\0".join(entries) + "\0\0"
 
 
 def _validate_appcontainer_environment(env):
@@ -228,8 +363,8 @@ def _validate_appcontainer_environment(env):
     # 203 before the executable starts (Microsoft/mxc regression #1158).
     # Their presence does not grant directory access; the LPAC DACL still does.
     entries = {key.upper(): value for key, value in env.items()}
-    if not all(entries.get(key) for key in ('SYSTEMROOT', 'LOCALAPPDATA')):
-        raise WindowsProcessError('APPCONTAINER_ENVIRONMENT_REQUIRED')
+    if not all(entries.get(key) for key in ("SYSTEMROOT", "LOCALAPPDATA")):
+        raise WindowsProcessError("APPCONTAINER_ENVIRONMENT_REQUIRED")
 
 
 def _headless_error_mode(kernel):
@@ -270,19 +405,39 @@ def _verify_lpac_access(token):
     """
     kernel, advapi, _, _ = _api()
     impersonation, descriptor = HANDLE(), LPVOID()
-    _check(advapi.DuplicateToken(token, 2, C.byref(impersonation)), 'APPCONTAINER_UNAVAILABLE', operation='DuplicateToken')
+    _check(
+        advapi.DuplicateToken(token, 2, C.byref(impersonation)), "APPCONTAINER_UNAVAILABLE", operation="DuplicateToken"
+    )
     try:
-        sddl = 'O:SYG:SYD:(A;;0x3;;;WD)(A;;0x1;;;S-1-15-2-1)(A;;0x2;;;S-1-15-2-2)'
-        _check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, C.byref(descriptor), None), 'APPCONTAINER_UNAVAILABLE')
+        sddl = "O:SYG:SYD:(A;;0x3;;;WD)(A;;0x1;;;S-1-15-2-1)(A;;0x2;;;S-1-15-2-2)"
+        _check(
+            advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, C.byref(descriptor), None),
+            "APPCONTAINER_UNAVAILABLE",
+        )
         mapping = GENERIC_MAPPING()
         privileges = C.create_string_buffer(1024)
         privilege_size, granted, permitted = DWORD(len(privileges)), DWORD(), BOOL()
-        _check(advapi.AccessCheck(descriptor, impersonation, 0x02000000, C.byref(mapping), privileges,
-            C.byref(privilege_size), C.byref(granted), C.byref(permitted)), 'APPCONTAINER_UNAVAILABLE', operation='AccessCheck')
+        _check(
+            advapi.AccessCheck(
+                descriptor,
+                impersonation,
+                0x02000000,
+                C.byref(mapping),
+                privileges,
+                C.byref(privilege_size),
+                C.byref(granted),
+                C.byref(permitted),
+            ),
+            "APPCONTAINER_UNAVAILABLE",
+            operation="AccessCheck",
+        )
         if not permitted.value or granted.value != 0x2:
-            raise WindowsProcessError('APPCONTAINER_LPAC_REQUIRED', operation='AccessCheck', access_mask=int(granted.value))
+            raise WindowsProcessError(
+                "APPCONTAINER_LPAC_REQUIRED", operation="AccessCheck", access_mask=int(granted.value)
+            )
     finally:
-        if descriptor: kernel.LocalFree(descriptor)
+        if descriptor:
+            kernel.LocalFree(descriptor)
         kernel.CloseHandle(impersonation)
 
 
@@ -290,23 +445,28 @@ def _verify_lpac_access(token):
 def _capability_derivation_api():
     _api()  # Refuse unsupported hosts before loading a native library.
     try:
-        library = C.WinDLL('kernelbase', use_last_error=True)
+        library = C.WinDLL("kernelbase", use_last_error=True)
         function = library.DeriveCapabilitySidsFromName
     except (OSError, AttributeError) as failure:
-        raise WindowsProcessError('APPCONTAINER_UNAVAILABLE') from failure
+        raise WindowsProcessError("APPCONTAINER_UNAVAILABLE") from failure
     sid_array = C.POINTER(LPVOID)
     function.restype = BOOL
-    function.argtypes = [C.c_wchar_p, C.POINTER(sid_array), C.POINTER(DWORD),
-                         C.POINTER(sid_array), C.POINTER(DWORD)]
+    function.argtypes = [C.c_wchar_p, C.POINTER(sid_array), C.POINTER(DWORD), C.POINTER(sid_array), C.POINTER(DWORD)]
     return function
 
 
 def _is_capability_sid(value):
     # SID revision 1, AppAuthority 15, capability RID 3. Named capability
     # identities are derived by Windows, never accepted from a skill package.
-    return (isinstance(value, bytes) and 12 <= len(value) <= 68 and value[0] == 1
-            and 1 <= value[1] <= 15 and len(value) == 8 + 4 * value[1]
-            and value[2:8] == b'\0\0\0\0\0\x0f' and value[8:12] == b'\x03\0\0\0')
+    return (
+        isinstance(value, bytes)
+        and 12 <= len(value) <= 68
+        and value[0] == 1
+        and 1 <= value[1] <= 15
+        and len(value) == 8 + 4 * value[1]
+        and value[2:8] == b"\0\0\0\0\0\x0f"
+        and value[8:12] == b"\x03\0\0\0"
+    )
 
 
 @lru_cache(maxsize=1)
@@ -324,19 +484,23 @@ def _registry_read_capability_sid():
     groups, capabilities = C.POINTER(LPVOID)(), C.POINTER(LPVOID)()
     group_count, capability_count = DWORD(), DWORD()
     try:
-        _check(_capability_derivation_api()('registryRead', C.byref(groups), C.byref(group_count),
-            C.byref(capabilities), C.byref(capability_count)), 'APPCONTAINER_UNAVAILABLE',
-            operation='DeriveCapabilitySidsFromName')
+        _check(
+            _capability_derivation_api()(
+                "registryRead", C.byref(groups), C.byref(group_count), C.byref(capabilities), C.byref(capability_count)
+            ),
+            "APPCONTAINER_UNAVAILABLE",
+            operation="DeriveCapabilitySidsFromName",
+        )
         if not capabilities or capability_count.value != 1 or group_count.value > 64:
-            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
         sid = capabilities[0]
-        _check(sid and advapi.IsValidSid(sid), 'APPCONTAINER_UNAVAILABLE')
+        _check(sid and advapi.IsValidSid(sid), "APPCONTAINER_UNAVAILABLE")
         size = int(advapi.GetLengthSid(sid))
         if not 12 <= size <= 68:
-            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
         value = C.string_at(sid, size)
         if not _is_capability_sid(value):
-            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
         return value  # Immutable owned bytes; all native allocations freed below.
     finally:
         # The API returns two independently owned arrays. Group SIDs are never
@@ -345,14 +509,17 @@ def _registry_read_capability_sid():
             if array:
                 if count <= 64:
                     for index in range(count):
-                        if array[index]: kernel.LocalFree(array[index])
+                        if array[index]:
+                            kernel.LocalFree(array[index])
                 kernel.LocalFree(C.cast(array, LPVOID))
 
 
 def _assert_registry_read_capability(data, returned_size, expected):
     """Validate the complete bounded TOKEN_GROUPS capability set before resume."""
+
     def denied():
-        raise WindowsProcessError('APPCONTAINER_UNAVAILABLE', operation='GetTokenInformation', token_info_class=30)
+        raise WindowsProcessError("APPCONTAINER_UNAVAILABLE", operation="GetTokenInformation", token_info_class=30)
+
     if not C.sizeof(TOKEN_GROUPS_ONE) <= returned_size <= len(data):
         denied()
     observed = C.cast(data, C.POINTER(TOKEN_GROUPS_ONE)).contents
@@ -376,28 +543,46 @@ def _assert_registry_read_capability(data, returned_size, expected):
 def _verify_appcontainer_token(process, expected_sid):
     kernel, advapi, _, _ = _api()
     token = HANDLE()
-    _check(advapi.OpenProcessToken(process, 0x8 | 0x2, C.byref(token)), 'APPCONTAINER_UNAVAILABLE', operation='OpenProcessToken')
+    _check(
+        advapi.OpenProcessToken(process, 0x8 | 0x2, C.byref(token)),
+        "APPCONTAINER_UNAVAILABLE",
+        operation="OpenProcessToken",
+    )
     try:
         value, size = DWORD(), DWORD()
-        _check(advapi.GetTokenInformation(token, 29, C.byref(value), C.sizeof(value), C.byref(size)),
-               'APPCONTAINER_UNAVAILABLE', operation='GetTokenInformation', token_info_class=29)
+        _check(
+            advapi.GetTokenInformation(token, 29, C.byref(value), C.sizeof(value), C.byref(size)),
+            "APPCONTAINER_UNAVAILABLE",
+            operation="GetTokenInformation",
+            token_info_class=29,
+        )
         if not value.value or size.value != C.sizeof(value):
-            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE', operation='GetTokenInformation', token_info_class=29)
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE", operation="GetTokenInformation", token_info_class=29)
         _verify_lpac_access(token)
         size = DWORD()
         advapi.GetTokenInformation(token, 31, None, 0, C.byref(size))
-        if not 0 < size.value < 65536: raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        if not 0 < size.value < 65536:
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
         data = C.create_string_buffer(size.value)
-        _check(advapi.GetTokenInformation(token, 31, data, size, C.byref(size)), 'APPCONTAINER_UNAVAILABLE',
-               operation='GetTokenInformation', token_info_class=31)
+        _check(
+            advapi.GetTokenInformation(token, 31, data, size, C.byref(size)),
+            "APPCONTAINER_UNAVAILABLE",
+            operation="GetTokenInformation",
+            token_info_class=31,
+        )
         observed_sid = C.cast(data, C.POINTER(LPVOID))[0]
-        _check(advapi.EqualSid(observed_sid, expected_sid), 'APPCONTAINER_UNAVAILABLE')
+        _check(advapi.EqualSid(observed_sid, expected_sid), "APPCONTAINER_UNAVAILABLE")
         size = DWORD()
         advapi.GetTokenInformation(token, 30, None, 0, C.byref(size))
-        if not 0 < size.value < 65536: raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        if not 0 < size.value < 65536:
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
         data = C.create_string_buffer(size.value)
-        _check(advapi.GetTokenInformation(token, 30, data, size, C.byref(size)), 'APPCONTAINER_UNAVAILABLE',
-               operation='GetTokenInformation', token_info_class=30)
+        _check(
+            advapi.GetTokenInformation(token, 30, data, size, C.byref(size)),
+            "APPCONTAINER_UNAVAILABLE",
+            operation="GetTokenInformation",
+            token_info_class=30,
+        )
         _assert_registry_read_capability(data, int(size.value), _registry_read_capability_sid())
     finally:
         kernel.CloseHandle(token)
@@ -414,15 +599,18 @@ def assert_network_isolation_services():
     firewall profiles, start services or request elevation.
     """
     _, advapi, _, _ = _api()
-    manager = _check(advapi.OpenSCManagerW(None, None, 0x1), 'NETWORK_ISOLATION_UNAVAILABLE')
+    manager = _check(advapi.OpenSCManagerW(None, None, 0x1), "NETWORK_ISOLATION_UNAVAILABLE")
     try:
-        for name in ('BFE', 'MpsSvc'):
-            service = _check(advapi.OpenServiceW(manager, name, 0x4), 'NETWORK_ISOLATION_UNAVAILABLE')
+        for name in ("BFE", "MpsSvc"):
+            service = _check(advapi.OpenServiceW(manager, name, 0x4), "NETWORK_ISOLATION_UNAVAILABLE")
             try:
                 status, size = SERVICE_STATUS_PROCESS(), DWORD()
-                _check(advapi.QueryServiceStatusEx(service, 0, C.byref(status), C.sizeof(status), C.byref(size)), 'NETWORK_ISOLATION_UNAVAILABLE')
+                _check(
+                    advapi.QueryServiceStatusEx(service, 0, C.byref(status), C.sizeof(status), C.byref(size)),
+                    "NETWORK_ISOLATION_UNAVAILABLE",
+                )
                 if status.dwCurrentState != 4:  # SERVICE_RUNNING, not START_PENDING.
-                    raise WindowsProcessError('NETWORK_ISOLATION_UNAVAILABLE')
+                    raise WindowsProcessError("NETWORK_ISOLATION_UNAVAILABLE")
             finally:
                 advapi.CloseServiceHandle(service)
     finally:
@@ -440,18 +628,25 @@ def assert_job_limits(*, max_memory_bytes, max_processes, max_cpu_time_seconds):
     """Verify the kernel's current job; an environment marker is not evidence."""
     kernel, _, _, _ = _api()
     if not current_process_in_job():
-        raise WindowsProcessError('PROCESS_LIMITS_REQUIRED')
+        raise WindowsProcessError("PROCESS_LIMITS_REQUIRED")
     info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-    _check(kernel.QueryInformationJobObject(None, 9, C.byref(info), C.sizeof(info), None), 'PROCESS_LIMITS_REQUIRED')
+    _check(kernel.QueryInformationJobObject(None, 9, C.byref(info), C.sizeof(info), None), "PROCESS_LIMITS_REQUIRED")
     basic = info.BasicLimitInformation
     required = 0x2000 | 0x200 | 0x8 | 0x4
-    if (basic.LimitFlags & required != required or basic.LimitFlags & (0x800 | 0x1000)
-            or not 0 < info.JobMemoryLimit <= max_memory_bytes
-            or not 0 < basic.ActiveProcessLimit <= max_processes
-            or not 0 < basic.PerJobUserTimeLimit <= round(max_cpu_time_seconds * 10_000_000)):
-        raise WindowsProcessError('PROCESS_LIMITS_REQUIRED')
-    return {'memory_bytes': int(info.JobMemoryLimit), 'active_processes': int(basic.ActiveProcessLimit),
-            'cpu_time_seconds': basic.PerJobUserTimeLimit / 10_000_000, 'kill_on_close': True}
+    if (
+        basic.LimitFlags & required != required
+        or basic.LimitFlags & (0x800 | 0x1000)
+        or not 0 < info.JobMemoryLimit <= max_memory_bytes
+        or not 0 < basic.ActiveProcessLimit <= max_processes
+        or not 0 < basic.PerJobUserTimeLimit <= round(max_cpu_time_seconds * 10_000_000)
+    ):
+        raise WindowsProcessError("PROCESS_LIMITS_REQUIRED")
+    return {
+        "memory_bytes": int(info.JobMemoryLimit),
+        "active_processes": int(basic.ActiveProcessLimit),
+        "cpu_time_seconds": basic.PerJobUserTimeLimit / 10_000_000,
+        "kill_on_close": True,
+    }
 
 
 class WindowsProcess:
@@ -462,7 +657,7 @@ class WindowsProcess:
         self._returncode = None
         self._lock, self._communication = threading.RLock(), threading.Lock()
         self._closed = False
-        self._communication_counts = {'stdin_bytes': 0, 'stdout_bytes': 0, 'stderr_bytes': 0}
+        self._communication_counts = {"stdin_bytes": 0, "stdout_bytes": 0, "stderr_bytes": 0}
 
     @property
     def returncode(self):
@@ -473,30 +668,31 @@ class WindowsProcess:
             if self._returncode is not None:
                 return self._returncode
             if self._closed:
-                raise WindowsProcessError('PROCESS_CLOSED')
+                raise WindowsProcessError("PROCESS_CLOSED")
             status = self._kernel.WaitForSingleObject(self._process, 0)
             if status == 258:
                 return None
             if status != 0:
                 raise WindowsProcessError()
-            code = DWORD(); _check(self._kernel.GetExitCodeProcess(self._process, C.byref(code)))
+            code = DWORD()
+            _check(self._kernel.GetExitCodeProcess(self._process, C.byref(code)))
             self._returncode = int(code.value)
             return self._returncode
 
     def wait(self, timeout=None):
         if timeout is not None and (not math.isfinite(timeout) or timeout < 0):
-            raise ValueError('Invalid timeout')
+            raise ValueError("Invalid timeout")
         deadline = None if timeout is None else time.monotonic() + timeout
         while (code := self.poll()) is None:
             if deadline is not None and time.monotonic() >= deadline:
-                raise TimeoutError('PROCESS_TIMEOUT')
-            time.sleep(.01)
+                raise TimeoutError("PROCESS_TIMEOUT")
+            time.sleep(0.01)
         return code
 
     def terminate_tree(self):
         with self._lock:
             if not self._closed:
-                _check(self._kernel.TerminateJobObject(self._job, 0xE0000001), 'PROCESS_CLEANUP_FAILED')
+                _check(self._kernel.TerminateJobObject(self._job, 0xE0000001), "PROCESS_CLEANUP_FAILED")
 
     terminate = terminate_tree
     kill = terminate_tree
@@ -505,19 +701,23 @@ class WindowsProcess:
         deadline = time.monotonic() + timeout
         while True:
             if self._closed or self._job is None:
-                raise WindowsProcessError('PROCESS_CLOSED')
+                raise WindowsProcessError("PROCESS_CLOSED")
             info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
-            _check(self._kernel.QueryInformationJobObject(self._job, 1, C.byref(info), C.sizeof(info), None), 'PROCESS_CLEANUP_FAILED')
+            _check(
+                self._kernel.QueryInformationJobObject(self._job, 1, C.byref(info), C.sizeof(info), None),
+                "PROCESS_CLEANUP_FAILED",
+            )
             if not info.ActiveProcesses:
                 return
             if time.monotonic() >= deadline:
-                raise WindowsProcessError('PROCESS_CLEANUP_FAILED')
-            time.sleep(.01)
+                raise WindowsProcessError("PROCESS_CLEANUP_FAILED")
+            time.sleep(0.01)
 
     def process_ids(self):
         """An observation of this job only; never a global process enumeration."""
         with self._lock:
-            if self._closed: return ()
+            if self._closed:
+                return ()
             for capacity in (64, 256, 1024, 4096):
                 data = C.create_string_buffer(8 + capacity * C.sizeof(SIZE_T))
                 if self._kernel.QueryInformationJobObject(self._job, 3, data, len(data), None):
@@ -526,52 +726,76 @@ class WindowsProcess:
                     if assigned <= listed <= capacity:
                         values = C.cast(C.byref(data, 8), C.POINTER(SIZE_T))
                         return tuple(int(values[index]) for index in range(listed))
-            raise WindowsProcessError('PROCESS_QUERY_FAILED')
+            raise WindowsProcessError("PROCESS_QUERY_FAILED")
 
     def diagnostic_counters(self):
         """Numeric native acceptance diagnostics only; never payload or paths."""
         with self._lock:
-            if self._closed: raise WindowsProcessError('PROCESS_CLOSED')
+            if self._closed:
+                raise WindowsProcessError("PROCESS_CLOSED")
             created, exited, kernel_time, user_time = FILETIME(), FILETIME(), FILETIME(), FILETIME()
-            _check(self._kernel.GetProcessTimes(self._process, C.byref(created), C.byref(exited),
-                C.byref(kernel_time), C.byref(user_time)), 'PROCESS_QUERY_FAILED')
+            _check(
+                self._kernel.GetProcessTimes(
+                    self._process, C.byref(created), C.byref(exited), C.byref(kernel_time), C.byref(user_time)
+                ),
+                "PROCESS_QUERY_FAILED",
+            )
             io = IO_COUNTERS()
-            _check(self._kernel.GetProcessIoCounters(self._process, C.byref(io)), 'PROCESS_QUERY_FAILED')
+            _check(self._kernel.GetProcessIoCounters(self._process, C.byref(io)), "PROCESS_QUERY_FAILED")
             milliseconds = lambda value: ((int(value.high) << 32) | int(value.low)) // 10_000
-            return {'exit_code': self.poll(), 'user_cpu_ms': milliseconds(user_time), 'kernel_cpu_ms': milliseconds(kernel_time),
-                    'process_read_bytes': int(io.ReadTransferCount), 'process_write_bytes': int(io.WriteTransferCount),
-                    **self._communication_counts}
+            return {
+                "exit_code": self.poll(),
+                "user_cpu_ms": milliseconds(user_time),
+                "kernel_cpu_ms": milliseconds(kernel_time),
+                "process_read_bytes": int(io.ReadTransferCount),
+                "process_write_bytes": int(io.WriteTransferCount),
+                **self._communication_counts,
+            }
 
-    def communicate(self, input=b'', *, timeout=None, cancelled=None, max_stdout=2 * 1024 * 1024, max_stderr=64 * 1024):
-        if not isinstance(input, bytes) or type(max_stdout) is not int or type(max_stderr) is not int or min(max_stdout, max_stderr) < 0:
-            raise ValueError('Invalid communication limits')
+    def communicate(self, input=b"", *, timeout=None, cancelled=None, max_stdout=2 * 1024 * 1024, max_stderr=64 * 1024):
+        if (
+            not isinstance(input, bytes)
+            or type(max_stdout) is not int
+            or type(max_stderr) is not int
+            or min(max_stdout, max_stderr) < 0
+        ):
+            raise ValueError("Invalid communication limits")
         if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
-            raise ValueError('Invalid timeout')
+            raise ValueError("Invalid timeout")
         if not self._communication.acquire(blocking=False):
-            raise WindowsProcessError('PROCESS_ALREADY_READING')
+            raise WindowsProcessError("PROCESS_ALREADY_READING")
         output, errors, guard = [bytearray(), bytearray()], [], threading.Lock()
         sent = [0]
         deadline = None if timeout is None else time.monotonic() + timeout
+
         def fail(code):
             with guard:
-                if not errors: errors.append(code)
+                if not errors:
+                    errors.append(code)
             self.terminate_tree()
+
         def read(stream, index, limit):
-            if stream is None: return
+            if stream is None:
+                return
             try:
                 while chunk := stream.read(16384):
                     if len(output[index]) + len(chunk) > limit:
-                        fail('OUTPUT_LIMIT'); return
+                        fail("OUTPUT_LIMIT")
+                        return
                     output[index].extend(chunk)
             except (OSError, ValueError):
-                if self.poll() is None: fail('PROCESS_IO_FAILED')
+                if self.poll() is None:
+                    fail("PROCESS_IO_FAILED")
+
         def write():
-            if self.stdin is None: return
+            if self.stdin is None:
+                return
             try:
                 view = memoryview(input)
                 while view:
                     count = self.stdin.write(view[:65536])
-                    if not count: break
+                    if not count:
+                        break
                     sent[0] += count
                     view = view[count:]
                 self.stdin.flush()
@@ -579,22 +803,35 @@ class WindowsProcess:
                 pass
             finally:
                 self.stdin.close()
-        threads = [threading.Thread(target=read, args=(self.stdout, 0, max_stdout), name='windows-stdout'),
-                   threading.Thread(target=read, args=(self.stderr, 1, max_stderr), name='windows-stderr'),
-                   threading.Thread(target=write, name='windows-stdin')]
+
+        threads = [
+            threading.Thread(target=read, args=(self.stdout, 0, max_stdout), name="windows-stdout"),
+            threading.Thread(target=read, args=(self.stderr, 1, max_stderr), name="windows-stderr"),
+            threading.Thread(target=write, name="windows-stdin"),
+        ]
         try:
-            for thread in threads: thread.start()
+            for thread in threads:
+                thread.start()
             while self.poll() is None or any(thread.is_alive() for thread in threads):
-                try: interrupted = bool(cancelled() if callable(cancelled) else cancelled is not None and cancelled.is_set())
-                except Exception: interrupted = True
-                if interrupted: fail('CANCELLED'); break
-                if deadline is not None and time.monotonic() >= deadline: fail('TIMEOUT'); break
-                if errors: break
+                try:
+                    interrupted = bool(
+                        cancelled() if callable(cancelled) else cancelled is not None and cancelled.is_set()
+                    )
+                except Exception:
+                    interrupted = True
+                if interrupted:
+                    fail("CANCELLED")
+                    break
+                if deadline is not None and time.monotonic() >= deadline:
+                    fail("TIMEOUT")
+                    break
+                if errors:
+                    break
                 # A descendant may retain a pipe after its leader exits. Job
                 # ownership, rather than pipe EOF, determines cleanup authority.
                 if self.poll() is not None:
                     self.terminate_tree()
-                time.sleep(.01)
+                time.sleep(0.01)
             self.wait(timeout=5)
         finally:
             try:
@@ -606,11 +843,16 @@ class WindowsProcess:
                     # closed the Job. Native-query errors still cannot abandon
                     # the three threads that own this communication's pipes.
                     for thread in threads:
-                        if thread.ident is not None: thread.join(timeout=5)
+                        if thread.ident is not None:
+                            thread.join(timeout=5)
                     if any(thread.is_alive() for thread in threads):
-                        raise WindowsProcessError('PROCESS_CLEANUP_FAILED')
+                        raise WindowsProcessError("PROCESS_CLEANUP_FAILED")
             finally:
-                self._communication_counts = {'stdin_bytes': sent[0], 'stdout_bytes': len(output[0]), 'stderr_bytes': len(output[1])}
+                self._communication_counts = {
+                    "stdin_bytes": sent[0],
+                    "stdout_bytes": len(output[0]),
+                    "stderr_bytes": len(output[1]),
+                }
                 self._communication.release()
         if errors:
             raise WindowsProcessError(errors[0])
@@ -618,9 +860,12 @@ class WindowsProcess:
 
     def close(self):
         with self._lock:
-            if self._closed: return
+            if self._closed:
+                return
             try:
-                self.terminate_tree(); self._wait_empty(); self.wait(timeout=5)
+                self.terminate_tree()
+                self._wait_empty()
+                self.wait(timeout=5)
             finally:
                 # If explicit termination failed, close the kill-on-close job
                 # before touching pipes: no descendant may keep a pipe writer
@@ -635,17 +880,21 @@ class WindowsProcess:
                 try:
                     for stream in (self.stdin, self.stdout, self.stderr):
                         try:
-                            if stream is not None and not stream.closed: stream.close()
+                            if stream is not None and not stream.closed:
+                                stream.close()
                         except OSError:
                             pipe_error = True
                 finally:
                     self._kernel.CloseHandle(self._process)
                     self._closed = True
                 if pipe_error:
-                    raise WindowsProcessError('PROCESS_CLEANUP_FAILED')
+                    raise WindowsProcessError("PROCESS_CLEANUP_FAILED")
 
-    def __enter__(self): return self
-    def __exit__(self, *_): self.close()
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
 
 
 def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=PIPE, stdout=PIPE, stderr=PIPE):
@@ -654,11 +903,18 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
     if appcontainer is not None:
         assert_network_isolation_services()
     import msvcrt
-    if (not isinstance(argv, (list, tuple)) or not argv or any(not isinstance(arg, str) or '\0' in arg for arg in argv)
-            or not Path(argv[0]).is_absolute() or not Path(cwd).is_absolute()):
-        raise ValueError('Absolute executable and working directory required')
+
+    if (
+        not isinstance(argv, (list, tuple))
+        or not argv
+        or any(not isinstance(arg, str) or "\0" in arg for arg in argv)
+        or not Path(argv[0]).is_absolute()
+        or not Path(cwd).is_absolute()
+    ):
+        raise ValueError("Absolute executable and working directory required")
     limits = ProcessLimits() if limits is None else limits
-    if not isinstance(limits, ProcessLimits): raise ValueError('Invalid limits')
+    if not isinstance(limits, ProcessLimits):
+        raise ValueError("Invalid limits")
     environment = C.create_unicode_buffer(_environment_block(env))
     if appcontainer is not None:
         _validate_appcontainer_environment(env)
@@ -667,26 +923,39 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
     attrs_ready = False
     child_handles, parent_handles, streams = [], [], []
     inherited = SECURITY_ATTRIBUTES(C.sizeof(SECURITY_ATTRIBUTES), None, True)
+
     def child_stream(spec, reading):
         if spec == PIPE:
             read, write = HANDLE(), HANDLE()
             _check(kernel.CreatePipe(C.byref(read), C.byref(write), C.byref(inherited), 0))
             child, parent = (read.value, write.value) if reading else (write.value, read.value)
-            child_handles.append(child); parent_handles.append(parent)
+            child_handles.append(child)
+            parent_handles.append(parent)
             _check(kernel.SetHandleInformation(parent, 1, 0))
             return child, parent
         if spec == DEVNULL:
-            child = kernel.CreateFileW('NUL', 0x80000000 if reading else 0x40000000, 3, C.byref(inherited), 3, 0, None)
-            if child in (None, C.c_void_p(-1).value): raise WindowsProcessError()
-        elif hasattr(spec, 'fileno'):
+            child = kernel.CreateFileW("NUL", 0x80000000 if reading else 0x40000000, 3, C.byref(inherited), 3, 0, None)
+            if child in (None, C.c_void_p(-1).value):
+                raise WindowsProcessError()
+        elif hasattr(spec, "fileno"):
             child = HANDLE()
-            _check(kernel.DuplicateHandle(kernel.GetCurrentProcess(), msvcrt.get_osfhandle(spec.fileno()),
-                kernel.GetCurrentProcess(), C.byref(child), 0, True, 2))
+            _check(
+                kernel.DuplicateHandle(
+                    kernel.GetCurrentProcess(),
+                    msvcrt.get_osfhandle(spec.fileno()),
+                    kernel.GetCurrentProcess(),
+                    C.byref(child),
+                    0,
+                    True,
+                    2,
+                )
+            )
             child = child.value
         else:
-            raise ValueError('Explicit binary pipe, DEVNULL or file required')
+            raise ValueError("Explicit binary pipe, DEVNULL or file required")
         child_handles.append(child)
         return child, None
+
     try:
         job = _check(kernel.CreateJobObjectW(None, None))
         info = _job_limits(limits)
@@ -694,14 +963,18 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
         if limits.cpu_rate_percent is not None:
             cpu = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(0x1 | 0x4, limits.cpu_rate_percent * 100)
             _check(kernel.SetInformationJobObject(job, 15, C.byref(cpu), C.sizeof(cpu)))
-        si = STARTUPINFOEXW(); si.StartupInfo.cb = C.sizeof(si); si.StartupInfo.dwFlags = 0x100
+        si = STARTUPINFOEXW()
+        si.StartupInfo.cb = C.sizeof(si)
+        si.StartupInfo.dwFlags = 0x100
         cin, pin = child_stream(stdin, True)
         cout, pout = child_stream(stdout, False)
         cerr, perr = (cout, None) if stderr == STDOUT else child_stream(stderr, False)
         si.StartupInfo.hStdInput, si.StartupInfo.hStdOutput, si.StartupInfo.hStdError = cin, cout, cerr
         count = 3 if appcontainer is not None else 1
-        size = SIZE_T(); kernel.InitializeProcThreadAttributeList(None, count, 0, C.byref(size))
-        if not size.value: raise WindowsProcessError()
+        size = SIZE_T()
+        kernel.InitializeProcThreadAttributeList(None, count, 0, C.byref(size))
+        if not size.value:
+            raise WindowsProcessError()
         attrs = C.create_string_buffer(size.value)
         _check(kernel.InitializeProcThreadAttributeList(attrs, count, 0, C.byref(size)))
         attrs_ready = True
@@ -710,13 +983,23 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
         _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x20002, handles, C.sizeof(handles), None, None))
         if appcontainer is not None:
             if not isinstance(appcontainer, AppContainerProfile) or not appcontainer.sid:
-                raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+                raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
             capability_sid = C.create_string_buffer(_registry_read_capability_sid())
             capability_entries = (SID_AND_ATTRIBUTES * 1)(SID_AND_ATTRIBUTES(C.cast(capability_sid, LPVOID), 0x4))
             capabilities = SECURITY_CAPABILITIES(appcontainer.sid, C.cast(capability_entries, LPVOID), 1, 0)
-            policy = DWORD(_ALL_APPLICATION_PACKAGES_OPT_OUT)  # Always 1 in production; native tests exercise the rejecting negative control.
-            _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x20009, C.byref(capabilities), C.sizeof(capabilities), None, None), 'APPCONTAINER_UNAVAILABLE')
-            _check(kernel.UpdateProcThreadAttribute(attrs, 0, 0x2000F, C.byref(policy), C.sizeof(policy), None, None), 'APPCONTAINER_UNAVAILABLE')
+            policy = DWORD(
+                _ALL_APPLICATION_PACKAGES_OPT_OUT
+            )  # Always 1 in production; native tests exercise the rejecting negative control.
+            _check(
+                kernel.UpdateProcThreadAttribute(
+                    attrs, 0, 0x20009, C.byref(capabilities), C.sizeof(capabilities), None, None
+                ),
+                "APPCONTAINER_UNAVAILABLE",
+            )
+            _check(
+                kernel.UpdateProcThreadAttribute(attrs, 0, 0x2000F, C.byref(policy), C.sizeof(policy), None, None),
+                "APPCONTAINER_UNAVAILABLE",
+            )
         # CREATE_NO_WINDOW still selects console-process initialization, which
         # Windows can deny for lowbox tokens when LowBoxConsoleEnabled is absent.
         # We need only the three explicit pipes, so avoid console attachment
@@ -727,22 +1010,29 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
         flags = 0x4 | 0x80000 | 0x400 | (_APPCONTAINER_PROCESS_MODE if appcontainer is not None else 0x08000000)
         if appcontainer is not None:
             _headless_error_mode(kernel)
-        _check(kernel.CreateProcessW(argv[0], command, None, None, True, flags, environment, str(cwd), C.byref(si), C.byref(process)),
-               'APPCONTAINER_UNAVAILABLE' if appcontainer is not None else 'PROCESS_UNAVAILABLE', operation='CreateProcessW')
-        _check(kernel.AssignProcessToJobObject(job, process.hProcess), operation='AssignProcessToJobObject')
+        _check(
+            kernel.CreateProcessW(
+                argv[0], command, None, None, True, flags, environment, str(cwd), C.byref(si), C.byref(process)
+            ),
+            "APPCONTAINER_UNAVAILABLE" if appcontainer is not None else "PROCESS_UNAVAILABLE",
+            operation="CreateProcessW",
+        )
+        _check(kernel.AssignProcessToJobObject(job, process.hProcess), operation="AssignProcessToJobObject")
         if appcontainer is not None:
             _verify_appcontainer_token(process.hProcess, appcontainer.sid)
         # Convert only parent ends. The child ends and job handle are never
         # exposed to uploaded code beyond the explicit three-handle allowlist.
         for parent, reading in ((pin, False), (pout, True), (perr, True)):
             if parent is None:
-                streams.append(None); continue
+                streams.append(None)
+                continue
             fd = msvcrt.open_osfhandle(parent, os.O_BINARY | (os.O_RDONLY if reading else os.O_WRONLY))
             parent_handles.remove(parent)
             try:
-                stream = os.fdopen(fd, 'rb' if reading else 'wb', buffering=0)
+                stream = os.fdopen(fd, "rb" if reading else "wb", buffering=0)
             except BaseException:
-                os.close(fd); raise
+                os.close(fd)
+                raise
             streams.append(stream)
         if kernel.ResumeThread(process.hThread) == 0xFFFFFFFF:
             raise WindowsProcessError()
@@ -755,14 +1045,19 @@ def spawn_job_process(argv, *, cwd, env, limits=None, appcontainer=None, stdin=P
             kernel.WaitForSingleObject(process.hProcess, 5000)
             kernel.CloseHandle(process.hProcess)
         if job:
-            kernel.TerminateJobObject(job, 0xE0000001); kernel.CloseHandle(job)
+            kernel.TerminateJobObject(job, 0xE0000001)
+            kernel.CloseHandle(job)
         for stream in streams:
-            if stream is not None: stream.close()
+            if stream is not None:
+                stream.close()
         raise
     finally:
-        if process.hThread: kernel.CloseHandle(process.hThread)
-        if attrs_ready: kernel.DeleteProcThreadAttributeList(attrs)
-        for handle in child_handles + parent_handles: kernel.CloseHandle(handle)
+        if process.hThread:
+            kernel.CloseHandle(process.hThread)
+        if attrs_ready:
+            kernel.DeleteProcThreadAttributeList(attrs)
+        for handle in child_handles + parent_handles:
+            kernel.CloseHandle(handle)
 
 
 spawn = spawn_job_process
@@ -770,34 +1065,43 @@ spawn = spawn_job_process
 
 def _plain_path(path):
     path = Path(path)
-    if not path.is_absolute(): raise WindowsProcessError('APPCONTAINER_PATH_INVALID')
+    if not path.is_absolute():
+        raise WindowsProcessError("APPCONTAINER_PATH_INVALID")
     for item in (path, *path.parents):
-        if item.exists() and getattr(item.lstat(), 'st_file_attributes', 0) & 0x400:
-            raise WindowsProcessError('APPCONTAINER_PATH_INVALID')
+        if item.exists() and getattr(item.lstat(), "st_file_attributes", 0) & 0x400:
+            raise WindowsProcessError("APPCONTAINER_PATH_INVALID")
     return path
 
 
 def _container_acl(path, sid, *, executable=False):
     """Replace the DACL of an owned copy, never mutate a shared installation."""
     from .platform_io import current_user_sid
+
     path = _plain_path(path)
-    if not path.exists(): raise WindowsProcessError('APPCONTAINER_PATH_INVALID')
+    if not path.exists():
+        raise WindowsProcessError("APPCONTAINER_PATH_INVALID")
     kernel, advapi, _, _ = _api()
-    inheritance = 'OICI' if path.is_dir() else ''
-    access = 'GRGX' if executable or path.is_dir() else 'GR'
-    descriptor = f'D:P(A;{inheritance};FA;;;SY)(A;{inheritance};FA;;;{current_user_sid()})(A;{inheritance};{access};;;{sid})'
+    inheritance = "OICI" if path.is_dir() else ""
+    access = "GRGX" if executable or path.is_dir() else "GR"
+    descriptor = (
+        f"D:P(A;{inheritance};FA;;;SY)(A;{inheritance};FA;;;{current_user_sid()})(A;{inheritance};{access};;;{sid})"
+    )
     sd = LPVOID()
-    _check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(descriptor, 1, C.byref(sd), None), 'APPCONTAINER_ACL_FAILED')
+    _check(
+        advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(descriptor, 1, C.byref(sd), None),
+        "APPCONTAINER_ACL_FAILED",
+    )
     try:
-        _check(advapi.SetFileSecurityW(str(path), 0x4 | 0x80000000, sd), 'APPCONTAINER_ACL_FAILED')
+        _check(advapi.SetFileSecurityW(str(path), 0x4 | 0x80000000, sd), "APPCONTAINER_ACL_FAILED")
     finally:
         kernel.LocalFree(sd)
 
 
 class AppContainerProfile:
     """One random LPAC identity, without network capabilities or reusable trust."""
+
     def __init__(self):
-        self.name, self.sid, self.sid_string = 'OntologyOne.Skill.' + uuid.uuid4().hex, None, None
+        self.name, self.sid, self.sid_string = "OntologyOne.Skill." + uuid.uuid4().hex, None, None
         self.folder = None
         self._created = False
 
@@ -805,47 +1109,61 @@ class AppContainerProfile:
         kernel, advapi, userenv, ole = _api()
         assert_network_isolation_services()
         sid = LPVOID()
-        if userenv.CreateAppContainerProfile(self.name, 'Ontology One isolated skill', 'Ephemeral synthetic skill test', None, 0, C.byref(sid)) < 0:
-            raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        if (
+            userenv.CreateAppContainerProfile(
+                self.name, "Ontology One isolated skill", "Ephemeral synthetic skill test", None, 0, C.byref(sid)
+            )
+            < 0
+        ):
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
         self.sid = sid.value
         self._created = True
         try:
             text = LPVOID()
-            _check(advapi.ConvertSidToStringSidW(sid, C.byref(text)), 'APPCONTAINER_UNAVAILABLE')
-            try: self.sid_string = C.wstring_at(text)
-            finally: kernel.LocalFree(text)
+            _check(advapi.ConvertSidToStringSidW(sid, C.byref(text)), "APPCONTAINER_UNAVAILABLE")
+            try:
+                self.sid_string = C.wstring_at(text)
+            finally:
+                kernel.LocalFree(text)
             folder = LPVOID()
             if userenv.GetAppContainerFolderPath(self.sid_string, C.byref(folder)) < 0:
-                raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
-            try: self.folder = _plain_path(C.wstring_at(folder))
-            finally: ole.CoTaskMemFree(folder)
+                raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
+            try:
+                self.folder = _plain_path(C.wstring_at(folder))
+            finally:
+                ole.CoTaskMemFree(folder)
             # An AppContainer normally receives writable LocalState/TempState.
             # Skill tests use only input/output pipes, so remove that disk-write
             # grant too; a Job Object has no filesystem-size quota.
             self.grant_read_tree(self.folder)
             return self
         except BaseException:
-            self.close(); raise
+            self.close()
+            raise
 
     def grant_read_tree(self, root, *, executable=False):
-        if self.sid is None: raise WindowsProcessError('APPCONTAINER_UNAVAILABLE')
+        if self.sid is None:
+            raise WindowsProcessError("APPCONTAINER_UNAVAILABLE")
         root = _plain_path(root)
-        paths = [root, *root.rglob('*')]
+        paths = [root, *root.rglob("*")]
         for path in paths:
             _container_acl(path, self.sid_string, executable=executable)
 
     def close(self):
-        if not self._created: return
+        if not self._created:
+            return
         _, advapi, userenv, _ = _api()
         try:
             for attempt in range(5):
                 if userenv.DeleteAppContainerProfile(self.name) >= 0:
                     self._created = False
                     return
-                time.sleep(.05 * (attempt + 1))
-            raise WindowsProcessError('APPCONTAINER_CLEANUP_FAILED')
+                time.sleep(0.05 * (attempt + 1))
+            raise WindowsProcessError("APPCONTAINER_CLEANUP_FAILED")
         finally:
-            if self.sid is not None: advapi.FreeSid(self.sid)
+            if self.sid is not None:
+                advapi.FreeSid(self.sid)
             self.sid = None
 
-    def __exit__(self, *_): self.close()
+    def __exit__(self, *_):
+        self.close()

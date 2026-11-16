@@ -1,4 +1,5 @@
 """Native synthetic filesystem fixtures; no administrator/symlink privilege."""
+
 import ctypes
 import struct
 
@@ -7,8 +8,15 @@ from backend import platform_io as fs
 
 def make_junction(link, target):
     fs.ensure_private_directory(link)
-    handle = fs._CreateFile(fs._extended(link), fs._GENERIC_WRITE, 1 | 2 | 4, None,
-                          fs._OPEN_EXISTING, fs._OPEN_REPARSE | fs._BACKUP_SEMANTICS, None)
+    handle = fs._CreateFile(
+        fs._extended(link),
+        fs._GENERIC_WRITE,
+        1 | 2 | 4,
+        None,
+        fs._OPEN_EXISTING,
+        fs._OPEN_REPARSE | fs._BACKUP_SEMANTICS,
+        None,
+    )
     if handle == fs._INVALID:
         fs._win_error()
     try:
@@ -19,31 +27,38 @@ def make_junction(link, target):
 
 def set_junction_on_handle(handle, target):
     """Issue the actual FSCTL through a caller-owned handle without reopening."""
-    substitute, printed = ('\\??\\' + str(target)).encode('utf-16-le'), str(target).encode('utf-16-le')
-    names = substitute + b'\0\0' + printed + b'\0\0'
-    fields = struct.pack('<HHHH', 0, len(substitute), len(substitute) + 2, len(printed))
-    data = struct.pack('<IHH', 0xA0000003, len(fields) + len(names), 0) + fields + names
+    substitute, printed = ("\\??\\" + str(target)).encode("utf-16-le"), str(target).encode("utf-16-le")
+    names = substitute + b"\0\0" + printed + b"\0\0"
+    fields = struct.pack("<HHHH", 0, len(substitute), len(substitute) + 2, len(printed))
+    data = struct.pack("<IHH", 0xA0000003, len(fields) + len(names), 0) + fields + names
     buffer, returned = ctypes.create_string_buffer(data), fs.wintypes.DWORD()
     call = fs._kernel.DeviceIoControl
     call.restype = fs.wintypes.BOOL
-    call.argtypes = [fs.wintypes.HANDLE, fs.wintypes.DWORD, fs.wintypes.LPVOID,
-                     fs.wintypes.DWORD, fs.wintypes.LPVOID, fs.wintypes.DWORD,
-                     ctypes.POINTER(fs.wintypes.DWORD), fs.wintypes.LPVOID]
+    call.argtypes = [
+        fs.wintypes.HANDLE,
+        fs.wintypes.DWORD,
+        fs.wintypes.LPVOID,
+        fs.wintypes.DWORD,
+        fs.wintypes.LPVOID,
+        fs.wintypes.DWORD,
+        ctypes.POINTER(fs.wintypes.DWORD),
+        fs.wintypes.LPVOID,
+    ]
     if not call(handle, 0x900A4, buffer, len(data), None, 0, ctypes.byref(returned), None):
-        fs._win_error(operation='FSCTL_SET_REPARSE_POINT')
+        fs._win_error(operation="FSCTL_SET_REPARSE_POINT")
 
 
 def clear_junction_on_handle(handle):
-    data = struct.pack('<IHH', 0xA0000003, 0, 0)
+    data = struct.pack("<IHH", 0xA0000003, 0, 0)
     buffer, returned = ctypes.create_string_buffer(data), fs.wintypes.DWORD()
     # set_junction_on_handle has already declared the same native function.
     if not fs._kernel.DeviceIoControl(handle, 0x900AC, buffer, len(data), None, 0, ctypes.byref(returned), None):
-        fs._win_error(operation='FSCTL_DELETE_REPARSE_POINT')
+        fs._win_error(operation="FSCTL_DELETE_REPARSE_POINT")
 
 
 def make_world_accessible(path, *, directory=False):
     descriptor = fs.wintypes.LPVOID()
-    if not fs._Descriptor('D:P(A;;FA;;;WD)', 1, ctypes.byref(descriptor), None):
+    if not fs._Descriptor("D:P(A;;FA;;;WD)", 1, ctypes.byref(descriptor), None):
         fs._win_error()
     try:
         present, defaulted, acl = fs.wintypes.BOOL(), fs.wintypes.BOOL(), fs.wintypes.LPVOID()

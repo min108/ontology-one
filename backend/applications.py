@@ -1,19 +1,20 @@
 """Compatibility access to historical records; new analysis uses the agent runtime."""
+
 import json
 from fastapi import APIRouter, HTTPException
 from .db import connect
 
-router = APIRouter(tags=['historical applications'])
+router = APIRouter(tags=["historical applications"])
 
 
-@router.get('/applications/scenarios')
+@router.get("/applications/scenarios")
 def scenarios():
-    raise HTTPException(410, '固定场景分析已升级，请进入本体应用创建只读智能体会话。')
+    raise HTTPException(410, "固定场景分析已升级，请进入本体应用创建只读智能体会话。")
 
 
-@router.post('/applications/run')
+@router.post("/applications/run")
 def run_check():
-    raise HTTPException(410, '固定场景运行接口已停用，请使用受控 Harness 本体应用。')
+    raise HTTPException(410, "固定场景运行接口已停用，请使用受控 Harness 本体应用。")
 
 
 @router.get("/applications/{run_id}/export")
@@ -26,8 +27,12 @@ def export_check(run_id: str):
         result = json.loads(row["payload"])
         if result.get("record_type") != "analysis_run":
             raise HTTPException(422, "该事项不是业务分析记录")
-        if conn.execute("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='application_findings'").fetchone():
-            full = conn.execute("SELECT category,payload FROM application_findings WHERE run_id=? ORDER BY category,sequence", (run_id,)).fetchall()
+        if conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='application_findings'"
+        ).fetchone():
+            full = conn.execute(
+                "SELECT category,payload FROM application_findings WHERE run_id=? ORDER BY category,sequence", (run_id,)
+            ).fetchall()
             if full:
                 result["findings"] = [json.loads(r["payload"]) for r in full if r["category"] == "findings"]
                 result["insufficient"] = [json.loads(r["payload"]) for r in full if r["category"] == "insufficient"]

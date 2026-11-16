@@ -6,6 +6,7 @@ One thread owns each pipe for its entire lifetime; cancelling an async read does
 not create another blocking reader. Limits apply to total bytes for a session,
 so neither a slow consumer nor ``read(-1)`` can accumulate unbounded output.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -119,8 +120,8 @@ class _Reader:
                     self.owner._raise_error()
                     end = self.buffer.find(b"\n")
                     if end >= 0:
-                        result = bytes(self.buffer[:end + 1])
-                        del self.buffer[:end + 1]
+                        result = bytes(self.buffer[: end + 1])
+                        del self.buffer[: end + 1]
                         return result
                     if self.eof:
                         result = bytes(self.buffer)
@@ -240,8 +241,9 @@ class _Writer:
 class AsyncWindowsProcess:
     """Async pipe facade; ``aclose`` is mandatory after use, including success."""
 
-    def __init__(self, process, *, max_stdout=2 * 1024 * 1024,
-                 max_stderr=65536, max_line_bytes=None, max_stdin=3 * 1024 * 1024):
+    def __init__(
+        self, process, *, max_stdout=2 * 1024 * 1024, max_stderr=65536, max_line_bytes=None, max_stdin=3 * 1024 * 1024
+    ):
         max_stdout = _limit(max_stdout, "stdout")
         max_stderr = _limit(max_stderr, "stderr")
         max_stdin = _limit(max_stdin, "stdin")
@@ -402,21 +404,45 @@ def _spawn(*args, **kwargs):
     # Delay platform import so bounded-pipe tests can run with mock owners on
     # Linux and importing an unrelated backend module never loads Win32 DLLs.
     from .windows_process import spawn_job_process
+
     return spawn_job_process(*args, **kwargs)
 
 
-async def async_spawn(argv, *, cwd, env, limits=None, appcontainer=None,
-                      stdin=PIPE, stdout=PIPE, stderr=PIPE,
-                      max_stdout=2 * 1024 * 1024, max_stderr=65536,
-                      max_line_bytes=None, max_stdin=3 * 1024 * 1024):
+async def async_spawn(
+    argv,
+    *,
+    cwd,
+    env,
+    limits=None,
+    appcontainer=None,
+    stdin=PIPE,
+    stdout=PIPE,
+    stderr=PIPE,
+    max_stdout=2 * 1024 * 1024,
+    max_stderr=65536,
+    max_line_bytes=None,
+    max_stdin=3 * 1024 * 1024,
+):
     """Spawn with native Job ownership and bounded, cancellation-safe pipes."""
-    options = dict(max_stdout=_limit(max_stdout, "stdout"),
-                   max_stderr=_limit(max_stderr, "stderr"),
-                   max_stdin=_limit(max_stdin, "stdin"),
-                   max_line_bytes=_limit(max_stdout if max_line_bytes is None else max_line_bytes, "line"))
-    task = asyncio.create_task(asyncio.to_thread(
-        _spawn, argv, cwd=cwd, env=env, limits=limits, appcontainer=appcontainer,
-        stdin=stdin, stdout=stdout, stderr=stderr))
+    options = dict(
+        max_stdout=_limit(max_stdout, "stdout"),
+        max_stderr=_limit(max_stderr, "stderr"),
+        max_stdin=_limit(max_stdin, "stdin"),
+        max_line_bytes=_limit(max_stdout if max_line_bytes is None else max_line_bytes, "line"),
+    )
+    task = asyncio.create_task(
+        asyncio.to_thread(
+            _spawn,
+            argv,
+            cwd=cwd,
+            env=env,
+            limits=limits,
+            appcontainer=appcontainer,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    )
     try:
         process = await asyncio.shield(task)
     except asyncio.CancelledError:
