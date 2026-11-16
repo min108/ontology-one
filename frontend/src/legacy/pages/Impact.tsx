@@ -51,7 +51,7 @@ export default function Impact(){
   }
   return <div className="page impact-page">
     <PageHeader eyebrow="持续维护 / CHANGE REVIEW" title="变更复核" description="一项要求、一处口径或一种方法发生变化时，找出引用它的成果，明确复核范围、负责人和办理期限。" actions={<><Link className="btn" to="/maintenance"><GitCompareArrows size={15}/>审核维护</Link><Link className="btn" to="/work"><ClipboardCheck size={15}/>查看办理任务</Link></>}/>
-    <div className="impact-intro"><div className="impact-intro-icon"><GitCompareArrows size={27}/></div><div><span>从变化出发，沿依赖核对</span><h2>关联说明需要关注哪里，业务复核决定是否需要调整。</h2><p>保留变化来源与受影响成果的版本，复核任务进入工作台，历史判断仍可还原。</p></div><div className="impact-flow"><span>选定来源</span><ArrowRight size={13}/><span>核对范围</span><ArrowRight size={13}/><span>落实复核</span></div></div>
+    <div className="pw-callout"><p>保留变化来源与受影响成果的版本，复核任务进入工作台，历史判断仍可还原。</p><div className="impact-flow"><span>选定来源</span><ArrowRight size={13}/><span>核对范围</span><ArrowRight size={13}/><span>落实复核</span></div></div>
     <div className="impact-layout">
       <aside className="impact-source-panel"><div className="impact-panel-heading"><span className="impact-step-number">01</span><div><h3>选择变化来源</h3><p>从已有业务资产或法规原文开始</p></div></div>
         <div className="impact-source-search"><Search size={15}/><input aria-label="搜索变化来源" placeholder="名称、编号或业务关键词" value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<AccessButton aria-label="清空来源搜索" onClick={()=>setQuery('')}><X size={13}/></AccessButton>}</div>
