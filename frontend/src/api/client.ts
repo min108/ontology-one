@@ -119,9 +119,14 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
     init.signal?.removeEventListener('abort', abort);
   }
 }
-export function invokeCapability<T = unknown>(id: string, body: unknown): Promise<T> {
+export function invokeCapability<T = unknown>(
+  id: string,
+  body: unknown,
+  options: Pick<RequestInit, 'signal'> = {},
+): Promise<T> {
   return api<T>('/v2/capabilities/' + encodeURIComponent(id) + ':invoke', {
     method: 'POST',
     body: JSON.stringify(body),
+    signal: options.signal,
   });
 }
