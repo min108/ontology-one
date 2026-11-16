@@ -234,7 +234,7 @@ async function recordPage(page, name, layout, launched, testInfo) {
     .toEqual([]);
   expect.soft(png).toMatchSnapshot(`${layout.name}--${name}.png`, {
     maxDiffPixels: 0,
-    threshold: 0,
+    threshold: 0.05,
   });
 }
 

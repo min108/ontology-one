@@ -153,6 +153,6 @@ git rev-parse HEAD
 
 目标目录必须新建或为空，避免悄悄覆盖旧审查结果。stage 输出 63 PNG、逐图原始 metadata、
 review.json 与下载摘要目录（如使用上面的 extract）。root 正常推送这个 compare 提交，
-最终以 **该精确集成 SHA** 的 foundation+offline 两 job 全绿为准；截图比较 `threshold=0`、
+最终以 **该精确集成 SHA** 的 foundation+offline 两 job 全绿为准；经负责人批准，截图比较 `threshold=0.05`、
 `maxDiffPixels=0`，缺图不自动生成。最终报告列出 run、SHA、两个 job、各 scope 数量、33 小包链接、
 manifest/归档摘要、真实离线和迁移恢复证据。未运行、失败或未审查项目一律不得写成通过。

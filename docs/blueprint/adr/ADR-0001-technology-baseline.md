@@ -28,7 +28,7 @@
 
 ## 影响
 
-开发环境须先装 requirements.txt，再装 requirements-dev.txt。CI 的真实 SDK 检查采用本地合成模型服务，要求可写且可执行的 Linux tmpfs；不能把磁盘目录冒充内存目录。依赖缓存属于后续离线依赖包的输入，R1-9 完成离线构建验证。
+开发环境须先装 requirements.txt，再装 requirements-dev.txt。CI 的真实 SDK 检查采用本地合成模型服务，要求可写的真实 Linux tmpfs；已验证的 Harness runtime 文件须可执行。两者是不同路径的要求，不要求为会话 tmpfs 去除 noexec；不能把磁盘目录冒充内存目录。依赖缓存属于后续离线依赖包的输入，R1-9 完成离线构建验证。
 
 ## R1-4 前端依赖、兼容性与许可
 
@@ -79,6 +79,10 @@ Ant Design 6.7.0 的 React peer 为 >=18，@ant-design/x 2.10.0 的 antd peer �
 rehype-sanitize 是 Markdown 净化的补充依赖（MIT）；jsdom、Testing Library DOM/user-event/jest-dom 为真实 DOM 行为测试提供支持；@types/node 属开发类型。未添加无业务需求的 Radix、表单库或替代组件底座。保留 recharts 2.15.4，避免改变仍承接的旧页面；新图表按蓝图使用 ECharts。
 
 传递依赖许可来自 npm 锁文件，并补核缺元数据的 `format@0.2.2`（package.json licenses 字段，MIT）和 `khroma@2.1.0`（实际 license 文件，MIT）。未发现 GPL/AGPL；`(MPL-2.0 OR Apache-2.0)` 选择 Apache-2.0 路径。开发依赖的 CC-BY-4.0 数据许可保留原作者许可文本，不移除第三方声明。完整许可分类计数见清单。
+
+## R1-9 无障碍测试依赖补充
+
+质量阶段固定新增开发依赖 `@axe-core/playwright@4.14.0`，其传递依赖 `axe-core@4.14.0` 同样锁定，二者许可均为 MPL-2.0。采用范围仅为浏览器无障碍验证，不由应用运行代码导入，不作为应用运行时资源提供。对应测试工具说明及许可文本要求保留在 `frontend/dependency-licenses.json`；它们不是上文 `(MPL-2.0 OR Apache-2.0)` 的双许可包，不能套用选择 Apache-2.0 的结论。版本和完整性摘要仍以最终 `frontend/package-lock.json` 为准，离线包按该锁重新准备和验证。
 
 ## R1-4 字体与视觉裁决
 

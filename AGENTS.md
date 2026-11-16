@@ -2,7 +2,7 @@
 
 ## 1 项目与轮次
 
-知元（英文名 Ontology One）是集团本体管理平台。当前进行 R1（目标 1.0.0），实际进度见 `docs/blueprint/STATUS.md` 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
+知元（英文名 Ontology One）是集团本体管理平台。当前进行 R1（目标 1.0.0），实际进度见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
 ## 2 硬规则摘要
 
@@ -36,11 +36,13 @@
 - `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；check_results.py逐项核对最终210次浏览器执行与清理。visual_baselines.py验证33包/63图及逐图审查，流程见e2e/CANONICAL-CAPTURE.md。`ops/offline/`：准备依赖和可迁移镜像，在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
 - `docs/blueprint/`：蓝图、进度、轮次记录与 ADR；`work/`：不入库的日志、临时数据与证据。
-- e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；新业务前端域正在后续工作包集成，离线工具须在最终依赖上重新验证。
+- e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；R1 首页、身份和管理域已集成；最终浏览器、视觉及离线证据按报告所列的精确提交核对，历史包级通过不替代最终组合验收。
 
 ## 4 常用命令
 
-使用 Python 3.12、Node 22、MySQL 8.4。先设置数据库环境变量，验收只连一次性测试实例，需有建库建用户及触发器权限。
+使用 Python 3.12、Node 22、MySQL 8.4；前端单元测试环境的 Node 22 至少为 22.22.2，以满足已锁定的 jsdom/Vitest 要求（见 ADR-0001）。Windows 原生流程仍按受保护 workflow 的固定工具链独立验收，不据此修改其版本。先设置数据库环境变量，验收只连一次性测试实例，需有建库建用户及触发器权限。以下从仓库根目录执行，Python 命令显式使用已安装锁定依赖的虚拟环境，无须依赖当前 shell 是否激活。
+
+安装依赖并准备开发实例：
 
 ```bash
 python3.12 -m venv .venv
@@ -48,8 +50,23 @@ python3.12 -m venv .venv
 npm --prefix frontend ci
 .venv/bin/python scripts/migrate.py --provision-all
 .venv/bin/python scripts/bootstrap_admin.py --username group.admin
+```
+
+开发服务分别在两个终端启动；两条命令均持续运行，不要把它们串在后续检查脚本前。终端一：
+
+```bash
 .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8765
+```
+
+终端二：
+
+```bash
 npm --prefix frontend run dev
+```
+
+验收检查在独立终端、一次性测试数据库中执行，环境前提见下方回归说明；构建后再检查产物的公网依赖：
+
+```bash
 RUN_HARNESS_SDK_TESTS=1 RUN_FEDERATION_MYSQL_TESTS=1 RUN_JOBS_MYSQL_TESTS=1 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m unittest discover -s .github/scripts -p 'test_*.py'
 .venv/bin/ruff format --check backend scripts ops tests migrations .github/scripts e2e
@@ -60,13 +77,13 @@ npm --prefix frontend run lint:styles
 npm --prefix frontend test -- --run
 npm --prefix frontend run test:isolation
 node --test e2e/*.test.mjs
-python scripts/checks/check_legacy_shrink.py
-python scripts/gen_terms.py --check
-python scripts/gen_api_types.py --check
-python scripts/checks/check_migrations.py
-python scripts/checks/check_policy_coverage.py
-python scripts/checks/check_offline.py --require-dist
+.venv/bin/python scripts/checks/check_legacy_shrink.py
+.venv/bin/python scripts/gen_terms.py --check
+.venv/bin/python scripts/gen_api_types.py --check
+.venv/bin/python scripts/checks/check_migrations.py
+.venv/bin/python scripts/checks/check_policy_coverage.py
 npm --prefix frontend run build
+.venv/bin/python scripts/checks/check_offline.py --require-dist
 ```
 
 8 个回归脚本及环境前提见 R1-PLAN §1.2 与 `r1-baseline/run_baseline.sh`；该历史脚本的退出码不聚合失败，必须逐项查 summary.tsv。真实 SDK 使用本地合成模型服务，需可写的 tmpfs；Linux 沙箱需明确允许写 `/dev/shm`，不得放宽代码检查或退回磁盘。完整结果要关联可能分行的用例名与状态，不能仅按单行正则计数。
