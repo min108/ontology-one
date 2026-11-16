@@ -130,7 +130,28 @@ def comparison_scope(config: dict, namespace: str) -> DatabaseScope:
     from e2e.run import DatabaseScope, database_names
 
     candidates = database_names(namespace, ["hq", "dept-01", "sub-01"]) - {namespace}
-    return DatabaseScope(config, candidates)
+    reserved = frozenset(candidates)
+
+    class ExactComparisonScope(DatabaseScope):
+        def _existing(self) -> set[str]:
+            # Browser acceptance discovers UI-created tenant databases. This read-only
+            # comparison never creates institutions and owns only its four candidates.
+            import pymysql
+
+            names = sorted(reserved)
+            with pymysql.connect(**self.config) as connection, connection.cursor() as cursor:
+                placeholders = ",".join("%s" for _ in names)
+                cursor.execute(
+                    "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA "
+                    f"WHERE SCHEMA_NAME IN ({placeholders})",
+                    names,
+                )
+                actual = {row[0] for row in cursor.fetchall()}
+                if not actual <= reserved:
+                    raise RuntimeError("Comparison discovery returned an unowned database; cleanup stopped")
+                return actual
+
+    return ExactComparisonScope(config, candidates)
 
 
 def main() -> None:

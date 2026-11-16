@@ -171,3 +171,7 @@ python scripts/drills/compare_identity_v070.py --v070-source /path/to/clean-1359
 现直接复用e2e.run的new_namespace/database_names/DatabaseScope：命名空间为e2e_r1_加24位十六进制（96bit随机），总长31，机构库派生不会截掉随机位。固定HQ、dept-01、sub-01加control共4个准确候选名，排除裸namespace；进入scope先用精确IN查询确认候选均不存在，成功才armed并调用loader。清理只处理这一已预约集合中实际存在的库，未知同前缀库不进入SQL查询或DROP授权；若发现结果异常包含未知库，任何DROP前拒绝。部分loader失败也只按该集合清理，报告记录reserved/created/cleaned准确集合与计数；passed仅在scope清理成功返回后设为true。
 
 新增tests/checks/test_identity_comparison.py六项纯单元测试覆盖4名派生一致、96bit末位不被截断/长前缀拒绝、碰撞不armed不装载不删除、未知同前缀发现拒绝全部删除、部分装载失败只删准确已创建集合、发现SQL仅IN而无前缀选择。6/6通过（0.008秒），Ruff/format/diff检查通过；日志work/identity-cleanup-red.log、work/identity-cleanup-green.log。HTTP比较逻辑未修改，本轮没有连接MySQL、执行SDK或完整回归；最终CI须重跑修复后的真实对照。独立包收集口径因此从843增至849（新增77），不声称849项已完整通过。
+
+### 前端验收组合时的清理器契约适配
+
+合入动态浏览器 runner 后，比较脚本的原精确查询断言发现共享 DatabaseScope 已支持 UI 新建机构的目录授权发现。比较脚本现单独派生 ExactComparisonScope，冻结四个预留候选，使用参数化 IN 查询；返回结果不属于这四个候选立即拒绝，即使是同 namespace 的合法租户 hash，也不进入父类目录扩展。HTTP 采集、逐字段比较与共享 E2E runner 均未改。新增合法但未预留 hash 反例先红后绿，比较清理 7 项及 runner/legacy 合计 36 项 pure 测试通过；本改动不声称重新运行过跨版本真实 MySQL 演练，最终组合由统一质量验收执行。

@@ -90,3 +90,22 @@ class IdentityComparisonScope(unittest.TestCase):
         self.assertNotIn("LIKE", query)
         self.assertNotIn("LEFT", query)
         self.assertEqual(parameters, sorted(self.scope.candidates))
+
+    def test_unreserved_valid_tenant_hash_never_reaches_catalog_expansion(self) -> None:
+        unknown = self.namespace + "_t_" + "f" * 24
+        reserved = set(self.scope.candidates)
+        self.assertNotIn(unknown, reserved)
+        connection = MagicMock()
+        cursor = connection.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [(unknown,)]
+        self.scope.armed = True
+        with (
+            patch("e2e.run.pymysql.connect", return_value=connection),
+            patch.object(self.scope, "_catalog_databases", return_value={unknown}) as catalog,
+            self.assertRaisesRegex(RuntimeError, "unowned"),
+        ):
+            self.scope.record_created()
+        catalog.assert_not_called()
+        self.assertEqual(self.scope.candidates, reserved)
+        self.assertEqual(self.scope.created, set())
+        self.assertEqual(self.scope.cleaned, set())
