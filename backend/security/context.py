@@ -28,6 +28,13 @@ class Principal:
     permission_version: int = 0
     duties: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        # Agent, MCP and queued-job frames use JSON arrays. Normalize once so
+        # frozen identities compare identically before and after reconstruction.
+        if not isinstance(self.duties, (tuple, list)) or any(not isinstance(duty, str) for duty in self.duties):
+            raise ValueError("Principal duties must be an array of strings")
+        object.__setattr__(self, "duties", tuple(self.duties))
+
 
 _current: ContextVar[Principal | None] = ContextVar("ontology_principal", default=None)
 _readonly_execution = ContextVar("ontology_owned_readonly_execution", default=None)

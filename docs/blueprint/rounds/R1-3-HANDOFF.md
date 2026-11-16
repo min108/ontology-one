@@ -38,3 +38,15 @@
 - 全仓 `ruff format --check`、`ruff check` 通过；16 个流水线脚本测试通过；生成器 `--check` 通过；生成类型 `tsc --strict --noEmit --skipLibCheck`、前端 ESLint、Prettier 检查通过。
 - 首次完整后端运行因只授权 tmpfs 子目录导致沙箱挂载视图失真：17 个官方 SDK 测试报 HARNESS_UNAVAILABLE，39 个 Windows 原生项正常跳过。保持代码检查不变，改为授予整个 `/dev/shm` 写权限，同一执行环境创建独立 `/dev/shm/ontology-r1-3` 并验证 `_work_root()` 后重跑。
 - 完整后端重跑：570 个测试，531 通过、39 个 Windows 原生项按原集合跳过，耗时 142.332 秒。相对 R1-1 起点新增 78 个；相对最初 489 基线新增 81 个（其中 R1-1 已有 3 个）。日志在本 worktree `work/package-tests.log`、`work/full-tmpfs.log`、`work/security.log`、`work/pipeline.log`；这些运行文件不入库。
+
+## 集成复验修复：跨进程身份职责的不可变表示
+
+root 的完整脚本复验发现 `check_agent_runtime.py` 中来源工具调用失败。新增 `duties` 是元组，但 `asdict → JSON → Principal(**payload)` 会把它恢复成列表。业务会话复核重建的是元组，两份相同身份在 `_SessionPolicy` 全对象比较处被拒绝；只读执行上下文的身份比较也受影响。
+
+修复在冻结 `Principal.__post_init__` 统一把合法字符串列表/元组转换为元组，同时拒绝字符串、对象、非字符串元素等错误形状。没有更改会话、租户、权限、撤权或工具范围比较，没有缩小既有断言。全库复查的三个 JSON 恢复入口为 `agent_tool_worker.py`、`mcp_worker.py`、`jobs._invoke`，均通过此构造入口归一；旧任务没有 duties 字段时继续默认空元组。
+
+8 个新增边界测试先失败后通过，覆盖空/非空职责往返、工具身份比较、真实身份变化仍拒绝、只读执行上下文、外部列表不可变、旧帧兼容及错误形状拒绝。49 项定向测试与全仓 ruff 检查通过。
+
+首次补丁全量验证误与同包的真实脚本共用 tmpfs 根并行：完整后端的 3 个失败均为 teardown 观察到另一测试进程仍在使用的临时目录；真实脚本 18 项中 17 项通过，held MCP 超时测试在高负载并跑下出现 TimeoutError。原始日志保留，断言和时限未修改。后续须按 root 测试租约串行运行，并为每条命令分配独立真实 tmpfs 根。
+
+最终按独占 SDK 测试租约串行复验通过：`check_agent_runtime.py` 18/18 全部通过（包括原 held MCP 超时/取消、双源、撤权三个失败点）；随后完整后端 578 项，539 通过、原 39 Windows 原生项跳过，62.772 秒。两条命令分别使用 `/dev/shm/ontology-r13-principal-runtime` 与 `/dev/shm/ontology-r13-principal-full`，均授权真实 `/dev/shm` 根而非仅子目录。日志分别为 `work/principal-runtime-serial.log`、`work/principal-full-serial.log`。本次额外新增 8 项后，本包总新增测试为 86 项。
