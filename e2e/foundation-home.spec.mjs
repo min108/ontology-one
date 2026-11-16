@@ -387,7 +387,7 @@ test.describe("R1-6 Overview A.2 operational parity", () => {
 
 test.describe("R1-6 empty institution next step", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
-  test("actual empty HQ administrator can reach the retained demo workspace", async ({
+  test("HQ administrator in a real empty institution can reach the retained demo workspace", async ({
     page,
   }, testInfo) => {
     await page.goto("/");
@@ -399,8 +399,20 @@ test.describe("R1-6 empty institution next step", () => {
       .fill(accounts.superadmin.password);
     await page.getByRole("button", { name: /登录/ }).click();
     await settledHome(page);
+    expect((await readWorkspace(page)).tenant).toBe("hq");
+    // Earlier Shell/Home cases create real drafts in HQ/dept-01. The original
+    // sub-01 fixture has only its organization root and zero business assets.
+    await page.getByRole("combobox", { name: "机构", exact: true }).click();
+    await Promise.all([
+      page.waitForEvent("domcontentloaded"),
+      page.getByRole("option", { name: "中信金控", exact: true }).click(),
+    ]);
+    await settledHome(page);
+    await expect
+      .poll(async () => (await readWorkspace(page)).tenant)
+      .toBe("sub-01");
     const receipt = await readWorkspace(page);
-    expect(receipt.tenant).toBe("hq");
+    expect(receipt.tenant).toBe("sub-01");
     expect(receipt.manageUsers).toBe(true);
     expect(receipt.data.assets).toBe(0);
     await expect(
@@ -420,6 +432,10 @@ test.describe("R1-6 empty institution next step", () => {
     ).toBeVisible();
     await page.goBack();
     await settledHome(page);
+    const returned = await readWorkspace(page);
+    expect(returned.tenant).toBe("sub-01");
+    expect(returned.manageUsers).toBe(true);
+    expect(returned.data.assets).toBe(0);
     await expect(
       page.getByRole("link", { name: "管理演示资料", exact: true }),
     ).toBeVisible();
