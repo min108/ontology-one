@@ -4,13 +4,13 @@
 
 ## 功能与操作对照
 
-以下为实际实现和自动化测试契约，**浏览器通过栏由最终集成执行结果填写**，不能视为已完成真实浏览器验收。原组件保留至操作对照通过。
+以下为实际实现与操作对照。独立隔离 scope 的 12 项真实浏览器验收已通过（最终源 `d416cfb`，含 ADM-06 原因审计、当前机构标签及稳定时间格式）；后续仅等价退役旧 UI。最终主干质量矩阵另行记录。
 
 | 编号 | 新入口与保留行为 | 定向测试或浏览器契约 |
 |---|---|---|
 | L-01 | 登录保留账号、提交后清空密码；错误、停用、限速、服务不可达及重新连接 | account.test；identity browser 的凭据失败、429 UI 注入；真实限速由后端安全回归验证 |
 | L-02 | 登录后进入工作台 | 新账号浏览器登录等待工作区导航 |
-| L-03 | App 与旧 AuthGate 都不再按强制改密标记阻断 | account.test 旧标记为 true 仍渲染业务；真实会话两层标记恒 false |
+| L-03 | App 使用无改密门 AuthBoundary；等价对照后旧 AuthGate 退役 | account.test 旧标记为 true 仍渲染业务；真实会话两层标记恒 false |
 | L-04 | 品牌配置、版本、联系管理员；不展示默认账号 | 新 LoginPage 与品牌配置；质量截图核对 |
 | SEC-01 | 姓名、账号、当前机构、角色、当前权限和超管标记 | 三角色真实会话对照 |
 | SEC-02 | 主动改密，12–128 字符、字母数字、两次一致；失败保留输入；成功清空并撤其它会话 | account.test；新账号双 context 改密、其它设备被退出 |
@@ -21,7 +21,7 @@
 | ADM-03 | 编辑姓名角色、自身角色禁用；所有目标会话失效 | unit 自身 reload；独立新超管修改自己后退出 |
 | ADM-04 | 重置密码，临时密码校验；不设强改密 | 新账号 UI 重置；后端验证新会话可直接访问业务 |
 | ADM-05 | 停用启用，自身停用禁用；服务端保护最后超管 | unit 取消零调用；浏览器新账号停用启用；最后超管由后端事务测试保护 |
-| ADM-06 | 改其他超管原因必填，其余可选；填写时至少 2 字 | unit 原因空、一字和成功 DTO；后端审计断言 |
+| ADM-06 | 改其他超管原因必填，其余可选；填写时至少 2 字 | unit 原因校验；真实新建 HQ 超管空原因禁用、唯一原因提交、审计 API 与对应 UI 详情核对 |
 | ADM-07 | 授权账号、机构、范围、时间；双页签、本地过滤与分页 | 真实 HQ 列表与 grants unit |
 | ADM-08 | 三种范围与适用限制，原因必填，同账号机构覆盖 | validation.test 矩阵；新 HQ 账号依次覆盖三范围并读回同一组合仅一条 |
 | ADM-09 | 撤销前确认，取消零写 | 浏览器取消保留、确认后列表读回不存在 |
@@ -47,8 +47,8 @@
 3. 管理列表调用 v2，写走已登记能力；登录/改密/会话仍用现有安全服务薄 REST 层，无第二套业务函数。
 4. 列表直接消费真实服务端可见集，保留编号；机构不展示数据库名。存量迁移条数与 v1/v2 等价由后端测试提供。
 5. 页面/入口按新权限键及原布尔桥收紧，服务端权限与数据隔离未改；六面验证由后端包和最终集成报告关联。
-6. 本包新增独立 identity 操作脚本；真实执行等待统一租约和集成 SHA。
-7. **尚未退役** `legacy/pages/Security.tsx`、`Administration.tsx`、旧 auth UI 与专用样式。浏览器操作对照通过后再单独提交删除；共享 `.access-disabled`、`.auth-error`、`.sr-only`、AssetDetail 还原弹窗仍使用的 `.admin-form` 三条规则及实体可见性间距精确保留，`legacy_baseline.json` 只登记已验证文件。
+6. 独立 identity 操作脚本在真实历史夹具上完整 12/12 通过；创建的账号、机构与会话均由真实 UI 操作，不改共享 seed 身份。
+7. 对照通过后退役 `legacy/pages/Security.tsx`、`Administration.tsx`、`auth.css`；`legacy/auth.tsx` 只保留 AuthProvider/useAuth/类型与清理导出桥。共享 `.access-disabled`、`.auth-error`、`.sr-only`、AssetDetail 还原弹窗仍使用的 `.admin-form` 三条规则及实体可见性间距逐字迁入 legacy/styles.css。legacy 清单由 80 缩至 77 文件，基线只登记这三项已验证删除。
 
 ## 状态、失败恢复与设计裁决
 
@@ -59,7 +59,7 @@
 - 小于 1024px 禁止编辑，仍可查阅；按钮禁用，已打开编辑器的字段也禁用。总部不可停用、不能改类别或上级；停用机构需先启用；开通中/失败不可在线启用或编辑。
 - 输入、表格、树、弹窗使用 Ant Design；有限枚举用有明确 label 的原生 select，设计令牌控制样式。新代码不加入颜色/字号/阴影字面量，也无远程字体、CDN 或遥测。
 - 词表 `identity_*`；审计操作与结果译名独立 `identity_audit_actions/outcomes`，原始操作标识放详情，未知操作如实标为“其他操作”。审计时间筛选明确北京时间并转换 UTC。
-- 暂不删除旧页面，不将尚未运行的浏览器、Windows 或模型验收写作已通过。
+- 只在真实操作对照通过后退役旧身份页面；Windows、真实模型及主干完整质量矩阵不在本包通过声明中。
 
 ## 验证记录
 
@@ -100,3 +100,52 @@
 应用提交 `c4913ab`，证据 `work/evidence/r1/identity-a2-02`。完整 12 项中 11 项通过；机构流程在第一步字段定位失败，尚未发送机构写请求。浏览器原生选择器与数字输入器的标签计算混入选项/增减按钮文字，给业务控件补充与可见标签一致的 aria-label。保留原始严格定位和 deadline；新增精确 spinbutton 名称反例先红后绿，管理页 16/16、ESLint 和词表检查通过。其余真实账号/授权/两设备会话/审计第二页均通过；4 库全部清理、服务停止。下一轮仍完整运行 12 项，不仅重跑失败步骤。
 
 第三轮 `identity-a2-03` 在严格类型阶段终止，未创建数据库或启动服务。新单测误给 RTL `getByRole` 传了只适用于 label 查询的 `exact` 选项；删掉不受支持的选项，`name` 字符串本身仍精确匹配，不放宽业务断言。失败原件完整保留。
+
+### 第四轮真实 A.2 与旧页退役
+
+`identity-a2-04/runner.json`：源 `0e206ae71a5f7058ca9d671f85bbab40907aa0cd`，真实历史夹具 `1359118`；12 项通过（2.2 分钟），0 失败/跳过/重试。strict 与 Vite 14.40 秒通过。namespace `e2e_r1_c9202ee57e75d803a37ab67f` 的 created_databases 与 cleaned_databases 完全相等，共 5 库（控制库、3 初始机构库、新增机构库）；services_stopped=true。保留前三轮失败原件，不覆盖或删除。
+
+旧版对照使用 R1-6 的真实 `legacy-replacements-1` 证据，已实际查看 login-empty/security-admin/administration-hq 三图；新图在本包 `work/evidence/r1/identity-a2-04/results/` 下，各测试目录独立保存 identity-login/security/users/organizations/audit.png 五图。账号事实、改密、会话及账号字段动作均承接；旧管理审计页签移至独立审计路由。机构是新增能力。只取消 H.2-1 的整站强制改密，主动改密与安全限制保留。原始旧图与新图是实际运行结果，未拼接或改图。
+
+| 对照点 | 真实检查结果 |
+|---|---|
+| 登录 | 品牌、版本、账号密码及失败恢复保留；删除默认账号说明；429/断网为明确 UI 故障注入，真实限速由后端安全回归负责 |
+| 账号安全 | 身份五项、会话所有时间/来源/当前标记、刷新/撤销与主动改密保留；双设备真实验证改密和撤销失效；顶部对齐修复已实际看图 |
+| 账号与授权 | 五列账号事实与全部旧动作保留；真实新账号编辑/重置/停用启用、自身改名退出；三档授权覆盖与取消撤销通过 |
+| 机构治理 | 新建稳定 ID、改名/排序、开通账号并登录、停用后退出、启用恢复，全部 UI 驱动；无删除动作，总部保护通过 |
+| 审计 | 真实筛选、详情请求编号、每页 30 条与第二页通过；原始操作/结果在详情保留，不修改审计数据 |
+
+截图走查另修正账号安全“归属机构”误用为专用“当前机构”（值仍为当前 workspace.name），跨机构单测先红后绿。审计已知 `started` 状态显示“已开始”，原始标识仍留在详情。所有时间统一上海时区、双位月日时分秒与 tabular-nums；两种日期长度反例先红后绿，动态标记仅 time 和审计详情 request-id，不遮业务内容。
+
+退役后最终全前端与隔离/构建结果见收尾记录。浏览器操作验收对应上述明确源；退役提交不伪称已再跑同一套浏览器。最终集成视觉与无障碍矩阵由质量工作包执行。
+
+### ADM-06 补充对照
+
+独立审查发现原 12 项中的 self-edit 用例未覆盖“修改其他超管”的真实必填原因审计，故在同一用例追加该链路，仍为 12 项，不改既有 deadline 或其他断言。所有目标仍为 UI 新建临时账号，不改 seed 超管。
+
+第五轮 `identity-a2-05` 源 `61f69e7`，11/12 通过；新链路的无原因禁用、填写原因保存、GET 审计 details.reason 精确相等均通过，UI 详情定位误将完整可访问名“账号编号 hq”当成只有账号编号，等待到原 45 秒失败。依据原始页面快照改用完整 cell 名称精确匹配并断言唯一行，禁止 first() 或放宽超时。5 库全清、服务全停；失败原件保留。第六轮 `d416cfb` 完整复跑全部通过，之后才重新应用已暂存的退役差异。
+
+### 最终真实 A.2 结果
+
+`work/evidence/r1/identity-a2-06/runner.json`：源 `d416cfbf1d6a96c0343af5e99998b1a67061e869`，12/12 通过（1.2 分钟），0 flaky/skip，原有 45 秒单例 deadline 不变。新增 ADM-03/06 合并用例 9 秒完成；精确 action=user_update、目标账号+机构 cell 唯一行、原因 API 字段与 UI 详情均验证。fresh strict/Vite 11.52 秒通过。
+
+创建与清理列表完全相等，namespace `e2e_r1_cb84f4bef20baa4c331115f3` 的 control 与四个 tenant 库全部清理（四个 tenant 库包含 UI 新机构），services_stopped=true。本轮原始五图位于 evidence 的 results：
+
+- `foundation-identity-identi-adba2-lear-secret-and-allow-retry-foundation-identity/identity-login.png`
+- `foundation-identity-admin--da84b-nd-headquarters-only-routes-foundation-identity/identity-security.png`
+- `foundation-identity-headqu-87ba3-d-enable-only-a-new-account-foundation-identity/identity-users.png`
+- `foundation-identity-headqu-46f95-eadquarters-and-no-deletion-foundation-identity/identity-organizations.png`
+- `foundation-identity-headqu-fc0d3-terable-and-retains-details-foundation-identity/identity-audit.png`
+
+已再次实际查看最终 security/audit：当前机构标签正确，时间双位，`started` 显示“已开始”，左侧卡片无拉伸。与第四轮相同布局的 login/users/orgs 已实际对照旧版或新增行为。本轮完成后按 root 新指示合入 backend 的 314d4a0/1198c4d/2693948，仅增加保留分支审计、跨版本真实 HTTP 比较与清理安全回归，不改产品代码/DTO，不伪称这三项参与过本轮浏览器源。
+
+### 退役后的最终验证
+
+- 全前端 20 文件、260/260 项通过（58.12 秒，maxWorkers=1/no-file-parallelism）；既有 session 65 项（含 46 项竞争边界）保持。
+- 删除本 worktree 的 legacy 声明缓存后重新 strict/legacy 类型检查与 Vite 构建通过（13.54 秒）；29 张旧样式表、5044 个选择器完成隔离检查。
+- ESLint、Prettier、stylelint 全绿；9 项 CSS/类型隔离测试通过；legacy inventory、词表、设计令牌、离线源码及生产 dist 检查全部 0 违规；terms/API 生成物一致。
+- 后端追加验收脚本与动态 E2E 清理器的版本差异已修正，仅比较脚本冻结四候选并做精确 IN/结果子集校验。新增同 namespace 未预留合法 hash 反例先红后绿；7 项比较清理 + 21 项 E2E runner + 8 项 legacy shrink，共 36 项 pure 通过，Ruff 通过。运行 HTTP 采集与比较逻辑不改。
+- 日志：`work/r1-7-final-verification.log` 的前端/构建/静态阶段全绿，但保留最初组合清理器的一个失败；修复后的结果单独在 `work/r1-7-cleanup-integration-green.log` 与 `work/r1-7-final-static.log`，未覆盖失败原件。
+- 最终移除三旧文件，AuthProvider/useAuth 等兼容桥保留；六条共享 CSS 与实体可见性/响应式间距逐字保留。legacy/api.ts SHA256 仍为 `677bd70d30a3fefcec350d2fab76d47e339deccc932266257f02b37790315958`。package/lock、requirements 与受保护工作流字节未改。
+
+限制：本包真实身份验收对应 `d416cfb`（旧 UI 仍在但路由已由新页接管），删除后的新路由及兼容桥由完整单元/冷缓存构建验证；最终主干完整 browser/63 图/无障碍矩阵另由质量包执行。Windows 与真实模型验收不在本包完成声明内。

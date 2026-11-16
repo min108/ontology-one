@@ -86,6 +86,9 @@
   ],
   "retired": [
     "App.tsx",
-    "main.tsx"
+    "main.tsx",
+    "auth.css",
+    "pages/Administration.tsx",
+    "pages/Security.tsx"
   ]
 }
