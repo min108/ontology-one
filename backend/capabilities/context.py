@@ -15,7 +15,7 @@ def ignore_progress(stage: str, message: str) -> None:
 @dataclass(frozen=True, slots=True)
 class CapabilityContext:
     principal: Principal
-    binding: Literal["rest", "tool", "mcp", "recipe"] = "rest"
+    binding: Literal["rest", "tool", "mcp", "recipe", "offline"] = "rest"
     run_id: str | None = None
     idempotency_key: str | None = None
     emit: Callable[[str, str], None] = ignore_progress

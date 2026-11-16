@@ -80,10 +80,15 @@ def permitted(text: str, start: int, url: str, path: str) -> bool:
         "backend/skill_harness.py",
         "frontend/src/components/HarnessConfiguration.tsx",
         "frontend/src/legacy/components/HarnessConfiguration.tsx",
+        "frontend/src/features/admin/model/ModelPage.tsx",
     }
     if url == MODEL_URL and (path in model_paths or compiled) and not request:
         return True
-    release_paths = {"frontend/src/pages/Settings.tsx", "frontend/src/legacy/pages/Settings.tsx"}
+    release_paths = {
+        "frontend/src/pages/Settings.tsx",
+        "frontend/src/legacy/pages/Settings.tsx",
+        "frontend/src/features/admin/backup/BackupPage.tsx",
+    }
     if url == RELEASE_URL and (path in release_paths or compiled):
         return bool(re.search(r'href\s*[:=]\s*["\']$', before))
     if compiled and not request:

@@ -7,6 +7,7 @@ from operator import or_
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from backend.api.v2.system import router as system_router
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.registry import registry
 from backend.core.errors import ErrorResponse
@@ -14,7 +15,11 @@ from backend.security.context import require_context
 from backend.security.permissions import permissions_for
 
 importlib.import_module("backend.capabilities.read")
+importlib.import_module("backend.capabilities.model")
+importlib.import_module("backend.capabilities.backup")
 router = APIRouter(prefix="/api/v2")
+
+router.include_router(system_router)
 CapabilityInput = reduce(or_, (item.input for item in registry.entries.values()))
 CapabilityOutput = reduce(or_, (item.output for item in registry.entries.values()))
 ERROR_RESPONSES = {code: {"model": ErrorResponse} for code in (401, 403, 404, 409, 422, 500, 503)}

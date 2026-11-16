@@ -1,0 +1,59 @@
+.page {
+  display: grid;
+  gap: var(--zy-space-6);
+  padding: var(--zy-space-6);
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+}
+
+.section {
+  padding: var(--zy-space-5);
+  border: var(--zy-border-width) solid var(--zy-gray-200);
+  border-radius: var(--zy-radius-card);
+  background: var(--zy-gray-0);
+}
+
+.section h2 {
+  margin-top: var(--zy-none);
+  font-size: var(--zy-font-h4);
+}
+
+.form {
+  display: grid;
+  gap: var(--zy-space-4);
+}
+
+.field {
+  display: grid;
+  gap: var(--zy-space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--zy-space-3);
+}
+
+.muted {
+  color: var(--zy-gray-600);
+}
+
+.english {
+  font-size: var(--zy-font-dense);
+}
+
+.details dt {
+  margin-top: var(--zy-space-3);
+  font-weight: var(--zy-weight-heading);
+}
+
+.details dd {
+  margin-left: var(--zy-none);
+}
+
+.command {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--zy-font-dense);
+}
