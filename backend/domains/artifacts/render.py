@@ -19,9 +19,38 @@ from fastapi import HTTPException
 
 LAYOUT = json.loads((Path(__file__).parent / "layouts/official.json").read_text())
 NUMBER = r"(?<![A-Za-z0-9_.])[-+]?\d[\d,]*(?:\.\d+)?"
-UNITS = r"亿元|万元|千元|元|百分之|%|％|笔|份|条|家|项|人|天|日|小时|分钟|个月|月|次|个|件|吨|万元人民币"
-QUANTITY = re.compile(rf"({NUMBER})\s*({UNITS})")
-ANY_NUMBER = re.compile(NUMBER)
+UNITS = r"万元人民币|亿元|万元|千元|元|%|％|笔|份|条|家|项|人|天|日|号|小时|分钟|个月|月|年|次|个|件|吨"
+QUANTITY = re.compile(rf"({NUMBER})\s*({UNITS})?")
+CHINESE_DIGITS = dict(
+    zip(
+        "零〇一二两三四五六七八九壹贰叁肆伍陆柒捌玖",
+        (0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+        strict=True,
+    )
+)
+CHINESE_UNITS = {
+    "十": 10,
+    "拾": 10,
+    "百": 100,
+    "佰": 100,
+    "千": 1000,
+    "仟": 1000,
+    "万": 10000,
+    "萬": 10000,
+    "亿": 100000000,
+    "億": 100000000,
+}
+CHINESE_NUMBER = (
+    "["
+    + "".join(CHINESE_DIGITS)
+    + "十拾]["
+    + "".join(CHINESE_DIGITS)
+    + "".join(CHINESE_UNITS)
+    + "]*"
+    + "(?:点["
+    + "".join(CHINESE_DIGITS)
+    + "]+)?"
+)
 CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
 
 
@@ -30,16 +59,58 @@ def normalized_number(value: str, unit: str = "") -> tuple[Decimal, str]:
     if unit in {"万元", "亿元", "千元", "万元人民币"}:
         number *= {"万元": 10000, "亿元": 100000000, "千元": 1000, "万元人民币": 10000}[unit]
         unit = "元"
-    return number, {"％": "%", "百分之": "%", "天": "日", "个月": "月"}.get(unit, unit)
+    return number, {"％": "%", "天": "日", "号": "日", "个月": "月"}.get(unit, unit)
 
 
-def quantities(text: str) -> list[tuple[Decimal, str]]:
-    text = re.sub(r"\d{4}年\d{1,2}月(?:\d{1,2}[日号])?|第\d+条", "", text)
-    return [normalized_number(m.group(1), m.group(2)) for m in QUANTITY.finditer(text)]
+def chinese_number(value: str) -> str:
+    whole, _, fraction = value.partition("点")
+    if not any(character in CHINESE_UNITS for character in whole):
+        result = int("".join(str(CHINESE_DIGITS[c]) for c in whole) or "0")
+    else:
+        result, section, digit = 0, 0, 0
+        for character in whole:
+            if character in CHINESE_DIGITS:
+                digit = CHINESE_DIGITS[character]
+            else:
+                unit = CHINESE_UNITS[character]
+                if unit < 10000:
+                    section += (digit or 1) * unit
+                elif unit == 10000:
+                    result += (section + digit) * unit
+                    section = 0
+                else:
+                    result = (result + section + digit) * unit
+                    section = 0
+                digit = 0
+        result += section + digit
+    return str(result) + ("." + "".join(str(CHINESE_DIGITS[c]) for c in fraction) if fraction else "")
+
+
+def quantities(text: str, default_unit: str = "") -> list[tuple[Decimal, str]]:
+    # Citation/list/article identifiers are labels, not quantitative claims.
+    text = re.sub(rf"第(?:\d+|{CHINESE_NUMBER})条|\[(?:c?\d+)(?:,\s*c?\d+)*\]", "", text)
+    text = re.sub(r"(?m)^\s*\d+[.、]\s+|\b[A-Z]+[-_][A-Za-z0-9_-]+", "", text)
+    text = re.sub(
+        rf"百分之({CHINESE_NUMBER}|\d+(?:\.\d+)?)",
+        lambda m: (chinese_number(m[1]) if m[1][0] in CHINESE_DIGITS or m[1][0] in CHINESE_UNITS else m[1]) + "%",
+        text,
+    )
+    text = re.sub(rf"({CHINESE_NUMBER})(?=\s*(?:{UNITS}))", lambda m: chinese_number(m[1]), text)
+    # Normalize ISO dates to the same units as their Chinese written form.
+    text = re.sub(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)", r"\1年\2月\3日", text)
+    return [normalized_number(m.group(1), m.group(2) or default_unit) for m in QUANTITY.finditer(text)]
 
 
 def close_number(left: Decimal, right: Decimal) -> bool:
     return left == right or (right != 0 and abs(left - right) <= abs(right) * Decimal("0.005"))
+
+
+def supports(number: Decimal, unit: str, evidence: list[tuple[Decimal, str]]) -> bool:
+    return any(
+        (not unit or unit == other_unit)
+        and (number == other if unit in {"年", "月", "日", "小时", "分钟"} else close_number(number, other))
+        for other, other_unit in evidence
+    )
 
 
 def plain(text: str) -> str:
@@ -94,30 +165,22 @@ def verify(spec: dict) -> None:
     ):
         evidence = [sources[key] for key in block.get("citations", []) if key in sources]
         quoted = "\n".join(item["quote"] for item in evidence)
+        if index == 0:
+            # The generated title can name the cited, versioned source itself.
+            quoted += "\n" + "\n".join(item["title"] for item in evidence)
         supported = quantities(quoted)
         text = block.get("text", "")
         if block["type"] == "table":
+            text = "\n".join(block["columns"])
             for row in block["rows"]:
                 for column, cell in zip(block["columns"], row, strict=True):
-                    values = quantities(cell)
-                    if not values:
-                        unit = re.search(UNITS, column)
-                        values = [
-                            normalized_number(m.group(), unit.group() if unit else "")
-                            for m in ANY_NUMBER.finditer(cell)
-                        ]
+                    hint = re.search(UNITS, column)
+                    values = quantities(cell, hint.group() if hint else "")
                     for number, unit in values:
-                        candidates = (
-                            supported
-                            if unit
-                            else [(normalized_number(m.group())[0], "") for m in ANY_NUMBER.finditer(quoted)]
-                        )
-                        if not any(
-                            unit == other_unit and close_number(number, other) for other, other_unit in candidates
-                        ):
+                        if not supports(number, unit, supported):
                             issues.append(f"表格 {index}：{cell}")
         for number, unit in quantities(text):
-            if not any(unit == other_unit and close_number(number, other) for other, other_unit in supported):
+            if not supports(number, unit, supported):
                 issues.append(f"段落 {index}：{number}{unit}")
     if issues:
         raise HTTPException(

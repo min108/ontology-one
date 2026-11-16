@@ -33,6 +33,14 @@ interface Report {
 }
 const copy = terms.labels,
   actions = terms.actions;
+const displayedTime = (value: string) =>
+  new Date(value).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
 export default function ReportsPage() {
   const { id } = useParams(),
@@ -100,7 +108,7 @@ function Reports({ id }: { id?: string }) {
           {report.items?.map((item) => (
             <article className={styles.card} key={item.id}>
               <Link to={'/apply/artifacts/' + item.id}>{item.title}</Link>
-              <p>{item.created_at}</p>
+              <p>{displayedTime(item.created_at)}</p>
               <Tag>{item.source_kind === 'mock' ? copy.r2_report_mock : copy.r2_report_live}</Tag>
             </article>
           ))}
@@ -184,7 +192,7 @@ function Reports({ id }: { id?: string }) {
             <summary>{copy.r2_report_versions}</summary>
             {report.versions.map((version) => (
               <p key={version.version}>
-                {copy.r2_report_version} {version.version} · {version.created_at}{' '}
+                {copy.r2_report_version} {version.version} · {displayedTime(version.created_at)}{' '}
                 <Button
                   autoInsertSpace={false}
                   disabled={!!busy}

@@ -147,7 +147,7 @@ def create(session_id: str, run_id: str, title: str = "") -> dict:
         source_kind = run.get("report_source_kind", "analyst")
         spec = {
             "schema": "r2-report-v1",
-            "title": title.strip() or session["title"][:255],
+            "title": title.strip() or "《" + next(iter(citations.values()))["title"][:64] + "》问答报告",
             "blocks": blocks,
             "citations": citations,
             "source_label": "模拟模型演练结果" if source_kind == "mock" else "真实模型回答 · 已核对引用与数值",

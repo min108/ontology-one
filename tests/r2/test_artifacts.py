@@ -93,6 +93,29 @@ class Renderers(unittest.TestCase):
         with self.assertRaises(HTTPException):
             render.blocks_from_answer("|a|b|\n|---|---|\n|x|")
 
+    def test_chinese_bare_and_mixed_numbers_and_dates(self) -> None:
+        value = spec()
+        value["citations"]["c1"]["quote"] += " 自2026年7月1日起，费率为0.8%。"
+        for text in (
+            "应在三十日内办理，不超过壹万元。",
+            "费率百分之零点八。",
+            "1. 办理时限为30。[c1]",
+            "自2026-07-01起。",
+        ):
+            value["blocks"][0]["text"] = text
+            render.verify(value)
+        for text in ("时限九十九日。", "时限为99。", "办理30日，另加99。", "自2025-07-01起。"):
+            value["blocks"][0]["text"] = text
+            with self.subTest(text=text), self.assertRaises(HTTPException):
+                render.verify(value)
+        value["blocks"][0]["text"] = "核对原文。"
+        value["blocks"][1]["rows"][0][1] = "30日及99"
+        with self.assertRaises(HTTPException):
+            render.verify(value)
+        value["blocks"][1]["columns"][1] = "金额（万元）"
+        value["blocks"][1]["rows"][0][1] = "1"
+        render.verify(value)
+
     def test_environment_key_never_persisted_even_when_verified(self) -> None:
         from backend import ai
         from backend import skill_harness as harness

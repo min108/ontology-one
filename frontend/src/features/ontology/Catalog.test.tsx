@@ -10,10 +10,10 @@ it('presents the four kinds and a literal, anchored business card', () => {
     entity: {
       id: 'r',
       kind: 'rule',
-      title: '付款规则',
+      title: 'Payment rule',
       status: 'published',
       version: 4,
-      domain: '采购',
+      domain: 'Procurement',
       activities: [],
       payload: {
         source_refs: [
@@ -21,17 +21,17 @@ it('presents the four kinds and a literal, anchored business card', () => {
             material_id: 'M-1',
             anchor_id: 'A-1',
             source_version: 'V-1',
-            quote: '30日内付款。',
-            locator: '第一条',
+            quote: 'Pay within 30 days.',
+            locator: 'Article 1',
           },
         ],
       },
     },
     card: {
       one_liner: '<script>literal</script>',
-      points: ['要求：先核对'],
+      points: ['Verify the agreement'],
       relations: [],
-      usage: '核对原文。',
+      usage: 'Check the source.',
     },
     versions: [],
     can_edit: false,
@@ -43,9 +43,9 @@ it('presents the four kinds and a literal, anchored business card', () => {
   );
   expect(screen.getByText('<script>literal</script>')).toBeInTheDocument();
   expect(container.querySelector('script')).toBeNull();
-  expect(screen.getByRole('link', { name: '第一条' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'Article 1' })).toHaveAttribute(
     'href',
     '/materials/M-1?anchor=A-1&source_version=V-1',
   );
-  expect(screen.getByText('核对原文。')).toBeInTheDocument();
+  expect(screen.getByText('Check the source.')).toBeInTheDocument();
 });
