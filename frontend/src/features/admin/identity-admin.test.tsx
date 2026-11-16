@@ -285,7 +285,7 @@ describe('identity administration pages', () => {
       'subsidiary',
     );
     expect(screen.getByLabelText(terms.labels.identity_org_parent, { exact: true })).toHaveValue('hq');
-    expect(screen.getByRole('spinbutton', { name: terms.labels.identity_org_sort, exact: true })).toHaveValue(
+    expect(screen.getByRole('spinbutton', { name: terms.labels.identity_org_sort })).toHaveValue(
       '0',
     );
   });
