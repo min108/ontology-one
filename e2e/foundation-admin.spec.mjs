@@ -5,6 +5,15 @@ import { authDirectory, roles } from "./fixture.mjs";
 // Sensitive configuration bodies must never enter trace artifacts.
 test.use({ trace: "off", permissions: ["clipboard-read", "clipboard-write"] });
 test.describe.configure({ mode: "serial" });
+const errors = new WeakMap();
+test.beforeEach(async ({ page }) => {
+  const found = [];
+  errors.set(page, found);
+  page.on("pageerror", (error) => found.push(error.message));
+});
+test.afterEach(async ({ page }) => {
+  expect(errors.get(page)).toEqual([]);
+});
 async function invoke(page, path, body) {
   return page.evaluate(
     async ({ path, body }) => {
@@ -28,7 +37,7 @@ async function ready(page, path, title) {
   await expect(
     page.getByRole("heading", { name: title, level: 1 }),
   ).toBeVisible();
-  if (path !== "/admin/demo")
+  if (new URL(page.url()).pathname !== "/admin/demo")
     await expect(page.locator('[data-admin-ready="true"]')).toBeVisible();
   await page.waitForLoadState("networkidle");
 }
@@ -195,6 +204,23 @@ test.describe("administrator operations", () => {
     expect((await invoke(page, "/skills/harness/status")).body.configured).toBe(
       false,
     );
+    await page.getByLabel("模型名称", { exact: true }).fill("invalid model");
+    await page
+      .getByLabel("模型接口密钥", { exact: true })
+      .fill("synthetic-unsaved");
+    const rejected = page.waitForResponse((response) =>
+      response.url().includes("model.configure:invoke"),
+    );
+    await page
+      .getByRole("button", { name: "保存统一配置", exact: true })
+      .click();
+    expect((await rejected).status()).toBe(422);
+    await expect(page.getByLabel("模型接口密钥", { exact: true })).toHaveValue(
+      "synthetic-unsaved",
+    );
+    await expect(
+      page.getByRole("button", { name: "重试", exact: true }),
+    ).toBeVisible();
   });
   test("SET07-08 real archive download and all online restore calls remain blocked", async ({
     page,
@@ -225,9 +251,8 @@ test.describe("administrator operations", () => {
     const button = page.getByRole("button", {
       name: /准备台账查询草稿|检查并补齐查询草稿/,
     });
-    if (!status.body.data_standards_published)
-      await expect(button).toBeDisabled();
-    else {
+    expect(status.body.data_standards_published).toBe(true);
+    {
       await button.click();
       await expect(
         page.getByText("台账查询草稿已准备，请完成正常审核。"),
