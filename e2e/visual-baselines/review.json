@@ -1,0 +1,511 @@
+{
+  "capture_commit": "ad5d8d54ab5aaf7e142ce6c5ba2313e01017d379",
+  "browser": "159.0.8154.6",
+  "reviewer": "Codex/r1_9_quality; Codex/r1_4_design; Codex/root",
+  "images": [
+    {
+      "name": "1366--login--unauthenticated",
+      "sha256": "49bcf1543c485868a201e618f8e110c6465c6ed74b2186029f4372f723c87f88",
+      "package_index_sha256": "ec8abd7a5ef9620dd1ebb7e86ea7518f03c477ae13a871d3b0f632257cf7a6d7",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：左侧品牌、平台名称与口号完整，右侧账号登录卡片、账号焦点框、密码显隐与禁用登录按钮清楚；版本1.0.0和管理员提示均在视口内，四周留白正常，无缺字或横向裁切。"
+    },
+    {
+      "name": "1366--professional--audit",
+      "sha256": "e211fbced3ff84cc39ebdbcd9b16e0fc275aec169e55706222b59021f90e28a9",
+      "package_index_sha256": "d1933b3225192b74f356cf3bd473c0fa42e3e4a0d6981d145f7bb5353c920c6f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业密度下表列略紧凑但时间、操作人、对象、结果均可读；完整展开的demo_loaded记录及JSON两键、固定请求编号均处于视口内，没有白mask或浮层遮正文。页标题因居中历史行滚到上方，筛选与分页仍完整。"
+    },
+    {
+      "name": "1366--professional--backup",
+      "sha256": "c52f94dc594e7ee9fa04fe8dc3cb3cc3e8e4f8ab71d7ff1be023c4d924d6dce1",
+      "package_index_sha256": "4b8e583a7b7515e1191e8d5ecfa0172685f77074d65392d30fa594e3ec3d6f77",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图该首屏与简洁视图一致，导出按钮、离线恢复步骤及restore_backup命令均清晰。左导航/顶部导航与内容没有交叠，底部是正常长页继续，不是PNG截短。"
+    },
+    {
+      "name": "1366--professional--demo",
+      "sha256": "50584e6e4423a0beaf4fdcf5dcc256841477dc3acc99b6968d83a2106d5a9d08",
+      "package_index_sha256": "09231df950a70f6d781507a023af7358c1a219e52be69e0e8981761ec3f45505",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：与简洁视图相同的演示内容和五项计数完整保留，加载按钮红色主次关系清楚，两个折叠入口未被底边截断；整个卡片和右侧留白正常，无横向溢出。"
+    },
+    {
+      "name": "1366--professional--home",
+      "sha256": "865ccbb4e0be36f1812cb1c602603f751dd132427970585400f273baf7e72805",
+      "package_index_sha256": "6b840e552bd5c8634cf898a80c3fcc989ac5f77cd35ea41b7777eadab02d5d01",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图保留与简洁视图相同工作台信息结构，查找和选择文件操作、待处理0与进行中空状态均清楚；顶部机构/身份/范围与六一级导航没有重叠，首屏没有横向溢出。"
+    },
+    {
+      "name": "1366--professional--model",
+      "sha256": "a9ef1b10155161dc747d6d9085d8db27261581d78b71a17ab2791fa963fa3c95",
+      "package_index_sha256": "bae220459eb41402f760bd9c0e0571deeb360cccbbc0f5ac91e66511019f2f21",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图保留模型状态和服务说明，空密钥框、保存统一配置与禁用验证服务连接按钮均完整；未配置状态与可见操作相符。表单右边缘在视口内，无横向裁切，纵向下续正常。"
+    },
+    {
+      "name": "1366--professional--orgs",
+      "sha256": "94c3318ede4610ce4f2aa6fd54f46786af97155b0b6b7c46b298f430361e8565",
+      "package_index_sha256": "bc9d6ca4f0c85edba3abe689c603da1fbfe9c53eb58c30a7734b5d083cbc0d08",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图目录两栏布局完整，树与详情没有互相侵入；总部/办公厅等名称不溢出，hq和机构状态已启用可读。标题至说明的垂直留白较简洁视图大，但筛选和新增入口均可见。"
+    },
+    {
+      "name": "1366--professional--security",
+      "sha256": "deac43b3f887f9a7aa66e641a61c8614c8620b7136402f8749b8728cac11c9ec",
+      "package_index_sha256": "274750021203c919c389dd197bfc0d1208d5790135bd17561c25321213b277e9",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图账号信息与当前会话/其他设备分隔清楚，UA在卡片内换行，撤销会话按钮完整；精确时间空白未侵入业务文本。下方密码与其他设备仅视口内部分获审阅，无横向溢出。"
+    },
+    {
+      "name": "1366--professional--shell-legacy",
+      "sha256": "a0e75bd37c1e58c09c72a1e8cca5f88d238f198fef02c91a55df4d9aaeb65e50",
+      "package_index_sha256": "fc951f43755a5871a35c1a4a8f01048f495de1e290bf86cc6a4678f95f3089c1",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图保留旧素材整理样式与所有首屏操作/四项0计数，与简洁视图保持一致；新Shell顶部、建设二级导航和旧页无样式穿透导致的重叠，左右边缘完整。"
+    },
+    {
+      "name": "1366--professional--system",
+      "sha256": "d17d29777ac92553b168663c1018a09dcf9944847b19283a67d48ce4a806e8e2",
+      "package_index_sha256": "2ace25f78722f8d9ae7d2f1ab02f8ebc5352b74eb3adad627711334b77c21aeb",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图该首屏与简洁一致，版本/运行方式/迁移状态层次清楚且没有加载占位；右边缘与首张卡片底边完整，下一卡片纵向继续不视为截图丢失。"
+    },
+    {
+      "name": "1366--professional--users",
+      "sha256": "213a31cec114a2306b93b2592beadba8e54bde47195d78ad77d9cd101785e053",
+      "package_index_sha256": "af4780ef50653fd4c5c32cfec95029b00bf08fc98f9f154f9f9366b1652ee9b7",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：专业视图表格密度更紧凑，首行平台管理员及操作按钮完整，第二行合成admin/办公厅可见；列未横向溢出，角色双行标签不与操作列重叠，页签和筛选区清晰。"
+    },
+    {
+      "name": "1366--simple--audit",
+      "sha256": "967017a2c32fc52b39200cc2a9115b71e377295106bd2f12090d5888d909793b",
+      "package_index_sha256": "d1933b3225192b74f356cf3bd473c0fa42e3e4a0d6981d145f7bb5353c920c6f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：为完整呈现历史记录而自然滚动，页标题位于视口上方；dept-01/demo_loaded/success筛选及三个操作按钮可读。展开整行从顶部至底边完整，fixture.admin、business-demo-0.7/dept-01、成功、entity_count:20、synthetic:true和请求编号fixture均无遮挡；分页1可见。"
+    },
+    {
+      "name": "1366--simple--backup",
+      "sha256": "c52f94dc594e7ee9fa04fe8dc3cb3cc3e8e4f8ab71d7ff1be023c4d924d6dce1",
+      "package_index_sha256": "4b8e583a7b7515e1191e8d5ecfa0172685f77074d65392d30fa594e3ec3d6f77",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：备份与升级标题和导出工作区备份主按钮清楚；说明明确不备份密钥/登录会话/助手临时上下文。离线恢复说明与命令在列内自然换行，无横向溢出；页面下续部分不在本视口审查范围。"
+    },
+    {
+      "name": "1366--simple--demo",
+      "sha256": "50584e6e4423a0beaf4fdcf5dcc256841477dc3acc99b6968d83a2106d5a9d08",
+      "package_index_sha256": "09231df950a70f6d781507a023af7358c1a219e52be69e0e8981761ec3f45505",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：演示资料标题、用模拟资料验证效果卡片、4/5/2/1/6五个计数、加载模拟资料/刷新状态以及两条折叠入口完整；卡片底部圆角可见，旧样式与新Shell边界正常，字体无缺字。"
+    },
+    {
+      "name": "1366--simple--home",
+      "sha256": "688430c3eda57acfd6ab4e818f390d96bc8fcf513d07e75b6c2e71f8315cb66a",
+      "package_index_sha256": "6b840e552bd5c8634cf898a80c3fcc989ac5f77cd35ea41b7777eadab02d5d01",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：工作台标题、集团总部、查找输入框/查找/选择文件完整；本机构待处理四项均为0，进行中说明与空状态可读。左右卡片并列且右边缘完整；更低区域在正常纵向视口之外，不将其计为已审阅。"
+    },
+    {
+      "name": "1366--simple--model",
+      "sha256": "b9769af5d2e734094693f8e842b0d31afdaac4370d2d0f474e545177cbf7f992",
+      "package_index_sha256": "bae220459eb41402f760bd9c0e0571deeb360cccbbc0f5ac91e66511019f2f21",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：模型与运行标题、尚未配置状态、deepseek-flash/运行版本0.2.1rc2、服务地址折叠入口、空密钥输入及保存/禁用验证按钮清楚；说明文字完整，无密钥明文。下方附加卡片仅顶部进入视口，未将其余内容计为已审阅。"
+    },
+    {
+      "name": "1366--simple--orgs",
+      "sha256": "07fdc03b40891881537c64b0f81db692daea4b42255c594f8fd73cca2f1077eb",
+      "package_index_sha256": "bc9d6ca4f0c85edba3abe689c603da1fbfe9c53eb58c30a7734b5d083cbc0d08",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：机构目录标题、新增机构、按名称筛选/重置完整；集团总部树展开，办公厅等子机构可读，选中行高亮明确。右侧hq、总部、无上级机构、简称和排序0可见；更低树项/详情继续在视口下方。"
+    },
+    {
+      "name": "1366--simple--security",
+      "sha256": "781dba2871fc052fcb83a89cbfbb4aaea2b0dd0f4f6a9f63511505b44850d1d4",
+      "package_index_sha256": "274750021203c919c389dd197bfc0d1208d5790135bd17561c25321213b277e9",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：账号安全标题、当前账号fixture.superadmin、当前机构集团总部、可建设维护/总部超级管理员完整；登录会话卡显示当前设备、浏览器UA、来源127.0.0.*及撤销按钮。时间位置为规定精确遮罩，未遮账号/来源/会话操作；密码及其他设备区域自然向下续。"
+    },
+    {
+      "name": "1366--simple--shell-legacy",
+      "sha256": "a0e75bd37c1e58c09c72a1e8cca5f88d238f198fef02c91a55df4d9aaeb65e50",
+      "package_index_sha256": "fc951f43755a5871a35c1a4a8f01048f495de1e290bf86cc6a4678f95f3089c1",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：新建设导航包裹旧素材整理页面，旧衬线标题、红色批量上传材料按钮、归集一批材料入口与四个0计数均清楚。Legacy背景与容器边界连续，材料目录标题进入底部，页面下续正常。"
+    },
+    {
+      "name": "1366--simple--system",
+      "sha256": "d17d29777ac92553b168663c1018a09dcf9944847b19283a67d48ce4a806e8e2",
+      "package_index_sha256": "2ace25f78722f8d9ae7d2f1ab02f8ebc5352b74eb3adad627711334b77c21aeb",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：系统信息标题、知元1.0.0/Ontology One、服务端运行、控制库迁移5、当前机构迁移1和无待执行迁移均完整；卡片边界清楚，下一平台业务服务卡片仅标题顶端进入视口。"
+    },
+    {
+      "name": "1366--simple--users",
+      "sha256": "a569f48a86cc904b96b6e0cbb5306b2375f79bfd50539d05e1546e9433496c23",
+      "package_index_sha256": "af4780ef50653fd4c5c32cfec95029b00bf08fc98f9f154f9f9366b1652ee9b7",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际查看：账号与权限、机构账号/跨机构授权页签、开通/刷新/筛选/列设置入口均完整；表头与首行fixture.superadmin的总部、角色、启用状态、编辑/重置/禁用停用按钮可读，第二行自然在底部继续。"
+    },
+    {
+      "name": "1366-native125--login--unauthenticated",
+      "sha256": "10a5f350ba32c5fdfee695bcdad1d6713bd237ce364685a01f67981960f1ab28",
+      "package_index_sha256": "2e46e91ee4ff44292ce38a58898763903539ac9e55ecd127549af17e8b78e014",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "完整登录卡、品牌、账号密码输入和底部版本均可见，焦点框清楚，左右/底边完整。"
+    },
+    {
+      "name": "1366-native125--professional--audit",
+      "sha256": "e19b130a74af0a33f1ac917e291d564def8d68096fd2a33720d80582941783cd",
+      "package_index_sha256": "6aee0ed744fc30a7743f46b660d6484c3d29a640b93e401db1d5cfee08f78b7a",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "紧凑行完整显示原始actor编号、固定历史时间、对象与JSON、fixture请求号；表头/分页完整且固定顶栏不盖行，顶部筛选区部分正常滚出。"
+    },
+    {
+      "name": "1366-native125--professional--backup",
+      "sha256": "41c9f00b6b2faea62af9053d759c59fe298f4c5f7420c353507ce65d400f39ed",
+      "package_index_sha256": "bf9888a0a8b93687dcb64687679db5c9f2a70740adf66c472dd3ca9ba3c5ac83",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "导出备份和离线恢复卡布局稳定，主要操作可见；下方长说明正常续页，无水平裁切。"
+    },
+    {
+      "name": "1366-native125--professional--demo",
+      "sha256": "8f27efe04c4103a83fd3c8d4ab902fdd0d8457e049606d4c5f85ad1998c208e4",
+      "package_index_sha256": "51e3b47c44ac34291188bdc82618217bd44bff8a4029a5c51d3ecb30b4bdc559",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "演示资料专业视图保留旧卡视觉，模拟标签及加载/刷新均可见，右边界完整。"
+    },
+    {
+      "name": "1366-native125--professional--home",
+      "sha256": "e2303333debbe26f73cb65d2766a6df9f77683ded88784e1c8f21e121765e3f7",
+      "package_index_sha256": "c50aafe3cabb66b3d77ee083cf2d96ac1ed5a8b6ffa5e592a9175b959744fdb5",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "工作台专业视图复用相同布局；Shell、输入和双列卡片清楚，底部正常垂直延续。"
+    },
+    {
+      "name": "1366-native125--professional--model",
+      "sha256": "b8b49442ed154d2527335ddc6aa9859efde9cd9a0d840aad06efa64bb7a36a53",
+      "package_index_sha256": "f59f4423a56449d93aaba3db2fbace3c22252bd4d16f1b8cccf3fde53796b466",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "专业模式模型卡与简单视图一致，服务地址折叠入口/密钥输入完整，未见溢出。"
+    },
+    {
+      "name": "1366-native125--professional--orgs",
+      "sha256": "7c40fc4cb8e3b66fac20636265f6cf32406c9c19fd4d898ff97bf60fdaf14a67",
+      "package_index_sha256": "89ad83753a7f3b67e64df64f3df1136a1251b5e5c14e2cb14dfa75d46fef6e0e",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "机构树和总部详情专业视图稳定，新增/筛选完整，无横向截断或文字重叠。"
+    },
+    {
+      "name": "1366-native125--professional--security",
+      "sha256": "87d0044f2c1cb673a38f7ba6b0a20b101e399029743772276ae5c8884e17933f",
+      "package_index_sha256": "1a6fa425ec3cf314ec1eaee04bd6b0510baa92991deb98f2d04517d6eca96ffa",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "账号与会话双列完整，权限徽标/来源可读；专业视图无布局挤压，底部密码区正常续页。"
+    },
+    {
+      "name": "1366-native125--professional--shell-legacy",
+      "sha256": "e50565ca189571eb2f2db59c31ae18445c6814a314e73aac4eed8ea0ee0ed235",
+      "package_index_sha256": "170e20db00b585bb8b763de38a04e5433719662d4aaef9730da19983dd51fe7f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "旧页专业视图保持原素材整理样式，主要上传/归集入口和左右边界完整，无横向溢出。"
+    },
+    {
+      "name": "1366-native125--professional--system",
+      "sha256": "72304ea93ebceb62a2a0169c04c2dd8bcd4d72923f6e90267ddac14bf2794edd",
+      "package_index_sha256": "d2b8d459b70d6d62d8841cb78cfe423ed58a0e8e7278bba50f6730c36782d9e2",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "系统专业视图同一版本/运行方式/迁移版本信息清晰，底部正常延续。"
+    },
+    {
+      "name": "1366-native125--professional--users",
+      "sha256": "5cff9a6428ad7a87860c5c9e7b93a7240c0b3e9df2de2eea6911d54e06f9effa",
+      "package_index_sha256": "299437d0f2821684bcb4f0e7f4da89575e17f7c3d41248f4aae2f4cbe15c6763",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "专业模式显示舒适/紧凑密度控件，与列设置无碰撞；上方账号管理入口正常，业务行在当前视口下。"
+    },
+    {
+      "name": "1366-native125--simple--audit",
+      "sha256": "9683396a771ae1f8ea8f48f1e31e6b6721df0e6802a3ac08311f3364ebf6723c",
+      "package_index_sha256": "6aee0ed744fc30a7743f46b660d6484c3d29a640b93e401db1d5cfee08f78b7a",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "自然居中后完整历史行和展开JSON可见：demo_loaded、business-demo-0.7、dept-01、success、20、synthetic true、fixture请求号；时间与actor未遮，分页完整。页标题已滚出视口。"
+    },
+    {
+      "name": "1366-native125--simple--backup",
+      "sha256": "41c9f00b6b2faea62af9053d759c59fe298f4c5f7420c353507ce65d400f39ed",
+      "package_index_sha256": "bf9888a0a8b93687dcb64687679db5c9f2a70740adf66c472dd3ca9ba3c5ac83",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "导出说明和导出按钮完整，离线恢复说明在下方自然延续；卡片左右边界清楚。"
+    },
+    {
+      "name": "1366-native125--simple--demo",
+      "sha256": "8f27efe04c4103a83fd3c8d4ab902fdd0d8457e049606d4c5f85ad1998c208e4",
+      "package_index_sha256": "51e3b47c44ac34291188bdc82618217bd44bff8a4029a5c51d3ecb30b4bdc559",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "旧演示卡完整标题、5类数量标签、数据/模型说明与加载/刷新入口清楚，文字正常换行。"
+    },
+    {
+      "name": "1366-native125--simple--home",
+      "sha256": "e2303333debbe26f73cb65d2766a6df9f77683ded88784e1c8f21e121765e3f7",
+      "package_index_sha256": "c50aafe3cabb66b3d77ee083cf2d96ac1ed5a8b6ffa5e592a9175b959744fdb5",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "完整Shell和查找/选文件入口；待处理与进行中双列可读，卡片底部正常续于屏外，无横向截断。"
+    },
+    {
+      "name": "1366-native125--simple--model",
+      "sha256": "b8b49442ed154d2527335ddc6aa9859efde9cd9a0d840aad06efa64bb7a36a53",
+      "package_index_sha256": "f59f4423a56449d93aaba3db2fbace3c22252bd4d16f1b8cccf3fde53796b466",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "模型与运行标题、未配置状态、deepseek-flash/运行版本、隐私说明及密钥输入清晰，底部操作在视口外正常延续。"
+    },
+    {
+      "name": "1366-native125--simple--orgs",
+      "sha256": "7c40fc4cb8e3b66fac20636265f6cf32406c9c19fd4d898ff97bf60fdaf14a67",
+      "package_index_sha256": "89ad83753a7f3b67e64df64f3df1136a1251b5e5c14e2cb14dfa75d46fef6e0e",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "新增机构、搜索与树/详情双列可见；总部和部门树文本清楚，机构详情在底边自然延续。"
+    },
+    {
+      "name": "1366-native125--simple--security",
+      "sha256": "87d0044f2c1cb673a38f7ba6b0a20b101e399029743772276ae5c8884e17933f",
+      "package_index_sha256": "1a6fa425ec3cf314ec1eaee04bd6b0510baa92991deb98f2d04517d6eca96ffa",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "当前账号字段、总部超管徽标和登录会话/刷新入口清楚；UA换行正常，时间白名单遮罩，底部内容自然延续。"
+    },
+    {
+      "name": "1366-native125--simple--shell-legacy",
+      "sha256": "e50565ca189571eb2f2db59c31ae18445c6814a314e73aac4eed8ea0ee0ed235",
+      "package_index_sha256": "170e20db00b585bb8b763de38a04e5433719662d4aaef9730da19983dd51fe7f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "旧素材整理标题/渐变/批量上传及归集入口保留，顶部新Shell隔离正常；统计卡自然延续屏外。"
+    },
+    {
+      "name": "1366-native125--simple--system",
+      "sha256": "72304ea93ebceb62a2a0169c04c2dd8bcd4d72923f6e90267ddac14bf2794edd",
+      "package_index_sha256": "d2b8d459b70d6d62d8841cb78cfe423ed58a0e8e7278bba50f6730c36782d9e2",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "系统信息、知元1.0.0、服务端运行、控制库5/机构库1均可读，左右完整。"
+    },
+    {
+      "name": "1366-native125--simple--users",
+      "sha256": "9dc12d6ecba7409fdc5f28f76ea6f319be48b659f93045506ae70e80cd9312a6",
+      "package_index_sha256": "299437d0f2821684bcb4f0e7f4da89575e17f7c3d41248f4aae2f4cbe15c6763",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "账号权限标题、双页签、开通/刷新/筛选/列设置可见；表格业务行在折叠线下，未冒称已看；右边界完整。"
+    },
+    {
+      "name": "1920--login--unauthenticated",
+      "sha256": "47bbf7f4139fe21474a6c434fdadffa5350fb327fbe2ba1c595f25211421c20f",
+      "package_index_sha256": "aaa7839b755341de790f34d717b2e303d5524a1c15dc6690031389ac917a2b5b",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开完整1920×1080图。品牌与账号登录双栏居中，账号焦点环、密码标签、禁用登录按钮、联系管理员说明及1.0.0版本均完整清晰；四边无缺失或横向裁切。"
+    },
+    {
+      "name": "1920--professional--audit",
+      "sha256": "98c387e21673d98dda45c7b8f725719fe83ebe558dfc5a82e247e04c5c5235db",
+      "package_index_sha256": "f55b46de02cb40234175e269146b5da6bca7c4faa7ab578b5044be4a9f4d4bc0",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。较简洁视图列间距更紧凑，六列与同一固定历史记录均可读；展开JSON两项和闭括号、请求编号fixture完整，筛选/重置/刷新和分页均未被裁切，顶栏未覆盖业务行。"
+    },
+    {
+      "name": "1920--professional--backup",
+      "sha256": "c0a82eef314e77cb03cd06217d9311166b13c72e21324c65dde5957b80e9b509",
+      "package_index_sha256": "490bf6b5f9590be800919cb33ce9551580b0ca669e26000097aeb6bcddd3bfc7",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。与简洁视图相同的导出/离线恢复布局，命令中的hq和恢复原因完整，未显示随机归档路径；备份校验状态、Windows运行说明与发行链接清晰，卡片右边界留有页边距。"
+    },
+    {
+      "name": "1920--professional--demo",
+      "sha256": "f6b41375333421fbcb9e3ff63311076a4e0101c90382f694f5237c6f57f16e77",
+      "package_index_sha256": "af42a7c6cd92c639302190c76eb0aa85077b1b278559f788f52f96eed60f4137",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。与简洁视图同一未加载演示资料状态；模拟合同/付款/原文/技能/任务计数清晰，加载模拟资料与刷新状态动作无截断，两个折叠区域标题完整，未发现越界或遮挡。"
+    },
+    {
+      "name": "1920--professional--home",
+      "sha256": "e3b6de2ebefe073eee167c6358d34da2783bf55cd9f62c97452fa8fc842881f6",
+      "package_index_sha256": "beeafa0c85c1e9a5d566a7d780505442b31f2fe2db2ac107453ff96565894c2d",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已单独重新打开完整视口图确认。当前空工作台与简洁视图同布局，查找入口、选择文件、四项待办0及近期工作空态清晰；右上账号未变形。机构概况在视口下方继续，未审屏外部分。"
+    },
+    {
+      "name": "1920--professional--model",
+      "sha256": "11c5077b7bfe66ff798a450fa1046e77a9dbc80dda1c97209fb20cd75631e4d1",
+      "package_index_sha256": "646dff00b77b4861e6910a58af93e665337153aceceaafff6c5fff85deee9217",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。与简洁视图同一未配置状态；密钥不回显说明和主保存按钮清晰，服务地址高级区保持折叠，未开通提示与返回工作台未遮挡。底部就绪诊断后续项不在本次视口审查内。"
+    },
+    {
+      "name": "1920--professional--orgs",
+      "sha256": "cd201e6f8f8d508ef5d7affc90356a569779b7e368a87a63accd8bf5064b2789",
+      "package_index_sha256": "f712a1a6315054bf0264e389ea73b72eaced55f5fa6e27de8265b5822eb02e2d",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。与简洁视图相同的目录事实布局，顶部新增机构按钮完整；总部选中态、目录不自动授予跨机构权限说明和详情各字段清晰，左树与右卡片无覆盖。仅审到视口内树节点。"
+    },
+    {
+      "name": "1920--professional--security",
+      "sha256": "b33e487fa5ee266e1c3ef7777fcdba30b0117f0080e3f36e5b0b54e4b8b6a703",
+      "package_index_sha256": "6e8b6a122e990a6d1ed9268e5607561b79b6adf17e4ca184227a77f6691da9e7",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。账号事实与改密表单和简洁视图同布局，当前/其他设备区分清楚；159浏览器UA及127.0.0.*来源正常显示，撤销按钮无截断，时间字段采用精确遮罩；列表在视口下方继续，屏外部分未审。"
+    },
+    {
+      "name": "1920--professional--shell-legacy",
+      "sha256": "952a23cd2b89f005056db1fe64b3b00138dfaf61a9aea86c9dd4dedf3cbed54c",
+      "package_index_sha256": "7bae3f6dc24dd9543897e96d9f8b6d9bfa66638ac8fa9130a9223b8e51e9300f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。旧素材整理与简洁视图保持同一旧页面布局，Shell面包屑与账号文字清楚；批量上传、0统计、搜索及筛选芯片完整。当前视口底部切到空态开头属于长页延续，不代表已核查屏外内容。"
+    },
+    {
+      "name": "1920--professional--system",
+      "sha256": "b4dd847b1296933a8821c6ca6dbafa85e960fe0f95fe1cd72f28aeb8601f9e66",
+      "package_index_sha256": "7d3e5f5f4b9776f99fe20642eb5393e53c6abbe76dd6f76a8e941b65e3bc3685",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。与简洁视图相同的版本/迁移/服务事实，状态文字完整且无随机路径；当前运行方式说明开头可读。长页面后续内容未计入本图审查，当前视口无横向溢出或固定栏遮挡。"
+    },
+    {
+      "name": "1920--professional--users",
+      "sha256": "e4f20669bef7df2e575a31bbd0df1a1b0a85c8928ce6fd8d3264fb0c5084cf64",
+      "package_index_sha256": "00c5bfb1d717151bd2d0f4a985bc47b53a653a7353ab2d38f2338017791ecd3f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。五条账号和所有操作列完整；专业视图额外显示舒适/紧凑控件，当前舒适选中，列设置与控件无挤压。姓名、角色、状态与按钮字体清楚，右边缘无溢出。"
+    },
+    {
+      "name": "1920--simple--audit",
+      "sha256": "4fd8feb5249e3a88f96c800a3e068b04e491af418f4c4c75a77ca48cb2829c5d",
+      "package_index_sha256": "f55b46de02cb40234175e269146b5da6bca7c4faa7ab578b5044be4a9f4d4bc0",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。过滤值dept-01/demo_loaded/success、六列表头与唯一历史行清晰；展开详情完整显示操作人编号、机构、entity_count=20、synthetic=true、JSON闭括号及请求编号fixture，整行底边与分页留在视口内，无顶栏遮挡，无动态白块遮挡历史内容。"
+    },
+    {
+      "name": "1920--simple--backup",
+      "sha256": "c0a82eef314e77cb03cd06217d9311166b13c72e21324c65dde5957b80e9b509",
+      "package_index_sha256": "490bf6b5f9590be800919cb33ce9551580b0ca669e26000097aeb6bcddd3bfc7",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。导出工作区备份、离线恢复说明、恢复命令整行、升级完整备份区别均清楚；升级备份版本0/已完整校验可读，仅时间精确遮罩。底部Windows说明和发行包链接可见，无横向裁切。"
+    },
+    {
+      "name": "1920--simple--demo",
+      "sha256": "f6b41375333421fbcb9e3ff63311076a4e0101c90382f694f5237c6f57f16e77",
+      "package_index_sha256": "af42a7c6cd92c639302190c76eb0aa85077b1b278559f788f52f96eed60f4137",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。保留旧演示组件的样式边界；模拟资料数量、演示标记和不连接真实业务数据库/模型调用说明可读，加载/刷新按钮及两个折叠入口完整，主卡片四边均在视口内。"
+    },
+    {
+      "name": "1920--simple--home",
+      "sha256": "e3b6de2ebefe073eee167c6358d34da2783bf55cd9f62c97452fa8fc842881f6",
+      "package_index_sha256": "beeafa0c85c1e9a5d566a7d780505442b31f2fe2db2ac107453ff96565894c2d",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开完整视口图。六工作区、机构身份条、面包屑和右上账号两行清晰；查找/选择文件完整，待处理四项0与进行中空态可读。底部机构概况卡片继续到视口外，未把屏外数字计作已审；首屏未见遮挡。"
+    },
+    {
+      "name": "1920--simple--model",
+      "sha256": "11c5077b7bfe66ff798a450fa1046e77a9dbc80dda1c97209fb20cd75631e4d1",
+      "package_index_sha256": "646dff00b77b4861e6910a58af93e665337153aceceaafff6c5fff85deee9217",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。尚未配置状态、模型与运行版本、数据发送说明、折叠服务设置、空密钥框、保存与禁用验证按钮均可读；未开通提示及返回工作台完整。按钮与提示卡边界较近但不重叠；就绪诊断在底部继续。"
+    },
+    {
+      "name": "1920--simple--orgs",
+      "sha256": "cd201e6f8f8d508ef5d7affc90356a569779b7e368a87a63accd8bf5064b2789",
+      "package_index_sha256": "f712a1a6315054bf0264e389ea73b72eaced55f5fa6e27de8265b5822eb02e2d",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。机构树与总部详情双栏清晰，长机构名在树列内可读；总部编号hq、类别、上级、简称、排序、启用状态及编辑/禁用停用按钮完整，新建/筛选动作未溢出。树的后续节点延续屏外。"
+    },
+    {
+      "name": "1920--simple--security",
+      "sha256": "0fbf8043f43372ad187daf8342d47a125721c91fc6e2492e9e0ecffda8563389",
+      "package_index_sha256": "6e8b6a122e990a6d1ed9268e5607561b79b6adf17e4ca184227a77f6691da9e7",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。当前账号事实、总部超管标识、三项密码字段/规则/禁用修改按钮完整；右侧当前设备和下一设备的UA、来源、撤销按钮清晰，时间白块限对应字段。后续设备延续至屏外，本图未覆盖列表尾部。"
+    },
+    {
+      "name": "1920--simple--shell-legacy",
+      "sha256": "952a23cd2b89f005056db1fe64b3b00138dfaf61a9aea86c9dd4dedf3cbed54c",
+      "package_index_sha256": "7bae3f6dc24dd9543897e96d9f8b6d9bfa66638ac8fa9130a9223b8e51e9300f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。新Shell六工作区与建设次级导航完整；旧素材整理标题、批量上传/归集入口、四项0统计、搜索和两组状态/来源筛选均可读，无左右溢出。底部空态说明在下一屏继续，未当作已完整显示。"
+    },
+    {
+      "name": "1920--simple--system",
+      "sha256": "b4dd847b1296933a8821c6ca6dbafa85e960fe0f95fe1cd72f28aeb8601f9e66",
+      "package_index_sha256": "7d3e5f5f4b9776f99fe20642eb5393e53c6abbe76dd6f76a8e941b65e3bc3685",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。知元1.0.0/Ontology One、服务端运行、控制迁移5/机构迁移1、无待执行迁移及业务运行中/模型未配置事实清晰；标题与卡片无重叠，底部身份与授权说明继续至视口边缘。"
+    },
+    {
+      "name": "1920--simple--users",
+      "sha256": "11aeb497df949d4acf1c17cf5f535881acd663d454b6a9e92d31e8afa00820be",
+      "package_index_sha256": "00c5bfb1d717151bd2d0f4a985bc47b53a653a7353ab2d38f2338017791ecd3f",
+      "complete_artifact": "https://github.com/min108/ontology-one/actions/runs/43870548745/artifacts/14228712071",
+      "reviewed": true,
+      "notes": "已实际打开。机构账号/跨机构授权双页签、会话失效提示、开通/刷新/筛选均清晰；五条夹具账号的姓名、机构、角色、状态和编辑/重置/停用按钮完整，自己停用为禁用态；仅显示列设置，没有专业密度选项。"
+    }
+  ]
+}

@@ -1,4 +1,3 @@
 {
-  "mode": "capture",
-  "reason": "R1 canonical visual baseline bootstrap; not final acceptance"
+  "mode": "compare"
 }

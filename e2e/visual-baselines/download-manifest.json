@@ -1,0 +1,171 @@
+{
+  "capture_commit": "ad5d8d54ab5aaf7e142ce6c5ba2313e01017d379",
+  "run_id": "43870548745",
+  "artifacts": [
+    {
+      "name": "r1-visual-1366-login-43870548745",
+      "file": "r1-visual-1366-login-43870548745.zip",
+      "sha256": "sha256:b49dcb06fcc556b3846772a1e14b1037e964a91a95086c87c0c50bc272f95d14"
+    },
+    {
+      "name": "r1-visual-1366-home-43870548745",
+      "file": "r1-visual-1366-home-43870548745.zip",
+      "sha256": "sha256:a1ade086a4e463ea08a0b16097157b1323cf55a75ef1ab4d7879d9e8226015e4"
+    },
+    {
+      "name": "r1-visual-1366-shell-legacy-43870548745",
+      "file": "r1-visual-1366-shell-legacy-43870548745.zip",
+      "sha256": "sha256:ec760d0b246a1ef8c574d3dceef347dcb2b0cb635591e02a598dc28ad8690082"
+    },
+    {
+      "name": "r1-visual-1366-security-43870548745",
+      "file": "r1-visual-1366-security-43870548745.zip",
+      "sha256": "sha256:79bb18f7360c959acf6bcdc1ffd876b1129172630231dfb0fe0353f3eadce76d"
+    },
+    {
+      "name": "r1-visual-1366-users-43870548745",
+      "file": "r1-visual-1366-users-43870548745.zip",
+      "sha256": "sha256:f7e08c99d6837eb35cdf35be12d6723ed83538875789220ddd54553e22308818"
+    },
+    {
+      "name": "r1-visual-1366-orgs-43870548745",
+      "file": "r1-visual-1366-orgs-43870548745.zip",
+      "sha256": "sha256:4fa587e3eadf4c98a1c81d05d4bd66189e6a0b86a7378d897b2de4f98882b509"
+    },
+    {
+      "name": "r1-visual-1366-audit-43870548745",
+      "file": "r1-visual-1366-audit-43870548745.zip",
+      "sha256": "sha256:ed251202f32909cc81e714adef781158cc822f627426c0bddf9f56efef871333"
+    },
+    {
+      "name": "r1-visual-1366-model-43870548745",
+      "file": "r1-visual-1366-model-43870548745.zip",
+      "sha256": "sha256:901b8bb531f313ba2e095efd06e83cb27d9af0518f516ff76e4e50b0bcd155cf"
+    },
+    {
+      "name": "r1-visual-1366-backup-43870548745",
+      "file": "r1-visual-1366-backup-43870548745.zip",
+      "sha256": "sha256:48ce6066f1177c6d1df129f335fbff86bb6399d5060e0692556b1bcb80e0eefc"
+    },
+    {
+      "name": "r1-visual-1366-system-43870548745",
+      "file": "r1-visual-1366-system-43870548745.zip",
+      "sha256": "sha256:6524bfdd4eee0e59c9f111cd948b8f72d7d4ad62310a0b09426b220e206e3396"
+    },
+    {
+      "name": "r1-visual-1366-demo-43870548745",
+      "file": "r1-visual-1366-demo-43870548745.zip",
+      "sha256": "sha256:2f6ad58af4bfcea61eeb261a683fab7c111c9af013fd698cf1a1bed73bf71903"
+    },
+    {
+      "name": "r1-visual-1920-login-43870548745",
+      "file": "r1-visual-1920-login-43870548745.zip",
+      "sha256": "sha256:20a7310e17020c30be4de92debfddc844e0ffb5a84f23dc0348ca0025ab6420f"
+    },
+    {
+      "name": "r1-visual-1920-home-43870548745",
+      "file": "r1-visual-1920-home-43870548745.zip",
+      "sha256": "sha256:14526b6079731560ab9bb7ea2fd0fc449cad8973d0213dfa0dc7c67770ad3c95"
+    },
+    {
+      "name": "r1-visual-1920-shell-legacy-43870548745",
+      "file": "r1-visual-1920-shell-legacy-43870548745.zip",
+      "sha256": "sha256:ee69f719ecd48fae0db87542be209ca087631f7dd21ddbc4be4de00b56511bef"
+    },
+    {
+      "name": "r1-visual-1920-security-43870548745",
+      "file": "r1-visual-1920-security-43870548745.zip",
+      "sha256": "sha256:988bc2b299ec93c2dcfc16cb2c53f9b242074d5322a562304ad0b477b8afd86d"
+    },
+    {
+      "name": "r1-visual-1920-users-43870548745",
+      "file": "r1-visual-1920-users-43870548745.zip",
+      "sha256": "sha256:ed514d2145a0e6c1323c73cfe39af62fde7f99b5c97f2d5fa5e35dc1ee402c82"
+    },
+    {
+      "name": "r1-visual-1920-orgs-43870548745",
+      "file": "r1-visual-1920-orgs-43870548745.zip",
+      "sha256": "sha256:d637dee9f52eb3e7889fd659aeb313a7e1635eac5f8aab90ccd061ee8b0737ca"
+    },
+    {
+      "name": "r1-visual-1920-audit-43870548745",
+      "file": "r1-visual-1920-audit-43870548745.zip",
+      "sha256": "sha256:b3299f3b96a5fe47f7938bc52df63eca1a46b6a5b2005f841ac540e45366bbec"
+    },
+    {
+      "name": "r1-visual-1920-model-43870548745",
+      "file": "r1-visual-1920-model-43870548745.zip",
+      "sha256": "sha256:9429e99dc2a6030b4acf445c18f00e762ba66c09a9eba152d64e494a0faaaee8"
+    },
+    {
+      "name": "r1-visual-1920-backup-43870548745",
+      "file": "r1-visual-1920-backup-43870548745.zip",
+      "sha256": "sha256:4674235d4fb93882aa21eb5df15c617c0fd84cc3a00687af8d59247b82dfe4ce"
+    },
+    {
+      "name": "r1-visual-1920-system-43870548745",
+      "file": "r1-visual-1920-system-43870548745.zip",
+      "sha256": "sha256:d049652e8a8c70c559d95f718eaedc63c7ef60c9ce679eb04fd244bd14366389"
+    },
+    {
+      "name": "r1-visual-1920-demo-43870548745",
+      "file": "r1-visual-1920-demo-43870548745.zip",
+      "sha256": "sha256:5a947f0d5d97225dddfd894c0e6d8ddad980867686a4f4b8bc9c5f1987dd78fd"
+    },
+    {
+      "name": "r1-visual-1366-native125-login-43870548745",
+      "file": "r1-visual-1366-native125-login-43870548745.zip",
+      "sha256": "sha256:8bfa265d7808beb9d42cce106c0191acb259fda4ac395adacf3d3a6818bd29ff"
+    },
+    {
+      "name": "r1-visual-1366-native125-home-43870548745",
+      "file": "r1-visual-1366-native125-home-43870548745.zip",
+      "sha256": "sha256:18c46f07a606de2c4060cac865fe40ddacd936168388528ac5bf999b2cbc1a58"
+    },
+    {
+      "name": "r1-visual-1366-native125-shell-legacy-43870548745",
+      "file": "r1-visual-1366-native125-shell-legacy-43870548745.zip",
+      "sha256": "sha256:337d9129cc0717d59b880953bb2b32c9f487c9bc530cd2eea2dab5c711d5d915"
+    },
+    {
+      "name": "r1-visual-1366-native125-security-43870548745",
+      "file": "r1-visual-1366-native125-security-43870548745.zip",
+      "sha256": "sha256:2f532f23662740f483f10decbb423af827fdff286df980b512b3949b75d44bba"
+    },
+    {
+      "name": "r1-visual-1366-native125-users-43870548745",
+      "file": "r1-visual-1366-native125-users-43870548745.zip",
+      "sha256": "sha256:7f0ffd9146c8a2d019b416218a821b524dd0bf9c5fbb435b8fbc87571a6e3113"
+    },
+    {
+      "name": "r1-visual-1366-native125-orgs-43870548745",
+      "file": "r1-visual-1366-native125-orgs-43870548745.zip",
+      "sha256": "sha256:b6e4a45bc78a6ebc06d6c31fe89fb083f46e6a30d4728ad98d003c474fc46470"
+    },
+    {
+      "name": "r1-visual-1366-native125-audit-43870548745",
+      "file": "r1-visual-1366-native125-audit-43870548745.zip",
+      "sha256": "sha256:4e5f4d2355eba346594da8e359d77da0aece941f50e39be4bce46ce4eb63a5c3"
+    },
+    {
+      "name": "r1-visual-1366-native125-model-43870548745",
+      "file": "r1-visual-1366-native125-model-43870548745.zip",
+      "sha256": "sha256:ad46aa44d31075ac37dd69343040d41673abe2f8335dba6673b39b7186ed0931"
+    },
+    {
+      "name": "r1-visual-1366-native125-backup-43870548745",
+      "file": "r1-visual-1366-native125-backup-43870548745.zip",
+      "sha256": "sha256:e1bea080f41ceff97b9d3cc14d6682780e82c286a43ab9f15323a43ab6263059"
+    },
+    {
+      "name": "r1-visual-1366-native125-system-43870548745",
+      "file": "r1-visual-1366-native125-system-43870548745.zip",
+      "sha256": "sha256:6ebdfe8c1c936e10dd1957d6e76c86f365e1b137d8419a4654c7954b7208b55d"
+    },
+    {
+      "name": "r1-visual-1366-native125-demo-43870548745",
+      "file": "r1-visual-1366-native125-demo-43870548745.zip",
+      "sha256": "sha256:d5716af553496ad89c811b8cd2d133803a15faacf1f5dfd98316991a39349e1a"
+    }
+  ]
+}

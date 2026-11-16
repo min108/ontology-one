@@ -1,0 +1,74 @@
+{
+  "sourceCommit": "ad5d8d54ab5aaf7e142ce6c5ba2313e01017d379",
+  "browser": "159.0.8154.6",
+  "resultKind": "baseline-capture-not-acceptance",
+  "policy": {
+    "mode": "capture",
+    "reason": "R1 canonical visual baseline bootstrap; not final acceptance"
+  },
+  "preferences": {},
+  "calibration": {
+    "outerWidth": 1366,
+    "outerHeight": 768,
+    "innerWidth": 1366,
+    "innerHeight": 681,
+    "devicePixelRatio": 1,
+    "visualScale": 1,
+    "visualWidth": 1366,
+    "visualHeight": 681
+  },
+  "window": {
+    "width": 1366,
+    "height": 855
+  },
+  "expected": {
+    "name": "1366",
+    "width": 1366,
+    "height": 768,
+    "zoom": 1
+  },
+  "metrics": {
+    "outerWidth": 1366,
+    "outerHeight": 855,
+    "innerWidth": 1366,
+    "innerHeight": 768,
+    "devicePixelRatio": 1,
+    "visualScale": 1,
+    "visualWidth": 1366,
+    "visualHeight": 768
+  },
+  "png": {
+    "width": 1366,
+    "height": 768
+  },
+  "screenshotScale": "physical",
+  "screenshotMethod": "cdp-physical-viewport",
+  "dynamicMasks": [
+    "timestamp",
+    "request-id"
+  ],
+  "fonts": [
+    {
+      "family": "Noto Sans SC",
+      "status": "loaded",
+      "weight": "700"
+    },
+    {
+      "family": "Noto Sans SC",
+      "status": "loaded",
+      "weight": "400"
+    },
+    {
+      "family": "Noto Sans SC",
+      "status": "loaded",
+      "weight": "700"
+    },
+    {
+      "family": "Noto Sans SC",
+      "status": "loaded",
+      "weight": "400"
+    }
+  ],
+  "view": "professional",
+  "authenticated": true
+}
