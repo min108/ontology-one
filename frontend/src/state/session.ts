@@ -23,6 +23,21 @@ type Confirmation = (snapshot: WorkspaceGuardSnapshot) => Promise<boolean>;
 let confirmation: Confirmation | undefined;
 let transitionLocked = false;
 let revision = 0;
+let sessionController: AbortController | undefined;
+
+function cancelSessionOperation(): number {
+  ++revision;
+  sessionController?.abort();
+  sessionController = undefined;
+  return revision;
+}
+
+/** Cancel only superseded identity work, before the client can handle its status. */
+function beginSessionOperation(): { token: number; signal: AbortSignal } {
+  const token = cancelSessionOperation();
+  sessionController = new AbortController();
+  return { token, signal: sessionController.signal };
+}
 export function setWorkspaceConfirmation(callback: Confirmation): () => void {
   confirmation = callback;
   return () => {
@@ -73,7 +88,7 @@ export type SessionState = {
   acceptSession: (session: AuthSession) => void;
   reload: () => Promise<void>;
 };
-async function accept(next: AuthSession, token: number): Promise<void> {
+async function accept(next: AuthSession, token: number, signal: AbortSignal): Promise<void> {
   if (!current(token)) return;
   const previous = useSessionStore.getState().session;
   if (
@@ -83,7 +98,7 @@ async function accept(next: AuthSession, token: number): Promise<void> {
     // A session refreshed after another tab switched cannot reuse mounted legacy state.
     setWorkspaceTransition('leaving');
     setBusinessBlocked(true);
-    ++revision;
+    cancelSessionOperation();
     useSessionStore.setState({ switching: true, permission_keys: [] });
     try {
       clearLocalWorkspace();
@@ -106,7 +121,7 @@ async function accept(next: AuthSession, token: number): Promise<void> {
     revision: state.revision + 1,
   }));
   try {
-    const identity = await invokeCapability<SessionIdentity>('session.whoami', {});
+    const identity = await invokeCapability<SessionIdentity>('session.whoami', {}, { signal });
     if (!current(token)) return;
     if (
       identity.user_id !== next.user.id ||
@@ -156,17 +171,17 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
   acceptSession: (next) => {
     if (isWorkspaceLeaving()) return;
-    const token = ++revision;
-    void accept(next, token).finally(() => {
+    const { token, signal } = beginSessionOperation();
+    void accept(next, token, signal).finally(() => {
       if (current(token)) set({ loading: false });
     });
   },
   reload: async () => {
     if (isWorkspaceLeaving()) return;
-    const token = ++revision;
+    const { token, signal } = beginSessionOperation();
     set({ loading: true, error: '' });
     try {
-      await accept(await api<AuthSession>('/auth/session'), token);
+      await accept(await api<AuthSession>('/auth/session', { signal }), token, signal);
     } catch (error) {
       if (current(token)) {
         try {
@@ -186,14 +201,15 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
   login: async (username, password) => {
     if (isWorkspaceLeaving()) return;
-    const token = ++revision;
+    const { token, signal } = beginSessionOperation();
     set({ notice: '' });
     clearLocalWorkspace();
     const next = await api<AuthSession>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+      signal,
     });
-    await accept(next, token);
+    await accept(next, token, signal);
     if (current(token)) {
       set({ loading: false });
       goHome();
@@ -201,8 +217,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
   logout: async () => {
     if (isWorkspaceLeaving()) return;
-    const token = ++revision;
-    await api('/auth/logout', { method: 'POST' });
+    const { token, signal } = beginSessionOperation();
+    await api('/auth/logout', { method: 'POST', signal });
     if (!current(token)) return;
     clearLocalWorkspace();
     clearIdentity();
@@ -231,7 +247,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       if (isWorkspaceLeaving()) return;
       setWorkspaceTransition('leaving');
       setBusinessBlocked(true);
-      ++revision;
+      cancelSessionOperation();
       set({ switching: true, permission_keys: [] });
       try {
         clearLocalWorkspace();
@@ -254,7 +270,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 export function initializeSession(): () => void {
   const expired = () => {
     if (isWorkspaceLeaving()) return;
-    ++revision;
+    cancelSessionOperation();
     try {
       clearLocalWorkspace();
     } finally {

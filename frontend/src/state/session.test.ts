@@ -324,3 +324,128 @@ it('an externally changed identity forces a hard reload instead of mixing mounte
   expect(s.queryClient.getQueryCache().getAll()).toHaveLength(0);
   expect(() => s.legacy.assertBusinessReady()).toThrow();
 });
+
+it.each([401, 409])('discards superseded session status %s before global status effects', async (status) => {
+  const s = await setup();
+  const dispose = s.initializeSession();
+  try {
+    await vi.waitFor(() => expect(s.useSessionStore.getState().loading).toBe(false));
+    const response = deferred<Response>();
+    vi.mocked(fetch).mockReturnValueOnce(response.promise);
+    const older = s.useSessionStore.getState().reload();
+    await s.useSessionStore.getState().reload();
+    response.resolve(new Response(JSON.stringify({ error: { code: 'WORKSPACE_CHANGED' } }), { status }));
+    await older;
+    expect(s.useSessionStore.getState().session).toEqual(auth);
+    expect(s.useScopeStore.getState().tenantId).toBe('a');
+    expect(s.useSessionStore.getState().permission_keys).toEqual(['federation.read']);
+    expect(replace).not.toHaveBeenCalled();
+    expect(() => s.legacy.assertBusinessReady()).not.toThrow();
+  } finally {
+    dispose();
+  }
+});
+
+const sessionOperations = ['reload', 'acceptSession', 'login', 'logout'] as const;
+type SessionOperation = (typeof sessionOperations)[number];
+async function runSessionOperation(
+  state: import('./session').SessionState,
+  operation: SessionOperation,
+): Promise<void> {
+  if (operation === 'acceptSession') state.acceptSession(auth);
+  else if (operation === 'login') await state.login('one', 'password');
+  else await state[operation]();
+}
+const competitions = sessionOperations.flatMap((older) =>
+  sessionOperations.flatMap((newer) => [401, 409].map((status) => ({ older, newer, status }))),
+);
+it.each(competitions)(
+  'supersedes $older with $newer before old status $status effects',
+  async ({ older, newer, status }) => {
+    const s = await setup();
+    const dispose = s.initializeSession();
+    const unauthorized = vi.fn();
+    window.addEventListener('ontology:unauthorized', unauthorized);
+    try {
+      await vi.waitFor(() => expect(s.useSessionStore.getState().loading).toBe(false));
+      const response = deferred<Response>();
+      vi.mocked(fetch).mockReturnValueOnce(response.promise);
+      const prior = runSessionOperation(s.useSessionStore.getState(), older).catch((error: unknown) => error);
+      const oldSignal = vi.mocked(fetch).mock.calls.at(-1)?.[1]?.signal;
+      const latest = runSessionOperation(s.useSessionStore.getState(), newer);
+      expect(oldSignal?.aborted).toBe(true);
+      await latest;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      response.resolve(new Response(JSON.stringify({ error: { code: 'WORKSPACE_CHANGED' } }), { status }));
+      await prior;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(unauthorized).not.toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
+      expect(s.useSessionStore.getState().session).toEqual(newer === 'logout' ? null : auth);
+      expect(s.useScopeStore.getState().tenantId).toBe(newer === 'logout' ? '' : 'a');
+      expect(() => s.legacy.assertBusinessReady()).not.toThrow();
+    } finally {
+      window.removeEventListener('ontology:unauthorized', unauthorized);
+      dispose();
+    }
+  },
+);
+it.each(sessionOperations.flatMap((operation) => [401, 409].map((status) => ({ operation, status }))))(
+  'preserves current $operation status $status handling',
+  async ({ operation, status }) => {
+    const s = await setup();
+    const dispose = s.initializeSession();
+    try {
+      await vi.waitFor(() => expect(s.useSessionStore.getState().loading).toBe(false));
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { code: 'WORKSPACE_CHANGED' } }), { status }),
+      );
+      await runSessionOperation(s.useSessionStore.getState(), operation).catch(() => undefined);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (status === 401) {
+        expect(s.useSessionStore.getState().session).toBeNull();
+        expect(replace).not.toHaveBeenCalled();
+      } else {
+        expect(replace).toHaveBeenCalledExactlyOnceWith('/');
+        expect(() => s.legacy.assertBusinessReady()).toThrow();
+      }
+    } finally {
+      dispose();
+    }
+  },
+);
+it.each(['reload', 'acceptSession'] as const)(
+  '%s supersedes only session work, keeping unrelated business requests alive',
+  async (operation) => {
+    const s = await setup();
+    await s.useSessionStore.getState().reload();
+    const { api } = await import('../api/client');
+    const response = deferred<Response>();
+    vi.mocked(fetch).mockReturnValueOnce(response.promise);
+    const business = api('/v2/business');
+    const signal = vi.mocked(fetch).mock.calls.at(-1)?.[1]?.signal;
+    await runSessionOperation(s.useSessionStore.getState(), operation);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(signal?.aborted).toBe(false);
+    response.resolve(new Response('{"ok":true}'));
+    await expect(business).resolves.toEqual({ ok: true });
+  },
+);
+it.each([401, 409])('cancels old whoami while status %s JSON is still being parsed', async (status) => {
+  const s = await setup();
+  const dispose = s.initializeSession();
+  try {
+    await vi.waitFor(() => expect(s.useSessionStore.getState().loading).toBe(false));
+    const body = deferred<unknown>();
+    vi.mocked(fetch).mockResolvedValueOnce({ status, ok: false, json: () => body.promise } as Response);
+    s.useSessionStore.getState().acceptSession(auth);
+    await Promise.resolve();
+    await s.useSessionStore.getState().reload();
+    body.resolve({ error: { code: 'WORKSPACE_CHANGED' } });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(s.useSessionStore.getState().session).toEqual(auth);
+    expect(replace).not.toHaveBeenCalled();
+  } finally {
+    dispose();
+  }
+});
