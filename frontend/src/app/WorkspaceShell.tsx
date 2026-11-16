@@ -1,3 +1,5 @@
+import { HomeIntake } from '../features/home/HomeIntake';
+import { RecentRecorder } from '../features/home/RecentRecorder';
 import { Alert } from 'antd';
 import { Blocks, Building2, Hammer, House, Play, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -36,16 +38,28 @@ export function WorkspaceShell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
   useDownloadWorkspace(session?.workspace.tenant_id ?? '');
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        setSearchValue('');
         setSearchOpen(true);
       }
     };
+    const open = (event: Event) => {
+      setSearchValue(
+        event instanceof CustomEvent && typeof event.detail === 'string' ? event.detail.slice(0, 500) : '',
+      );
+      setSearchOpen(true);
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('ontology:open-search', open);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('ontology:open-search', open);
+    };
   }, []);
   if (!session) return null;
   const workspace = workspaceFor(pathname);
@@ -72,7 +86,14 @@ export function WorkspaceShell() {
           />
         </div>
       }
-      topBar={<WorkspaceHeader onSearch={() => setSearchOpen(true)} />}
+      topBar={
+        <WorkspaceHeader
+          onSearch={() => {
+            setSearchValue('');
+            setSearchOpen(true);
+          }}
+        />
+      }
       identity={
         <div className={styles.identity}>
           <IdentityBar
@@ -107,10 +128,12 @@ export function WorkspaceShell() {
         <LegacyHarnessConversation />
       </LegacyBlock>
       <WorkspaceBreadcrumbs />
+      <RecentRecorder />
+      <HomeIntake key={session.user.id + ':' + session.workspace.tenant_id} />
       <div data-workspace-content>
         <AppRoutes principal={principal} />
       </div>
-      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <GlobalSearch initialValue={searchValue} open={searchOpen} onClose={() => setSearchOpen(false)} />
     </AppShell>
   );
 }

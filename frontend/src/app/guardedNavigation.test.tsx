@@ -5,6 +5,7 @@ import { AuthorityDetail } from '@legacy/pages/Authority';
 import { blankAuthoritySpec } from '@legacy/pages/authority-types';
 import { setWorkspaceTransition } from '../state/workspace-guard';
 import { requestRouteNavigation } from './guardedNavigation';
+import { terms } from '../i18n/zh-CN';
 
 const { queries } = vi.hoisted(() => ({ queries: new Map<string, unknown>() }));
 vi.mock('@legacy/api', () => ({
@@ -24,7 +25,7 @@ vi.mock('@legacy/auth', () => ({
   }),
 }));
 
-const message = '当前规范有尚未保存的修改，确定离开并放弃这些修改吗？';
+const message = terms.labels.home_authority_discard;
 beforeEach(() => {
   window.history.replaceState(null, '', '/authority/rule?tab=content#start');
   setWorkspaceTransition('idle');
@@ -59,7 +60,7 @@ function editor(dirty = true) {
       </Routes>
     </MemoryRouter>,
   );
-  const field = screen.getByLabelText('规范名称');
+  const field = screen.getByLabelText(terms.labels.home_authority_name);
   if (dirty) fireEvent.change(field, { target: { value: 'Unsaved authority title' } });
   return { ...mounted, field };
 }
@@ -130,6 +131,6 @@ describe('programmatic navigation cooperates with the actual legacy Authority li
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     fireEvent.click(document.querySelector<HTMLAnchorElement>('a[href="/authority"]')!);
     expect(confirm).toHaveBeenCalledExactlyOnceWith(message);
-    expect(screen.getByLabelText('规范名称')).toHaveValue('Unsaved authority title');
+    expect(screen.getByLabelText(terms.labels.home_authority_name)).toHaveValue('Unsaved authority title');
   });
 });
