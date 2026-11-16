@@ -85,9 +85,9 @@ for (const role of roles) {
         await primary(page).locator(`a[href="${path}"]`).click();
         const expected = secondaryPaths(path, role, person.permissions);
         if (expected.length) {
-          await expect(secondary(page)).toBeVisible();
-          expect(await links(secondary(page))).toEqual(expected);
           await expect(page).toHaveURL((url) => url.pathname === expected[0]);
+          await expect(secondary(page)).toBeVisible();
+          await expect.poll(() => links(secondary(page))).toEqual(expected);
         } else await expect(secondary(page)).toHaveCount(0);
         await expect(
           primary(page).locator(`a[href="${path}"]`),
