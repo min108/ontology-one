@@ -80,9 +80,9 @@ _ERRORS = {
     "LOCAL_STATE_INVALID": "本安装实例的私有配置不完整或无效；为保护现有数据，未重置数据库凭据。",
     "UPGRADE_SOURCE_BUSY": "请先关闭旧版平台，再重试升级。升级期间旧版不得启动。",
     "UPGRADE_TARGET_NOT_EMPTY": "新版目录已存在 data，未覆盖任何数据。请使用重新解压的完整新版运行包。",
-    "UPGRADE_SOURCE_INVALID": "旧版目录或私有数据校验未通过；未修改旧版数据。请选择已完成初始化的0.5.0或0.6.0运行包目录。",
+    "UPGRADE_SOURCE_INVALID": "旧版目录或私有数据校验未通过；未修改旧版数据。请选择已完成初始化的0.5.0、0.6.0或0.7.0运行包目录。",
     "UPGRADE_SOURCE_CHANGED": "复制期间旧版数据发生变化；本次升级已中止，旧版数据保留。",
-    "UPGRADE_UNSUPPORTED": "此升级入口支持0.5.0或0.6.0到0.7.0，并要求两版使用相同固定MySQL运行时。",
+    "UPGRADE_UNSUPPORTED": "此升级入口支持0.5.0、0.6.0或0.7.0到1.0.0，并要求两版使用相同固定MySQL运行时。",
     "INTERNAL_ERROR": "启动器未能完成操作；未终止其他程序，也未删除已有数据。",
 }
 
@@ -1258,7 +1258,7 @@ def main():
 
                         source = args.source
                         if source is None and not args.non_interactive:
-                            source = Path(input("请粘贴已关闭的0.5.0或0.6.0运行包目录：").strip().strip('"'))
+                            source = Path(input("请粘贴已关闭的0.5.0、0.6.0或0.7.0运行包目录：").strip().strip('"'))
                         if source is None:
                             raise LaunchError("UPGRADE_SOURCE_INVALID")
                         try:

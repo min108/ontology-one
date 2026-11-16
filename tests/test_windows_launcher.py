@@ -423,6 +423,33 @@ class LauncherTests(unittest.TestCase):
         launcher.write_json(launcher.LOCAL / "upgrade-receipt.json", receipt)
         self.assertEqual(launcher.bootstrap_input(True), {})
 
+    def test_0_7_initialized_marker_requires_matching_upgrade_receipt(self) -> None:
+        settings = launcher.get_installation()
+        launcher.write_json(launcher.READY, {"installation_id": settings["installation_id"], "version": "0.7.0"})
+        with self.assertRaises(launcher.LaunchError):
+            launcher.bootstrap_input(True)
+        receipt = {
+            "schema_version": 1,
+            "state": "copied",
+            "from_version": "0.7.0",
+            "to_version": launcher.APP_VERSION,
+            "installation_id": settings["installation_id"],
+            "source_manifest_sha256": "a" * 64,
+        }
+        for key, value in (
+            ("from_version", "0.6.0"),
+            ("to_version", "0.7.0"),
+            ("installation_id", "foreign"),
+            ("state", "pending"),
+            ("source_manifest_sha256", "invalid"),
+        ):
+            with self.subTest(field=key):
+                launcher.write_json(launcher.LOCAL / "upgrade-receipt.json", {**receipt, key: value})
+                with self.assertRaises(launcher.LaunchError):
+                    launcher.bootstrap_input(True)
+        launcher.write_json(launcher.LOCAL / "upgrade-receipt.json", receipt)
+        self.assertEqual(launcher.bootstrap_input(True), {})
+
 
 class WindowsEntryEncodingTests(unittest.TestCase):
     def test_windows_entries_preserve_unicode_paths_without_cmd_reexpansion(self):

@@ -1,4 +1,4 @@
-"""Stopped-instance 0.5/0.6 -> 0.7 copy. Never modify or run the old installation.
+"""Stopped-instance 0.5/0.6/0.7 -> 1.0 copy. Never modify or run the old installation.
 
 The caller owns the new installation's command gate. The old launcher command
 and lifetime locks remain held until a complete private copy is promoted. The
@@ -18,8 +18,8 @@ import tempfile
 from backend import platform_io as io
 from backend.version import APP_VERSION
 
-FROM_VERSIONS = ("0.5.0", "0.6.0")
-TO_VERSION = "0.7.0"
+FROM_VERSIONS = ("0.5.0", "0.6.0", "0.7.0")
+TO_VERSION = "1.0.0"
 _EPHEMERAL = {
     "runtime-state.json",
     "service.lock",

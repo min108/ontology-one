@@ -85,6 +85,29 @@ class UpgradeTests(unittest.TestCase):
         receipt["from_version"] = "0.6.0"
         self.assertFalse(upgrade.compatible_marker(self.marker, self.settings, receipt))
 
+    def test_0_7_copy_preserves_source_and_records_exact_versions(self) -> None:
+        manifest = upgrade.read_json(self.source / "runtime/manifest.json")
+        manifest["application_version"] = "0.7.0"
+        io.atomic_write(self.source / "runtime/manifest.json", json.dumps(manifest).encode())
+        self.marker["version"] = "0.7.0"
+        io.atomic_write(self.local / "initialized.json", json.dumps(self.marker).encode())
+        before = {p.relative_to(self.source): p.read_bytes() for p in self.source.rglob("*") if p.is_file()}
+        result = upgrade.upgrade(self.source, self.target)
+        self.assertEqual(result["from_version"], "0.7.0")
+        self.assertEqual(result["to_version"], APP_VERSION)
+        self.assertTrue(result["source_preserved"])
+        self.assertEqual(
+            before, {p.relative_to(self.source): p.read_bytes() for p in self.source.rglob("*") if p.is_file()}
+        )
+        copied = self.target / "data/local"
+        self.assertEqual(upgrade.read_json(copied / "installation.json", True), self.settings)
+        self.assertEqual((self.target / "data/mysql/synthetic.ibd").read_bytes(), b"fixture-only unchanged bytes")
+        self.assertFalse((copied / "runtime-state.json").exists())
+        receipt = upgrade.read_json(copied / "upgrade-receipt.json", True)
+        self.assertEqual((receipt["from_version"], receipt["to_version"]), ("0.7.0", APP_VERSION))
+        self.assertTrue(upgrade.compatible_marker(self.marker, self.settings, receipt))
+        io.assert_private(copied / "installation.json")
+
     def test_running_source_lock_prevents_copy(self):
         with io.secure_open(self.local / "service.lock", "rb") as stream, io.file_lock(stream, blocking=False):
             with self.assertRaises(upgrade.UpgradeError) as failure:
@@ -168,6 +191,11 @@ class UpgradeTests(unittest.TestCase):
 
 
 class ApplicationVersionTests(unittest.TestCase):
+    def test_upgrade_target_matches_current_version_and_preserves_sources(self) -> None:
+        self.assertEqual(upgrade.TO_VERSION, APP_VERSION)
+        self.assertTrue({"0.5.0", "0.6.0", "0.7.0"}.issubset(upgrade.FROM_VERSIONS))
+        self.assertNotIn(APP_VERSION, upgrade.FROM_VERSIONS)
+
     def test_version_is_strict_and_missing_version_is_not_silently_guessed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
