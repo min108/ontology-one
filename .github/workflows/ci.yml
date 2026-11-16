@@ -115,7 +115,9 @@ jobs:
         run: frontend/node_modules/.bin/playwright install --with-deps chromium
       - name: Original UI browser baseline
         run: python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
-      - name: Foundation Shell browser acceptance
+      - name: Original replacement-page comparison screenshots
+        run: python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-replacements-ci -- --config e2e/legacy-replacements.config.mjs
+      - name: Foundation core pages home identity and SDK acceptance
         run: python e2e/run.py --target foundation --harness --evidence work/evidence/r1/e2e-foundation-ci
       - name: Administration operations in a separate fresh fixture scope
         run: python e2e/run_admin.py --evidence work/evidence/r1/e2e-admin-ci
@@ -221,6 +223,59 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Prepare readable original replacement-page evidence
+        if: always()
+        env:
+          E2E_COMPLETE_ARTIFACT_URL: ${{ steps.complete-evidence.outputs.artifact-url }}
+        run: node e2e/evidence.mjs work/evidence/r1/e2e-legacy-replacements-ci work/e2e-replacements-ci-packages
+      - name: Upload original replacement-page summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-replacements-summary-${{ github.run_id }}
+          path: work/e2e-replacements-ci-packages/summary/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload original overview-modeler screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-replacement-overview-modeler-${{ github.run_id }}
+          path: work/e2e-replacements-ci-packages/replacement-overview-modeler/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload original login-empty screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-replacement-login-empty-${{ github.run_id }}
+          path: work/e2e-replacements-ci-packages/replacement-login-empty/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload original security-admin screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-replacement-security-admin-${{ github.run_id }}
+          path: work/e2e-replacements-ci-packages/replacement-security-admin/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload original settings-admin screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-replacement-settings-admin-${{ github.run_id }}
+          path: work/e2e-replacements-ci-packages/replacement-settings-admin/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload original administration-hq screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-replacement-administration-hq-${{ github.run_id }}
+          path: work/e2e-replacements-ci-packages/replacement-administration-hq/
+          if-no-files-found: warn
+          retention-days: 30
       - name: Prepare readable administration evidence
         if: always()
         env:
@@ -514,7 +569,7 @@ jobs:
       - name: Build explicit foundation evidence archive
         if: always()
         run: |
-          python scripts/build_evidence.py --input work/evidence/r1/ci --input work/e2e-ci-packages --input work/e2e-foundation-ci-packages --input work/e2e-visual-ci-packages --input work/e2e-admin-ci-packages --steps e2e/REPRODUCE.md --output work/packages/foundation
+          python scripts/build_evidence.py --input work/evidence/r1/ci --input work/e2e-ci-packages --input work/e2e-foundation-ci-packages --input work/e2e-visual-ci-packages --input work/e2e-admin-ci-packages --input work/e2e-replacements-ci-packages --steps e2e/REPRODUCE.md --output work/packages/foundation
       - name: Upload foundation archive and digest
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

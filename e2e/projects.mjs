@@ -33,12 +33,26 @@ export function acceptanceSelection(
       name: "foundation-pages",
       testMatch: ["**/legacy.spec.mjs", "**/foundation-shell.spec.mjs"],
     },
+    {
+      name: "foundation-home",
+      testMatch: "**/foundation-home.spec.mjs",
+      dependencies: ["foundation-pages"],
+      workers: 1,
+      fullyParallel: false,
+    },
+    {
+      name: "foundation-identity",
+      testMatch: "**/foundation-identity.spec.mjs",
+      dependencies: ["foundation-home"],
+      workers: 1,
+      fullyParallel: false,
+    },
   ];
   if (visual)
     projects.push({
       name: "foundation-visual",
       testMatch: "**/foundation-visual.spec.mjs",
-      dependencies: ["foundation-pages"],
+      dependencies: ["foundation-identity"],
       workers: 1,
       fullyParallel: false,
     });
@@ -46,7 +60,7 @@ export function acceptanceSelection(
     projects.push({
       name: "harness-sdk",
       testMatch: "**/foundation-harness.spec.mjs",
-      dependencies: [visual ? "foundation-visual" : "foundation-pages"],
+      dependencies: [visual ? "foundation-visual" : "foundation-identity"],
       workers: 1,
       fullyParallel: false,
     });

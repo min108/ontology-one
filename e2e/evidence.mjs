@@ -93,6 +93,22 @@ export function packageEvidence(
     if (roles.includes(role) || paths.length) groups[role] = paths;
   }
   const harnessScreenshots = resolve(source, "harness-screenshots");
+  const replacements = resolve(source, "screenshots", "legacy-replacements");
+  if (existsSync(replacements)) {
+    if (lstatSync(replacements).isSymbolicLink())
+      throw new Error("Evidence cannot contain symbolic directories");
+    for (const page of [
+      "overview-modeler",
+      "login-empty",
+      "security-admin",
+      "settings-admin",
+      "administration-hq",
+    ]) {
+      const path = `screenshots/legacy-replacements/${page}.png`;
+      if (existsSync(resolve(source, path)))
+        groups[`replacement-${page}`] = [path];
+    }
+  }
   if (existsSync(harnessScreenshots)) {
     if (lstatSync(harnessScreenshots).isSymbolicLink())
       throw new Error("Evidence cannot contain symbolic directories");

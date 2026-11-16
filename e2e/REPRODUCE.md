@@ -25,6 +25,7 @@ python -m pip install -r requirements.txt -r requirements-dev.txt
 npm --prefix frontend ci
 frontend/node_modules/.bin/playwright install --with-deps chromium
 python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
+python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-replacements-ci -- --config e2e/legacy-replacements.config.mjs
 python e2e/run.py --target foundation --harness --evidence work/evidence/r1/e2e-foundation-ci
 python e2e/run_admin.py --evidence work/evidence/r1/e2e-admin-ci
 python e2e/run.py --target foundation --visual-only --evidence work/evidence/r1/e2e-visual-ci
@@ -37,8 +38,13 @@ original fixture structure. Foundation loads the same fixture and runs all curre
 migrations before startup. `--fixture PATH` permits the integration fixture location;
 the default is `tests/fixtures/v070`. Alternate ports use `--api-port`/`--agent-port`.
 
-The original 75 tests are unchanged. New operation tests run in `foundation-pages`;
-the real SDK test runs last with one worker in that behavior run. A second runner
+The original 75 tests are unchanged. The core dependency chain is
+`foundation-pages` (original 75 plus Shell) → `foundation-home` (4 operations) →
+`foundation-identity` → `harness-sdk`. Home and identity each use one worker and
+default test mode: a failed case does not skip remaining cases in that project.
+Dependency projects must all succeed before the next stage starts. In particular,
+Home draft creation cannot race its later exact count comparison. The real SDK
+runs last with one worker, retaining its actual business deadline. A second runner
 uses a fresh namespace and original fixture for visual work with one worker, so
 concurrent behavior-test writes and audit order cannot contaminate screenshots. Admin
 configuration/demo operations use their own `run_admin.py` scope and provider lifecycle,
@@ -139,7 +145,8 @@ node e2e/evidence.mjs work/evidence/r1/e2e-legacy-ci work/e2e-ci-packages
 node e2e/evidence.mjs work/evidence/r1/e2e-foundation-ci work/e2e-foundation-ci-packages
 node e2e/evidence.mjs work/evidence/r1/e2e-visual-ci work/e2e-visual-ci-packages
 node e2e/evidence.mjs work/evidence/r1/e2e-admin-ci work/e2e-admin-ci-packages
-python scripts/build_evidence.py --input work/evidence/r1/ci --input work/e2e-ci-packages --input work/e2e-foundation-ci-packages --input work/e2e-visual-ci-packages --input work/e2e-admin-ci-packages --steps e2e/REPRODUCE.md --output work/packages/foundation
+node e2e/evidence.mjs work/evidence/r1/e2e-legacy-replacements-ci work/e2e-replacements-ci-packages
+python scripts/build_evidence.py --input work/evidence/r1/ci --input work/e2e-ci-packages --input work/e2e-foundation-ci-packages --input work/e2e-visual-ci-packages --input work/e2e-admin-ci-packages --input work/e2e-replacements-ci-packages --steps e2e/REPRODUCE.md --output work/packages/foundation
 python scripts/build_evidence.py --input work/evidence/r1/offline-preparation --input work/evidence/r1/offline --steps e2e/REPRODUCE.md --output work/packages/offline
 ```
 
@@ -164,3 +171,11 @@ diff. Per-file before/after SHA-256 values are included. The historical
 ```sh
 python scripts/checks/check_historical_format.py --output work/evidence/r1/ci/historical-format.json
 ```
+
+The original replacement pages use an additional isolated `legacy` runner scope:
+Overview/modeler, empty Login, Security/admin, Settings/admin and Administration/HQ.
+Their five full-page screenshots are independent page packages, each subject to the
+same 30 MiB content-plus-index budget, with a separate runner/environment/results
+summary and the complete-artifact link. These are actual original `1359118` pages,
+not a reconstruction of the old design. They supplement the unchanged original 75
+and supply A.2 visual comparison evidence; they are not new-version visual baselines.
