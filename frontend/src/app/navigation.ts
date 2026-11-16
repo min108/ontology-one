@@ -33,6 +33,7 @@ const entries: Record<Workspace, RouteEntry[]> = {
     { key: 'work', label: terms.labels.shell_work, href: '/work' },
   ],
   ontology: [
+    { key: 'catalog', label: terms.labels.r2_catalog_title, href: '/ontology/catalog' },
     { key: 'assets', label: terms.labels.shell_assets, href: '/assets' },
     { key: 'authority', label: terms.labels.shell_authority, href: '/authority' },
     { key: 'graph', label: terms.labels.shell_graph, href: '/graph' },

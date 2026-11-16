@@ -199,6 +199,8 @@ it('preserves the staged file batch when an editor rejects navigation and can re
     fireEvent.drop(document, {
       dataTransfer: { types: ['Files'], files: [new File(['retained'], 'guarded.md')] },
     });
+    fireEvent.click(await screen.findByRole('button', { name: terms.labels.home_intake_materials }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(await screen.findByText('guarded.md')).toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
     expect(readWorkspaceGuards().dirtyCount).toBeGreaterThan(0);

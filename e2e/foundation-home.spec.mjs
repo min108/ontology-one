@@ -82,6 +82,9 @@ test.describe("R1-6 workbench and intake", () => {
     page.once("dialog", (dialog) => dialog.dismiss());
     await page.dispatchEvent("body", "dragenter", { dataTransfer: files });
     await page.dispatchEvent("body", "drop", { dataTransfer: files });
+    await page
+      .getByRole("button", { name: "带入素材整理", exact: true })
+      .click();
     await expect(page).toHaveURL(draftUrl);
     await expect(title).toHaveValue(edited);
     await expect(

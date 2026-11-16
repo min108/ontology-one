@@ -18,6 +18,21 @@ class ContractTests(unittest.TestCase):
                 "org.tree",
                 "agent.readiness",
                 "semantic.search",
+                "recipe.start",
+                "recipe.status",
+                "changeset.get",
+                "changeset.decide_items",
+                "changeset.apply",
+                "changeset.apply_and_submit",
+                "review.list",
+                "review.get",
+                "review.decide",
+                "artifact.create",
+                "artifact.render",
+                "artifact.get",
+                "artifact.list",
+                "element.list",
+                "element.get",
                 "model.configure",
                 "backup.export",
                 "backup.restore",
@@ -30,9 +45,33 @@ class ContractTests(unittest.TestCase):
         for item in registry.entries.values():
             for model in (item.input, item.output):
                 self.assertEqual(model.model_json_schema()["additionalProperties"], False)
-            mutation = item.id in {"org.manage", "user.manage", "grant.manage", "model.configure", "backup.restore"}
-            self.assertEqual(item.effect, "state_change" if mutation else "read")
-            self.assertEqual(item.confirm, "L3" if mutation or item.id == "backup.export" else "L0")
+            mutation = item.id in {
+                "org.manage",
+                "user.manage",
+                "grant.manage",
+                "model.configure",
+                "backup.restore",
+                "review.decide",
+            }
+            draft = item.id in {
+                "recipe.start",
+                "changeset.decide_items",
+                "changeset.apply",
+                "changeset.apply_and_submit",
+                "artifact.create",
+                "artifact.render",
+            }
+            self.assertEqual(item.effect, "state_change" if mutation else "write_draft" if draft else "read")
+            confirmation = (
+                "L3"
+                if mutation or item.id == "backup.export"
+                else "L2"
+                if item.id == "changeset.apply_and_submit"
+                else "L1"
+                if draft
+                else "L0"
+            )
+            self.assertEqual(item.confirm, confirmation)
             self.assertEqual(item.tool_name, item.id.replace(".", "_"))
 
     def test_every_role_matches_declared_permissions(self) -> None:
@@ -55,6 +94,22 @@ class ContractTests(unittest.TestCase):
                             item.id,
                             ctx,
                             {
+                                "recipe.start": {"material_id": "material"},
+                                "recipe.status": {"run_id": "run"},
+                                "changeset.get": {"changeset_id": "proposal"},
+                                "changeset.decide_items": {
+                                    "changeset_id": "proposal",
+                                    "item_ids": ["item"],
+                                    "decision": "accepted",
+                                },
+                                "changeset.apply": {"changeset_id": "proposal"},
+                                "changeset.apply_and_submit": {"changeset_id": "proposal"},
+                                "review.get": {"entity_id": "entity"},
+                                "review.decide": {"entity_id": "entity", "decision": "approve_publish", "version": 1},
+                                "artifact.create": {"session_id": "a" * 32, "run_id": "b" * 32},
+                                "artifact.get": {"artifact_id": "ART-" + "a" * 16},
+                                "artifact.render": {"artifact_id": "ART-" + "a" * 16, "expected_version": 1},
+                                "element.get": {"entity_id": "entity"},
                                 "model.configure": {"base_url": "https://model.test/anthropic", "model": "test"},
                                 "user.manage": {
                                     "action": "update",

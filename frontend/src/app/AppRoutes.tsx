@@ -11,6 +11,8 @@ import { WorkspaceLanding } from './WorkspaceLanding';
 import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from './navigation';
 
 const IntakePage = lazy(() => import('../features/build/IntakePage'));
+const CatalogPage = lazy(() => import('../features/ontology/CatalogPage'));
+const ElementPage = lazy(() => import('../features/ontology/ElementPage'));
 const ChangesetPage = lazy(() => import('../features/build/ChangesetPage'));
 const ReviewsPage = lazy(() => import('../features/build/ReviewsPage'));
 const Home = lazy(() => import('../features/home/Home'));
@@ -88,6 +90,8 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
     >
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/ontology/catalog" element={<CatalogPage />} />
+        <Route path="/ontology/elements/:id" element={<ElementPage />} />
         <Route path="/build/intake" element={<IntakePage />} />
         <Route path="/build/changesets/:id" element={<ChangesetPage />} />
         <Route path="/govern/reviews" element={<ReviewsPage />} />

@@ -9,6 +9,7 @@ export function useIncomingFiles(
   target: IntakeTarget,
   receive: (files: File[]) => boolean | void,
   enabled = true,
+  route = '/' + target,
 ): void {
   const session = useSessionStore((state) => state.session),
     scopeKey = useScopeStore((state) => state.scopeKey);
@@ -25,8 +26,8 @@ export function useIncomingFiles(
       !session.permissions.can_edit ||
       session.workspace.readonly ||
       !id ||
-      pathname !== '/' + target ||
-      window.location.pathname !== '/' + target ||
+      pathname !== route ||
+      window.location.pathname !== route ||
       accepted.current.has(id)
     )
       return;
@@ -45,5 +46,5 @@ export function useIncomingFiles(
       },
       { replace: true },
     );
-  }, [id, session, scopeKey, target, pathname, locationKey, receive, enabled, setParams]);
+  }, [id, session, scopeKey, target, pathname, locationKey, receive, enabled, setParams, route]);
 }

@@ -1,11 +1,12 @@
 import { Alert, Button, Progress } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, invokeCapability } from '../../api/client';
 import { PageHeader } from '../../ui/PageHeader';
 import { StatusTag } from '../../ui/StatusTag';
 import { BuildForbidden } from './shared';
 import { fileProblems } from '../home/intake';
+import { useIncomingFiles } from '../home/useIncomingFiles';
 import { useWorkspaceGuard } from '../../app/useWorkspaceGuard';
 import { actions, copy, type Recipe, useBuildIdentity, useLifetime } from './shared';
 import styles from './Build.module.css';
@@ -18,6 +19,7 @@ function Intake({ canEdit }: { canEdit: boolean }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const [file, setFile] = useState<File>();
+  const [autoStart, setAutoStart] = useState(false);
   const [runId, setRunId] = useState(params.get('run') || '');
   const [run, setRun] = useState<Recipe>();
   const [busy, setBusy] = useState(false),
@@ -35,7 +37,7 @@ function Intake({ canEdit }: { canEdit: boolean }) {
     setFile(incoming[0]);
     setError('');
   }
-  async function start() {
+  const start = useCallback(async () => {
     const signal = lifetime.current?.signal;
     if (!file || busy || !canEdit || signal?.aborted) return;
     setBusy(true);
@@ -62,7 +64,23 @@ function Intake({ canEdit }: { canEdit: boolean }) {
     } finally {
       if (!signal?.aborted) setBusy(false);
     }
-  }
+  }, [file, busy, canEdit, lifetime, navigate]);
+  useIncomingFiles(
+    'materials',
+    (incoming) => {
+      if (incoming.length !== 1 || fileProblems(incoming, 'materials').length) return false;
+      setFile(incoming[0]);
+      setAutoStart(true);
+      return true;
+    },
+    canEdit && !file && !busy,
+    '/build/intake',
+  );
+  useEffect(() => {
+    if (!autoStart || !file || busy || !canEdit) return;
+    setAutoStart(false);
+    void start();
+  }, [autoStart, file, busy, canEdit, start]);
   useEffect(() => {
     if (!runId) return;
     const controller = new AbortController();

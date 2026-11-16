@@ -3,11 +3,11 @@
 | 轮 | 版本 | 状态 | 验收日期 | 报告 |
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
-| R2 | 1.1.0 | S0–S3 实施中，进入主线演练 | — | [R2-PLAN](rounds/R2-PLAN.md) |
+| R2 | 1.1.0 | S0–S6 已实现，组合验证中 | — | [R2-PLAN](rounds/R2-PLAN.md) |
 
 ## 当前基线
 
-R2 分支 `dev/r2-sprint`，起点 `d8dff44`；版本 1.1.0，控制库0001–0005、机构库0001–0003，可信恢复结构v1–v6。S1/S2/S3相关13项测试、模拟模型五步浏览器主线和真实DeepSeek五步服务主线已通过（19.7秒、5条模型候选、0条本地兜底）。完整CI及Compose启动验证待本轮收口。
+R2 分支 `dev/r2-sprint`，起点 `d8dff44`；版本 1.1.0，控制库0001–0005、机构库0001–0003，可信恢复结构v1–v6。S1/S2/S3相关13项测试、模拟模型五步浏览器主线和真实DeepSeek五步服务主线已通过（19.7秒、5条模型候选、0条本地兜底）。Compose全新启动与原演示资料装载通过，S5/S6组合CI待收口。
 
 R1 分支 `dev/r1-foundation`，原代码基线 `1359118`（0.7.0）；本次受验代码 `bd6cbce9e8d3cd7dbf6fa379633ee162cfeeeae2`，最终交付提交另见Git历史。
 [CI 43882472939](https://github.com/min108/ontology-one/actions/runs/43882472939)：成功；foundation与offline均通过，210次浏览器执行、63图比较通过。
@@ -45,11 +45,11 @@ R1 独立验收通过：见 `rounds/R1-ACCEPTANCE.md`。
 
 ## 已知限制
 
-Windows原生和真实模型探针待负责人执行；Linux原39项跳过、合成模型机制验证均不代表这些外部项通过。Claude独立验收及标签/发布由负责人安排，本轮不建PR、不发布。
+Windows原生待负责人执行，R2真实DeepSeek主线已演练；Linux原39项跳过、合成模型机制验证均不代表这些外部项通过。Claude独立验收及标签/发布由负责人安排，本轮不建PR、不发布。
 P-17发行包链接需用户主动访问公网，内网可能不可达。新机构开通失败保留目录/库/审计，不自动DROP、启用或重试；已有部署失败须停止共享实例后离线恢复。
 当前同步timeout不支持抢占取消；duties仅存取与身份复核，不开放授予；偏好不承载授权。
 
 ## 旧页面剩余清单与在用的承接块
 
 冻结82个legacy文件，经A.2退役9个、剩73个，清单见 `scripts/checks/legacy_baseline.json`。退役App/main、Overview、Settings/HarnessConfiguration及专属CSS、Security/Administration/auth.css；auth.tsx保留会话桥。
-原25路由、全局任务/智能浮层、集成应用、DemoWorkspace及未重建业务页继续承接。工作台使用同源统计/明细；素材/台账接收文件后仍由用户确认上传。各轮先完成操作对照再退役。
+原25路由、全局任务/智能浮层、集成应用、DemoWorkspace及未重建业务页继续承接。工作台使用同源统计/明细；旧素材/台账接收文件后仍由用户确认上传；R2制度拖入默认通过零必填对话框直接整理。各轮先完成操作对照再退役。

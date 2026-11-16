@@ -49,7 +49,8 @@ class AssemblyTests(unittest.TestCase):
                         child.level -= 2
                 actual[node.name] = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
                 self.assertIs(getattr(main, node.name), getattr(core, node.name))
-        self.assertEqual(actual, CONTRACT["functions"])
+        # R2 retains the frozen R1 hashes and pins the three authorized changes exactly.
+        self.assertEqual(actual, {**CONTRACT["functions"], **CONTRACT["r2_functions"]})
 
     def test_legacy_connection_patch_is_forwarded(self) -> None:
         from backend.api.v1 import core

@@ -22,7 +22,11 @@ async function login(browser, role) {
   return { context, page };
 }
 async function screenshot(page, name) {
-  if (!live) await page.screenshot({ path: resolve(output, name + ".png") });
+  if (!live)
+    await page.screenshot({
+      path: resolve(output, name + ".png"),
+      animations: "disabled",
+    });
 }
 const response = (page, suffix) =>
   page.waitForResponse(
@@ -50,17 +54,27 @@ test("R2: hand in, check, independently publish, ask, export", async ({
     reviewer = await login(browser, "reviewer");
   const page = builder.page;
   try {
-    await page.goto(process.env.E2E_BASE_URL + "/build/intake");
-    await page.getByLabel("选择制度文档", { exact: true }).setInputFiles({
-      name: "【演示】付款核对制度.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from(documentText),
-    });
-    await screenshot(page, "intake");
+    await page.goto(process.env.E2E_BASE_URL + "/");
+    await expect(
+      page.getByRole("heading", { name: "工作台", exact: true }),
+    ).toBeVisible();
+    const dropped = await page.evaluateHandle((text) => {
+      const data = new DataTransfer();
+      data.items.add(
+        new File([text], "【演示】付款核对制度.txt", { type: "text/plain" }),
+      );
+      return data;
+    }, documentText);
+    await page.dispatchEvent("body", "dragenter", { dataTransfer: dropped });
+    await page.dispatchEvent("body", "drop", { dataTransfer: dropped });
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await screenshot(page, "home-intake");
     const started = response(page, "/recipe.start:invoke");
     await page.getByRole("button", { name: "开始整理", exact: true }).click();
     const recipe = (await (await started).json()).data;
     expect(Boolean(recipe?.id)).toBe(true);
+    await expect(page).toHaveURL(/\/build\/intake/);
+    await screenshot(page, "intake");
     await expect(
       page.getByRole("link", { name: "核对建设方案", exact: true }),
     ).toBeVisible({ timeout: 120_000 });
@@ -120,6 +134,30 @@ test("R2: hand in, check, independently publish, ask, export", async ({
       .click();
     expect((await published).ok()).toBe(true);
     record("点通过");
+    await page.goto(
+      process.env.E2E_BASE_URL +
+        "/ontology/catalog?kind=rule&q=" +
+        encodeURIComponent(selected.entity.title),
+    );
+    await expect(
+      page.getByRole("heading", { name: "本体目录", exact: true }),
+    ).toBeVisible();
+    const cardLink = page.getByRole("link", {
+      name: selected.entity.title,
+      exact: true,
+    });
+    await expect(cardLink).toBeVisible();
+    await screenshot(page, "catalog");
+    await cardLink.click();
+    await expect(
+      page.getByRole("heading", { name: "关键要点", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator("blockquote").first()).toContainText("付款");
+    await screenshot(page, "element");
+    for (const name of ["关系", "版本", "动态", "结构化信息"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      await expect(page.getByRole("tabpanel")).toBeVisible();
+    }
 
     await page.goto(process.env.E2E_BASE_URL + "/applications");
     await page.getByRole("button", { name: "参考范围", exact: true }).click();
@@ -210,7 +248,7 @@ test("R2: hand in, check, independently publish, ask, export", async ({
           provider: live ? "real_deepseek" : "synthetic_messages_real_sdk",
           steps: times,
           total_seconds: Math.round((Date.now() - start) / 1000),
-          screenshots: live ? 0 : 5,
+          screenshots: live ? 0 : 8,
         },
         null,
         2,

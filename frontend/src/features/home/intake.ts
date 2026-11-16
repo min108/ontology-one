@@ -44,15 +44,20 @@ export function fileProblems(files: readonly File[], target: IntakeTarget): stri
       errors.push(file.name + '：' + terms.labels.home_invalid_file);
   return errors;
 }
-type Transfer = { scope: string; target: IntakeTarget; files: File[]; cleanup: () => void };
+type Transfer = { scope: string; target: IntakeTarget; files: File[]; recipe: boolean; cleanup: () => void };
 const transfers = new Map<string, Transfer>();
 const notifyTransfers = () => window.dispatchEvent(new Event('ontology:home-transfers'));
 export function pendingTransfers(scope: HomeScope) {
   return [...transfers.entries()]
     .filter(([, transfer]) => transfer.scope === transferScope(scope))
-    .map(([id, transfer]) => ({ id, target: transfer.target, files: [...transfer.files] }));
+    .map(([id, transfer]) => ({
+      id,
+      target: transfer.target,
+      recipe: transfer.recipe,
+      files: [...transfer.files],
+    }));
 }
-export function stageFiles(scope: HomeScope, target: IntakeTarget, files: File[]): string {
+export function stageFiles(scope: HomeScope, target: IntakeTarget, files: File[], recipe = false): string {
   if (
     !scope.userId ||
     !scope.tenantId ||
@@ -67,6 +72,7 @@ export function stageFiles(scope: HomeScope, target: IntakeTarget, files: File[]
     scope: transferScope(scope),
     target,
     files: [...files],
+    recipe,
     cleanup: registerWorkspaceGuard(() => transfers.has(id)),
   });
   notifyTransfers();

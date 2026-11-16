@@ -44,14 +44,14 @@ function WorkspaceIntake() {
     setError('');
     const all = [...files, ...incoming];
     const target = classifyFiles(all);
-    if ((target === 'materials' || target === 'datasets') && !fileProblems(all, target).length) {
+    if (target === 'datasets' && !fileProblems(all, target).length) {
       handoff(all, target, []);
     } else {
       setFiles(all);
       setOpen(true);
     }
   };
-  function handoff(selected: File[], target: IntakeTarget, remaining: File[]) {
+  function handoff(selected: File[], target: IntakeTarget, remaining: File[], recipe = false) {
     if (!session || !allowed) return;
     const problems = fileProblems(selected, target);
     if (problems.length) {
@@ -63,11 +63,15 @@ function WorkspaceIntake() {
         { userId: session.user.id, tenantId: session.workspace.tenant_id, scopeKey },
         target,
         selected,
+        recipe,
       );
       setFiles(remaining);
       setOpen(false);
       setError('');
-      requestRouteNavigation('/' + target + '?' + new URLSearchParams({ upload: '1', intake: id }), navigate);
+      requestRouteNavigation(
+        (recipe ? '/build/intake' : '/' + target) + '?' + new URLSearchParams({ upload: '1', intake: id }),
+        navigate,
+      );
     } catch {
       setError(terms.labels.home_transfer_unavailable);
       setFiles([...selected, ...remaining]);
@@ -148,7 +152,9 @@ function WorkspaceIntake() {
                 onClick={() => {
                   if (!isWorkspaceLeaving() && !isWorkspaceConfirmationOpen())
                     requestRouteNavigation(
-                      '/' + transfer.target + '?' + new URLSearchParams({ upload: '1', intake: transfer.id }),
+                      (transfer.recipe ? '/build/intake' : '/' + transfer.target) +
+                        '?' +
+                        new URLSearchParams({ upload: '1', intake: transfer.id }),
                       navigate,
                     );
                 }}
@@ -174,53 +180,72 @@ function WorkspaceIntake() {
         />
       )}
       {!open && error && <Alert type="warning" title={error} closable onClose={() => setError('')} />}
-      <Modal
-        key={generation}
-        title={terms.labels.home_intake_title}
-        open={open}
-        onCancel={() => setOpen(false)}
-        footer={null}
-        destroyOnHidden
-      >
-        <p>
-          {classification === 'choice'
-            ? terms.labels.home_intake_csv
-            : classification === 'unsupported'
-              ? terms.labels.home_intake_unsupported
-              : terms.labels.home_intake_mixed}
-        </p>
-        <ul className={styles.files}>
-          {files.map((file, index) => (
-            <li key={index}>
-              <span>{file.name}</span>
+      {open && (
+        <Modal
+          key={generation}
+          title={terms.labels.home_intake_title}
+          open={open}
+          onCancel={() => setOpen(false)}
+          footer={null}
+          destroyOnHidden
+        >
+          <p>
+            {classification === 'materials'
+              ? terms.labels.r2_drop_recipe_help
+              : classification === 'choice'
+                ? terms.labels.home_intake_csv
+                : classification === 'unsupported'
+                  ? terms.labels.home_intake_unsupported
+                  : terms.labels.home_intake_mixed}
+          </p>
+          <ul className={styles.files}>
+            {files.map((file, index) => (
+              <li key={index}>
+                <span>{file.name}</span>
+                <Button
+                  aria-label={terms.labels.home_intake_remove + ' ' + file.name}
+                  onClick={() => setFiles((old) => old.filter((_, i) => i !== index))}
+                >
+                  {terms.labels.home_intake_remove}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {error && <Alert type="error" title={error} />}
+          <div className={styles.actions}>
+            {classification === 'materials' && (
               <Button
-                aria-label={terms.labels.home_intake_remove + ' ' + file.name}
-                onClick={() => setFiles((old) => old.filter((_, i) => i !== index))}
+                type="primary"
+                autoInsertSpace={false}
+                onClick={() => {
+                  if (files.length !== 1) {
+                    setError(terms.labels.r2_drop_one);
+                    return;
+                  }
+                  handoff(files, 'materials', [], true);
+                }}
               >
-                {terms.labels.home_intake_remove}
+                {terms.actions.r2_start}
               </Button>
-            </li>
-          ))}
-        </ul>
-        {error && <Alert type="error" title={error} />}
-        <div className={styles.actions}>
-          <Button onClick={() => send('materials')} disabled={!files.length}>
-            {terms.labels.home_intake_materials}
-          </Button>
-          <Button onClick={() => send('datasets')} disabled={!files.length}>
-            {terms.labels.home_intake_datasets}
-          </Button>
-          <Button
-            onClick={() => {
-              setFiles([]);
-              setOpen(false);
-              setError('');
-            }}
-          >
-            {terms.labels.home_intake_cancel}
-          </Button>
-        </div>
-      </Modal>
+            )}
+            <Button onClick={() => send('materials')} disabled={!files.length}>
+              {terms.labels.home_intake_materials}
+            </Button>
+            <Button onClick={() => send('datasets')} disabled={!files.length}>
+              {terms.labels.home_intake_datasets}
+            </Button>
+            <Button
+              onClick={() => {
+                setFiles([]);
+                setOpen(false);
+                setError('');
+              }}
+            >
+              {terms.labels.home_intake_cancel}
+            </Button>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

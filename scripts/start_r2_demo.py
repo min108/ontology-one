@@ -26,6 +26,21 @@ def main() -> None:
             stream.write("MYSQL_ROOT_PASSWORD=" + secrets.token_urlsafe(32) + "\n")
             stream.write("MYSQL_PASSWORD=" + secrets.token_urlsafe(32) + "\n")
     command = ["docker", "compose", "--project-name", "ontology-r2-demo", "--env-file", str(settings)]
+    ca = os.getenv("SSL_CERT_FILE")
+    if ca and Path(ca).is_file():
+        # Reuse the Dockerfile's build-only trust injection; never disable TLS.
+        override = folder / "build-ca.json"
+        override.write_text(
+            json.dumps(
+                {
+                    "services": {
+                        name: {"build": {"secrets": ["proxy_ca"]}} for name in ("api", "agent", "worker", "migrate")
+                    },
+                    "secrets": {"proxy_ca": {"file": str(Path(ca).resolve())}},
+                }
+            )
+        )
+        command += ["-f", str(ROOT / "docker-compose.yml"), "-f", str(override)]
     subprocess.run([*command, "up", "-d", "--build", "--wait"], cwd=ROOT, check=True)
     subprocess.run(
         [*command, "exec", "-T", "api", "python", "scripts/bootstrap_r2_demo.py"],

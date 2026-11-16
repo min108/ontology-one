@@ -880,5 +880,10 @@
       "PUT",
       "/api/sources/{source_id}/mappings/{mapping_id}"
     ]
-  ]
+  ],
+  "r2_functions": {
+    "edit": "dbc2c4ed95614cdac4b1ec24329ff89670e724742573a33abb939aafdf48e64d",
+    "_entity_action": "dc65b3f5f998421d19fa74a12fed7623ca71fa1e09ae04ef8fdb37ec28657238",
+    "_restore_entity": "c8992b896fc95e616987f220100b8fa5c0eb6b892c4e263aaa766de53e05ff02"
+  }
 }
