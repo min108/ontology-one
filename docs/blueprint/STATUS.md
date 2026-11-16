@@ -6,7 +6,7 @@
 
 ## 当前基线
 
-开发分支 dev/r1-foundation；起点 6e5a02ca1de4ed40d52575fea34a646c140ed1e6，代码基线 1359118dd672431dcd0cde2eb81f2b0f994eef37（0.7.0）。实际开发版本读取 VERSION。控制库与机构库尚未引入版本化迁移，R1-2 建立；不能把历史 workspace_meta.schema_version 当迁移版本。
+开发分支 dev/r1-foundation；起点 6e5a02ca1de4ed40d52575fea34a646c140ed1e6，代码基线 1359118dd672431dcd0cde2eb81f2b0f994eef37（0.7.0）。当前开发版本为 1.0.0；R1-1 已完成，本地 492 项测试（453 通过、39 原生跳过）、16 个流水线测试、8 个回归与构建通过，CI 43802818754 成功。R1-2/3/4/10 与 R1-9 质量工具正在并行。控制库与机构库尚未引入版本化迁移，R1-2 建立；不能把历史 workspace_meta.schema_version 当迁移版本。
 
 ## 遗留事项（跨轮）
 
