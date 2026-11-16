@@ -107,6 +107,8 @@ export function NavigationProvider({children}:{children:ReactNode}){
   return()=>{document.removeEventListener('click',onClick,true);document.removeEventListener('pointerdown',prepareNative,true);document.removeEventListener('contextmenu',prepareNative,true);window.removeEventListener('scroll',onScroll);window.removeEventListener('pagehide',remember);window.clearTimeout(tick);for(const type of ['wheel','touchstart','pointerdown','keydown'])window.removeEventListener(type,interrupt,true);mounted.current=false;queueMicrotask(()=>{if(!mounted.current)stopAutomatic()});window.history.scrollRestoration=previousRestoration};
  },[stopAutomatic]);
  useLayoutEffect(()=>{
+  // Suspense may retain an old route after the browser has already navigated.
+  if(window.location.pathname!==location.pathname||window.location.search!==location.search||window.location.hash!==location.hash)return;
   const currentPath=clean(location.pathname+location.search+location.hash),params=new URLSearchParams(location.search),token=params.get(TOKEN),old=active.current;
   if(old&&href(old)===location.pathname+location.search+location.hash){setVisit({...old});return}
   const intended=pending.current,explicit=token?cache[token]:undefined;
