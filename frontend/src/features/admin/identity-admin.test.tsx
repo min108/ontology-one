@@ -277,6 +277,18 @@ describe('identity administration pages', () => {
     fireEvent.change(screen.getByLabelText(terms.labels.identity_org_name), { target: { value: 'New org' } });
     expect(readWorkspaceGuards().dirtyCount).toBe(1);
   });
+  it('gives organization selectors and ordering controls exact business labels', async () => {
+    wrapper(<OrganizationsPage />, '/admin/orgs');
+    await screen.findByText('Dept');
+    fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_create_org }));
+    expect(screen.getByLabelText(terms.labels.identity_org_category, { exact: true })).toHaveValue(
+      'subsidiary',
+    );
+    expect(screen.getByLabelText(terms.labels.identity_org_parent, { exact: true })).toHaveValue('hq');
+    expect(screen.getByRole('spinbutton', { name: terms.labels.identity_org_sort, exact: true })).toHaveValue(
+      '0',
+    );
+  });
   it('requires enabling a disabled organization before editing it', async () => {
     request.mockResolvedValue({ items: [{ ...orgs[1], status: 'disabled' }], total: 1 });
     wrapper(<OrganizationsPage />, '/admin/orgs');

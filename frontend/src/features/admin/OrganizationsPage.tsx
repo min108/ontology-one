@@ -313,6 +313,7 @@ function OrganizationDialog({
               {copy.identity_org_category}
               <select
                 id="identity-org-category"
+                aria-label={copy.identity_org_category}
                 className={styles.control}
                 value={form.category}
                 disabled={target?.id === 'hq'}
@@ -333,6 +334,7 @@ function OrganizationDialog({
               {copy.identity_org_parent}
               <select
                 id="identity-org-parent"
+                aria-label={copy.identity_org_parent}
                 className={styles.control}
                 value={target?.id === 'hq' ? '' : form.parent_id}
                 disabled={target?.id === 'hq'}
@@ -352,6 +354,7 @@ function OrganizationDialog({
               {copy.identity_org_short_name}
               <Input
                 id="identity-org-short"
+                aria-label={copy.identity_org_short_name}
                 maxLength={120}
                 value={form.short_name}
                 onChange={(event) => setForm({ ...form, short_name: event.target.value })}
@@ -361,6 +364,7 @@ function OrganizationDialog({
               {copy.identity_org_code}
               <Input
                 id="identity-org-code"
+                aria-label={copy.identity_org_code}
                 maxLength={120}
                 value={form.org_code}
                 onChange={(event) => setForm({ ...form, org_code: event.target.value })}
@@ -370,6 +374,7 @@ function OrganizationDialog({
               {copy.identity_org_sort}
               <InputNumber
                 id="identity-org-sort"
+                aria-label={copy.identity_org_sort}
                 min={0}
                 precision={0}
                 max={1000000}
