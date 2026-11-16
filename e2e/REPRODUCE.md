@@ -230,3 +230,9 @@ Expanded audit evidence naturally centers the complete fixed historical row in
 view (rather than aligning its fractional border to the viewport edge) and requires both the row and JSON details to intersect the viewport at ratio 1.
 This keeps the smaller native-125% image useful without masking, resizing, or changing
 the real record. Review must also check that the fixed header does not cover the row.
+
+View-mode preparation uses the checked native Segmented radio's keyboard navigation
+(ArrowLeft/Right), verifies the real PUT and saved GET, explicitly closes with Escape,
+and reopens to check selection. A pointer click's auto-scroll can relocate the popup
+between coordinate calculation and dispatch; no retry, timeout increase, direct API
+write, or DOM value assignment is used to avoid that race.

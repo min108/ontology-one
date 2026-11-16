@@ -49,18 +49,27 @@ export async function selectSavedViewMode(page, requested) {
     const label = radio(page, mode).locator("..");
     await expect(label).toHaveJSProperty("tagName", "LABEL");
     await expect(label).toBeVisible();
-    const pending = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === "/api/v2/prefs/view_mode" &&
-        response.request().method() === "PUT" &&
-        response.request().postDataJSON()?.value === mode,
-    );
-    await label.click();
-    // Menu item click closes Dropdown. Its stale visible DOM is not a reopened menu.
-    await expect(menu(page)).toBeHidden();
-    const response = await pending;
+    // Native radio tab order includes the checked input. Segmented's keydown
+    // handler selects its adjacent option; no pointer coordinate or auto-scroll
+    // click can race the popup's subsequent realignment.
+    const current = radio(page, mode === "simple" ? "pro" : "simple");
+    await expect(current).toBeChecked();
+    await expect(current).toBeEnabled();
+    await expect(current).toHaveJSProperty("tabIndex", 0);
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/v2/prefs/view_mode" &&
+          response.request().method() === "PUT" &&
+          response.request().postDataJSON()?.value === mode,
+      ),
+      current.press(mode === "simple" ? "ArrowLeft" : "ArrowRight"),
+    ]);
     expect(response.ok()).toBe(true);
     await expect.poll(() => readSavedViewMode(page)).toBe(mode);
+    // Keyboard selection need not dismiss Dropdown. Explicit Escape owns that
+    // lifecycle, then a fresh open verifies the persisted target state.
+    await closeViewModeMenu(page);
     await openViewModeMenu(page);
     await expect(radio(page, mode)).toBeChecked();
     await closeViewModeMenu(page);
