@@ -48,7 +48,7 @@ python e2e/run.py --target foundation --api-port 8785 --agent-port 8786
 # 只诊断 Shell 时可附 -- foundation-shell.spec.mjs；该结果不能替代完整 89 条。
 ```
 
-CI 不设置 `E2E_CHROMIUM`，使用固定 Playwright 浏览器。本地 CDN 403 时只用已授权的 `E2E_CHROMIUM=/usr/bin/chromium`，记录实际版本，不绕过网络限制。CI 已添加独立 foundation 运行与 summary/三角色/superadmin 小包；真实 SDK 浮层仍通过显式 --harness 另选。
+CI 不设置 `E2E_CHROMIUM`，使用固定 Playwright 浏览器。本地 CDN 403 时只用已授权的 `E2E_CHROMIUM=/usr/bin/chromium`，记录实际版本，不绕过网络限制。CI 已添加完整 foundation --harness 运行与 summary/三角色/superadmin/SDK 小包。页面89条先执行，依赖的SDK项目单worker随后执行，避免并行截图拖过真实业务模型deadline。
 
 ## 真实 SDK 与全局浮层
 
@@ -61,7 +61,7 @@ CI 不设置 `E2E_CHROMIUM`，使用固定 Playwright 浏览器。本地 CDN 403
 5. 点击真实“停止本轮处理”，观察对应 `/api/harness/runs/<id>/cancel` POST 成功，后端最终为 cancelled，UI 显示已停止且停止按钮消失。同步记录本 runner agent 派生的 SDK 进程精确 PID，确认回收；释放本地服务 hold，finally 关闭模型服务、两个服务进程并按 runner 现有精确名单清库。不能仅凭 UI 显示停止就声称进程已清理。
 6. 证据写明 `model_provider: local_synthetic_messages`、固定 SDK/浏览器版本、run id、状态序列、是否收到真实模型请求、取消 HTTP 状态、进程回收结果及截图。称为“真实 SDK + 本地合成模型”，不称真实公网模型。失败或尚未执行保持明确状态。
 
-`python e2e/run.py --target foundation --harness` 显式增加第 90 条真实 SDK 浮层用例。默认仍为 89 条；CI 当前不启动此可选重型用例。`harness_fixture.py` 管理 loopback provider 与原配置的恢复，记录 agent 后代 PID/starttime，拒绝替换已有模型密钥；finally 在双服务结束后恢复原文件或删除本次新增配置。独立凭据仅在内存/子进程环境中传递，浮层用例关闭 trace。仅连接验证通过、筛选未执行浮层测试或缺进程回收证据都不能得到 --harness 成功。轻量 HTTP/SSE/配置恢复/进程身份单测不属于实际 SDK 或浏览器验收证据。
+`python e2e/run.py --target foundation --harness` 显式增加第 90 条真实 SDK 浮层用例。不带此参数仍为89条；CI使用--harness完整90条且按89→1调度。`harness_fixture.py` 管理 loopback provider 与原配置的恢复，记录 agent 后代 PID/starttime，拒绝替换已有模型密钥；finally 在双服务结束后恢复原文件或删除本次新增配置。独立凭据仅在内存/子进程环境中传递，浮层用例关闭 trace。仅连接验证通过、筛选未执行浮层测试或缺进程回收证据都不能得到 --harness 成功。轻量 HTTP/SSE/配置恢复/进程身份单测不属于实际 SDK 或浏览器验收证据。
 
 
 ## 本地诊断执行记录（不是 canonical 最终验收）

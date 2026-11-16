@@ -56,3 +56,9 @@ E2E_COMPLETE_ARTIFACT_URL=https://github.com/OWNER/REPO/actions/runs/RUN/artifac
 ```
 
 目的目录必须不存在；每包索引列出实际包含文件、SHA-256 与总产物链接。只收明确列出的 JSON/日志和角色 PNG，不收临时认证态、trace、HTML 或重复附件。
+
+
+完整 foundation + SDK 验收使用 `python e2e/run.py --target foundation --harness`。
+Playwright 先运行 `foundation-pages`（89条），成功后单独以1个worker运行依赖项目 `harness-sdk`（1条）。
+CI采用同一命令与调度。页面项目失败导致SDK依赖不执行时，整体仍失败；不放宽模型业务deadline，也不以重试/跳过获得成功。
+指定 `--grep` 或 `--project` 时Playwright仍可能运行完整依赖项目；诊断若显式使用 `--no-deps`，只代表该次筛选结果，不能作为全套90条验收。
