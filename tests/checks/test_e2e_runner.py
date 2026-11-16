@@ -20,6 +20,62 @@ from e2e.run import (
 
 
 class BrowserRunnerTests(unittest.TestCase):
+    def test_database_discovery_cannot_claim_ownership_before_empty_namespace_check(self) -> None:
+        scope = DatabaseScope({}, {"e2e_r1_" + "c" * 24})
+        with self.assertRaisesRegex(RuntimeError, "empty"):
+            scope.record_created()
+
+    def test_dynamic_institution_database_is_recorded_and_cleaned_in_owned_empty_namespace(self) -> None:
+        namespace = "e2e_r1_" + "c" * 24
+        created = namespace + "_t_" + "d" * 24
+        scope = DatabaseScope({}, {namespace, namespace + "_control"})
+        connection = MagicMock()
+        cursor = connection.__enter__.return_value.cursor.return_value.__enter__.return_value
+        with (
+            patch.object(scope, "_existing", side_effect=[set(), {created}]),
+            patch.object(scope, "_catalog_databases", return_value={created}),
+            patch("e2e.run.pymysql.connect", return_value=connection),
+            scope,
+        ):
+            pass
+        self.assertEqual(scope.created, {created})
+        self.assertEqual(scope.cleaned, {created})
+        cursor.execute.assert_called_once_with(f"DROP DATABASE `{created}`")
+
+    def test_namespace_ownership_cannot_span_two_random_scopes(self) -> None:
+        with self.assertRaises(ValueError):
+            DatabaseScope({}, {"e2e_r1_" + "c" * 24, "e2e_r1_" + "d" * 24})
+
+    def test_discovered_foreign_database_is_never_added_to_cleanup(self) -> None:
+        scope = DatabaseScope({}, {"e2e_r1_" + "c" * 24})
+        scope.armed = True
+        with patch.object(scope, "_existing", return_value={"production"}), self.assertRaises(RuntimeError):
+            scope.record_created()
+        self.assertEqual(scope.created, set())
+
+    def test_same_nonce_database_without_a_catalog_owner_is_not_removed(self) -> None:
+        namespace = "e2e_r1_" + "c" * 24
+        unknown = namespace + "_t_" + "f" * 24
+        scope = DatabaseScope({}, {namespace})
+        scope.armed = True
+        with (
+            patch.object(scope, "_existing", return_value={unknown}),
+            patch.object(scope, "_catalog_databases", return_value=set()),
+            self.assertRaisesRegex(RuntimeError, "catalog"),
+        ):
+            scope.record_created()
+        self.assertEqual(scope.created, set())
+
+    def test_enter_rejects_a_preexisting_dynamic_database_before_arming_cleanup(self) -> None:
+        namespace = "e2e_r1_" + "c" * 24
+        scope = DatabaseScope({}, {namespace})
+        with (
+            patch.object(scope, "_existing", return_value={namespace + "_t_" + "f" * 24}),
+            self.assertRaises(ValueError),
+        ):
+            scope.__enter__()
+        self.assertFalse(scope.armed)
+
     def test_namespace_is_generated_and_short_enough_for_tenant_mapping(self) -> None:
         first, second = new_namespace(), new_namespace()
         self.assertNotEqual(first, second)
