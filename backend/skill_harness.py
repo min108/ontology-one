@@ -179,7 +179,6 @@ def _principal(principal=None, *, admin=False, build=False):
     principal = principal or require_context()
     if (
         principal.identity_kind != "session"
-        or principal.must_change_password
         or (admin and principal.role != "admin")
         or (build and principal.role not in {"admin", "modeler"})
         or ((admin or build) and principal.readonly)

@@ -13,7 +13,7 @@ from .security.store import assert_principal_current, append_audit
 def current(principal):
     if principal.tenant_id != principal.home_tenant_id:
         raise HTTPException(403, "请切回所属机构启动智能体，可通过集团授权查阅其他机构成果。")
-    if principal.identity_kind != "session" or principal.must_change_password:
+    if principal.identity_kind != "session":
         raise HTTPException(403, "当前会话不能启动智能体。")
     from .jobs import assert_execution_principal_current
 

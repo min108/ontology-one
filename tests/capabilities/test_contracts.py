@@ -21,14 +21,18 @@ class ContractTests(unittest.TestCase):
                 "model.configure",
                 "backup.export",
                 "backup.restore",
+                "org.manage",
+                "user.manage",
+                "grant.manage",
+                "audit.query",
             },
         )
-        for ident in ("session.whoami", "meta.kinds", "org.tree", "agent.readiness", "semantic.search"):
-            item = registry.entries[ident]
+        for item in registry.entries.values():
             for model in (item.input, item.output):
                 self.assertEqual(model.model_json_schema()["additionalProperties"], False)
-            self.assertEqual(item.effect, "read")
-            self.assertEqual(item.confirm, "L0")
+            mutation = item.id in {"org.manage", "user.manage", "grant.manage", "model.configure", "backup.restore"}
+            self.assertEqual(item.effect, "state_change" if mutation else "read")
+            self.assertEqual(item.confirm, "L3" if mutation or item.id == "backup.export" else "L0")
             self.assertEqual(item.tool_name, item.id.replace(".", "_"))
 
     def test_every_role_matches_declared_permissions(self) -> None:
@@ -50,9 +54,16 @@ class ContractTests(unittest.TestCase):
                         registry.invoke(
                             item.id,
                             ctx,
-                            {"base_url": "https://model.test/anthropic", "model": "test"}
-                            if item.id == "model.configure"
-                            else {},
+                            {
+                                "model.configure": {"base_url": "https://model.test/anthropic", "model": "test"},
+                                "user.manage": {
+                                    "action": "update",
+                                    "user_id": "target",
+                                    "changes": {"display_name": "New"},
+                                },
+                                "org.manage": {"action": "disable", "org_id": "sub-01"},
+                                "grant.manage": {"action": "revoke", "grant_id": "grant"},
+                            }.get(item.id, {}),
                         )
 
     def test_kind_vocabulary_has_sixteen_entries(self) -> None:

@@ -119,7 +119,5 @@ def invoke_as_session(raw_session: str, call: ToolCall):
     if not authenticated:
         raise HTTPException(401, "集成会话已失效。")
     principal, _ = authenticated
-    if principal.must_change_password:
-        raise HTTPException(403, "请先完成账户密码更新。")
     with use_context(principal):
         return _invoke(call)

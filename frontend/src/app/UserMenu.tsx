@@ -1,8 +1,14 @@
-import { App, Button, Dropdown } from 'antd';
+import { App, Badge, Button, Dropdown } from 'antd';
 import { ChevronDown, KeyRound, LogOut, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useSessionStore } from '../state/session';
 import { useUiStore } from '../state/ui';
+import {
+  loadPreferences,
+  retryPreferenceSave,
+  savePreferredViewMode,
+  usePreferenceStore,
+} from '../state/preferences';
 import { ViewModeSwitch } from '../ui/ViewModeSwitch';
 import { terms } from '../i18n/zh-CN';
 import { roleLabel } from './identity';
@@ -11,8 +17,9 @@ import styles from './WorkspaceShell.module.css';
 export function UserMenu() {
   const session = useSessionStore((state) => state.session);
   const logout = useSessionStore((state) => state.logout);
+  const permissions = useSessionStore((state) => state.permission_keys);
   const viewMode = useUiStore((state) => state.viewMode);
-  const setViewMode = useUiStore((state) => state.setViewMode);
+  const { saving, error: preferenceError } = usePreferenceStore();
   const { message } = App.useApp();
   if (!session) return null;
   return (
@@ -31,13 +38,49 @@ export function UserMenu() {
               </div>
             ),
           },
-          { key: 'mode', label: <ViewModeSwitch value={viewMode} onChange={setViewMode} /> },
+          { key: 'mode', label: <ViewModeSwitch value={viewMode} onChange={savePreferredViewMode} /> },
+          ...(saving || preferenceError
+            ? [
+                {
+                  key: 'preference-status',
+                  label: (
+                    <div aria-live="polite">
+                      {saving
+                        ? terms.labels.identity_prefs_saving
+                        : preferenceError === 'save'
+                          ? terms.labels.identity_prefs_save_failed
+                          : terms.labels.identity_prefs_load_failed}
+                      {preferenceError && (
+                        <Button
+                          onClick={() =>
+                            preferenceError === 'save'
+                              ? retryPreferenceSave()
+                              : void loadPreferences(session.user.id, session.workspace.tenant_id)
+                          }
+                        >
+                          {preferenceError === 'save'
+                            ? terms.actions.identity_prefs_retry
+                            : terms.actions.identity_prefs_load}
+                        </Button>
+                      )}
+                    </div>
+                  ),
+                },
+              ]
+            : []),
           {
             key: 'security',
             icon: <KeyRound />,
-            label: <Link to="/account/security">{terms.labels.shell_security}</Link>,
+            label: (
+              <Badge dot={session.password_change_recommended}>
+                <Link to="/account/security">{terms.labels.shell_security}</Link>
+                {session.password_change_recommended && (
+                  <span>{terms.labels.identity_password_recommended}</span>
+                )}
+              </Badge>
+            ),
           },
-          ...(session.permissions.manage_users
+          ...(session.permissions.manage_users && permissions.includes('admin.users')
             ? [
                 {
                   key: 'users',

@@ -171,7 +171,7 @@ class RunStore:
     async def submit(self, principal, *, kind, title, entity_id, operation, guard=None, instruction="", href=None):
         if self.closed:
             raise HTTPException(503, "智能服务正在停止，请稍后重试。")
-        if principal.identity_kind != "session" or principal.must_change_password:
+        if principal.identity_kind != "session":
             raise HTTPException(403, "请先完成账号安全检查后再发起智能任务。")
         await asyncio.to_thread(assert_principal_current, principal)
         self.prune()

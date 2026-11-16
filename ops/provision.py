@@ -35,7 +35,9 @@ def main(progress=None):
 
     run_migrations(provision_all=True, progress=progress, finalize=runtime_account)
     report("provisioned", 10000, 10000)
-    print(f"{APP_VERSION}迁移完成；51个空机构工作区与受限运行账号已就绪。")
+    from backend.security import store
+
+    print(f"{APP_VERSION}迁移完成；{len(store.list_tenants())}个机构工作区与受限运行账号已就绪。")
 
 
 if __name__ == "__main__":

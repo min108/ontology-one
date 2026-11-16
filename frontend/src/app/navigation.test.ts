@@ -82,3 +82,15 @@ describe('saved legacy links', () => {
     expect(legacyRedirect('/materials', '?page=2', '#files')).toBeNull();
   });
 });
+
+it('requires the new permission key for rebuilt account management', () => {
+  const principal = { role: 'admin', superadmin: false, permissions: [] as string[] };
+  expect(secondaryNavigation('admin', principal, completed).map((item) => item.href)).not.toContain(
+    '/admin/users',
+  );
+  expect(
+    secondaryNavigation('admin', { ...principal, permissions: ['admin.users'] }, completed).map(
+      (item) => item.href,
+    ),
+  ).toContain('/admin/users');
+});

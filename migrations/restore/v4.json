@@ -1,0 +1,543 @@
+{
+  "format": "ontology-trusted-restore-schema-v1",
+  "schemas": {
+    "control": {
+      "columns": {
+        "federation_links": [
+          "id",
+          "source_tenant_id",
+          "source_entity_id",
+          "target_tenant_id",
+          "target_entity_id",
+          "relation_type",
+          "label",
+          "status",
+          "reason",
+          "created_by",
+          "reviewed_by",
+          "created_at",
+          "updated_at"
+        ],
+        "ontology_task_queue": [
+          "job_id",
+          "tenant_id",
+          "kind",
+          "entity_id",
+          "principal_json",
+          "args_json",
+          "status",
+          "attempts",
+          "max_attempts",
+          "available_at",
+          "lease_token",
+          "lease_until",
+          "active_key",
+          "last_error",
+          "created_at",
+          "updated_at"
+        ],
+        "schema_migrations": [
+          "version",
+          "name",
+          "checksum",
+          "applied_at"
+        ],
+        "sec_application_credentials": [
+          "id",
+          "application_id",
+          "token_hash",
+          "token_prefix",
+          "delegate_auth_version",
+          "expires_at",
+          "revoked_at",
+          "created_by",
+          "created_at",
+          "last_used_at"
+        ],
+        "sec_applications": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "delegate_user_id",
+          "enabled",
+          "version",
+          "tool_scopes",
+          "mapping_ids",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "sec_audit": [
+          "id",
+          "created_at",
+          "actor_id",
+          "actor_username",
+          "tenant_id",
+          "action",
+          "resource",
+          "outcome",
+          "request_id",
+          "details"
+        ],
+        "sec_grants": [
+          "id",
+          "user_id",
+          "tenant_id",
+          "access",
+          "reason",
+          "created_by",
+          "created_at"
+        ],
+        "sec_login_limits": [
+          "bucket",
+          "failures",
+          "window_start",
+          "locked_until"
+        ],
+        "sec_sessions": [
+          "id",
+          "token_hash",
+          "csrf_hash",
+          "user_id",
+          "tenant_id",
+          "auth_version",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "revoked_at",
+          "user_agent",
+          "ip_hint"
+        ],
+        "sec_tenants": [
+          "id",
+          "name",
+          "category",
+          "org_id",
+          "db_name",
+          "status",
+          "created_at",
+          "parent_id",
+          "short_name",
+          "org_code",
+          "sort_order",
+          "level",
+          "is_demo",
+          "mirror_of",
+          "disabled_at",
+          "disabled_reason"
+        ],
+        "sec_user_prefs": [
+          "user_id",
+          "pref_key",
+          "value",
+          "updated_at"
+        ],
+        "sec_users": [
+          "id",
+          "username",
+          "display_name",
+          "home_tenant_id",
+          "role",
+          "password_hash",
+          "is_active",
+          "is_superadmin",
+          "must_change_password",
+          "auth_version",
+          "created_at",
+          "updated_at",
+          "duties"
+        ]
+      },
+      "ddl": {
+        "federation_links": "CREATE TABLE `federation_links` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_tenant_id` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `target_tenant_id` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `target_entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `relation_type` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `label` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `status` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',\n  `reason` text COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_by` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `reviewed_by` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `uq_federation_edge` (`source_tenant_id`,`source_entity_id`,`target_tenant_id`,`target_entity_id`,`relation_type`),\n  KEY `ix_federation_source` (`source_tenant_id`,`source_entity_id`),\n  KEY `ix_federation_target` (`target_tenant_id`,`target_entity_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "ontology_task_queue": "CREATE TABLE `ontology_task_queue` (\n  `job_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `tenant_id` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `kind` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `principal_json` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `args_json` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `status` varchar(24) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `attempts` int NOT NULL DEFAULT '0',\n  `max_attempts` int NOT NULL DEFAULT '3',\n  `available_at` datetime(6) NOT NULL,\n  `lease_token` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `lease_until` datetime(6) DEFAULT NULL,\n  `active_key` char(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `last_error` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',\n  `created_at` datetime(6) NOT NULL,\n  `updated_at` datetime(6) NOT NULL,\n  PRIMARY KEY (`job_id`),\n  UNIQUE KEY `active_key` (`active_key`),\n  KEY `idx_queue_ready` (`status`,`available_at`,`lease_until`),\n  KEY `idx_queue_tenant` (`tenant_id`,`entity_id`,`status`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "schema_migrations": "CREATE TABLE `schema_migrations` (\n  `version` int NOT NULL,\n  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `checksum` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `applied_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "sec_application_credentials": "CREATE TABLE `sec_application_credentials` (\n  `id` varchar(64) NOT NULL,\n  `application_id` varchar(64) NOT NULL,\n  `token_hash` char(64) NOT NULL,\n  `token_prefix` varchar(32) NOT NULL,\n  `delegate_auth_version` int NOT NULL,\n  `expires_at` double NOT NULL,\n  `revoked_at` double DEFAULT NULL,\n  `created_by` varchar(64) NOT NULL,\n  `created_at` double NOT NULL,\n  `last_used_at` double DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `token_hash` (`token_hash`),\n  KEY `idx_app_credential` (`application_id`),\n  CONSTRAINT `sec_application_credentials_ibfk_1` FOREIGN KEY (`application_id`) REFERENCES `sec_applications` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "sec_applications": "CREATE TABLE `sec_applications` (\n  `id` varchar(64) NOT NULL,\n  `tenant_id` varchar(64) NOT NULL,\n  `name` varchar(200) NOT NULL,\n  `description` varchar(2000) NOT NULL,\n  `delegate_user_id` varchar(64) NOT NULL,\n  `enabled` tinyint NOT NULL,\n  `version` int NOT NULL,\n  `tool_scopes` json NOT NULL,\n  `mapping_ids` json NOT NULL,\n  `created_by` varchar(64) NOT NULL,\n  `created_at` double NOT NULL,\n  `updated_at` double NOT NULL,\n  PRIMARY KEY (`id`),\n  KEY `idx_app_tenant` (`tenant_id`),\n  KEY `delegate_user_id` (`delegate_user_id`),\n  CONSTRAINT `sec_applications_ibfk_1` FOREIGN KEY (`tenant_id`) REFERENCES `sec_tenants` (`id`),\n  CONSTRAINT `sec_applications_ibfk_2` FOREIGN KEY (`delegate_user_id`) REFERENCES `sec_users` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "sec_audit": "CREATE TABLE `sec_audit` (\n  `id` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `created_at` double NOT NULL,\n  `actor_id` varchar(64) DEFAULT NULL,\n  `actor_username` varchar(80) DEFAULT NULL,\n  `tenant_id` varchar(64) DEFAULT NULL,\n  `action` varchar(100) NOT NULL,\n  `resource` varchar(500) NOT NULL,\n  `outcome` varchar(32) NOT NULL,\n  `request_id` varchar(100) NOT NULL,\n  `details` longtext NOT NULL,\n  PRIMARY KEY (`id`),\n  KEY `idx_audit_tenant` (`tenant_id`,`id`),\n  KEY `idx_audit_actor` (`actor_id`,`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "sec_grants": "CREATE TABLE `sec_grants` (\n  `id` varchar(64) NOT NULL,\n  `user_id` varchar(64) NOT NULL,\n  `tenant_id` varchar(64) NOT NULL,\n  `access` varchar(32) NOT NULL,\n  `reason` varchar(500) NOT NULL,\n  `created_by` varchar(64) NOT NULL,\n  `created_at` double NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `uq_grant` (`user_id`,`tenant_id`),\n  KEY `tenant_id` (`tenant_id`),\n  CONSTRAINT `sec_grants_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `sec_users` (`id`),\n  CONSTRAINT `sec_grants_ibfk_2` FOREIGN KEY (`tenant_id`) REFERENCES `sec_tenants` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "sec_login_limits": "CREATE TABLE `sec_login_limits` (\n  `bucket` char(64) NOT NULL,\n  `failures` int NOT NULL,\n  `window_start` double NOT NULL,\n  `locked_until` double NOT NULL DEFAULT '0',\n  PRIMARY KEY (`bucket`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "sec_sessions": "CREATE TABLE `sec_sessions` (\n  `id` varchar(64) NOT NULL,\n  `token_hash` char(64) NOT NULL,\n  `csrf_hash` char(64) NOT NULL,\n  `user_id` varchar(64) NOT NULL,\n  `tenant_id` varchar(64) NOT NULL,\n  `auth_version` int NOT NULL,\n  `created_at` double NOT NULL,\n  `last_seen_at` double NOT NULL,\n  `expires_at` double NOT NULL,\n  `revoked_at` double DEFAULT NULL,\n  `user_agent` varchar(255) NOT NULL,\n  `ip_hint` varchar(100) NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `token_hash` (`token_hash`),\n  KEY `idx_session_user` (`user_id`),\n  CONSTRAINT `sec_sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `sec_users` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "sec_tenants": "CREATE TABLE `sec_tenants` (\n  `id` varchar(64) NOT NULL,\n  `name` varchar(255) NOT NULL,\n  `category` varchar(64) NOT NULL,\n  `org_id` varchar(100) DEFAULT NULL,\n  `db_name` varchar(64) NOT NULL,\n  `status` varchar(20) NOT NULL DEFAULT 'active',\n  `created_at` double NOT NULL,\n  `parent_id` varchar(64) DEFAULT NULL,\n  `short_name` varchar(120) NOT NULL DEFAULT '',\n  `org_code` varchar(120) DEFAULT NULL,\n  `sort_order` int NOT NULL DEFAULT '0',\n  `level` int NOT NULL DEFAULT '0',\n  `is_demo` tinyint NOT NULL DEFAULT '0',\n  `mirror_of` varchar(64) DEFAULT NULL,\n  `disabled_at` varchar(40) DEFAULT NULL,\n  `disabled_reason` varchar(500) NOT NULL DEFAULT '',\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `db_name` (`db_name`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+        "sec_user_prefs": "CREATE TABLE `sec_user_prefs` (\n  `user_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `pref_key` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `value` json NOT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`user_id`,`pref_key`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "sec_users": "CREATE TABLE `sec_users` (\n  `id` varchar(64) NOT NULL,\n  `username` varchar(80) NOT NULL,\n  `display_name` varchar(120) NOT NULL,\n  `home_tenant_id` varchar(64) NOT NULL,\n  `role` varchar(20) NOT NULL,\n  `password_hash` varchar(255) NOT NULL,\n  `is_active` tinyint NOT NULL DEFAULT '1',\n  `is_superadmin` tinyint NOT NULL DEFAULT '0',\n  `must_change_password` tinyint NOT NULL DEFAULT '1',\n  `auth_version` int NOT NULL DEFAULT '1',\n  `created_at` double NOT NULL,\n  `updated_at` double NOT NULL,\n  `duties` json NOT NULL DEFAULT (json_array()),\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `username` (`username`),\n  KEY `idx_user_tenant` (`home_tenant_id`),\n  CONSTRAINT `sec_users_ibfk_1` FOREIGN KEY (`home_tenant_id`) REFERENCES `sec_tenants` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+      },
+      "triggers": {
+        "sec_audit_no_delete": "CREATE TRIGGER `sec_audit_no_delete` BEFORE DELETE ON `sec_audit` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Security audit is append-only'",
+        "sec_audit_no_update": "CREATE TRIGGER `sec_audit_no_update` BEFORE UPDATE ON `sec_audit` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Security audit is append-only'"
+      }
+    },
+    "tenant": {
+      "columns": {
+        "activities": [
+          "id",
+          "entity_id",
+          "action",
+          "detail",
+          "actor",
+          "created_at"
+        ],
+        "application_findings": [
+          "run_id",
+          "category",
+          "sequence",
+          "payload"
+        ],
+        "archived_reading_drafts": [
+          "id",
+          "material_id",
+          "source_version",
+          "snapshot",
+          "created_at"
+        ],
+        "asset_import_batches": [
+          "id",
+          "kind",
+          "filename",
+          "sha256",
+          "material_id",
+          "created_count",
+          "updated_count",
+          "status",
+          "created_at"
+        ],
+        "chunk_anchors": [
+          "chunk_id",
+          "anchor_id"
+        ],
+        "chunks": [
+          "id",
+          "material_id",
+          "position",
+          "heading",
+          "content",
+          "locator",
+          "status"
+        ],
+        "dataset_ai_reviews": [
+          "id",
+          "dataset_id",
+          "sheet_name",
+          "dataset_version",
+          "payload",
+          "created_at",
+          "rowid"
+        ],
+        "dataset_import_receipts": [
+          "group_id",
+          "item_id",
+          "dataset_id",
+          "sha256",
+          "org_id"
+        ],
+        "dataset_mapping_versions": [
+          "id",
+          "dataset_id",
+          "version",
+          "snapshot",
+          "reason",
+          "created_at"
+        ],
+        "dataset_row_sources": [
+          "dataset_id",
+          "row_no",
+          "sheet_name",
+          "source_row"
+        ],
+        "dataset_rows": [
+          "dataset_id",
+          "row_no",
+          "values_json",
+          "org_id"
+        ],
+        "dataset_sheets": [
+          "dataset_id",
+          "sheet_name",
+          "position",
+          "payload"
+        ],
+        "demo_installations": [
+          "install_key",
+          "created_by",
+          "entity_ids",
+          "source_ids",
+          "snapshots",
+          "files",
+          "created_at",
+          "state"
+        ],
+        "entities": [
+          "id",
+          "kind",
+          "title",
+          "summary",
+          "domain",
+          "org_id",
+          "status",
+          "source_kind",
+          "payload",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "entity_access": [
+          "entity_id",
+          "visibility",
+          "updated_by",
+          "updated_at"
+        ],
+        "entity_ownership": [
+          "entity_id",
+          "tenant_id",
+          "created_by",
+          "created_at",
+          "updated_by",
+          "updated_at"
+        ],
+        "jobs": [
+          "id",
+          "kind",
+          "entity_id",
+          "status",
+          "progress",
+          "message",
+          "result",
+          "created_at",
+          "updated_at"
+        ],
+        "mappings": [
+          "dataset_id",
+          "column_name",
+          "standard_id",
+          "transform",
+          "status",
+          "payload",
+          "rowid"
+        ],
+        "reading_drafts": [
+          "material_id",
+          "id",
+          "source_version",
+          "base_version",
+          "revision",
+          "segments",
+          "history",
+          "future",
+          "pending_ai",
+          "chat",
+          "updated_at"
+        ],
+        "reading_versions": [
+          "id",
+          "material_id",
+          "source_version",
+          "version",
+          "segments",
+          "reason",
+          "created_at"
+        ],
+        "relations": [
+          "id",
+          "source",
+          "target",
+          "type",
+          "label",
+          "status",
+          "payload"
+        ],
+        "schema_migrations": [
+          "version",
+          "name",
+          "checksum",
+          "applied_at"
+        ],
+        "skill_checks": [
+          "id",
+          "entity_id",
+          "revision",
+          "digest",
+          "outcome",
+          "report",
+          "actor_id",
+          "created_at"
+        ],
+        "skill_documents": [
+          "entity_id",
+          "current_revision",
+          "files",
+          "manifest",
+          "digest",
+          "last_editor_id",
+          "submitted_by",
+          "updated_at"
+        ],
+        "skill_revisions": [
+          "id",
+          "entity_id",
+          "revision",
+          "files",
+          "manifest",
+          "digest",
+          "status",
+          "actor_id",
+          "created_at",
+          "reason"
+        ],
+        "source_anchors": [
+          "id",
+          "material_id",
+          "source_version",
+          "start",
+          "end",
+          "quote_sha256",
+          "locator",
+          "created_at"
+        ],
+        "source_connections": [
+          "id",
+          "title",
+          "kind",
+          "config",
+          "credential_ref",
+          "enabled",
+          "version",
+          "config_version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "last_discovered_at"
+        ],
+        "source_grants": [
+          "source_id",
+          "user_id",
+          "can_discover",
+          "can_query",
+          "version",
+          "updated_by",
+          "updated_at"
+        ],
+        "source_mapping_versions": [
+          "id",
+          "mapping_id",
+          "version",
+          "action",
+          "snapshot",
+          "actor_id",
+          "reason",
+          "created_at"
+        ],
+        "source_mappings": [
+          "id",
+          "source_id",
+          "resource_id",
+          "title",
+          "definition",
+          "status",
+          "version",
+          "schema_hash",
+          "source_version",
+          "created_by",
+          "submitted_by",
+          "reviewed_by",
+          "review_reason",
+          "invalid_reason",
+          "created_at",
+          "updated_at"
+        ],
+        "source_resources": [
+          "id",
+          "source_id",
+          "resource_key",
+          "resource_key_hash",
+          "schema_hash",
+          "schema_version",
+          "available",
+          "metadata",
+          "observed_at"
+        ],
+        "source_schema_versions": [
+          "id",
+          "resource_id",
+          "version",
+          "schema_hash",
+          "available",
+          "metadata",
+          "observed_by",
+          "observed_at"
+        ],
+        "source_versions": [
+          "id",
+          "material_id",
+          "version",
+          "text",
+          "sha256",
+          "metadata",
+          "created_at"
+        ],
+        "special_deliveries": [
+          "id",
+          "project_id",
+          "version",
+          "snapshot",
+          "created_at",
+          "reviewer",
+          "note"
+        ],
+        "versions": [
+          "id",
+          "entity_id",
+          "version",
+          "snapshot",
+          "created_at",
+          "reason"
+        ],
+        "workspace_meta": [
+          "meta_key",
+          "meta_value",
+          "updated_at"
+        ]
+      },
+      "ddl": {
+        "activities": "CREATE TABLE `activities` (\n  `id` bigint NOT NULL AUTO_INCREMENT,\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `action` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `detail` text COLLATE utf8mb4_unicode_ci,\n  `actor` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  KEY `idx_activity` (`created_at`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "application_findings": "CREATE TABLE `application_findings` (\n  `run_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `category` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `sequence` int NOT NULL,\n  `payload` longtext COLLATE utf8mb4_unicode_ci,\n  PRIMARY KEY (`run_id`,`category`,`sequence`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "archived_reading_drafts": "CREATE TABLE `archived_reading_drafts` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `material_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_version` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `snapshot` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "asset_import_batches": "CREATE TABLE `asset_import_batches` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `kind` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `filename` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `sha256` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `material_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `created_count` int DEFAULT NULL,\n  `updated_count` int DEFAULT NULL,\n  `status` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "chunk_anchors": "CREATE TABLE `chunk_anchors` (\n  `chunk_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `anchor_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`chunk_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "chunks": "CREATE TABLE `chunks` (\n  `id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `material_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `position` int DEFAULT NULL,\n  `heading` text COLLATE utf8mb4_unicode_ci,\n  `content` longtext COLLATE utf8mb4_unicode_ci,\n  `locator` text COLLATE utf8mb4_unicode_ci,\n  `status` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  KEY `idx_chunks_material` (`material_id`,`position`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "dataset_ai_reviews": "CREATE TABLE `dataset_ai_reviews` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `dataset_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `sheet_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `dataset_version` int DEFAULT NULL,\n  `payload` longtext COLLATE utf8mb4_unicode_ci,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `rowid` bigint NOT NULL AUTO_INCREMENT,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `rowid` (`rowid`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "dataset_import_receipts": "CREATE TABLE `dataset_import_receipts` (\n  `group_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `item_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `dataset_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `sha256` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `org_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`group_id`,`item_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "dataset_mapping_versions": "CREATE TABLE `dataset_mapping_versions` (\n  `id` bigint NOT NULL AUTO_INCREMENT,\n  `dataset_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `version` int DEFAULT NULL,\n  `snapshot` longtext COLLATE utf8mb4_unicode_ci,\n  `reason` text COLLATE utf8mb4_unicode_ci,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "dataset_row_sources": "CREATE TABLE `dataset_row_sources` (\n  `dataset_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `row_no` int NOT NULL,\n  `sheet_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `source_row` int DEFAULT NULL,\n  PRIMARY KEY (`dataset_id`,`row_no`),\n  KEY `idx_ds_source_sheet` (`dataset_id`,`sheet_name`,`row_no`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "dataset_rows": "CREATE TABLE `dataset_rows` (\n  `dataset_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `row_no` int NOT NULL,\n  `values_json` longtext COLLATE utf8mb4_unicode_ci,\n  `org_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`dataset_id`,`row_no`),\n  KEY `idx_ds_rows_no` (`dataset_id`,`row_no`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "dataset_sheets": "CREATE TABLE `dataset_sheets` (\n  `dataset_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `sheet_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `position` int DEFAULT NULL,\n  `payload` longtext COLLATE utf8mb4_unicode_ci,\n  PRIMARY KEY (`dataset_id`,`sheet_name`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "demo_installations": "CREATE TABLE `demo_installations` (\n  `install_key` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_by` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `entity_ids` json NOT NULL,\n  `source_ids` json NOT NULL,\n  `snapshots` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `files` json NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `state` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active',\n  PRIMARY KEY (`install_key`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "entities": "CREATE TABLE `entities` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `kind` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `title` text COLLATE utf8mb4_unicode_ci,\n  `summary` longtext COLLATE utf8mb4_unicode_ci,\n  `domain` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `org_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `status` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `source_kind` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `payload` json DEFAULT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `version` int DEFAULT '1',\n  PRIMARY KEY (`id`),\n  KEY `idx_entities_kind` (`kind`),\n  KEY `idx_entities_domain` (`domain`),\n  KEY `idx_entities_org` (`org_id`),\n  KEY `idx_entities_status` (`status`),\n  KEY `idx_entities_recent` (`updated_at` DESC,`id`),\n  KEY `idx_entities_kind_recent` (`kind`,`updated_at` DESC,`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "entity_access": "CREATE TABLE `entity_access` (\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `visibility` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'institution',\n  `updated_by` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`entity_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "entity_ownership": "CREATE TABLE `entity_ownership` (\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `tenant_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_by` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `updated_by` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`entity_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "jobs": "CREATE TABLE `jobs` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `kind` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `status` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `progress` int DEFAULT NULL,\n  `message` text COLLATE utf8mb4_unicode_ci,\n  `result` longtext COLLATE utf8mb4_unicode_ci,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "mappings": "CREATE TABLE `mappings` (\n  `dataset_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `column_name` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `standard_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `transform` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `status` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `payload` longtext COLLATE utf8mb4_unicode_ci,\n  `rowid` bigint NOT NULL AUTO_INCREMENT,\n  PRIMARY KEY (`dataset_id`,`column_name`),\n  UNIQUE KEY `rowid` (`rowid`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "reading_drafts": "CREATE TABLE `reading_drafts` (\n  `material_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_version` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `base_version` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',\n  `revision` int NOT NULL DEFAULT '1',\n  `segments` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `history` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `future` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `pending_ai` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `chat` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`material_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "reading_versions": "CREATE TABLE `reading_versions` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `material_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_version` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `version` int NOT NULL,\n  `segments` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `reason` text COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `material_id` (`material_id`,`version`),\n  KEY `idx_reading_versions_material` (`material_id`,`version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "relations": "CREATE TABLE `relations` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `target` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `type` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `label` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `status` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `payload` longtext COLLATE utf8mb4_unicode_ci,\n  PRIMARY KEY (`id`),\n  KEY `idx_relation_source` (`source`),\n  KEY `idx_relation_target` (`target`),\n  KEY `idx_relation_status` (`status`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "schema_migrations": "CREATE TABLE `schema_migrations` (\n  `version` int NOT NULL,\n  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `checksum` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `applied_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "skill_checks": "CREATE TABLE `skill_checks` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `revision` int NOT NULL,\n  `digest` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `outcome` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `report` json NOT NULL,\n  `actor_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  KEY `idx_skill_check` (`entity_id`,`revision`,`digest`),\n  CONSTRAINT `fk_skill_check_entity` FOREIGN KEY (`entity_id`) REFERENCES `entities` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "skill_documents": "CREATE TABLE `skill_documents` (\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `current_revision` int NOT NULL,\n  `files` json NOT NULL,\n  `manifest` json NOT NULL,\n  `digest` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `last_editor_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `submitted_by` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`entity_id`),\n  CONSTRAINT `fk_skill_document_entity` FOREIGN KEY (`entity_id`) REFERENCES `entities` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "skill_revisions": "CREATE TABLE `skill_revisions` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `revision` int NOT NULL,\n  `files` json NOT NULL,\n  `manifest` json NOT NULL,\n  `digest` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `actor_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `reason` varchar(2000) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  KEY `idx_skill_revision` (`entity_id`,`revision`),\n  CONSTRAINT `fk_skill_revision_entity` FOREIGN KEY (`entity_id`) REFERENCES `entities` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_anchors": "CREATE TABLE `source_anchors` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `material_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_version` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `start` int NOT NULL,\n  `end` int NOT NULL,\n  `quote_sha256` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `locator` text COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `source_version` (`source_version`,`start`,`end`),\n  KEY `idx_source_anchors_material` (`material_id`,`source_version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_connections": "CREATE TABLE `source_connections` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `title` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `config` json NOT NULL,\n  `credential_ref` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `enabled` tinyint NOT NULL DEFAULT '1',\n  `version` int NOT NULL,\n  `config_version` int NOT NULL,\n  `created_by` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `last_discovered_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_grants": "CREATE TABLE `source_grants` (\n  `source_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `user_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `can_discover` tinyint NOT NULL,\n  `can_query` tinyint NOT NULL,\n  `version` int NOT NULL,\n  `updated_by` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`source_id`,`user_id`),\n  CONSTRAINT `fk_source_grant` FOREIGN KEY (`source_id`) REFERENCES `source_connections` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_mapping_versions": "CREATE TABLE `source_mapping_versions` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `mapping_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `version` int NOT NULL,\n  `action` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `snapshot` json NOT NULL,\n  `actor_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `reason` varchar(2000) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `source_mapping_revision` (`mapping_id`,`version`),\n  CONSTRAINT `fk_source_mapping_revision` FOREIGN KEY (`mapping_id`) REFERENCES `source_mappings` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_mappings": "CREATE TABLE `source_mappings` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `resource_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `title` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `definition` json NOT NULL,\n  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `version` int NOT NULL,\n  `schema_hash` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_version` int NOT NULL,\n  `created_by` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `submitted_by` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `reviewed_by` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `review_reason` text COLLATE utf8mb4_unicode_ci,\n  `invalid_reason` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  KEY `source_mapping_source` (`source_id`,`status`),\n  KEY `source_mapping_resource` (`resource_id`),\n  CONSTRAINT `fk_source_mapping` FOREIGN KEY (`source_id`) REFERENCES `source_connections` (`id`),\n  CONSTRAINT `fk_source_mapping_resource` FOREIGN KEY (`resource_id`) REFERENCES `source_resources` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_resources": "CREATE TABLE `source_resources` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `source_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `resource_key` varchar(1000) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `resource_key_hash` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `schema_hash` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `schema_version` int NOT NULL,\n  `available` tinyint NOT NULL,\n  `metadata` json NOT NULL,\n  `observed_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `source_resource_key` (`source_id`,`resource_key_hash`),\n  CONSTRAINT `fk_source_resource` FOREIGN KEY (`source_id`) REFERENCES `source_connections` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_schema_versions": "CREATE TABLE `source_schema_versions` (\n  `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `resource_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `version` int NOT NULL,\n  `schema_hash` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `available` tinyint NOT NULL,\n  `metadata` json NOT NULL,\n  `observed_by` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `observed_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `source_schema_revision` (`resource_id`,`version`),\n  CONSTRAINT `fk_source_schema_resource` FOREIGN KEY (`resource_id`) REFERENCES `source_resources` (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "source_versions": "CREATE TABLE `source_versions` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `material_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `version` int NOT NULL,\n  `text` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `sha256` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `metadata` longtext COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `material_id` (`material_id`,`version`),\n  UNIQUE KEY `material_id_2` (`material_id`,`sha256`),\n  KEY `idx_source_versions_material` (`material_id`,`version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "special_deliveries": "CREATE TABLE `special_deliveries` (\n  `id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `project_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `version` int DEFAULT NULL,\n  `snapshot` longtext COLLATE utf8mb4_unicode_ci,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `reviewer` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `note` text COLLATE utf8mb4_unicode_ci,\n  PRIMARY KEY (`id`),\n  KEY `idx_special_delivery_project` (`project_id`,`version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "versions": "CREATE TABLE `versions` (\n  `id` bigint NOT NULL AUTO_INCREMENT,\n  `entity_id` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `version` int DEFAULT NULL,\n  `snapshot` longtext COLLATE utf8mb4_unicode_ci,\n  `created_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `reason` text COLLATE utf8mb4_unicode_ci,\n  PRIMARY KEY (`id`),\n  KEY `idx_versions` (`entity_id`,`version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "workspace_meta": "CREATE TABLE `workspace_meta` (\n  `meta_key` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `meta_value` longtext COLLATE utf8mb4_unicode_ci,\n  `updated_at` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`meta_key`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+      },
+      "triggers": {}
+    }
+  },
+  "source_commit": "1359118dd672431dcd0cde2eb81f2b0f994eef37"
+}

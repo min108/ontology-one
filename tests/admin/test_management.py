@@ -39,6 +39,7 @@ class ManagementTests(unittest.TestCase):
         return self.client.post(f"/api/v2/capabilities/{ident}:invoke", json=body or {})
 
     def test_exact_eight_registry(self) -> None:
+        # Preserve this package test ID; the integrated R1 inventory includes identity.
         self.assertEqual(
             set(registry.entries),
             {
@@ -50,6 +51,10 @@ class ManagementTests(unittest.TestCase):
                 "model.configure",
                 "backup.export",
                 "backup.restore",
+                "org.manage",
+                "user.manage",
+                "grant.manage",
+                "audit.query",
             },
         )
 

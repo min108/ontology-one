@@ -23,14 +23,15 @@
 ## 3 代码地图
 
 - `backend/main.py`：薄 API 装配；原内联路由已原样移到 api/v1/core.py。v2 入口在 api/v2，业务能力在 capabilities，配置/错误/编号/日志在 core。
-- `backend/security/`：store、policy、middleware、context、applications，身份、目录、会话、审计与应用授权。
+- `backend/security/`：store、policy、middleware、context、applications、directory、preferences，承载身份、目录治理、会话、审计、应用授权和用户偏好。duties随会话读取并参与捕获身份/提交复核，仅存储不开放授予。
 - R1-8 管理包：`features/admin` 与 `capabilities/model`、`capabilities/backup` 承接设置；`api/v2/system.py` 提供安全元数据和二进制绑定。浏览器15项后退役Settings/HarnessConfiguration及其专属CSS，DemoWorkspace继续保留。离线恢复仅可信offline绑定且持独占锁；模型新入口保持16KiB和严格拒重复JSON。主干完整回归与CI43832921234已通过，见R1-8-REPORT。
 - R1-6 `features/home`：工作台使用真实同源统计、任务与近期运行；HomeIntake只在内存转交文件，RecentRecorder按身份/机构/scope记录有限本机元数据。`app/guardedNavigation.ts`沿用旧Authority未保存确认。O-01–06实际对照后退役Overview与41条专属CSS；旧素材/台账接收器保持人工确认上传。
-- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control` 与 `migrations/tenant` 当前0001，恢复定义在 migrations/restore。
+- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control`当前0001–0005，`migrations/tenant`仍0001；恢复定义v1–v4按各库连续可信迁移历史精确选择，未知历史/部分结构拒绝。启动只校验、不自动升级。
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。
-- `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。app 包已承载新六工作区外壳、路由、状态与请求层；原82文件整体移入legacy，旧App/main通过90项浏览器对照后退役，R1-8退役Settings、HarnessConfiguration与专属CSS，R1-6退役Overview后剩76。旧样式构建期加作用域，门户使用独立legacy-root。
+- `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。app 包已承载新六工作区外壳、路由、状态与请求层；原82文件整体移入legacy，旧App/main通过90项浏览器对照后退役，R1-8退役Settings、HarnessConfiguration与专属CSS，R1-6退役Overview，R1-7退役Security、Administration、auth.css后剩73；legacy/auth.tsx只留会话兼容桥。旧样式构建期加作用域，门户使用独立legacy-root。
+- `frontend/src/features/{auth,account,admin,identity}`：新登录、账号安全、账号与授权、机构目录与审计；`state/preferences.ts`串行保存本人视图偏好，阻止迟到读取覆盖用户选择。12项真实操作对照后退役旧身份UI，原会话桥及共享CSS保留。
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
 - `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；`ops/offline/`：准备依赖并在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
@@ -80,6 +81,9 @@ npm --prefix frontend run build
 - 不修改 windows-native.yml 和 publish-accepted-0.7.0.yml；不向 qa/publish-accepted-0.7.0 推送，不打任何标签，不建 PR。
 - 主分支 main 不是基线。首次起点为规划提交 6e5a02c，代码基线为 1359118。
 - 备份恢复有表白名单、原件绑定和可信结构版本；新增结构必须同步分类和对应恢复定义，保留旧版，不能放宽成列集合并集。服务启动不迁移；已有部署失败必须停止共享实例后离线完整恢复。
+- 新机构开通失败为provision_failed，保留目录、审计和库；不自动DROP/启用/重试部分库。运行门例外只限新org-目录明确的provisioning/provision_failed状态，不能跳过active旧库。离线处置须先停止共享实例。
+- 目录org_id可以为null（真实HQ旧数据），业务根按tenant id定位；版本快照两owner字段均为目标tenant id，不能沿用发起请求的工作区或混用业务org_id。目录/root/audit在同一跨库事务提交。
+- H.2取消的是must_change_password的授权效力，兼容字段保留；会话/CSRF/只读/角色/机构/取消与实时duties检查不能随之删除。偏好不承载安全授权，审计不存偏好JSON。
 - 两个打包脚本会排除名为 runtime/data/work/uploads 的目录；R5 的新 runtime 包需先调整规则。
 - 产品中文显示名变更不影响仓库、包、Cookie、环境变量、库名前缀、Compose 项目名、MCP 或 Windows 文件等技术标识。
 - 新Shell懒加载保留旧组件期间，所有异步URL写入必须校验固定路由所有权；NavigationProvider补via前校验真实浏览器完整URL。会话请求使用专用AbortController，旧401/409不能先触发全局副作用。

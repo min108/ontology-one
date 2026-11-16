@@ -76,7 +76,7 @@ def source_commit(target: str) -> str:
 
 
 class DatabaseScope:
-    """Only exact candidates proven absent before this run can ever be removed."""
+    """Reserve one empty random namespace; record exact created databases before removal."""
 
     def __init__(self, config: dict, candidates: set[str]) -> None:
         if not candidates or any(
@@ -85,18 +85,21 @@ class DatabaseScope:
             raise ValueError("Unsafe database cleanup candidate")
         self.config = config
         self.candidates = candidates
+        namespaces = {name[:31] for name in candidates}
+        if len(namespaces) != 1:
+            raise ValueError("Database cleanup candidates must share one fresh random namespace")
+        self.namespace = namespaces.pop()
         self.created: set[str] = set()
         self.cleaned: set[str] = set()
         self.armed = False
 
     def _existing(self) -> set[str]:
-        names = sorted(self.candidates)
         with pymysql.connect(**self.config) as connection, connection.cursor() as cursor:
+            # Escape literal underscores, then inspect the complete reserved namespace.
+            # UI-created institutions have new hashed suffixes not present in the seed fixture.
             cursor.execute(
-                "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME IN ("
-                + ",".join(["%s"] * len(names))
-                + ")",
-                names,
+                "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE %s ESCAPE '='",
+                (self.namespace.replace("_", "=_") + "%",),
             )
             return {row[0] for row in cursor.fetchall()}
 
@@ -105,6 +108,16 @@ class DatabaseScope:
             raise ValueError("Generated test namespace is not empty; no databases were modified")
         self.armed = True
         return self
+
+    def _catalog_databases(self) -> set[str]:
+        """Only this run's control catalogue can authorize additional tenant schemas."""
+        with (
+            pymysql.connect(**self.config, database=self.namespace + "_control") as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute("SELECT id FROM sec_tenants")
+            tenants = [row[0] for row in cursor.fetchall()]
+        return database_names(self.namespace, tenants)
 
     def __exit__(
         self, error_type: type[BaseException] | None, error: BaseException | None, traceback: TracebackType | None
@@ -121,9 +134,15 @@ class DatabaseScope:
                 self.cleaned.add(name)
 
     def record_created(self) -> set[str]:
+        if not self.armed:
+            raise RuntimeError("Database ownership requires a verified empty namespace")
         actual = self._existing()
-        if not actual.issubset(self.candidates):
+        if any(not re.fullmatch(re.escape(self.namespace) + r"(?:_control|_t_[0-9a-f]{24})?", name) for name in actual):
             raise RuntimeError("Database discovery returned an unowned database; cleanup stopped")
+        new_databases = actual - self.candidates
+        if new_databases and not new_databases.issubset(self._catalog_databases()):
+            raise RuntimeError("New database is not owned by this run's control catalog; cleanup stopped")
+        self.candidates.update(actual)
         self.created.update(actual)
         return actual
 
@@ -208,8 +227,21 @@ def main() -> int:
     parser.add_argument(
         "--harness", action="store_true", help="Exercise real SDK with a local synthetic Messages provider"
     )
+    parser.add_argument(
+        "--visual", action="store_true", help="Verify canonical screenshots, axe and native browser zoom"
+    )
+    parser.add_argument(
+        "--visual-only", action="store_true", help="Run visual acceptance in its own fresh fixture scope"
+    )
     parser.add_argument("playwright_args", nargs=argparse.REMAINDER, help="Arguments after -- are passed to Playwright")
     args = parser.parse_args()
+    args.visual = args.visual or args.visual_only
+    if args.visual_only and args.harness:
+        parser.error("Visual-only scope must be separate from SDK mutation tests")
+    if any(value == "-u" or value.startswith("--update-snapshots") for value in args.playwright_args):
+        parser.error("Snapshot updates require the reviewed visual-policy.json capture commit, not a CLI override")
+    if args.visual and args.target != "foundation":
+        parser.error("Visual acceptance requires foundation")
     if args.harness and (args.target != "foundation" or not Path("/proc").is_dir()):
         raise ValueError("Harness browser acceptance requires foundation on Linux with process observation")
     check_ports(args.api_port, args.agent_port)
@@ -225,6 +257,9 @@ def main() -> int:
         dict(os.environ), namespace, work, api_port=args.api_port, agent_port=args.agent_port
     )
     environment["E2E_HARNESS_ACCEPTANCE"] = "1" if args.harness else "0"
+    environment["E2E_VISUAL_ACCEPTANCE"] = "1" if args.visual else "0"
+    environment["E2E_VISUAL_ONLY"] = "1" if args.visual_only else "0"
+    environment["E2E_VISUAL_BASELINE_DIR"] = str(ROOT / "e2e/visual-baselines")
     environment.pop("E2E_HARNESS_URL", None)
     environment.pop("E2E_HARNESS_CONTROL", None)
     if args.harness:
@@ -252,6 +287,7 @@ def main() -> int:
     commit = source_commit(args.target)
     environment["E2E_SOURCE_COMMIT"] = commit
     source = export_source(commit, work)
+    environment["E2E_APPLICATION_ROOT"] = str(source)
     # Browser tests and authentication snapshots run from this private work tree,
     # independent of the application snapshot (which may be the old release).
     shutil.copytree(ROOT / "e2e", work / "e2e", ignore=shutil.ignore_patterns("__pycache__"))
@@ -274,6 +310,11 @@ def main() -> int:
         "node": node_version,
         "work": str(work),
         "status": "failed",
+        "result_kind": (
+            "baseline-capture-not-acceptance"
+            if args.visual and json.loads((ROOT / "e2e/visual-policy.json").read_text())["mode"] == "capture"
+            else "acceptance"
+        ),
     }
     processes: list[subprocess.Popen] = []
     logs = []

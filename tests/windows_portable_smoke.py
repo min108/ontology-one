@@ -436,7 +436,7 @@ class Acceptance:
         response = self.client.post("/api/auth/login", json={"username": self.username, "password": self.password})
         require(response.status_code == 200, "LOGIN_FAILED")
         data = response.json()
-        require(data["must_change_password"], "INITIAL_PASSWORD_CHANGE_NOT_REQUIRED")
+        require(not data["must_change_password"], "INITIAL_PASSWORD_STILL_BLOCKS")
         require(
             data["user"]["home_tenant_id"] == "hq" and data["user"]["role"] == "admin", "HEADQUARTERS_ADMIN_NOT_CREATED"
         )

@@ -162,11 +162,7 @@ def _principal(principal=None):
     from .jobs import assert_execution_principal_current
 
     principal = principal or require_context()
-    if (
-        principal.identity_kind != "session"
-        or principal.must_change_password
-        or principal.role not in {"admin", "modeler", "reviewer"}
-    ):
+    if principal.identity_kind != "session" or principal.role not in {"admin", "modeler", "reviewer"}:
         raise HTTPException(403, "当前身份无权使用模型辅助功能。")
     # The shared client also serves read-only assistance, not just editing jobs.
     return assert_execution_principal_current(principal, require_write=False)
@@ -174,7 +170,7 @@ def _principal(principal=None):
 
 def require_admin():
     principal = assert_storage_write()
-    if principal.identity_kind != "session" or principal.role != "admin" or principal.must_change_password:
+    if principal.identity_kind != "session" or principal.role != "admin":
         raise HTTPException(403, "仅机构管理员可管理模型配置。")
     return principal
 

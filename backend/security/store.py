@@ -150,7 +150,7 @@ def _directory():
         for index, name in enumerate(values[category], 1):
             ident = f"{prefix}-{index:02d}"
             result.append({"id": ident, "name": name, "category": category, "org_id": ident})
-    assert len(result) == 51 and len({x["id"] for x in result}) == 51
+    assert len({x["id"] for x in result}) == len(result)
     return result
 
 
@@ -222,12 +222,14 @@ def _initialize_control_unlocked():
             cur.execute(
                 "UPDATE sec_users SET is_superadmin=CASE WHEN home_tenant_id='hq' AND role='admin' THEN 1 ELSE 0 END"
             )
-            for tenant in _directory():
+            cur.execute("SELECT COUNT(*) AS n FROM sec_tenants")
+            initial_directory = _directory() if cur.fetchone()["n"] == 0 else []
+            for tenant in initial_directory:
                 # Fixed-length derived names prevent user-controlled database selection.
                 digest = hashlib.sha256((database + ":" + tenant["id"]).encode()).hexdigest()[:24]
                 db_name = database.removesuffix("_control")[:32] + "_t_" + digest
                 cur.execute(
-                    "INSERT INTO sec_tenants(id,name,category,org_id,db_name,status,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE name=VALUES(name),category=VALUES(category),org_id=VALUES(org_id)",
+                    "INSERT INTO sec_tenants(id,name,category,org_id,db_name,status,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s)",
                     (
                         tenant["id"],
                         tenant["name"],
@@ -349,7 +351,7 @@ def _principal(cur, user, session, request_id):
         auth_version=user["auth_version"],
         database_name=target["db_name"],
         request_id=request_id,
-        must_change_password=bool(user["must_change_password"]),
+        must_change_password=False,
         duties=tuple(json.loads(user.get("duties") or "[]")),
     )
 
@@ -366,7 +368,7 @@ def _session_row(cursor, *, raw=None, principal=None, captured_tenant=None):
     cursor.execute(
         """SELECT s.id AS session_id,s.user_id,s.auth_version AS session_version,
         s.expires_at,s.revoked_at,s.csrf_hash,s.last_seen_at,u.username,u.home_tenant_id,
-        u.role,u.auth_version,u.is_active,u.must_change_password,h.status AS home_status,
+        u.role,u.auth_version,u.is_active,u.must_change_password,u.duties,h.status AS home_status,
         t.id AS effective_tenant_id,t.status AS target_status,t.db_name
         FROM sec_sessions s JOIN sec_users u ON u.id=s.user_id
         JOIN sec_tenants h ON h.id=u.home_tenant_id JOIN sec_tenants t ON """
@@ -404,7 +406,7 @@ def _joined_principal(row, request_id):
         auth_version=row["auth_version"],
         database_name=row["db_name"],
         request_id=request_id,
-        must_change_password=bool(row["must_change_password"]),
+        must_change_password=False,
         duties=tuple(json.loads(row.get("duties") or "[]")),
     )
 
@@ -412,7 +414,7 @@ def _joined_principal(row, request_id):
 def _same_identity(current, principal):
     return current and all(
         getattr(current, field) == getattr(principal, field)
-        for field in ("auth_version", "role", "home_tenant_id", "tenant_id", "database_name", "is_superadmin")
+        for field in ("auth_version", "role", "home_tenant_id", "tenant_id", "database_name", "is_superadmin", "duties")
     )
 
 
@@ -451,8 +453,8 @@ def assert_principal_current(principal, require_write=False):
         current = _joined_principal(_session_row(cur, principal=principal), principal.request_id)
         if not _same_identity(current, principal):
             raise HTTPException(401, "会话、权限或工作区已变更，请刷新后重试。")
-        if require_write and (principal.readonly or current.readonly or current.must_change_password):
-            raise HTTPException(403, "当前会话不允许写入，请先完成密码更新或授权。")
+        if require_write and (principal.readonly or current.readonly):
+            raise HTTPException(403, "当前会话不允许写入，请联系本机构管理员核对授权。")
         return current
 
 
@@ -466,7 +468,7 @@ def assert_job_principal_current(principal, require_write=True):
         )
         if not _same_identity(current, principal):
             raise HTTPException(401, "任务所属账号、机构或授权已变化。")
-        if require_write and (principal.readonly or current.readonly or current.must_change_password):
+        if require_write and (principal.readonly or current.readonly):
             raise HTTPException(403, "任务当前不具备写入授权。")
         return current
 
@@ -500,11 +502,17 @@ def authorized_control_connection(principal, mode="standard"):
             initial = _principal(cursor, original_user, original_session, principal.request_id)
             if not initial or any(
                 getattr(initial, field) != getattr(principal, field)
-                for field in ("auth_version", "role", "home_tenant_id", "tenant_id", "database_name", "is_superadmin")
+                for field in (
+                    "auth_version",
+                    "role",
+                    "home_tenant_id",
+                    "tenant_id",
+                    "database_name",
+                    "is_superadmin",
+                    "duties",
+                )
             ):
                 raise HTTPException(401, "操作身份或工作区已变化。")
-            if mode not in ("credential", "revoke") and initial.must_change_password:
-                raise HTTPException(403, "请先修改初始密码。")
         yield connection
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM sec_users WHERE id=%s", (principal.user_id,))
@@ -520,7 +528,7 @@ def authorized_control_connection(principal, mode="standard"):
             )
             if user["auth_version"] not in expected_versions or any(
                 user[field] != original_user[field]
-                for field in ("home_tenant_id", "role", "is_active", "is_superadmin")
+                for field in ("home_tenant_id", "role", "is_active", "is_superadmin", "duties")
             ):
                 raise HTTPException(401, "提交时账号权限已变化。")
             checked_user = dict(user)
@@ -678,7 +686,7 @@ def bootstrap_superadmin(username=None, password=None, display_name="平台管�
             return existing["id"]
         uid = uuid.uuid4().hex
         cur.execute(
-            "INSERT INTO sec_users(id,username,display_name,home_tenant_id,role,password_hash,is_active,is_superadmin,must_change_password,auth_version,created_at,updated_at) VALUES(%s,%s,%s,'hq','admin',%s,1,1,1,1,%s,%s)",
+            "INSERT INTO sec_users(id,username,display_name,home_tenant_id,role,password_hash,is_active,is_superadmin,must_change_password,auth_version,created_at,updated_at) VALUES(%s,%s,%s,'hq','admin',%s,1,1,0,1,%s,%s)",
             (uid, username, display_name, hash_password(password), time.time(), time.time()),
         )
         _default_grants(cur, uid, "hq", "bootstrap")
@@ -820,10 +828,13 @@ def _user_public(row):
     }
     for key in ("is_active", "is_superadmin", "must_change_password"):
         result[key] = bool(result[key])
+    result["must_change_password"] = False
     return result
 
 
 def session_payload(principal, raw_token):
+    from .permissions import permissions_for
+
     principal = assert_principal_current(principal)
     with control_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM sec_users WHERE id=%s", (principal.user_id,))
@@ -858,7 +869,9 @@ def session_payload(principal, raw_token):
                 "can_review": principal.role in ("admin", "reviewer"),
             },
             "csrf_token": csrf_token(raw_token),
-            "must_change_password": bool(user["must_change_password"]),
+            "must_change_password": False,
+            "permission_keys": sorted(permissions_for(principal)),
+            "password_change_recommended": password_change_recommended(cur, principal.user_id),
         }
 
 
@@ -971,7 +984,7 @@ def create_user(principal, *, username, display_name, tenant_id, role, password,
                 role,
                 password_hash,
                 int(is_superadmin),
-                int(must_change_password),
+                0,
                 time.time(),
                 time.time(),
             ),
@@ -1048,7 +1061,7 @@ def update_user(principal, user_id, changes):
             if field == "reason":
                 continue
             if field == "password":
-                clauses.extend(["password_hash=%s", "must_change_password=1"])
+                clauses.extend(["password_hash=%s", "must_change_password=0"])
                 values.append(hash_password(value))
             else:
                 clauses.append(field + "=%s")
@@ -1165,9 +1178,23 @@ def revoke_grant(principal, grant_id):
         )
 
 
-def audit_records(principal, page=1, page_size=50):
+def audit_records(principal, page=1, page_size=50, *, filters=None):
     require_admin(principal)
     where, args = ("", []) if principal.is_superadmin else (" WHERE tenant_id=%s", [principal.home_tenant_id])
+    clauses = []
+    args = list(args)
+    if where:
+        clauses.append("tenant_id=%s")
+    for key, value in (filters or {}).items():
+        if key in {"actor_id", "tenant_id", "action", "outcome"}:
+            clauses.append(key + "=%s")
+            args.append(value)
+        elif key in {"since", "until"}:
+            clauses.append("created_at" + (">=%s" if key == "since" else "<=%s"))
+            args.append(value.timestamp())
+        else:
+            raise HTTPException(422, "不支持的审计筛选条件。")
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
     with control_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) AS n FROM sec_audit" + where, args)
         total = cur.fetchone()["n"]
@@ -1180,3 +1207,19 @@ def audit_records(principal, page=1, page_size=50):
             for row in cur.fetchall()
         ]
         return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+def password_change_recommended(cur, user_id):
+    """Only real credential events can recommend changing a password."""
+    cur.execute(
+        "SELECT action,details FROM sec_audit WHERE resource=%s AND outcome='success' AND action IN ('bootstrap_superadmin','user_create','user_update','password_change') ORDER BY id DESC",
+        (user_id,),
+    )
+    for row in cur.fetchall():
+        if row["action"] == "password_change":
+            return False
+        if row["action"] in ("bootstrap_superadmin", "user_create"):
+            return True
+        if "credential_reset" in json.loads(row["details"]).get("changed_fields", []):
+            return True
+    return False

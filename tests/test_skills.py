@@ -155,10 +155,14 @@ class Governance(unittest.TestCase):
     def test_application_readonly_and_reviewer_write_denied(self):
         from dataclasses import replace
 
+        with (
+            use_context(replace(P, must_change_password=True)),
+            patch.object(s, "assert_principal_current", side_effect=lambda value: value),
+        ):
+            self.assertEqual(s._role(s.ROLES).user_id, P.user_id)
         for principal, roles in [
             (replace(P, identity_kind="application", session_id=""), s.ROLES),
             (replace(P, readonly=True), s.ROLES),
-            (replace(P, must_change_password=True), s.ROLES),
             (replace(P, role="reviewer"), s.BUILD),
         ]:
             with (

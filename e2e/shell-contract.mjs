@@ -11,8 +11,13 @@ export const redirects = [
   [
     "/security?probe=security#password",
     "/account/security?probe=security#password",
+    "账号安全",
   ],
-  ["/administration?probe=users#members", "/admin/users?probe=users#members"],
+  [
+    "/administration?probe=users#members",
+    "/admin/users?probe=users#members",
+    "账号与权限",
+  ],
   [
     "/settings?probe=model#connection",
     "/admin/model?probe=model#connection",

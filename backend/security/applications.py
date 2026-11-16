@@ -92,7 +92,6 @@ def _principal(row, request_id):
         return None
     if (
         not row["is_active"]
-        or row["must_change_password"]
         or row["tenant_status"] != "active"
         or row["home_tenant_id"] != row["tenant_id"]
         or row["role"] not in store.ROLES
@@ -150,7 +149,6 @@ def _same(current, captured):
             "session_id",
             "is_superadmin",
             "readonly",
-            "must_change_password",
         )
     )
 
@@ -357,14 +355,8 @@ def _delegate(cursor, user_id, tenant_id, *, lock=False):
         (user_id,),
     )
     user = cursor.fetchone()
-    if (
-        not user
-        or not user["is_active"]
-        or user["must_change_password"]
-        or user["home_tenant_id"] != tenant_id
-        or user["role"] not in store.ROLES
-    ):
-        raise HTTPException(422, "委托账号须为本机构已启用且已修改初始密码的账号。")
+    if not user or not user["is_active"] or user["home_tenant_id"] != tenant_id or user["role"] not in store.ROLES:
+        raise HTTPException(422, "委托账号须为本机构已启用的账号。")
     return user
 
 
@@ -438,7 +430,6 @@ def _public(cursor, row):
             if not row["enabled"]
             else "delegate_changed"
             if not row["is_active"]
-            or row["must_change_password"]
             or row["home_tenant_id"] != row["tenant_id"]
             or row["auth_version"] != credential["delegate_auth_version"]
             else None
@@ -502,7 +493,7 @@ def application_options():
     principal = _manager()
     with store.control_connection() as connection, connection.cursor() as cursor:
         cursor.execute(
-            "SELECT id,username,display_name,role FROM sec_users WHERE home_tenant_id=%s AND is_active=1 AND must_change_password=0 ORDER BY username",
+            "SELECT id,username,display_name,role FROM sec_users WHERE home_tenant_id=%s AND is_active=1 ORDER BY username",
             (principal.tenant_id,),
         )
         users = list(cursor.fetchall())

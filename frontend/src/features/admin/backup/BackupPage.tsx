@@ -3,6 +3,7 @@ import { Button } from 'antd';
 import { apiBlob, invokeCapability } from '../../../api/client';
 import { PageHeader } from '../../../ui/PageHeader';
 import { StateBlock } from '../../../ui/StateBlock';
+import { Timestamp } from '../../identity/common';
 import { copy, ResourceState, useManagementSession, useResource } from '../shared';
 import styles from '../Admin.module.css';
 
@@ -106,7 +107,7 @@ export default function BackupPage() {
             <ul>
               {backups.data.items.map((backup, index) => (
                 <li key={`${backup.created_at}:${index}`}>
-                  {copy.admin_backup_time}：<span data-visual-dynamic="timestamp">{backup.created_at}</span> ·{' '}
+                  {copy.admin_backup_time}：<Timestamp value={backup.created_at} /> ·{' '}
                   {copy.admin_backup_version}：{backup.control_version} · {copy.admin_backup_verified}
                 </li>
               ))}

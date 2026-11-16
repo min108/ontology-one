@@ -90,6 +90,9 @@
     "pages/Settings.tsx",
     "components/HarnessConfiguration.tsx",
     "components/harness-configuration.css",
-    "pages/Overview.tsx"
+    "pages/Overview.tsx",
+    "auth.css",
+    "pages/Administration.tsx",
+    "pages/Security.tsx"
   ]
 }

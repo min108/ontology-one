@@ -231,7 +231,7 @@ def _fail(code, message, status=422):
 
 def _role(roles):
     principal = assert_principal_current(require_context())
-    if principal.role not in roles or principal.readonly or principal.must_change_password:
+    if principal.role not in roles or principal.readonly:
         _fail("source_forbidden", "当前账号无权执行此数据源操作。", 403)
     return principal
 

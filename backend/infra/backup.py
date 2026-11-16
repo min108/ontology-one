@@ -20,7 +20,7 @@ from contextlib import closing
 from pathlib import Path, PurePosixPath
 
 from backend import db
-from backend.infra.recovery_schema import trusted_schema, validate_schema
+from backend.infra.recovery_schema import validate_schema
 from backend.maintenance import require_maintenance
 from backend.platform_io import atomic_write, ensure_private_directory, reject_reparse_points
 
@@ -292,7 +292,7 @@ def restore_upgrade_backup(path: Path) -> dict:
                 if entry["snapshot"] is None:
                     continue
                 value = snapshots[database]
-                trusted = trusted_schema("control" if entry["tenant_id"] is None else "tenant")
+                trusted = validate_schema(value, "control" if entry["tenant_id"] is None else "tenant")
                 conn.execute(f"CREATE DATABASE `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
                 conn.execute(f"USE `{database}`")
                 for table in value["ddl"]:

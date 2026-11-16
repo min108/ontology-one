@@ -626,12 +626,7 @@ class _SessionPolicy:
         self.mapping_ids = frozenset(mapping_ids)
 
     def _current(self, principal):
-        if (
-            principal != self.principal
-            or principal.identity_kind != "session"
-            or principal.must_change_password
-            or principal.readonly
-        ):
+        if principal != self.principal or principal.identity_kind != "session" or principal.readonly:
             raise HTTPException(403, "当前会话无权调用此本体工具。")
         return assert_principal_current(principal)
 

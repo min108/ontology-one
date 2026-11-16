@@ -3,7 +3,7 @@
 from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fastapi import HTTPException
 
 
@@ -21,7 +21,8 @@ class Principal:
     readonly: bool = False
     request_id: str = ""
     visibility: str = "private"
-    must_change_password: bool = False
+    # Deprecated compatibility value, never part of authorization identity (H.2-1).
+    must_change_password: bool = field(default=False, compare=False)
     identity_kind: str = "session"
     application_id: str = ""
     credential_id: str = ""
@@ -52,7 +53,6 @@ def readonly_session_execution(principal: Principal, guard):
         or principal.identity_kind != "session"
         or principal.tenant_id != principal.home_tenant_id
         or principal.readonly
-        or principal.must_change_password
         or not callable(guard)
     ):
         raise HTTPException(403, "当前身份不能进入本体只读任务。")

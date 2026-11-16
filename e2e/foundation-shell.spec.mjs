@@ -146,11 +146,9 @@ test.describe("admin: compatibility redirects", () => {
     test(`redirect ${from} preserves query and hash`, async ({ page }) => {
       await page.goto(from);
       await expect(page).toHaveURL((url) => redirectMatches(url, to));
-      if (heading)
-        await expect(
-          page.getByRole("heading", { name: heading, exact: true, level: 1 }),
-        ).toBeVisible();
-      else await expect(page.locator("[data-legacy-page]")).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: heading, exact: true, level: 1 }),
+      ).toBeVisible();
     });
   }
 });

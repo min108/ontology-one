@@ -11,8 +11,10 @@ import { WorkspaceLanding } from './WorkspaceLanding';
 import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from './navigation';
 
 const Home = lazy(() => import('../features/home/Home'));
-const Security = lazy(() => import('@legacy/pages/Security'));
-const Administration = lazy(() => import('@legacy/pages/Administration'));
+const Security = lazy(() => import('../features/account/AccountSecurity'));
+const Administration = lazy(() => import('../features/admin/UsersPage'));
+const Organizations = lazy(() => import('../features/admin/OrganizationsPage'));
+const Audit = lazy(() => import('../features/admin/AuditPage'));
 const ModelPage = lazy(() => import('../features/admin/model/ModelPage'));
 const BackupPage = lazy(() => import('../features/admin/backup/BackupPage'));
 const SystemPage = lazy(() => import('../features/admin/system/SystemPage'));
@@ -56,6 +58,8 @@ const retained = [
 // R1-6/7/8 replace these adapters only after their operation checklist passes.
 export const completedAdministration = new Set([
   '/admin/users',
+  '/admin/orgs',
+  '/admin/audit',
   '/admin/model',
   '/admin/backup',
   '/admin/demo',
@@ -96,21 +100,12 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
         {['/security', '/administration', '/settings'].map((path) => (
           <Route key={path} path={path} element={<LegacyRedirect />} />
         ))}
-        <Route
-          path="/account/security"
-          element={
-            <LegacyPage>
-              <Security />
-            </LegacyPage>
-          }
-        />
+        <Route path="/account/security" element={<Security />} />
         <Route
           path="/admin/users"
           element={
-            principal.role === 'admin' ? (
-              <LegacyPage>
-                <Administration />
-              </LegacyPage>
+            principal.role === 'admin' && principal.permissions.includes('admin.users') ? (
+              <Administration />
             ) : (
               forbidden
             )
@@ -120,6 +115,8 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
         <Route path="/admin/backup" element={<BackupPage />} />
         <Route path="/admin/system" element={<SystemPage />} />
         <Route path="/admin/demo" element={<DemoPage />} />
+        <Route path="/admin/orgs" element={<Organizations />} />
+        <Route path="/admin/audit" element={<Audit />} />
         <Route
           path="/assets/:id"
           element={

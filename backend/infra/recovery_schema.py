@@ -6,13 +6,16 @@ loaded while the fixture's actual 0.7.0 backend is on sys.path.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
 
 
-def trusted_schema(kind: str) -> dict:
-    path = Path(__file__).resolve().parents[2] / "migrations" / "restore" / "v1.json"
+def trusted_schema(kind: str, version: int = 1) -> dict:
+    if version not in {1, 2, 3, 4}:
+        raise ValueError("未知的受信恢复结构版本。")
+    path = Path(__file__).resolve().parents[2] / "migrations" / "restore" / f"v{version}.json"
     registry = json.loads(path.read_text())
     if registry.get("format") != "ontology-trusted-restore-schema-v1" or kind not in {"control", "tenant"}:
         raise ValueError("安装包恢复结构无效。")
@@ -34,7 +37,7 @@ def normalized_ddl(value: str) -> str:
 
 
 def validate_schema(value: dict, kind: str) -> dict:
-    trusted = trusted_schema(kind)
+    trusted = schema_for_snapshot(value, kind)
     optional = {"schema_migrations", "demo_installations"} if kind == "tenant" else {"schema_migrations"}
     required = set(trusted["ddl"]) - optional
     if not required <= set(value["tables"]) <= set(trusted["ddl"]):
@@ -53,3 +56,37 @@ def validate_schema(value: dict, kind: str) -> dict:
         if columns != trusted["columns"][table] or any(set(row) != set(columns) for row in rows):
             raise ValueError("备份行与受信任的列清单不一致。")
     return trusted
+
+
+def schema_for_snapshot(value: dict, kind: str) -> dict:
+    """Select an exact schema from checked, continuous installation-owned history.
+
+    Legacy snapshots have no history. The history table itself is verified with
+    the immutable v1 definition before any row can select a newer schema.
+    """
+    baseline = trusted_schema(kind)
+    rows = value["tables"].get("schema_migrations")
+    if rows is None:
+        return baseline
+    columns = baseline["columns"]["schema_migrations"]
+    if (
+        value["columns"].get("schema_migrations") != columns
+        or normalized_ddl(value["ddl"].get("schema_migrations", ""))
+        != normalized_ddl(baseline["ddl"]["schema_migrations"])
+        or any(set(row) != set(columns) for row in rows)
+    ):
+        raise ValueError("迁移历史结构与受信定义不一致。")
+    folder = Path(__file__).resolve().parents[2] / "migrations" / kind
+    versions = sorted(rows, key=lambda row: row["version"])
+    for index, row in enumerate(versions, 1):
+        paths = list(folder.glob(f"{index:04d}_*.py"))
+        if len(paths) != 1 or type(row["version"]) is not int or row["version"] != index:
+            raise ValueError("备份迁移历史不连续或版本不受支持。")
+        path = paths[0]
+        if row["name"] != path.stem or row["checksum"] != hashlib.sha256(path.read_bytes()).hexdigest():
+            raise ValueError("备份迁移历史与已发布定义不一致。")
+    supported = {"control": {0: 1, 1: 1, 2: 2, 3: 3, 4: 4, 5: 4}, "tenant": {0: 1, 1: 1}}
+    version = supported[kind].get(len(versions))
+    if version is None:
+        raise ValueError("备份迁移版本尚未登记受信恢复结构。")
+    return trusted_schema(kind, version)

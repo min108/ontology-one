@@ -27,3 +27,17 @@ R1-2 已建立迁移、备份与失败恢复；R1-3 已完成后端装配；R1-5
 ## R1-5 落地补充
 
 新代码经@legacy声明别名读取宽松生成的旧类型；构建alias仍绑定原实现。类型负例防止strict被旧声明链关闭。旧门户采用display:contents避免整页空白高度。显式业务dirty与上传登记决定机构切换确认，不扫描DOM猜测编辑。新会话请求以独立AbortController隔离代次，权限键与旧布尔权限分别存放。懒加载保留旧视图期间，旧URL上下文不能覆盖最新浏览器地址；导航与图谱分别校验完整位置与固定挂载路由。
+
+## R1-7 落地补充：身份与目录迁移
+
+控制库迁移序列为0001_baseline、0002_directory、0003_duties、0004_preferences、0005_password_advice；机构库仍为0001_baseline。0001文件与v1恢复定义保留原件，entities 12列、relations 7列不变。0002给sec_tenants增加九个目录字段，不重写既有id、org_id、db_name；0003仅增加sec_users.duties空JSON数组；0004增加控制库sec_user_prefs；0005仅清除旧强制改密值，不改变结构。
+
+恢复按控制库与每个机构库各自已应用的可信迁移历史选取精确结构。无历史表/空历史或版本1使用v1；控制库版本2使用v2、版本3使用v3、版本4/5使用v4；机构库只支持无历史/版本1并使用v1。先校验历史表固定结构和列、连续版本、迁移名称及安装包文件checksum，再选对应结构；未知版本拒绝。验证、留存与实际恢复共用这一选择器，不取所有版本表列的并集，不执行备份自带SQL。恢复旧结构后，新程序运行门仍要求显式迁移。新恢复定义沿用v1无DEFINER审计触发器，不额外要求SET_ANY_DEFINER；MySQL原有触发器和二进制日志权限前提不变。
+
+新机构先提交不可登录的provisioning目录及pending审计，只有内部调用可用pending授权开通；库名取服务端已提交目录并校验完整派生名，逐库锁和fresh_only约束不变。完成全部机构迁移与根节点初始化后才active；失败为provision_failed，保留目录、审计及部分库，不自动DROP、不在线enable、不自动重试部分非空库。此失败不等同于整个部署升级失败。运行门仅对id以org-开头且状态明确为provisioning/provision_failed的目录跳过机构迁移检查；active/disabled既有库与全局升级失败状态仍严格检查。未知部分结构仍不能进入受信备份/恢复白名单。处置前须停止全部共享API/worker实例，保留证据并离线检查；必要时按独占维护锁流程恢复完整升级前备份，无新增通用repair入口或一键部分库修复保证。
+
+目录改名、层级调整持部署级目录锁，并通过同一服务器上的同一InnoDB事务更新目录、目标机构根节点版本快照及追加审计；失败一起回滚。根节点按稳定tenant id定位，不能按可空的目录org_id定位。真实旧HQ目录org_id=null继续作为合法响应；业务根id='hq'、业务实体自身org_id='hq'不变。快照owner_tenant_id与owner_org_id均投影为目标tenant id，符合旧entity_json语义，不继承发起请求时的其他工作区，也不从目录org_id或实体业务org_id推导；全局旧entity_json行为不改。
+
+duties只存储和读取，不开放职责授予API，不增加可创建账号角色；未知职责不产生权限。会话SQL显式投影duties，无额外热查询，Principal构造统一将JSON数组规范为tuple；捕获身份和控制事务提交前检查duties，变更后旧主体读写均拒绝。强制改密仅按H.2-1取消：旧入参和兼容字段保留、写入0、返回false，Principal比较排除此废弃位，其他身份/角色/只读/取消/机构守卫继续生效。建议改密由真实创建/重置/改密审计派生，不把偏好当安全状态。
+
+sec_user_prefs属于控制库完整备份/恢复，不进入机构业务备份。偏好身份只取认证上下文，采用键白名单、值和大小上限；写偏好与审计同事务，只记录pref_key及结果元数据，不记录偏好JSON或图谱filters。无效输入不产生写入，审计失败回滚。旧v1会话布尔permissions、roles与接口字段保持，新顶层permission_keys、password_change_recommended并存；新管理能力复用原用户/授权服务，未开放新的账号角色。
