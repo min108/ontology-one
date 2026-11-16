@@ -40,6 +40,7 @@ export function secondaryPaths(workspace, role, permissions) {
   const paths = {
     "/": [],
     "/build": [
+      "/build/intake",
       "/materials",
       "/datasets",
       "/data-sources",
@@ -49,13 +50,14 @@ export function secondaryPaths(workspace, role, permissions) {
       "/work",
     ],
     "/ontology": [
+      "/ontology/catalog",
       "/assets",
       "/authority",
       "/graph",
       ...(permissions.includes("federation.read") ? ["/group"] : []),
     ],
-    "/apply": ["/applications"],
-    "/govern": ["/maintenance", "/impact"],
+    "/apply": ["/applications", "/apply/artifacts"],
+    "/govern": ["/govern/reviews", "/maintenance", "/impact"],
     "/admin": [
       ...(role === "admin" ? ["/admin/users"] : []),
       "/admin/model",

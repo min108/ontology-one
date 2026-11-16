@@ -130,6 +130,8 @@ for (const role of roles) {
         await expect(page).toHaveURL((url) => url.pathname === "/graph");
         // Graph has a separate retained-route acceptance; capture the stable materials view.
         await primary(page).locator('a[href="/build"]').click();
+        await expect(page).toHaveURL((url) => url.pathname === "/build/intake");
+        await secondary(page).locator('a[href="/materials"]').click();
         await expect(page).toHaveURL((url) => url.pathname === "/materials");
         await expect(
           page.getByRole("heading", { name: "素材整理", exact: true }),

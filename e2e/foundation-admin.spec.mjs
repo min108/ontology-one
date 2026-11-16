@@ -106,7 +106,7 @@ for (const role of roles) {
       await expect(integrations).toHaveCount(role === "admin" ? 1 : 0);
       await ready(page, "/admin/system", "系统信息");
       await expect(
-        page.getByRole("heading", { name: "知元 1.0.0", exact: true }),
+        page.getByRole("heading", { name: "知元 1.1.0", exact: true }),
       ).toBeVisible();
       await expect(page.getByText("运行中", { exact: true })).toBeVisible();
       await expect(page.getByText("已启用", { exact: true })).toHaveCount(0);
