@@ -1,6 +1,6 @@
-import { StrictMode, type ReactNode } from 'react';
+import { lazy, StrictMode, Suspense, type ReactNode } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Graph from '@legacy/pages/Graph';
 import { setWorkspaceTransition } from '../state/workspace-guard';
@@ -50,17 +50,25 @@ beforeEach(() => {
 });
 afterEach(() => setWorkspaceTransition('idle'));
 
-async function openGraph(instances: boolean) {
+async function openGraph(instances: boolean, suspend = false) {
+  const Pending = lazy(() => new Promise<{ default: () => ReactNode }>(() => {}));
+  function GraphRoute() {
+    const location = useLocation();
+    const nextInstances = new URLSearchParams(location.search).get('view') === 'instances';
+    return suspend && nextInstances !== instances ? <Pending /> : <Graph />;
+  }
   window.history.replaceState(null, '', instances ? '/graph?view=instances&node=data' : '/graph');
   render(
     <StrictMode>
       <BrowserRouter>
         <Link to="/build">Leave graph</Link>
         <Link to={instances ? '/graph' : '/graph?view=instances&node=data'}>Change graph</Link>
-        <Routes>
-          <Route path="/graph" element={<Graph />} />
-          <Route path="/build" element={<div>Build page</div>} />
-        </Routes>
+        <Suspense fallback={<div>Pending page</div>}>
+          <Routes>
+            <Route path="/graph" element={<GraphRoute />} />
+            <Route path="/build" element={suspend ? <Pending /> : <div>Build page</div>} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </StrictMode>,
   );
@@ -90,6 +98,23 @@ describe.each([false, true])('graph viewport ownership (instances: %s)', (instan
     act(() => complete(null, viewport));
     expect(window.location.pathname + window.location.search).toBe(target);
   });
+  it.each(['Leave graph', 'Change graph'])(
+    'keeps the destination while %s suspends with the old graph visible',
+    async (link) => {
+      const complete = await openGraph(instances, true);
+      const previousCanvas = screen.getByTestId('flow');
+      fireEvent.click(screen.getByText(link));
+      const target = window.location.pathname + window.location.search;
+      expect(target).toBe(
+        link === 'Leave graph' ? '/build' : instances ? '/graph' : '/graph?view=instances&node=data',
+      );
+      expect(screen.getByTestId('flow')).toBe(previousCanvas);
+      expect(previousCanvas).toBeVisible();
+      expect(screen.queryByText('Pending page')).not.toBeInTheDocument();
+      act(() => complete(null, viewport));
+      expect(window.location.pathname + window.location.search).toBe(target);
+    },
+  );
   it('does not save after the workspace is leaving even before unmount', async () => {
     const complete = await openGraph(instances);
     const target = window.location.pathname + window.location.search;

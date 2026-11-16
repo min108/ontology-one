@@ -2,7 +2,7 @@ import {isWorkspaceLeaving} from '../../state/workspace-guard';
 import {brand} from '../../i18n/brand';
 import {AccessButton} from '../components/AccessButton';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ReactFlow, Background, MiniMap, Handle, Position, MarkerType, BaseEdge, EdgeLabelRenderer, useStore, type Node, type Edge, type EdgeProps, type ReactFlowInstance } from '@xyflow/react';
 import { ArrowDownLeft, ArrowRight, ArrowUpRight, ArrowLeft, Bookmark, BookOpen, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, Compass, Database, Download, Expand, FileText, Filter, FolderOpen, Folders, GitBranch, History, Layers3, List, Maximize2, Minus, Network, Plus, RotateCcw, Search, ShieldCheck, Sparkles, Target, Waypoints, UserRound, X } from 'lucide-react';
 import { api, statusLabel } from '../api';
@@ -77,7 +77,7 @@ function positions(data:GData){
 export default function Graph(){const [params]=useSearchParams();return params.get('view')==='instances'?<InstanceGraph/>:<GraphWorkbench/>}
 
 function GraphWorkbench(){
- const [sp,setSp]=useSearchParams();const toast=useToast();
+ const [sp,setSp]=useSearchParams();const pathname=useLocation().pathname;const toast=useToast();
  const allLines=sp.get('lines')==='all';
  const node=sp.get('node')||'';const view=sp.get('view')||(node?'focus':sp.get('group')==='org_id'?'organization':sp.get('group')==='domain'||sp.get('mode')==='group'?'classification':'panorama');
  const reading=sp.get('reading')||'business',relationStatus=sp.get('relation_status')||'all',includeHistory=sp.get('include_history')==='true';
@@ -124,7 +124,7 @@ function GraphWorkbench(){
   return{id:e.id,source:e.source,target:e.target,sourceHandle,targetHandle,type:view==='panorama'?'atlas':'default',pathOptions:{borderRadius:18,offset:sameColumn?24:20},label,markerEnd:e.directory?undefined:{type:MarkerType.ArrowClosed,width:17,height:17,color},style:{stroke:color,strokeWidth:active?2.4:1.65,strokeDasharray:e.status==='candidate'?'6 5':e.directory?'2 5':e.status==='demo'?'3 4':e.status==='mixed'?'8 3 2 3':undefined,opacity:selectedId&&!active?.18:active?.95:allLines?.48:.68},labelStyle:{fill:'#3e5c74',fontSize:Math.min(20,11/Math.max(.5,zoom))},labelBgStyle:{fill:'#fff',fillOpacity:.97},labelBgPadding:[6,4] as [number,number],labelBgBorderRadius:5,interactionWidth:24,data:{item:e,sourceColumn:Math.round((a?.x||0)/310),targetColumn:Math.round((b?.x||0)/310),corridor:138+(index%3)*148+(Math.floor(index/3)%3-1)*4}}
  }),[visibleEdges,coords,selectedId,selectedEdge,hovered,related,zoom,view,allLines]);
  useEffect(()=>{if(!data)return;const stamp=interaction.current;const t=setTimeout(()=>{if(interaction.current!==stamp){pendingFit.current=false;return}const vx=Number(sp.get('vx')),vy=Number(sp.get('vy')),vz=Number(sp.get('vz'));if(!pendingFit.current&&sp.has('vz')&&vz>0){flow.current?.setViewport({x:vx,y:vy,zoom:vz});setZoom(vz)}else if(data.view==='focus'&&data.nodes.length>25){flow.current?.setCenter(578,204,{zoom:.67,duration:300});setZoom(.67)}else{flow.current?.fitView({padding:.08,duration:300,maxZoom:1});}pendingFit.current=false},100);return()=>clearTimeout(t)},[data]);
- const saveViewport=(_:any,v:{x:number;y:number;zoom:number})=>{if(!active.current||isWorkspaceLeaving())return;setZoom(v.zoom);const p=new URLSearchParams(window.location.search);p.set('vx',v.x.toFixed(1));p.set('vy',v.y.toFixed(1));p.set('vz',v.zoom.toFixed(3));setSp(p,{replace:true})};
+ const saveViewport=(_:any,v:{x:number;y:number;zoom:number})=>{if(!active.current||isWorkspaceLeaving()||window.location.pathname!==pathname)return;const p=new URLSearchParams(window.location.search);if(p.get('view')==='instances')return;setZoom(v.zoom);p.set('vx',v.x.toFixed(1));p.set('vy',v.y.toFixed(1));p.set('vz',v.zoom.toFixed(3));setSp(p,{replace:true})};
  const fit=()=>{interaction.current++;flow.current?.fitView({padding:.08,duration:300,maxZoom:1})};
  const fullscreen=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await stage.current?.requestFullscreen()}catch{toast('当前浏览器未能进入全屏')}};
  const saveView=()=>{if(!saveName.trim()){toast('请填写视图名称');return}const next=[{id:'view-'+Date.now(),name:saveName.trim(),query:sp.toString(),savedAt:new Date().toISOString()},...saved].slice(0,20);try{localStorage.setItem(VIEW_KEY,JSON.stringify(next));setSaved(next);setSaveName('');toast('已收藏视角、范围、展开状态与画布位置')}catch{toast('浏览器暂不能保存收藏')}};
