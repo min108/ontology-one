@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { useIncomingFiles } from './useIncomingFiles';
 import { HomeIntake } from './HomeIntake';
-import { stageFiles, clearTransfers, readTransfer } from './intake';
+import { stageFiles, clearTransfers, readTransfer, pendingTransfers } from './intake';
 import { useScopeStore } from '../../state/scope';
 import { useSessionStore } from '../../state/session';
 import { useWorkspaceGuard } from '../../app/useWorkspaceGuard';
@@ -208,6 +208,40 @@ it('preserves the staged file batch when an editor rejects navigation and can re
     fireEvent.click(screen.getByRole('button', { name: terms.labels.home_resume_transfer }));
     expect(screen.getByTestId('location')).toHaveTextContent('/materials?upload=1&intake=');
     expect(screen.getByText('guarded.md')).toBeInTheDocument();
+  } finally {
+    window.removeEventListener('ontology:request-route-navigation', guard);
+  }
+});
+
+it('offers a zero-field recipe start and preserves it when an editor cancels navigation', async () => {
+  let refuse = true;
+  const guard = (event: Event) => {
+    if (refuse) event.preventDefault();
+  };
+  window.addEventListener('ontology:request-route-navigation', guard);
+  try {
+    render(
+      <MemoryRouter>
+        <HomeIntake />
+        <Location />
+      </MemoryRouter>,
+    );
+    fireEvent.drop(document, {
+      dataTransfer: { types: ['Files'], files: [new File(['clause'], 'recipe.md')] },
+    });
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryAllByRole('textbox')).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.r2_start }));
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    const staged = pendingTransfers(scope);
+    expect(staged).toHaveLength(1);
+    expect(staged[0].recipe).toBe(true);
+    expect(readTransfer(staged[0].id, scope, 'materials')?.files[0].name).toBe('recipe.md');
+    refuse = false;
+    fireEvent.click(screen.getByRole('button', { name: terms.labels.home_resume_transfer }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/build/intake?upload=1&intake=');
+    act(() => window.dispatchEvent(new Event('ontology:scope-cleared')));
+    expect(pendingTransfers(scope)).toHaveLength(0);
   } finally {
     window.removeEventListener('ontology:request-route-navigation', guard);
   }

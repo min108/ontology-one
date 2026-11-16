@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import time
 import zipfile
 from pathlib import Path
@@ -21,7 +22,18 @@ TEXT = (
 def request(client: httpx.Client, method: str, path: str, **kwargs: object) -> dict:
     response = client.request(method, path, **kwargs)
     if response.status_code >= 400:
-        raise RuntimeError("request_failed_" + str(response.status_code))
+        payload = response.json()
+        detail = payload.get("detail") or payload.get("error") or {}
+        code = detail.get("code", "") if isinstance(detail, dict) else ""
+        if code == "NUMERIC_UNVERIFIED":
+            # Numeric diagnostics only; never persist an answer or quoted cell.
+            numbers = [
+                re.findall(r"[-+]?\d+(?:\.\d+)?", issue.split("：", 1)[-1]) for issue in detail.get("issues", [])
+            ]
+            raise RuntimeError("numeric_unverified_" + json.dumps(numbers))
+        raise RuntimeError(
+            "request_failed_" + str(response.status_code) + (":" + code if re.fullmatch("[A-Z_]+", code) else "")
+        )
     return response.json()
 
 
@@ -129,9 +141,37 @@ def main() -> None:
             result["answer_has_provenance"] = True
             record()
             stage = "出一份报告"
-            report = request(
-                builder, "POST", f"/api/agent/sessions/{session['id']}/runs/{turn['run_id']}/report", json={}
-            )["data"]
+            try:
+                report = request(
+                    builder, "POST", f"/api/agent/sessions/{session['id']}/runs/{turn['run_id']}/report", json={}
+                )["data"]
+            except RuntimeError as error:
+                if not str(error).startswith("numeric_unverified_"):
+                    raise
+                result["numeric_gate_blocked"] = True
+                result["model_correction_turns"] = 1
+                # The same follow-up a user can make after the report gate rejects
+                # unsupported quantities. The gate remains active on the new run.
+                turn = request(
+                    builder,
+                    "POST",
+                    f"/api/agent/sessions/{session['id']}/turns",
+                    json={
+                        "message": "报告数字校验未通过。请重新调用工具读取选中制度，逐字核对后重写上一份回答。"
+                        "只写原文明确说明的付款核对事项和付款申请期限，不添加汇总计数或其他推导数字。"
+                        "采用一段正文和一个两列表格，不编写序号、版本号、编号、字符位置或来源说明；平台会附上原文引用。",
+                        "entity_ids": [ident],
+                        "skill_ids": [],
+                        "mapping_ids": [],
+                        "scope_mode": "selected",
+                    },
+                )
+                revised = wait(builder, f"/api/agent/sessions/{session['id']}/runs/{turn['run_id']}")
+                if not revised.get("provenance"):
+                    raise RuntimeError("corrected_answer_provenance_missing") from None
+                report = request(
+                    builder, "POST", f"/api/agent/sessions/{session['id']}/runs/{turn['run_id']}/report", json={}
+                )["data"]
             if report["source_kind"] != "analyst":
                 raise RuntimeError("source_kind_mismatch")
             for format in ("html", "docx"):

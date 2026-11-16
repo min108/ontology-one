@@ -28,13 +28,23 @@ def main() -> None:
     command = ["docker", "compose", "--project-name", "ontology-r2-demo", "--env-file", str(settings)]
     ca = os.getenv("SSL_CERT_FILE")
     if ca and Path(ca).is_file():
-        # Reuse the Dockerfile's build-only trust injection; never disable TLS.
+        # Reuse the Dockerfile's trust injection and mount the same approved
+        # CA bundle for runtime model connections; never disable TLS.
         override = folder / "build-ca.json"
         override.write_text(
             json.dumps(
                 {
                     "services": {
-                        name: {"build": {"secrets": ["proxy_ca"]}} for name in ("api", "agent", "worker", "migrate")
+                        name: {
+                            "build": {"secrets": ["proxy_ca"]},
+                            "volumes": [str(Path(ca).resolve()) + ":/run/ontology-ca.pem:ro"],
+                            "environment": {
+                                "SSL_CERT_FILE": "/run/ontology-ca.pem",
+                                "REQUESTS_CA_BUNDLE": "/run/ontology-ca.pem",
+                                "NODE_EXTRA_CA_CERTS": "/run/ontology-ca.pem",
+                            },
+                        }
+                        for name in ("api", "agent", "worker", "migrate")
                     },
                     "secrets": {"proxy_ca": {"file": str(Path(ca).resolve())}},
                 }

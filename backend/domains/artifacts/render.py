@@ -89,7 +89,7 @@ def chinese_number(value: str) -> str:
 def quantities(text: str, default_unit: str = "") -> list[tuple[Decimal, str]]:
     # Citation/list/article identifiers are labels, not quantitative claims.
     text = re.sub(rf"第(?:\d+|{CHINESE_NUMBER})条|\[(?:c?\d+)(?:,\s*c?\d+)*\]", "", text)
-    text = re.sub(r"(?m)^\s*\d+[.、]\s+|\b[A-Z]+[-_][A-Za-z0-9_-]+", "", text)
+    text = re.sub(r"(?m)^\s*(?:\d+[.、)）](?!\d)|[（(]\d+[）)])\s*", "", text)
     text = re.sub(
         rf"百分之({CHINESE_NUMBER}|\d+(?:\.\d+)?)",
         lambda m: (chinese_number(m[1]) if m[1][0] in CHINESE_DIGITS or m[1][0] in CHINESE_UNITS else m[1]) + "%",
@@ -111,6 +111,16 @@ def supports(number: Decimal, unit: str, evidence: list[tuple[Decimal, str]]) ->
         and (number == other if unit in {"年", "月", "日", "小时", "分钟"} else close_number(number, other))
         for other, other_unit in evidence
     )
+
+
+def without_source_labels(text: str, sources: list[dict]) -> str:
+    for source in sources:
+        for key in ("entity_id", "source_version", "anchor_id", "locator", "path"):
+            if source.get(key):
+                text = text.replace(str(source[key]), "")
+        version = re.escape(str(source["version"]))
+        text = re.sub(rf"版本\s*[：:]?\s*v?{version}(?![\d.])\s*版?|第\s*{version}\s*版", "", text)
+    return text
 
 
 def plain(text: str) -> str:
@@ -175,11 +185,11 @@ def verify(spec: dict) -> None:
             for row in block["rows"]:
                 for column, cell in zip(block["columns"], row, strict=True):
                     hint = re.search(UNITS, column)
-                    values = quantities(cell, hint.group() if hint else "")
+                    values = quantities(without_source_labels(cell, evidence), hint.group() if hint else "")
                     for number, unit in values:
                         if not supports(number, unit, supported):
                             issues.append(f"表格 {index}：{cell}")
-        for number, unit in quantities(text):
+        for number, unit in quantities(without_source_labels(text, evidence)):
             if not supports(number, unit, supported):
                 issues.append(f"段落 {index}：{number}{unit}")
     if issues:

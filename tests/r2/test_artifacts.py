@@ -101,10 +101,18 @@ class Renderers(unittest.TestCase):
             "费率百分之零点八。",
             "1. 办理时限为30。[c1]",
             "自2026-07-01起。",
+            "1、办理30日。\n（2）金额10000元。\n来源版本：1。",
         ):
             value["blocks"][0]["text"] = text
             render.verify(value)
-        for text in ("时限九十九日。", "时限为99。", "办理30日，另加99。", "自2025-07-01起。"):
+        for text in (
+            "时限九十九日。",
+            "时限为99。",
+            "办理30日，另加99。",
+            "自2025-07-01起。",
+            "来源版本：99。",
+            "事项有2项。",
+        ):
             value["blocks"][0]["text"] = text
             with self.subTest(text=text), self.assertRaises(HTTPException):
                 render.verify(value)

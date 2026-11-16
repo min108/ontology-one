@@ -2,7 +2,7 @@
 
 ## 1 项目与轮次
 
-知元（英文名 Ontology One）是集团本体管理平台。R1（1.0.0）已完成实施方自验，待独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
+知元（英文名 Ontology One）是集团本体管理平台。R2（1.1.0）S0–S6已实施，当前交接见 `docs/blueprint/rounds/R2-REPORT.md`；完整层CI以交付提交的Actions结果为准。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
 ## 2 硬规则摘要
 
@@ -92,7 +92,7 @@ npm --prefix frontend run build
 
 ## 5 实施约定
 
-先写契约与测试，再实现。新增结构走迁移，接口同时登记默认拒绝策略，能力共用业务函数；新 INSERT 必须列出列名。新代码遵循类型、词表和令牌规范。旧 Python 告警按精确文件豁免，不运行 ruff check --fix；旧前端不重格式化。每个包全量回归后提交，说明以 `[R1-编号]` 开头。并行最多 5 个子代理，不用最高推理档，各用显式起点的独立 worktree，格式化提交必须先合入。
+先写契约与测试，再实现。新增结构走迁移，接口同时登记默认拒绝策略，能力共用业务函数；新 INSERT 必须列出列名。新代码遵循类型、词表和令牌规范。旧 Python 告警按精确文件豁免，不运行 ruff check --fix；旧前端不重格式化。R2按 `EXECUTION-RULES.md` 使用快速CI与最多2次完整CI，不重复本地全量；提交说明用对应轮次与包编号。并行最多 5 个子代理，不用最高推理档，各用显式起点的独立 worktree，格式化提交必须先合入。
 
 ## 6 易错点
 

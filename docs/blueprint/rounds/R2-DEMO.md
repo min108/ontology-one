@@ -1,6 +1,6 @@
 # R2 十分钟演练（1.1.0）
 
-准备 Docker Compose；首次构建需能下载锁定镜像与依赖；企业代理环境可通过 `SSL_CERT_FILE` 注入构建证书，保持 TLS 校验。运行目录为仓库根目录。演示项目 `ontology-r2-demo` 使用独立卷，不复用原部署的数据。
+准备 Docker Compose；首次构建需能下载锁定镜像与依赖；企业代理环境可通过 `SSL_CERT_FILE` 注入构建证书，并只读挂载给运行容器，保持 TLS 校验。运行目录为仓库根目录。演示项目 `ontology-r2-demo` 使用独立卷，不复用原部署的数据。
 
 ```bash
 # 在当前终端输入真实模型密钥；输入不回显，不写入文件或命令历史。
@@ -31,6 +31,6 @@ python3 scripts/start_r2_demo.py
 
 ## 自动复现与收尾
 
-开发环境已经安装锁定依赖、MySQL及Chromium时，可运行 `.venv/bin/python e2e/run_r2.py --output work/evidence/r2/mock`；真实模型在环境中配置后加 `--live`。仅使用临时数据库，退出自动删除；真实模型演练只记录各步骤耗时与成败，不保存回答原文、截图或密钥。Linux运行需可写的真实tmpfs，见 `R1-PREFLIGHT.md`。
+开发环境已经安装锁定依赖、MySQL及Chromium时，可运行 `.venv/bin/python e2e/run_r2.py --output work/evidence/r2/mock`；真实模型在环境中配置后加 `--live`。仅使用临时数据库，退出自动删除；真实模型演练记录各步骤耗时、成败及必要的数字错误码；数字门拒绝时按第5步要求模型修订一次，仍须通过相同校验。不保存回答原文、截图或密钥。Linux运行需可写的真实tmpfs，见 `R1-PREFLIGHT.md`。
 
 停止演示：`docker compose --project-name ontology-r2-demo --env-file work/r2-demo/database.env down`，保留卷以便下次继续。演练结果与尚需负责人验证的项目见唯一轮末报告 `R2-REPORT.md`。
