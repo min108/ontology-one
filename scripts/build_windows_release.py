@@ -196,7 +196,7 @@ def source_files(package):
     for name in names:
         if (ROOT / name).is_file():
             shutil.copy2(ROOT / name, package / name)
-    for directory in ("backend", "ops", "scripts", "tests"):
+    for directory in ("backend", "ops", "scripts", "tests", "migrations"):
         for path in (ROOT / directory).rglob("*"):
             if not path.is_file() or path.is_symlink():
                 continue

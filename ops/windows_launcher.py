@@ -51,6 +51,7 @@ MIGRATION_STALL_TIMEOUT = 180
 # migration worker code in the parent process, including during cancellation.
 _MIGRATION_PHASES = (
     "received",
+    "backup",
     "control",
     "federation",
     "queue",

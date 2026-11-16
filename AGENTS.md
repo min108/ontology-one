@@ -24,6 +24,7 @@
 
 - `backend/main.py`：薄 API 装配；原内联路由已原样移到 api/v1/core.py。v2 入口在 api/v2，业务能力在 capabilities，配置/错误/编号/日志在 core。
 - `backend/security/`：store、policy、middleware、context、applications，身份、目录、会话、审计与应用授权。
+- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control` 与 `migrations/tenant` 当前0001，恢复定义在 migrations/restore。
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。
@@ -31,7 +32,7 @@
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
 - `docs/blueprint/`：蓝图、进度、轮次记录与 ADR；`work/`：不入库的日志、临时数据与证据。
-- e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；版本化 migrations、新业务前端域与离线工具链正在后续工作包集成。
+- e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；新业务前端域与离线工具链正在后续工作包集成。
 
 ## 4 常用命令
 
@@ -47,11 +48,15 @@ npm --prefix frontend ci
 npm --prefix frontend run dev
 RUN_HARNESS_SDK_TESTS=1 RUN_FEDERATION_MYSQL_TESTS=1 RUN_JOBS_MYSQL_TESTS=1 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m unittest discover -s .github/scripts -p 'test_*.py'
-.venv/bin/ruff format --check backend scripts ops tests .github/scripts
-.venv/bin/ruff check backend scripts ops tests .github/scripts
+.venv/bin/ruff format --check backend scripts ops tests migrations .github/scripts
+.venv/bin/ruff check backend scripts ops tests migrations .github/scripts
 npm --prefix frontend run lint
 npm --prefix frontend run format:check
 npm --prefix frontend run lint:styles
+npm --prefix frontend test -- --run
+python scripts/gen_terms.py --check
+python scripts/gen_api_types.py --check
+python scripts/checks/check_migrations.py
 npm --prefix frontend run build
 ```
 
@@ -67,7 +72,7 @@ npm --prefix frontend run build
 - 本轮不改 requirements.txt（包括注释）；Windows 轮子锁验证其摘要。
 - 不修改 windows-native.yml 和 publish-accepted-0.7.0.yml；不向 qa/publish-accepted-0.7.0 推送，不打任何标签，不建 PR。
 - 主分支 main 不是基线。首次起点为规划提交 6e5a02c，代码基线为 1359118。
-- 备份恢复有表白名单与列集合校验；机构库新增结构必须同步分类和恢复处理。
+- 备份恢复有表白名单、原件绑定和可信结构版本；新增结构必须同步分类和对应恢复定义，保留旧版，不能放宽成列集合并集。服务启动不迁移；已有部署失败必须停止共享实例后离线完整恢复。
 - 两个打包脚本会排除名为 runtime/data/work/uploads 的目录；R5 的新 runtime 包需先调整规则。
 - 产品中文显示名变更不影响仓库、包、Cookie、环境变量、库名前缀、Compose 项目名、MCP 或 Windows 文件等技术标识。
 - Linux 的 39 个 Windows 原生跳过不能称为原生验收完成；真实模型密钥只从 DEEPSEEK_API_KEY 读取，不进入文件、日志、提交或截图。

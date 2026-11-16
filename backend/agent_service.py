@@ -49,8 +49,10 @@ async def _runtime_lifespan(app):
 @asynccontextmanager
 async def lifespan(app):
     from .maintenance import runtime_guard
+    from .infra.migrations import validate_runtime
 
     with runtime_guard(shared=True):
+        await asyncio.to_thread(validate_runtime)
         async with _runtime_lifespan(app):
             yield
 

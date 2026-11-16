@@ -719,7 +719,7 @@ def ensure_tenant_schema(tenant_id):
                 ),
             )
             conn.execute(
-                "REPLACE INTO workspace_meta(meta_key,meta_value,updated_at) VALUES(?,?,?)",
+                "INSERT IGNORE INTO workspace_meta(meta_key,meta_value,updated_at) VALUES(?,?,?)",
                 ("schema_version", "0.5.0", timestamp),
             )
             normalize_collations(conn)
@@ -735,7 +735,9 @@ def ensure_tenant_schema(tenant_id):
 def initialize():
     from .security.context import require_context
 
-    ensure_tenant_schema(require_context().tenant_id)
+    from .infra.migrations import provision_tenant
+
+    provision_tenant(require_context().tenant_id)
     return False
 
 

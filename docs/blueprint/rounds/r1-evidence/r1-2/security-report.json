@@ -1,0 +1,73 @@
+{
+  "result": "passed",
+  "checks": [
+    {
+      "name": "password login, forced change and old session invalidation",
+      "passed": true
+    },
+    {
+      "name": "same IDs: entity, search, source-file and federation isolation",
+      "passed": true,
+      "seconds": 0.204
+    },
+    {
+      "name": "warm graph and retrieval caches remain tenant-scoped",
+      "passed": true,
+      "seconds": 0.176
+    },
+    {
+      "name": "forged tenant, workspace, org and actor cannot select another owner",
+      "passed": true,
+      "seconds": 0.132
+    },
+    {
+      "name": "CSRF/origin, default deny, modeling/review and local-admin role boundaries",
+      "passed": true,
+      "seconds": 0.07
+    },
+    {
+      "name": "stored-file traversal, absolute paths and Windows paths are rejected",
+      "passed": true,
+      "seconds": 0.236
+    },
+    {
+      "name": "51-organizations directory; HQ private read, department published sharing, subsidiary own-only",
+      "passed": true,
+      "seconds": 0.513
+    },
+    {
+      "name": "cross-link two-endpoint authorization and next-request grant revocation",
+      "passed": true,
+      "seconds": 0.317
+    },
+    {
+      "name": "GET routes leave every tenant business table unchanged",
+      "passed": true,
+      "seconds": 0.587
+    },
+    {
+      "name": "same-ID job isolation, account disable and queued-worker pre-execution revocation",
+      "passed": true,
+      "seconds": 1.092
+    },
+    {
+      "name": "role downgrade, re-enable, HQ write denial and read-grant revocation affect next request",
+      "passed": true,
+      "seconds": 0.916
+    },
+    {
+      "name": "audit contains no raw auth secrets and SQL updates are rejected",
+      "passed": true,
+      "seconds": 0.027
+    },
+    {
+      "name": "password guessing is persistently throttled",
+      "passed": true,
+      "seconds": 0.903
+    }
+  ],
+  "transport": "real loopback HTTP to uvicorn; real password sessions and CSRF",
+  "fixture_notes": "Business entity/file creation uses HTTP; same-ID job rows and worker availability use SQL only in disposable databases. No identity or authorization mocks.",
+  "database_namespace": "ontology_security_qa_be7df6443b",
+  "backend_snapshot_sha256": "3c0dba9050fe573e3b370c48be4c37dc087cf2b3756af097afd07194b6f37e2f"
+}

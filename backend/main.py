@@ -18,15 +18,12 @@ mcp_app = build_mcp_app()
 
 @asynccontextmanager
 async def lifespan(app):
-    from .security.store import initialize_control
-    from .federation import initialize_federation
-    from .jobs import ensure_queue, worker_loop
+    from .infra.migrations import validate_runtime
+    from .jobs import worker_loop
     from .maintenance import runtime_guard
 
     with runtime_guard(shared=True):
-        await asyncio.to_thread(initialize_control)
-        await asyncio.to_thread(initialize_federation)
-        await asyncio.to_thread(ensure_queue)
+        await asyncio.to_thread(validate_runtime)
         worker = asyncio.create_task(worker_loop()) if os.getenv("ONTOLOGY_WORKER_ENABLED", "1") == "1" else None
         try:
             async with mcp_app.lifespan():

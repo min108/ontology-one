@@ -1,0 +1,27 @@
+{
+  "starting_commit": "1090384",
+  "version": "1.0.0",
+  "fixture_source_commit": "1359118dd672431dcd0cde2eb81f2b0f994eef37",
+  "new_tests": 64,
+  "new_passed": 64,
+  "new_skipped": 0,
+  "migration_suite": 60,
+  "check_suite": 4,
+  "legacy_package_tests": 39,
+  "legacy_package_skipped": 1,
+  "legacy_skip_reason": "Windows inherited DACL validation",
+  "legacy_restore_tests": 7,
+  "security_checks": 12,
+  "upgrade_failure_restore_old_process": "passed",
+  "lint": "passed",
+  "format_checked_files": 166,
+  "independent_recovery_review": "R1-10: 14 pure validation/stub checks and 4 unittest cases passed; original 4 P1 and retention P2 closed",
+  "evidence": {
+    "migrations-tests.txt": "d69e2f812b37113446549635a6ab8f968a024a48f6dc07f73008a41b64ccb76b",
+    "migration-check-tests.txt": "bfc8d6765a8db9cc714068bb132fb09c0d01c6709be9382426c4b3e5b02fc5ef",
+    "upgrade-drill.json": "e817e7268907ad2b0dfb0b2c7ef799ea65047917f4bc111f06d882886e96dbab",
+    "security-report.json": "f573d9548d9fd22e285f5a8009b29099d89d63da387eb980a191ac759e4190c9",
+    "legacy-package-tests.txt": "e3bafec410c20409e8c8a930b53a71df450e48c8374ce66bbdc52844be0909c5",
+    "restore-v020-tests.txt": "db6c11bae075ea543cc173689abf03db67925df2f106c606599428f817d5b74f"
+  }
+}

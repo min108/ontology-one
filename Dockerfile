@@ -19,6 +19,7 @@ RUN --mount=type=secret,id=proxy_ca \
 RUN groupadd --gid 10001 ontology && useradd --uid 10001 --gid ontology --no-create-home ontology \
     && mkdir -p /app/data && chown ontology:ontology /app/data
 COPY backend/ ./backend/
+COPY migrations/ ./migrations/
 COPY scripts/ ./scripts/
 COPY ops/ ./ops/
 COPY tests/ ./tests/

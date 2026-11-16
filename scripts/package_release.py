@@ -32,7 +32,7 @@ def create_release(destination: Path):
         raise RuntimeError("请先编译前端页面，再导出本地安装包。")
     destination.parent.mkdir(parents=True, exist_ok=True)
     files = [ROOT / name for name in TOP_FILES if (ROOT / name).is_file()]
-    for folder in ["backend", "frontend", "scripts", "ops", "tests"]:
+    for folder in ["backend", "frontend", "scripts", "ops", "tests", "migrations"]:
         for path in (ROOT / folder).rglob("*"):
             if not path.is_file() or path.is_symlink():
                 continue

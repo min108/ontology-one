@@ -1,0 +1,14 @@
+test_control_tables_and_unknown_columns (__main__.RestoreBoundaries.test_control_tables_and_unknown_columns) ... ok
+test_embedded_paths_and_ownership (__main__.RestoreBoundaries.test_embedded_paths_and_ownership) ... ok
+test_maintenance_lock (__main__.RestoreBoundaries.test_maintenance_lock) ... ok
+test_same_tenant (__main__.RestoreBoundaries.test_same_tenant) ... ok
+test_source_registry (__main__.RestoreBoundaries.test_source_registry) ... ok
+test_zip_duplicate_and_json_duplicates (__main__.RestoreBoundaries.test_zip_duplicate_and_json_duplicates) ... /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/zipfile/__init__.py:1625: UserWarning: Duplicate name: 'data/mysql-workspace.json'
+  return self._open_to_write(zinfo, force_zip64=force_zip64)
+ok
+test_zip_paths_and_types (__main__.RestoreBoundaries.test_zip_paths_and_types) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.489s
+
+OK
