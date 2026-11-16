@@ -163,3 +163,11 @@ python scripts/drills/compare_identity_v070.py --v070-source /path/to/clean-1359
 ```
 
 对照成功后仅补充证据输出保护与安全stdout摘要：保存前拒绝任何本次会话token或合成登录密码进入证据；stdout仅两个来源SHA、五范围、完整响应等式成功、计数和清理数量，不含cookie/token/password。该输出保护变更已静态核对并通过Ruff/format，按负责人指令不再次运行MySQL；CI应对最终脚本和集成代码重跑并收集安全摘要。
+
+### 对照工具的清理边界修复
+
+负责人复核指出1198c4d的finally按40-bit命名空间前缀发现并删除库；若fixture因碰撞而拒绝加载，原写法可能删除预先存在的库。该问题属于演练工具清理授权缺陷，不能以低碰撞概率替代修复。
+
+现直接复用e2e.run的new_namespace/database_names/DatabaseScope：命名空间为e2e_r1_加24位十六进制（96bit随机），总长31，机构库派生不会截掉随机位。固定HQ、dept-01、sub-01加control共4个准确候选名，排除裸namespace；进入scope先用精确IN查询确认候选均不存在，成功才armed并调用loader。清理只处理这一已预约集合中实际存在的库，未知同前缀库不进入SQL查询或DROP授权；若发现结果异常包含未知库，任何DROP前拒绝。部分loader失败也只按该集合清理，报告记录reserved/created/cleaned准确集合与计数；passed仅在scope清理成功返回后设为true。
+
+新增tests/checks/test_identity_comparison.py六项纯单元测试覆盖4名派生一致、96bit末位不被截断/长前缀拒绝、碰撞不armed不装载不删除、未知同前缀发现拒绝全部删除、部分装载失败只删准确已创建集合、发现SQL仅IN而无前缀选择。6/6通过（0.008秒），Ruff/format/diff检查通过；日志work/identity-cleanup-red.log、work/identity-cleanup-green.log。HTTP比较逻辑未修改，本轮没有连接MySQL、执行SDK或完整回归；最终CI须重跑修复后的真实对照。独立包收集口径因此从843增至849（新增77），不声称849项已完整通过。

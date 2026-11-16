@@ -10,13 +10,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import secrets
 import subprocess
 import sys
 import tempfile
-from contextlib import closing
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
+
+if TYPE_CHECKING:
+    from e2e.run import DatabaseScope
 
 ROOT = Path(__file__).resolve().parents[2]
 ORIGINAL = "1359118dd672431dcd0cde2eb81f2b0f994eef37"
@@ -123,6 +125,14 @@ def compare(before: dict, after: dict, historical_ids: set[int]) -> dict:
     }
 
 
+def comparison_scope(config: dict, namespace: str) -> DatabaseScope:
+    """Reserve exactly the four fixture databases, never a prefix deletion scope."""
+    from e2e.run import DatabaseScope, database_names
+
+    candidates = database_names(namespace, ["hq", "dept-01", "sub-01"]) - {namespace}
+    return DatabaseScope(config, candidates)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--v070-source", type=Path, required=True)
@@ -139,9 +149,10 @@ def main() -> None:
     sys.path.insert(0, str(current))
     from backend import db
     from backend.infra import migrations
+    from e2e.run import new_namespace
     from tests.fixtures.v070.load import load_fixture
 
-    namespace = "ontology_r17compare_" + secrets.token_hex(5)
+    namespace = new_namespace()
     work = ROOT / "work"
     work.mkdir(exist_ok=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -165,31 +176,24 @@ def main() -> None:
         ),
     ):
         os.environ.pop("ONTOLOGY_MYSQL_URL", None)
+        config = db.mysql_config()
+        config.pop("database")
+        scope = comparison_scope(config, namespace)
         original = {}
         try:
-            load_fixture()
-            original = call_probe(source)
-            report["before"] = original["outputs"]
-            migrations.run_migrations()
-            migrated = call_probe(current, original["sessions"])
-            report["after"] = migrated["outputs"]
-            report["summary"] = compare(report["before"], report["after"], {row["id"] for row in historical})
+            with scope:
+                load_fixture()
+                original = call_probe(source)
+                report["before"] = original["outputs"]
+                migrations.run_migrations()
+                migrated = call_probe(current, original["sessions"])
+                report["after"] = migrated["outputs"]
+                report["summary"] = compare(report["before"], report["after"], {row["id"] for row in historical})
             report["passed"] = True
         finally:
-            with closing(db._raw_connection("information_schema")) as raw:
-                conn = db.Connection(raw)
-                names = [
-                    row[0]
-                    for row in conn.execute(
-                        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE LEFT(SCHEMA_NAME,?)=?",
-                        (len(namespace), namespace),
-                    )
-                ]
-                for name in names:
-                    if not name.startswith(namespace):
-                        raise RuntimeError("Refusing cleanup outside comparison namespace")
-                    conn.execute(f"DROP DATABASE `{name}`")
-            report["cleaned_databases"] = names
+            report["reserved_databases"] = sorted(scope.candidates) if scope.armed else []
+            report["created_databases"] = sorted(scope.created)
+            report["cleaned_databases"] = sorted(scope.cleaned)
             encoded = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
             authentication = ["SyntheticFixture9!", *original.get("sessions", {}).values()]
             if any(value in encoded for value in authentication):
@@ -203,6 +207,8 @@ def main() -> None:
                 "passed": report["passed"],
                 "exact_response_equality": True,
                 "scopes": list(report["before"]),
+                "reserved_database_count": len(report["reserved_databases"]),
+                "created_database_count": len(report["created_databases"]),
                 "cleaned_database_count": len(report["cleaned_databases"]),
                 **report["summary"],
             },
