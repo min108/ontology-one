@@ -87,7 +87,7 @@ export function NavigationProvider({children}:{children:ReactNode}){
    if(!current||u.pathname===new URL(current.path,window.location.origin).pathname)return;
    remember();
    if(u.searchParams.has(TOKEN)&&cache[u.searchParams.get(TOKEN)!]){pending.current=null;return}
-   const parent=anchor.closest('.sidebar')?undefined:current.id;
+   const parent=anchor.closest('.sidebar,[data-navigation-root]')?undefined:current.id;
    if(e.ctrlKey||e.metaKey||e.shiftKey||anchor.target==='_blank'){
     const next:Visit={id:uid(),path:target,label:routeLabel(target),parent,scroll:0,at:Date.now(),entered:false};cache[next.id]=next;persist();anchor.href=href(next);return;
    }
@@ -100,7 +100,7 @@ export function NavigationProvider({children}:{children:ReactNode}){
    const u=new URL(anchor.href,window.location.href),current=active.current;
    if(!current||u.origin!==window.location.origin||u.pathname.startsWith('/api/')||clean(u.href)===current.path)return;
    remember();if(u.searchParams.get(TOKEN)&&cache[u.searchParams.get(TOKEN)!])return;
-   const next:Visit={id:uid(),path:clean(u.href),label:routeLabel(u.pathname),parent:anchor.closest('.sidebar')?undefined:current.id,scroll:0,at:Date.now(),entered:false};cache[next.id]=next;persist();anchor.href=href(next);
+   const next:Visit={id:uid(),path:clean(u.href),label:routeLabel(u.pathname),parent:anchor.closest('.sidebar,[data-navigation-root]')?undefined:current.id,scroll:0,at:Date.now(),entered:false};cache[next.id]=next;persist();anchor.href=href(next);
   };
   document.addEventListener('click',onClick,true);document.addEventListener('pointerdown',prepareNative,true);document.addEventListener('contextmenu',prepareNative,true);window.addEventListener('scroll',onScroll,{passive:true});window.addEventListener('pagehide',remember);
   for(const type of ['wheel','touchstart','pointerdown','keydown'])window.addEventListener(type,interrupt,{capture:true,passive:true});

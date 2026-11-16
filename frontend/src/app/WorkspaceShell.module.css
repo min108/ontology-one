@@ -35,6 +35,20 @@
   margin-bottom: var(--zy-space-4);
 }
 
+.pending-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--zy-gray-600);
+  width: var(--zy-control-height);
+  height: var(--zy-control-height);
+  border-radius: var(--zy-radius-control);
+}
+
+.pending-link:hover {
+  background: var(--zy-gray-100);
+}
+
 @media print {
   .identity,
   .notice {
