@@ -153,13 +153,9 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
             key={path}
             path={path}
             element={
-              path === '/integration-applications' && principal.role !== 'admin' ? (
-                forbidden
-              ) : (
-                <LegacyPage>
-                  <Page />
-                </LegacyPage>
-              )
+              <LegacyPage>
+                <Page />
+              </LegacyPage>
             }
           />
         ))}

@@ -16,6 +16,14 @@ function Filter() {
         onChange={(event) => update({ q: event.target.value, page: null }, { replace: false })}
       />
       <button onClick={() => void navigate(-1)}>back</button>
+      <button
+        onClick={() => {
+          update({ q: 'combined' });
+          update({ page: 2 });
+        }}
+      >
+        combine
+      </button>
     </>
   );
 }
@@ -43,5 +51,14 @@ describe('address state', () => {
     fireEvent.click(screen.getByRole('button', { name: 'back' }));
     expect(await screen.findByDisplayValue('old')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('/assets?q=old&page=3#details');
+  });
+  it('merges consecutive updates in one event without overwriting filters', () => {
+    render(
+      <MemoryRouter initialEntries={['/assets?q=old#details']}>
+        <Filter />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'combine' }));
+    expect(screen.getByRole('status')).toHaveTextContent('/assets?q=combined&page=2#details');
   });
 });

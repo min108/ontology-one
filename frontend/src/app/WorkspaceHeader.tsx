@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { App, Button, Select } from 'antd';
+import { App, Select } from 'antd';
 import { Bell, Sparkles } from 'lucide-react';
 import { useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import HarnessActivity from '@legacy/components/HarnessActivity';
 import { readAssistantStatus } from '../api/shell';
 import { workspaceQueryKey } from '../api/query';
@@ -20,6 +20,7 @@ export function WorkspaceHeader({ onSearch }: { onSearch: () => void }) {
   const scopeKey = useScopeStore((state) => state.scopeKey);
   const collapsed = useUiStore((state) => state.collapsed);
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const query = useQuery({
     queryKey: workspaceQueryKey(session?.workspace.tenant_id ?? 'unavailable', scopeKey, 'ai-status'),
@@ -41,9 +42,11 @@ export function WorkspaceHeader({ onSearch }: { onSearch: () => void }) {
       workspaceName={session.workspace.name}
       collapsed={collapsed}
       onSearch={onSearch}
+      onHome={() => void navigate('/')}
       identity={
         <Select
           id="active-workspace"
+          virtual={false}
           aria-label={terms.labels.organization}
           className={styles['workspace-select']}
           value={session.workspace.tenant_id}
@@ -74,13 +77,9 @@ export function WorkspaceHeader({ onSearch }: { onSearch: () => void }) {
                   : terms.labels.shell_assistant_unconfigured}
             </span>
           </Link>
-          <Button
-            autoInsertSpace={false}
-            type="text"
-            href="/work"
-            aria-label={terms.actions.shell_pending}
-            icon={<Bell />}
-          />
+          <Link to="/work" aria-label={terms.actions.shell_pending} className={styles['pending-link']}>
+            <Bell />
+          </Link>
         </>
       }
       userMenu={<UserMenu />}

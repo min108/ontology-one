@@ -12,6 +12,7 @@ export interface TopBarProps {
   actions?: ReactNode;
   searchSlot?: ReactNode;
   collapsed?: boolean;
+  onHome?: () => void;
 }
 export function TopBar({
   workspaceName,
@@ -21,6 +22,7 @@ export function TopBar({
   actions,
   searchSlot,
   collapsed = false,
+  onHome,
 }: TopBarProps) {
   return (
     <header className={styles.bar}>
@@ -29,6 +31,21 @@ export function TopBar({
         className={styles.brand}
         aria-label={brand.product_name}
         title={`${brand.product_name} · ${brand.product_name_en}`}
+        data-navigation-root=""
+        onClick={(event) => {
+          if (
+            onHome &&
+            !event.defaultPrevented &&
+            event.button === 0 &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey &&
+            !event.altKey
+          ) {
+            event.preventDefault();
+            onHome();
+          }
+        }}
       >
         <img src="/citic-mark.svg" alt="" />
         <span hidden={collapsed}>{brand.product_name}</span>

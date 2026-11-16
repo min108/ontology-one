@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 export type AddressPatch = Record<string, string | number | readonly string[] | null | undefined>;
@@ -24,13 +25,20 @@ export function addressPage(value: string | null, fallback = 1): number {
 export function useAddressState() {
   const location = useLocation();
   const navigate = useNavigate();
+  const observed = useRef(location.search);
+  const pending = useRef(location.search);
+  if (observed.current !== location.search) {
+    observed.current = location.search;
+    pending.current = location.search;
+  }
   return {
     params: new URLSearchParams(location.search),
     update: (patch: AddressPatch, options: { replace?: boolean } = {}) => {
+      pending.current = patchAddressSearch(pending.current, patch);
       void navigate(
         {
           pathname: location.pathname,
-          search: patchAddressSearch(location.search, patch),
+          search: pending.current,
           hash: location.hash,
         },
         { replace: options.replace ?? true },
