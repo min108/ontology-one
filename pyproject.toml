@@ -48,6 +48,7 @@ allowed-confusables = ["，", "。", "：", "；", "？", "！", "（", "）", "
 "backend/jobs.py" = ["ANN001", "ANN201", "ANN202", "E501", "E731", "F401", "I001", "RUF001", "UP017"]
 "backend/legacy_harness_runs.py" = ["ANN001", "ANN201", "ANN202", "F401", "I001", "RUF001", "RUF021"]
 "backend/main.py" = ["ANN001", "ANN201", "ANN202", "B904", "E401", "E402", "E501", "E722", "F401", "I001", "RUF001", "RUF005", "SIM105"]
+"backend/api/v1/core.py" = ["ANN001", "ANN201", "ANN202", "B904", "E401", "E402", "E501", "E722", "F401", "I001", "RUF001", "RUF005", "SIM105"]
 "backend/maintenance.py" = ["ANN001", "ANN201", "I001", "RUF001"]
 "backend/materials.py" = ["ANN001", "ANN201", "ANN202", "ANN204", "ANN401", "B008", "B905", "E402", "E501", "F401", "F841", "I001", "RUF001", "RUF005", "RUF007", "UP017"]
 "backend/mcp_contracts.py" = ["ANN001", "ANN201", "ANN204", "ANN206", "ANN401", "E501", "RUF001"]

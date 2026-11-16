@@ -83,3 +83,6 @@ src/pages/skill-development.css
 src/pages/special-projects.css
 src/styles.css
 src/version.ts
+# Deterministic generated contracts; checked byte-for-byte by test_openapi_types.
+src/api/generated/openapi.json
+src/api/generated/types.ts

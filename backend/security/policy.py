@@ -238,6 +238,25 @@ _MATTER_REVIEW = re.compile(r"^/api/special-projects/[^/]+/matters/[^/]+$")
 _EVIDENCE_REVIEW = re.compile(r"^/api/special-projects/[^/]+/evidence(?:/[^/]+)?$")
 
 
+# Empty permission tuples mean authenticated use; per-capability keys are checked by the gateway.
+V2_RULES = (("POST", "/api/v2/capabilities/{id}:invoke", ()),)
+_V2 = tuple((method, _pattern(path), permissions) for method, path, permissions in V2_RULES)
+
+
+def authorize_v2(principal, method: str, path: str) -> Decision:
+    from .permissions import ROLES as V2_ROLES
+    from .permissions import permissions_for
+
+    if principal.role not in V2_ROLES or principal.must_change_password:
+        return Decision(False)
+    rule = next((rule for rule in _V2 if rule[0] == method and rule[1].fullmatch(path)), None)
+    if rule is None:
+        return Decision(False, 403, "此业务接口尚未配置访问策略。")
+    if rule[2] and not set(rule[2]) <= permissions_for(principal):
+        return Decision(False)
+    return Decision(True)
+
+
 def is_control_path(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in CONTROL_PREFIXES)
 
@@ -262,6 +281,8 @@ def authorize(principal, method: str, path: str, body: Mapping | None = None) ->
     """Authorize a known business operation. Identity never comes from the body."""
     if principal.identity_kind != "session":
         return Decision(False, 403, "浏览器业务接口只接受用户会话。")
+    if path.startswith("/api/v2/"):
+        return authorize_v2(principal, method, path)
     if path.startswith("/api/integrations/applications") and principal.role != "admin":
         return Decision(False, 403, "应用管理需要机构管理员权限。")
     if principal.role not in ROLES:

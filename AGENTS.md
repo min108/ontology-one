@@ -22,7 +22,7 @@
 
 ## 3 代码地图
 
-- `backend/main.py`：现有 API 装配与内联实体路由；R1-3 将内联部分原样移到 api/v1/core.py。
+- `backend/main.py`：薄 API 装配；原内联路由已原样移到 api/v1/core.py。v2 入口在 api/v2，业务能力在 capabilities，配置/错误/编号/日志在 core。
 - `backend/security/`：store、policy、middleware、context、applications，身份、目录、会话、审计与应用授权。
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
@@ -31,7 +31,7 @@
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
 - `docs/blueprint/`：蓝图、进度、轮次记录与 ADR；`work/`：不入库的日志、临时数据与证据。
-- 版本化 migrations、v2/capabilities、新前端域、e2e、离线工具链仍按 R1-PLAN 后续工作包建设；不存在的目录不能写成已完成。
+- e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。版本化 migrations、新前端域与离线工具链正在后续工作包集成。
 
 ## 4 常用命令
 
