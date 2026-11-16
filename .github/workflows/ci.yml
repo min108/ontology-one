@@ -113,7 +113,7 @@ jobs:
       - name: Original UI browser baseline
         run: python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
       - name: Foundation Shell browser acceptance
-        run: python e2e/run.py --target foundation --evidence work/evidence/r1/e2e-foundation-ci
+        run: python e2e/run.py --target foundation --harness --evidence work/evidence/r1/e2e-foundation-ci
       - name: Upload available evidence
         id: complete-evidence
         if: always()
@@ -203,5 +203,13 @@ jobs:
         with:
           name: r1-foundation-browser-superadmin-${{ github.run_id }}
           path: work/e2e-foundation-ci-packages/superadmin/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload foundation SDK screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-foundation-browser-harness-${{ github.run_id }}
+          path: work/e2e-foundation-ci-packages/harness/
           if-no-files-found: warn
           retention-days: 30
