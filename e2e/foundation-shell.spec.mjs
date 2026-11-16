@@ -160,6 +160,7 @@ test.describe("superadmin: workspace transition", () => {
     expect((await identity(page)).tenant).toBe("hq");
     // The supplied authority fixture is published. Create a distinct draft through its real UI.
     await page
+      .locator("[data-legacy-page] header.page-head")
       .getByRole("button", { name: "新建权责规范", exact: true })
       .click();
     const create = page.getByRole("dialog", {

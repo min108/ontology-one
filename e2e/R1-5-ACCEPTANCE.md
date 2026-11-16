@@ -55,7 +55,7 @@ CI 不设置 `E2E_CHROMIUM`，使用固定 Playwright 浏览器。本地 CDN 403
 此项需要独立的重型执行窗口，当前没有通过结果，也不以假请求、预置 running/cancelled 行或页面注入事件代替。实现沿用 `tests/test_skill_harness.py::OfficialSDKTests` 和 `tests/test_agent_sdk.py::AgentOfficialSDKTests` 的真实固定 SDK、本地 Messages SSE 服务与显式 hold/release 同步方式。
 
 1. 用同一隔离 runner 装载数据、统一迁移、启动真实 API 和 agent。新增本地模型替身绑定 127.0.0.1 随机端口；仅替换模型供应方网络端，不 mock 业务 API、SDK、进程执行器或任务仓库。先确认 Harness tmpfs 工作目录可用。所有配置仅在本次 namespace/storage；合成密钥在内存生成，不输出、不截图。
-2. 通过真实 `/api/skills/harness/config` 和 `/test` 配置并验证本地 Messages 服务；验证阶段返回合法 SSE，然后切到 hold 模式。以 admin 真实会话向 `/api/harness/tasks` 提交 `operation: 'ai_ask'`、`entity_id: ''`、`body: {question: '合成验收问题', mode: 'online'}`。必须观察本地模型收到真实 SDK 请求，才进入 UI 断言；仅见任务 accepted 不算 SDK 执行证据。
+2. 通过真实 `/api/skills/harness/config` 和 `/test` 配置并验证本地 Messages 服务；验证阶段返回合法 SSE，然后切到 hold 模式。以 admin 真实会话向 `/api/harness/tasks` 提交 `operation: 'ai_ask'`、`entity_id: ''`、`body: {question: '合同金额大于100000元时，应核实什么审批依据？', mode: 'online'}`。先以同一问题调用真实 retrieval 并断言 citations 非空（无命中时业务会直接返回检索结果，不调用模型）。必须观察本地模型收到真实 SDK 请求，才进入 UI 断言；仅见任务 accepted 不算 SDK 执行证据。
 3. 页面打开后台任务 summary，按该真实 run id 对应链接进入。验证 `region` 对话、公开进度和停止按钮可见；检查其最近 `.legacy-root` 隔离宿主存在且行高/排版不被新设计上下文污染，1366 与等效 125% 各留单独截图。只记录合成任务文本，不记录请求头、原始 prompt 或模型密钥。
 4. 点击“收起智能处理对话”，断言 region 消失且后端 run 仍 running；通过另一一级导航离开，再从顶部后台任务打开同一 run，断言重挂载与 SSE 公开进度正常。这区分“关闭查看”与“停止执行”。
 5. 点击真实“停止本轮处理”，观察对应 `/api/harness/runs/<id>/cancel` POST 成功，后端最终为 cancelled，UI 显示已停止且停止按钮消失。同步记录本 runner agent 派生的 SDK 进程精确 PID，确认回收；释放本地服务 hold，finally 关闭模型服务、两个服务进程并按 runner 现有精确名单清库。不能仅凭 UI 显示停止就声称进程已清理。

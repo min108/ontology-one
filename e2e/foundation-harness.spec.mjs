@@ -63,12 +63,22 @@ test("real SDK task survives closing its global view and is stopped through the 
     await expect(
       page.getByRole("navigation", { name: "工作区导航", exact: true }),
     ).toBeVisible();
+    const question = "合同金额大于100000元时，应核实什么审批依据？";
+    const retrieval = await business(page, "/ai/ask", {
+      question,
+      mode: "retrieval",
+    });
+    expect(
+      retrieval.citations.length,
+      "The real fixture must provide grounding before SDK invocation",
+    ).toBeGreaterThan(0);
+    record.grounding_citations = retrieval.citations.length;
     await control("hold", "POST");
     run = await business(page, "/harness/tasks", {
       operation: "ai_ask",
       entity_id: "",
       body: {
-        question: "合成浏览器验收问题，请依据本机构资料回答。",
+        question,
         mode: "online",
       },
     });
