@@ -114,7 +114,13 @@ class SecurityMiddleware:
             await send(message)
 
         async def error(status, detail, *, clear_cookie=False):
-            response = JSONResponse({"detail": detail, "request_id": request_id}, status_code=status)
+            if path.startswith("/api/v2/"):
+                from ..api.v2.errors import response_for
+                from ..core.errors import from_http
+
+                response = response_for(from_http(status, detail), request_id)
+            else:
+                response = JSONResponse({"detail": detail, "request_id": request_id}, status_code=status)
             if clear_cookie:
                 response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite="strict")
             await response(scope, receive, emit)
@@ -176,6 +182,12 @@ class SecurityMiddleware:
                 await audit("access_denied", "denied", {"method": method, "reason": "workspace_changed"})
             except Exception:
                 await error(503, "安全审计服务暂时不可用，请稍后重试。")
+                return
+            if path.startswith("/api/v2/"):
+                from ..api.v2.errors import response_for
+                from ..core.errors import ApiError
+
+                await response_for(ApiError("WORKSPACE_CHANGED"), request_id)(scope, receive, emit)
                 return
             await JSONResponse(
                 {
@@ -283,7 +295,10 @@ class SecurityMiddleware:
                         log.exception("Audit completion unavailable; request=%s", request_id)
                 if started:
                     raise
-                log.exception("Business request failed; request=%s", request_id)
+                if path.startswith("/api/v2/"):
+                    log.error("V2 request failed; request=%s", request_id)
+                else:
+                    log.exception("Business request failed; request=%s", request_id)
                 await error(500, "请求处理失败，请稍后重试。")
                 return
             if mutation:

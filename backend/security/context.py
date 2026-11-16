@@ -26,6 +26,7 @@ class Principal:
     application_id: str = ""
     credential_id: str = ""
     permission_version: int = 0
+    duties: tuple[str, ...] = ()
 
 
 _current: ContextVar[Principal | None] = ContextVar("ontology_principal", default=None)

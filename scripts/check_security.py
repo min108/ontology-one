@@ -427,6 +427,29 @@ def run_checks(box):
 
     check("forged tenant, workspace, org and actor cannot select another owner", spoofing)
 
+    def v2_attacks():
+        route = "/v2/capabilities/semantic.search:invoke"
+        found = a.ok("POST", route, json={"q": "UniqueSecret-sub-02"}).json()
+        assert found["total"] == 0 and not found["items"]
+        denied = a.request("POST", route, json={}, headers={"X-Tenant-Id": "sub-02"})
+        expect(denied, 403)
+        assert denied.json()["error"]["code"] == "PERMISSION_DENIED"
+        for field in ("tenant_id", "org_id", "actor", "principal", "permissions"):
+            forged = a.request("POST", route, json={field: "forged-superadmin"})
+            expect(forged, 422)
+            assert forged.json()["error"]["code"] == "VALIDATION_FAILED"
+        identity = a.ok("POST", "/v2/capabilities/session.whoami:invoke", json={}).json()
+        assert identity["user_id"] == a.user["id"] and identity["tenant_id"] == "sub-01"
+        events = box.sql(
+            "SELECT actor_id,tenant_id,details FROM sec_audit WHERE action=%s AND actor_id=%s",
+            ("capability_invoke", a.user["id"]),
+            box.control,
+        )
+        assert events and all(event["tenant_id"] == "sub-01" for event in events)
+        assert all("UniqueSecret" not in str(event["details"]) for event in events)
+
+    check("v2 rejects cross-tenant reads, tenant headers and forged operators", v2_attacks)
+
     def csrf_role_boundary():
         expect(a.request("POST", "/entities", headers={"X-CSRF-Token": ""}, json={"kind": "data", "title": "bad"}), 403)
         expect(

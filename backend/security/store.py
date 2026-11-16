@@ -350,6 +350,7 @@ def _principal(cur, user, session, request_id):
         database_name=target["db_name"],
         request_id=request_id,
         must_change_password=bool(user["must_change_password"]),
+        duties=tuple(json.loads(user.get("duties") or "[]")),
     )
 
 
@@ -404,6 +405,7 @@ def _joined_principal(row, request_id):
         database_name=row["db_name"],
         request_id=request_id,
         must_change_password=bool(row["must_change_password"]),
+        duties=tuple(json.loads(row.get("duties") or "[]")),
     )
 
 

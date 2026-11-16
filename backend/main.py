@@ -80,6 +80,11 @@ from .api.v1.core import (
 
 app.add_exception_handler(pymysql.err.MySQLError, db_error)
 app.include_router(core_router)
+from .api.v2.routes import router as v2_router
+from .api.v2.errors import install_errors
+
+app.include_router(v2_router)
+install_errors(app)
 
 from .materials import router as material_router
 from .datasets import router as dataset_router
