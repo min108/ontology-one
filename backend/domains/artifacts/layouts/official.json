@@ -1,0 +1,8 @@
+{
+  "page": {"width_cm": 21, "height_cm": 29.7, "top_cm": 3.7, "bottom_cm": 3.5, "left_cm": 2.8, "right_cm": 2.6},
+  "title": {"font": "方正小标宋简体", "size_pt": 22},
+  "body": {"font": "仿宋_GB2312", "size_pt": 16},
+  "table": {"font": "宋体", "size_pt": 12},
+  "page_number": {"font": "宋体", "size_pt": 14},
+  "line_pt": 30
+}

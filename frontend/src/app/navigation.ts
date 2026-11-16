@@ -23,6 +23,7 @@ const workspaces: (RouteEntry & { key: Workspace })[] = [
 const entries: Record<Workspace, RouteEntry[]> = {
   home: [],
   build: [
+    { key: 'intake', label: terms.labels.r2_intake_nav, href: '/build/intake' },
     { key: 'materials', label: terms.labels.shell_materials, href: '/materials' },
     { key: 'datasets', label: terms.labels.shell_datasets, href: '/datasets' },
     { key: 'sources', label: terms.labels.shell_sources, href: '/data-sources' },
@@ -37,8 +38,12 @@ const entries: Record<Workspace, RouteEntry[]> = {
     { key: 'graph', label: terms.labels.shell_graph, href: '/graph' },
     { key: 'group', label: terms.labels.shell_group, href: '/group' },
   ],
-  apply: [{ key: 'applications', label: terms.labels.shell_applications, href: '/applications' }],
+  apply: [
+    { key: 'applications', label: terms.labels.shell_applications, href: '/applications' },
+    { key: 'reports', label: terms.labels.r2_reports_title, href: '/apply/artifacts' },
+  ],
   govern: [
+    { key: 'reviews', label: terms.labels.r2_reviews_title, href: '/govern/reviews' },
     { key: 'maintenance', label: terms.labels.shell_maintenance, href: '/maintenance' },
     { key: 'impact', label: terms.labels.shell_impact, href: '/impact' },
   ],

@@ -25,7 +25,7 @@ from .security.context import has_readonly_session_execution as has_readonly_age
 from .security.store import control_connection, assert_principal_current, assert_job_principal_current
 
 router = APIRouter()
-ALLOWED = {"material_extract", "experience_analysis", "special_refinement"}
+ALLOWED = {"material_extract", "experience_analysis", "special_refinement", "recipe_run"}
 ACTIVE = ("queued", "running", "retry")
 _job_lease = ContextVar("ontology_job_lease", default=None)
 _schema_lock = threading.Lock()
@@ -142,7 +142,7 @@ def harness_queue_summaries(principal, limit=20):
         cursor.execute(
             """SELECT job_id,kind,entity_id,status,created_at,updated_at
             FROM ontology_task_queue WHERE tenant_id=%s
-            AND kind IN ('material_extract','experience_analysis','special_refinement')
+            AND kind IN ('material_extract','experience_analysis','special_refinement','recipe_run')
             AND JSON_UNQUOTE(JSON_EXTRACT(principal_json,'$.user_id'))=%s
             AND JSON_UNQUOTE(JSON_EXTRACT(principal_json,'$.session_id'))=%s
             AND JSON_UNQUOTE(JSON_EXTRACT(principal_json,'$.auth_version'))=%s
@@ -151,6 +151,7 @@ def harness_queue_summaries(principal, limit=20):
         )
         rows = cursor.fetchall()
     titles = {
+        "recipe_run": "制度整理",
         "material_extract": "材料智能提炼",
         "experience_analysis": "经验原文整理",
         "special_refinement": "专题跨材料提炼",
@@ -167,6 +168,16 @@ def harness_queue_summaries(principal, limit=20):
         )
         status = "queued" if row["status"] == "retry" else row["status"]
         stamp = lambda value: value.replace(tzinfo=timezone.utc).isoformat() if value else ""
+        recipe = None
+        if row["kind"] == "recipe_run":
+            from .domains.build import status as recipe_status
+
+            recipe = recipe_status(row["job_id"])
+            href = (
+                "/build/changesets/" + recipe["changeset_id"]
+                if recipe["changeset_id"]
+                else "/build/intake?run=" + row["job_id"]
+            )
         result.append(
             {
                 "id": row["job_id"],
@@ -176,8 +187,10 @@ def harness_queue_summaries(principal, limit=20):
                 "title": titles[row["kind"]],
                 "href": href,
                 "status": status,
-                "stage": status,
-                "message": {
+                "stage": recipe["stage"] if recipe else status,
+                "message": recipe["stage_message"]
+                if recipe
+                else {
                     "queued": "任务已保存，正在等待处理。",
                     "running": "正在处理本次业务材料。",
                     "completed": "处理已完成，请到业务页面核对。",
@@ -328,7 +341,12 @@ async def _invoke(row):
                 ).fetchone()
                 if not job:
                     raise HTTPException(409, "任务业务事务未完成。")
-                if job["status"] == "completed":
+                if job["status"] == "completed" and (
+                    row["kind"] != "recipe_run"
+                    or c.execute("SELECT changeset_id FROM recipe_runs WHERE id=?", (row["job_id"],)).fetchone()[
+                        "changeset_id"
+                    ]
+                ):
                     return "completed"
             if row["kind"] == "material_extract":
                 from .materials import run_extraction
@@ -337,6 +355,10 @@ async def _invoke(row):
                 if row["attempts"] > 1:
                     args[3] = True
                 operation = run_extraction(*args)
+            elif row["kind"] == "recipe_run":
+                from .domains.build import run_recipe
+
+                operation = run_recipe(*json.loads(row["args_json"]))
             elif row["kind"] == "experience_analysis":
                 from .experience import run_record_analysis
 

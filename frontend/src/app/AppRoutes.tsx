@@ -10,6 +10,9 @@ import { LegacyRedirect } from './LegacyRedirect';
 import { WorkspaceLanding } from './WorkspaceLanding';
 import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from './navigation';
 
+const IntakePage = lazy(() => import('../features/build/IntakePage'));
+const ChangesetPage = lazy(() => import('../features/build/ChangesetPage'));
+const ReviewsPage = lazy(() => import('../features/build/ReviewsPage'));
 const Home = lazy(() => import('../features/home/Home'));
 const Security = lazy(() => import('../features/account/AccountSecurity'));
 const Administration = lazy(() => import('../features/admin/UsersPage'));
@@ -19,6 +22,7 @@ const ModelPage = lazy(() => import('../features/admin/model/ModelPage'));
 const BackupPage = lazy(() => import('../features/admin/backup/BackupPage'));
 const SystemPage = lazy(() => import('../features/admin/system/SystemPage'));
 const DemoPage = lazy(() => import('../features/admin/demo/DemoPage'));
+const ReportsPage = lazy(() => import('../features/artifacts/ReportsPage'));
 const retained = [
   { path: '/group', component: lazy(() => import('@legacy/pages/Group')) },
   { path: '/briefing', component: lazy(() => import('@legacy/pages/Briefing')) },
@@ -84,6 +88,11 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
     >
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/build/intake" element={<IntakePage />} />
+        <Route path="/build/changesets/:id" element={<ChangesetPage />} />
+        <Route path="/govern/reviews" element={<ReviewsPage />} />
+        <Route path="/apply/artifacts" element={<ReportsPage />} />
+        <Route path="/apply/artifacts/:id" element={<ReportsPage />} />
         {primaryNavigation(principal.role)
           .filter((entry) => entry.key !== 'home')
           .map((entry) => (

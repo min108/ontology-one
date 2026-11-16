@@ -1,6 +1,75 @@
 {
   "components": {
     "schemas": {
+      "ArtifactCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "session_id": {
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "run_id"
+        ],
+        "title": "ArtifactCreate",
+        "type": "object"
+      },
+      "ArtifactGet": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "pattern": "^ART-[a-f0-9]{16}$",
+            "title": "Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id"
+        ],
+        "title": "ArtifactGet",
+        "type": "object"
+      },
+      "ArtifactList": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "ArtifactList",
+        "type": "object"
+      },
+      "ArtifactRender": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "pattern": "^ART-[a-f0-9]{16}$",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "expected_version"
+        ],
+        "title": "ArtifactRender",
+        "type": "object"
+      },
       "AuditInput": {
         "additionalProperties": false,
         "properties": {
@@ -228,6 +297,120 @@
           "items"
         ],
         "title": "BackupList",
+        "type": "object"
+      },
+      "BuildResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Data",
+            "type": "object"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "BuildResult",
+        "type": "object"
+      },
+      "CandidatePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "rule",
+              "data",
+              "knowledge",
+              "skill"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 250,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "content",
+          "kind"
+        ],
+        "title": "CandidatePatch",
+        "type": "object"
+      },
+      "ChangesetGet": {
+        "additionalProperties": false,
+        "properties": {
+          "changeset_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Changeset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeset_id"
+        ],
+        "title": "ChangesetGet",
+        "type": "object"
+      },
+      "DecideItems": {
+        "additionalProperties": false,
+        "properties": {
+          "changeset_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Changeset Id",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "edited",
+              "rejected",
+              "pending"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "edit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changeset_id",
+          "item_ids",
+          "decision"
+        ],
+        "title": "DecideItems",
         "type": "object"
       },
       "EmptyInput": {
@@ -975,6 +1158,44 @@
         "title": "ReadinessOutput",
         "type": "object"
       },
+      "RecipeStart": {
+        "additionalProperties": false,
+        "properties": {
+          "material_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Material Id",
+            "type": "string"
+          },
+          "recipe": {
+            "const": "A",
+            "default": "A",
+            "title": "Recipe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_id"
+        ],
+        "title": "RecipeStart",
+        "type": "object"
+      },
+      "RecipeStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "RecipeStatus",
+        "type": "object"
+      },
       "RestoreInput": {
         "additionalProperties": false,
         "properties": {
@@ -1016,6 +1237,113 @@
           "files"
         ],
         "title": "RestoreOutput",
+        "type": "object"
+      },
+      "ReviewBody": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve_publish",
+              "return"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "entity_id": {
+            "default": "",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision",
+          "version"
+        ],
+        "title": "ReviewBody",
+        "type": "object"
+      },
+      "ReviewDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve_publish",
+              "return"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "entity_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entity_id",
+          "decision",
+          "version"
+        ],
+        "title": "ReviewDecision",
+        "type": "object"
+      },
+      "ReviewGet": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id"
+        ],
+        "title": "ReviewGet",
+        "type": "object"
+      },
+      "ReviewList": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "default": "",
+            "enum": [
+              "",
+              "data",
+              "rule",
+              "knowledge",
+              "skill"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "ReviewList",
         "type": "object"
       },
       "SearchInput": {
@@ -1641,10 +1969,171 @@
   },
   "info": {
     "title": "Ontology One REST v2",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v2/artifacts": {
+      "get": {
+        "operationId": "list_reports_api_v2_artifacts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Reports"
+      }
+    },
+    "/api/v2/artifacts/{id}": {
+      "get": {
+        "operationId": "get_api_v2_artifacts__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get"
+      }
+    },
+    "/api/v2/artifacts/{id}/versions/{version}/files/{format}": {
+      "get": {
+        "operationId": "download_api_v2_artifacts__id__versions__version__files__format__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "format",
+            "required": true,
+            "schema": {
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download"
+      }
+    },
+    "/api/v2/artifacts/{id}:render": {
+      "post": {
+        "operationId": "render_api_v2_artifacts__id__render_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactRender"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Render"
+      }
+    },
     "/api/v2/audit": {
       "get": {
         "operationId": "audit_api_v2_audit_get",
@@ -1843,6 +2332,39 @@
                   },
                   {
                     "$ref": "#/components/schemas/AuditInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RecipeStart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RecipeStatus"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ChangesetGet"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DecideItems"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReviewList"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReviewGet"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReviewDecision"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArtifactCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArtifactRender"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArtifactGet"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArtifactList"
                   }
                 ],
                 "title": "Body"
@@ -1886,6 +2408,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/AuditOutput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BuildResult"
                     }
                   ],
                   "title": "Response Invoke Api V2 Capabilities  Id  Invoke Post"
@@ -1966,6 +2491,172 @@
           }
         },
         "summary": "Invoke"
+      }
+    },
+    "/api/v2/changesets/{id}": {
+      "get": {
+        "operationId": "get_changeset_api_v2_changesets__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Changeset"
+      }
+    },
+    "/api/v2/changesets/{id}/items:bulk-decide": {
+      "post": {
+        "operationId": "decide_items_api_v2_changesets__id__items_bulk_decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideItems"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Items"
+      }
+    },
+    "/api/v2/changesets/{id}:apply": {
+      "post": {
+        "operationId": "apply_api_v2_changesets__id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply"
+      }
+    },
+    "/api/v2/changesets/{id}:apply-and-submit": {
+      "post": {
+        "operationId": "submit_api_v2_changesets__id__apply_and_submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit"
       }
     },
     "/api/v2/grants": {
@@ -2069,6 +2760,211 @@
           }
         },
         "summary": "Put Preference"
+      }
+    },
+    "/api/v2/recipes": {
+      "post": {
+        "operationId": "start_recipe_api_v2_recipes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Recipe"
+      }
+    },
+    "/api/v2/recipes/{id}": {
+      "get": {
+        "operationId": "get_recipe_api_v2_recipes__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recipe"
+      }
+    },
+    "/api/v2/reviews": {
+      "get": {
+        "operationId": "list_reviews_api_v2_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Kind",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Reviews"
+      }
+    },
+    "/api/v2/reviews/{id}": {
+      "get": {
+        "operationId": "get_review_api_v2_reviews__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review"
+      }
+    },
+    "/api/v2/reviews/{id}:decide": {
+      "post": {
+        "operationId": "decide_review_api_v2_reviews__id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Review"
       }
     },
     "/api/v2/system/backup": {

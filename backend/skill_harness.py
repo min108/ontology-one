@@ -191,7 +191,37 @@ def _config_path(*, create=False):
     return scoped_path("data/runtime/harness.json", allowed=("data/runtime",), create_parent=create)
 
 
+_ENV_VERIFIED: set[str] = set()
+
+
+def _environment_configuration():
+    key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if not key:
+        return None
+    try:
+        value = HarnessConfiguration.model_validate(
+            {
+                "base_url": os.getenv("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL),
+                "model": os.getenv("DEEPSEEK_MODEL", DEFAULT_MODEL),
+                "api_key": key,
+            }
+        )
+    except Exception:
+        raise _error("HARNESS_UNAVAILABLE") from None
+    revision = hashlib.sha256(_json({"base_url": value.base_url, "model": value.model, "api_key": key})).hexdigest()
+    return {
+        "base_url": value.base_url,
+        "model": value.model,
+        "api_key": key,
+        "revision": revision,
+        "verified": revision in _ENV_VERIFIED,
+    }
+
+
 def _configuration():
+    environment = _environment_configuration()
+    if environment is not None:
+        return environment
     path = _config_path()
     if not path.exists():
         return {"base_url": DEFAULT_BASE_URL, "model": DEFAULT_MODEL, "api_key": "", "revision": "", "verified": False}
@@ -806,6 +836,8 @@ def status():
 
 def _save_configuration(body: HarnessConfiguration):
     principal = _principal(admin=True)
+    if _environment_configuration() is not None:
+        raise HTTPException(409, "模型由运行环境配置，请修改环境变量并重启服务；密钥不会保存到文件。")
     with _config_lock():
         current = _configuration()
         if current["api_key"] and body.base_url != current["base_url"] and not (body.api_key or body.clear_key):
@@ -847,6 +879,12 @@ async def save_configuration(request: Request):
 
 def _mark_verified(principal, revision):
     _principal(principal, admin=True)
+    environment = _environment_configuration()
+    if environment is not None:
+        if environment["revision"] != revision:
+            raise _error("HARNESS_CONFIG_CHANGED")
+        _ENV_VERIFIED.add(revision)
+        return harness_status()
     with _config_lock():
         current = _configuration()
         if current["revision"] != revision:

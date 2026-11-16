@@ -3,6 +3,7 @@
 from __future__ import annotations
 import asyncio
 import hashlib
+import os
 from contextlib import closing, suppress, nullcontext
 import secrets
 import threading
@@ -464,6 +465,8 @@ class SessionStore:
                         provenance=bridge.provenance(),
                         partial=any(t.get("status") in {"error", "partial"} for t in bridge.traces),
                         completed_at=now(),
+                        report_source_kind="mock" if os.getenv("ONTOLOGY_MODEL_SOURCE") == "mock" else "analyst",
+                        _report_configuration_signature=run.get("_configuration_signature"),
                     )
                     session["messages"].append(
                         {

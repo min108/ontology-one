@@ -266,6 +266,23 @@ async def run(ident: str, run_id: str):
     return SESSIONS.run_view(value)
 
 
+class Report(Strict):
+    title: str = Field(default="", max_length=255)
+
+
+@router.post("/sessions/{ident}/runs/{run_id}/report")
+async def report(ident: str, run_id: str, request: Request):
+    from .capabilities.artifacts import ArtifactCreate
+    from .api.v2.build import call
+
+    session = SESSIONS.get(principal(), ident)
+    await SESSIONS.validate(session)
+    value = await body(request, Report)
+    return await asyncio.to_thread(
+        call, "artifact.create", ArtifactCreate(session_id=ident, run_id=run_id, title=value.title).model_dump()
+    )
+
+
 @router.get("/sessions/{ident}/runs/{run_id}/events")
 async def events(ident: str, run_id: str, request: Request):
     p = principal()

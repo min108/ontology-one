@@ -126,6 +126,7 @@ WRITE_RULES = (
     ("POST", "/api/agent/sessions", ROLES),
     ("POST", "/api/agent/sessions/{ident}/turns", ROLES),
     ("POST", "/api/agent/sessions/{ident}/runs/{run_id}/cancel", ROLES),
+    ("POST", "/api/agent/sessions/{ident}/runs/{run_id}/report", ROLES),
     ("DELETE", "/api/agent/sessions/{ident}", ROLES),
     ("POST", "/api/skills", BUILD),
     ("POST", "/api/skills/import", BUILD),
@@ -240,6 +241,19 @@ _EVIDENCE_REVIEW = re.compile(r"^/api/special-projects/[^/]+/evidence(?:/[^/]+)?
 
 # Empty permission tuples mean authenticated use; per-capability keys are checked by the gateway.
 V2_RULES = (
+    ("GET", "/api/v2/artifacts", ("artifact.read",)),
+    ("GET", "/api/v2/artifacts/{id}", ("artifact.read",)),
+    ("POST", "/api/v2/artifacts/{id}:render", ("artifact.create",)),
+    ("GET", "/api/v2/artifacts/{id}/versions/{version}/files/{format}", ("artifact.read",)),
+    ("POST", "/api/v2/recipes", ("build.edit",)),
+    ("GET", "/api/v2/recipes/{id}", ("draft.read",)),
+    ("GET", "/api/v2/changesets/{id}", ("draft.read",)),
+    ("POST", "/api/v2/changesets/{id}/items:bulk-decide", ("build.edit",)),
+    ("POST", "/api/v2/changesets/{id}:apply", ("build.edit",)),
+    ("POST", "/api/v2/changesets/{id}:apply-and-submit", ("build.submit",)),
+    ("GET", "/api/v2/reviews", ("draft.read",)),
+    ("GET", "/api/v2/reviews/{id}", ("draft.read",)),
+    ("POST", "/api/v2/reviews/{id}:decide", ("review.decide",)),
     ("POST", "/api/v2/capabilities/{id}:invoke", ()),
     ("GET", "/api/v2/system/model", ()),
     ("GET", "/api/v2/system/metadata", ()),

@@ -47,7 +47,12 @@ async def proxy(path: str, request: Request):
             r"sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}",
             r"sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}/events",
         ),
-        "POST": (r"sessions", r"sessions/[a-f0-9]{32}/turns", r"sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}/cancel"),
+        "POST": (
+            r"sessions",
+            r"sessions/[a-f0-9]{32}/turns",
+            r"sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}/cancel",
+            r"sessions/[a-f0-9]{32}/runs/[a-f0-9]{32}/report",
+        ),
         "DELETE": (r"sessions/[a-f0-9]{32}",),
     }
     raw_path = request.scope.get("raw_path", b"")

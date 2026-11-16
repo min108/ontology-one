@@ -3,11 +3,13 @@
 | 轮 | 版本 | 状态 | 验收日期 | 报告 |
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
-| R2 | 1.1.0 | 汇报冲刺，待开工 | — | [R2-PLAN](rounds/R2-PLAN.md) |
+| R2 | 1.1.0 | S0–S3 实施中，进入主线演练 | — | [R2-PLAN](rounds/R2-PLAN.md) |
 
 ## 当前基线
 
-分支 `dev/r1-foundation`，原代码基线 `1359118`（0.7.0）；本次受验代码 `bd6cbce9e8d3cd7dbf6fa379633ee162cfeeeae2`，最终交付提交另见Git历史。
+R2 分支 `dev/r2-sprint`，起点 `d8dff44`；版本 1.1.0，控制库0001–0005、机构库0001–0003，可信恢复结构v1–v6。S1/S2/S3相关13项测试、模拟模型五步浏览器主线和真实DeepSeek五步服务主线已通过（19.7秒、5条模型候选、0条本地兜底）。完整CI及Compose启动验证待本轮收口。
+
+R1 分支 `dev/r1-foundation`，原代码基线 `1359118`（0.7.0）；本次受验代码 `bd6cbce9e8d3cd7dbf6fa379633ee162cfeeeae2`，最终交付提交另见Git历史。
 [CI 43882472939](https://github.com/min108/ontology-one/actions/runs/43882472939)：成功；foundation与offline均通过，210次浏览器执行、63图比较通过。
 控制库迁移0001–0005、机构库0001；恢复结构v1–v4按连续可信历史精确选择，未知结构拒绝。启动只校验，不自动升级。entities 12列、relations 7列不变。
 

@@ -106,6 +106,11 @@ def schema_columns():
     from backend.demo import _ensure as ensure_demo_schema
 
     ensure_demo_schema(collector)
+    # Only installation-owned, checksum-tracked migrations define new business tables.
+    from backend.infra.migrations import discover
+
+    for migration in discover("tenant")[1:]:
+        migration.up(collector)
     result = {}
     for sql in collector.statements:
         match = re.search(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_]+)\s*\((.*)\)\s*ENGINE", sql, re.I | re.S)

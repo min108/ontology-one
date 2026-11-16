@@ -12,8 +12,10 @@ import re
 from pathlib import Path
 
 
-def trusted_schema(kind: str, version: int = 1) -> dict:
-    if version not in {1, 2, 3, 4}:
+def trusted_schema(kind: str, version: int | None = None) -> dict:
+    if version is None:
+        version = 6 if kind == "tenant" else 1
+    if version not in {1, 2, 3, 4, 5, 6}:
         raise ValueError("未知的受信恢复结构版本。")
     path = Path(__file__).resolve().parents[2] / "migrations" / "restore" / f"v{version}.json"
     registry = json.loads(path.read_text())
@@ -64,7 +66,7 @@ def schema_for_snapshot(value: dict, kind: str) -> dict:
     Legacy snapshots have no history. The history table itself is verified with
     the immutable v1 definition before any row can select a newer schema.
     """
-    baseline = trusted_schema(kind)
+    baseline = trusted_schema(kind, 1)
     rows = value["tables"].get("schema_migrations")
     if rows is None:
         return baseline
@@ -85,7 +87,7 @@ def schema_for_snapshot(value: dict, kind: str) -> dict:
         path = paths[0]
         if row["name"] != path.stem or row["checksum"] != hashlib.sha256(path.read_bytes()).hexdigest():
             raise ValueError("备份迁移历史与已发布定义不一致。")
-    supported = {"control": {0: 1, 1: 1, 2: 2, 3: 3, 4: 4, 5: 4}, "tenant": {0: 1, 1: 1}}
+    supported = {"control": {0: 1, 1: 1, 2: 2, 3: 3, 4: 4, 5: 4}, "tenant": {0: 1, 1: 1, 2: 5, 3: 6}}
     version = supported[kind].get(len(versions))
     if version is None:
         raise ValueError("备份迁移版本尚未登记受信恢复结构。")

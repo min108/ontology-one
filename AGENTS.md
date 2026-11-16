@@ -22,11 +22,13 @@
 
 ## 3 代码地图
 
+- R2：`domains/build.py`复用原材料分段/提炼/采纳；`domains/reviews.py`保护新提案的独立审核；`domains/artifacts`从已完成会话生成私有版本化报告。`features/build`与`features/artifacts`为新主线页面，旧页继续保留。`DEEPSEEK_API_KEY`仅运行环境读取，设置与测试操作不得将环境密钥写入文件。
+
 - `backend/main.py`：薄 API 装配；原内联路由已原样移到 api/v1/core.py。v2 入口在 api/v2，业务能力在 capabilities，配置/错误/编号/日志在 core。
 - `backend/security/`：store、policy、middleware、context、applications、directory、preferences，承载身份、目录治理、会话、审计、应用授权和用户偏好。duties随会话读取并参与捕获身份/提交复核，仅存储不开放授予。
 - R1-8 管理包：`features/admin` 与 `capabilities/model`、`capabilities/backup` 承接设置；`api/v2/system.py` 提供安全元数据和二进制绑定。浏览器15项后退役Settings/HarnessConfiguration及其专属CSS，DemoWorkspace继续保留。离线恢复仅可信offline绑定且持独占锁；模型新入口保持16KiB和严格拒重复JSON。主干完整回归与CI43832921234已通过，见R1-8-REPORT。
 - R1-6 `features/home`：工作台使用真实同源统计、任务与近期运行；HomeIntake只在内存转交文件，RecentRecorder按身份/机构/scope记录有限本机元数据。`app/guardedNavigation.ts`沿用旧Authority未保存确认。O-01–06实际对照后退役Overview与41条专属CSS；旧素材/台账接收器保持人工确认上传。
-- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control`当前0001–0005，`migrations/tenant`仍0001；恢复定义v1–v4按各库连续可信迁移历史精确选择，未知历史/部分结构拒绝。启动只校验、不自动升级。
+- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control`当前0001–0005，`migrations/tenant`当前0001–0003；恢复定义v1–v6按各库连续可信迁移历史精确选择，未知历史/部分结构拒绝。启动只校验、不自动升级。
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。

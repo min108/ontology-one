@@ -48,6 +48,12 @@ def release():
 # rebuildable caches and optional conversation tables belong here as introduced.
 TABLE_CLASSIFICATION = dict.fromkeys(
     (
+        "changesets",
+        "changeset_items",
+        "recipe_runs",
+        "artifacts",
+        "artifact_versions",
+        "artifact_access_log",
         "activities",
         "application_findings",
         "archived_reading_drafts",

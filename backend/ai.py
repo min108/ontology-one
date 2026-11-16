@@ -312,6 +312,10 @@ def status():
 
 def _save_configuration(body):
     principal = require_admin()
+    from .skill_harness import _environment_configuration
+
+    if _environment_configuration() is not None:
+        raise HTTPException(409, "模型由运行环境配置，请修改环境变量并重启服务；密钥不会保存到文件。")
     with _config_lock():
         current = config()
         endpoint = body.base_url if body.base_url is not None else current["base_url"]
@@ -362,6 +366,14 @@ async def save(request: Request):
 def _mark_verified(principal, signature):
     _principal(principal)
     require_admin()
+    from .skill_harness import _environment_configuration, _mark_verified as mark_harness
+
+    environment = _environment_configuration()
+    if environment is not None:
+        if _signature(config()) != signature:
+            raise AIError("AI_CONFIG_CHANGED")
+        mark_harness(principal, environment["revision"])
+        return
     with _config_lock():
         current = config()
         if _signature(current) != signature:

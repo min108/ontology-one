@@ -1796,98 +1796,102 @@ def merge_candidates(material_id: str, request: MergeRequest):
 def adopt_candidate(material_id: str, candidate_id: str):
     with closing(connect()) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
-        item = material(conn, material_id)
-        candidate = find_candidate(item, candidate_id)
-        if candidate.get("entity_id"):
-            row = conn.execute("SELECT * FROM entities WHERE id=?", (candidate["entity_id"],)).fetchone()
-            if row:
-                return {"entity": entity_dict(row), "already_adopted": True}
-        if candidate.get("status", "pending") != "pending":
-            raise HTTPException(409, "请先恢复为待核对状态再采纳")
-        validate_context(conn, item["payload"].get("project_id", ""), item["payload"].get("task_id", ""))
-        if candidate.get("kind") not in KINDS or not candidate.get("title") or not candidate.get("content"):
-            raise HTTPException(422, "候选类型、名称或正文不完整，请先编辑补充")
-        source_ids = candidate.get("source_chunk_ids", [])
-        chunks = [
-            dict(r)
-            for r in conn.execute("SELECT id,heading,locator,content FROM chunks WHERE material_id=?", (material_id,))
-            if r["id"] in source_ids
-        ]
-        if not chunks:
-            raise HTTPException(422, "候选缺少有效原文出处，请先补充来源")
-        source_refs = (
-            [normalize_source_ref(conn, material_id, q, min_quote_length=1) for q in candidate.get("source_quotes", [])]
-            if candidate.get("source_quotes")
-            else [normalize_source_ref(conn, material_id, {"chunk_id": c["id"], "quote": c["content"]}) for c in chunks]
-        )
-        asset_id = uid(candidate["kind"])
-        stamp = now()
-        payload = {
-            "content": candidate["content"],
-            "conditions": candidate.get("conditions", []),
-            "questions": candidate.get("questions", []),
-            "source_material_id": material_id,
-            "source_chunk_ids": source_ids,
-            "source_quotes": candidate.get("source_quotes", []),
-            "source_title": item["title"],
-            "source_locations": chunks,
-            "project_id": item["payload"].get("project_id", ""),
-            "task_id": item["payload"].get("task_id", ""),
-            "matter_id": item["payload"].get("matter_id", ""),
-            "source_refs": source_refs,
-            "extraction_mode": candidate.get("extraction_mode"),
-            "validation_status": "待业务审核",
-            "candidate_id": candidate_id,
-        }
-        conn.execute(
-            "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                asset_id,
-                candidate["kind"],
-                candidate["title"],
-                candidate.get("summary", ""),
-                item["domain"],
-                item["org_id"],
-                "draft",
-                item["source_kind"],
-                dump(payload),
-                stamp,
-                stamp,
-                1,
-            ),
-        )
-        conn.execute(
-            "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
-            (
-                uid("rel"),
-                asset_id,
-                material_id,
-                "derived_from",
-                "来源依据",
-                "confirmed",
-                dump(
-                    {
-                        "source_chunk_ids": source_ids,
-                        "locators": [c["locator"] for c in chunks],
-                        "confirmed_by": require_context().user_id,
-                    }
-                ),
-            ),
-        )
-        from .work_context import attach_matter_context
+        return adopt_candidate_in_transaction(conn, material_id, candidate_id)
 
-        attach_matter_context(
-            conn,
+
+def adopt_candidate_in_transaction(conn, material_id: str, candidate_id: str):
+    item = material(conn, material_id)
+    candidate = find_candidate(item, candidate_id)
+    if candidate.get("entity_id"):
+        row = conn.execute("SELECT * FROM entities WHERE id=?", (candidate["entity_id"],)).fetchone()
+        if row:
+            return {"entity": entity_dict(row), "already_adopted": True}
+    if candidate.get("status", "pending") != "pending":
+        raise HTTPException(409, "请先恢复为待核对状态再采纳")
+    validate_context(conn, item["payload"].get("project_id", ""), item["payload"].get("task_id", ""))
+    if candidate.get("kind") not in KINDS or not candidate.get("title") or not candidate.get("content"):
+        raise HTTPException(422, "候选类型、名称或正文不完整，请先编辑补充")
+    source_ids = candidate.get("source_chunk_ids", [])
+    chunks = [
+        dict(r)
+        for r in conn.execute("SELECT id,heading,locator,content FROM chunks WHERE material_id=?", (material_id,))
+        if r["id"] in source_ids
+    ]
+    if not chunks:
+        raise HTTPException(422, "候选缺少有效原文出处，请先补充来源")
+    source_refs = (
+        [normalize_source_ref(conn, material_id, q, min_quote_length=1) for q in candidate.get("source_quotes", [])]
+        if candidate.get("source_quotes")
+        else [normalize_source_ref(conn, material_id, {"chunk_id": c["id"], "quote": c["content"]}) for c in chunks]
+    )
+    asset_id = uid(candidate["kind"])
+    stamp = now()
+    payload = {
+        "content": candidate["content"],
+        "conditions": candidate.get("conditions", []),
+        "questions": candidate.get("questions", []),
+        "source_material_id": material_id,
+        "source_chunk_ids": source_ids,
+        "source_quotes": candidate.get("source_quotes", []),
+        "source_title": item["title"],
+        "source_locations": chunks,
+        "project_id": item["payload"].get("project_id", ""),
+        "task_id": item["payload"].get("task_id", ""),
+        "matter_id": item["payload"].get("matter_id", ""),
+        "source_refs": source_refs,
+        "extraction_mode": candidate.get("extraction_mode"),
+        "validation_status": "待业务审核",
+        "candidate_id": candidate_id,
+    }
+    conn.execute(
+        "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
             asset_id,
-            item["payload"].get("project_id", ""),
-            item["payload"].get("task_id", ""),
-            item["payload"].get("matter_id", ""),
-            role="produced_asset",
-        )
-        candidate["status"] = "adopted"
-        candidate["entity_id"] = asset_id
-        candidate["adopted_at"] = stamp
-        save_payload(conn, item, item["payload"], f"采纳候选：{candidate['title']}")
-        activity(conn, asset_id, "create", f"从《{item['title']}》采纳形成资产草稿，来源与待核问题已保留")
-        activity(conn, material_id, "candidate_adopt", f"采纳{KIND_NAMES[candidate['kind']]}候选：{candidate['title']}")
-        return {"entity": entity_dict(conn.execute("SELECT * FROM entities WHERE id=?", (asset_id,)).fetchone())}
+            candidate["kind"],
+            candidate["title"],
+            candidate.get("summary", ""),
+            item["domain"],
+            item["org_id"],
+            "draft",
+            item["source_kind"],
+            dump(payload),
+            stamp,
+            stamp,
+            1,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
+        (
+            uid("rel"),
+            asset_id,
+            material_id,
+            "derived_from",
+            "来源依据",
+            "confirmed",
+            dump(
+                {
+                    "source_chunk_ids": source_ids,
+                    "locators": [c["locator"] for c in chunks],
+                    "confirmed_by": require_context().user_id,
+                }
+            ),
+        ),
+    )
+    from .work_context import attach_matter_context
+
+    attach_matter_context(
+        conn,
+        asset_id,
+        item["payload"].get("project_id", ""),
+        item["payload"].get("task_id", ""),
+        item["payload"].get("matter_id", ""),
+        role="produced_asset",
+    )
+    candidate["status"] = "adopted"
+    candidate["entity_id"] = asset_id
+    candidate["adopted_at"] = stamp
+    save_payload(conn, item, item["payload"], f"采纳候选：{candidate['title']}")
+    activity(conn, asset_id, "create", f"从《{item['title']}》采纳形成资产草稿，来源与待核问题已保留")
+    activity(conn, material_id, "candidate_adopt", f"采纳{KIND_NAMES[candidate['kind']]}候选：{candidate['title']}")
+    return {"entity": entity_dict(conn.execute("SELECT * FROM entities WHERE id=?", (asset_id,)).fetchone())}

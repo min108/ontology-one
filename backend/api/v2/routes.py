@@ -18,6 +18,9 @@ importlib.import_module("backend.capabilities.read")
 importlib.import_module("backend.capabilities.model")
 importlib.import_module("backend.capabilities.backup")
 importlib.import_module("backend.capabilities.identity")
+importlib.import_module("backend.capabilities.build")
+importlib.import_module("backend.capabilities.reviews")
+importlib.import_module("backend.capabilities.artifacts")
 router = APIRouter(prefix="/api/v2")
 
 router.include_router(system_router)
@@ -35,5 +38,5 @@ def invoke(id: str, body: CapabilityInput, request: Request) -> BaseModel:
     return registry.invoke(id, ctx, body.model_dump(exclude_unset=True))
 
 
-for module in ("orgs", "users", "grants", "audit", "prefs"):
+for module in ("orgs", "users", "grants", "audit", "prefs", "build", "artifacts"):
     router.include_router(importlib.import_module("backend.api.v2." + module).router)

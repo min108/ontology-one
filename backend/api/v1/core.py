@@ -312,6 +312,10 @@ async def edit(eid: str, request: Request):
             "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
             (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), b.get("reason", "内容修订")),
         )
+        if old["payload"].get("r2_review"):
+            from ...domains.reviews import preserve_review_identity
+
+            b["payload"] = preserve_review_identity(old, b.get("payload", old["payload"]))
         allowed = ["title", "summary", "domain", "org_id", "status", "payload"]
         for k in allowed:
             if k in b:
@@ -359,101 +363,119 @@ def _entity_action(eid, b):
     if act not in targets:
         raise HTTPException(400, "不支持此操作。")
     with closing(connect()) as c, c:
-        if existing and existing["payload"].get("authority_spec"):
-            c.execute("BEGIN IMMEDIATE")
-        old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
-        if not old:
-            raise HTTPException(404, "未找到内容。")
-        from ...skills import guard_generic_entity
+        entity_action_in_transaction(c, eid, b)
+    return detail(eid)
 
-        guard_generic_entity(c, old)
-        if old["payload"].get("active_asset") is False:
-            raise HTTPException(409, "历史条目保留原审定记录，请在当前成果中办理。")
-        if old["payload"].get("authority_spec"):
-            from ...authority import guard_action
 
-            guard_action(c, old, b)
-        if act == "approve" and old["status"] != "review":
-            raise HTTPException(400, "请先提交审核，再确认审核结果。")
-        if act == "complete" and old["kind"] != "task":
-            raise HTTPException(400, "该内容不属于可办结的任务。")
-        if act == "publish" and old["status"] not in ["approved", "published"]:
-            raise HTTPException(400, "请先审核通过，再发布成果。")
-        if act == "return" and not str(b.get("reason", "")).strip():
-            raise HTTPException(400, "请填写需要补充或修改的内容。")
-        c.execute(
-            "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-            (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), b.get("reason", act)),
+def entity_action_in_transaction(c, eid, b):
+    act = b.get("action")
+    targets = {
+        "submit": "review",
+        "approve": "approved",
+        "return": "returned",
+        "publish": "published",
+        "revise": "draft",
+        "archive": "archived",
+        "complete": "completed",
+    }
+    existing = entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone())
+    if existing and existing["payload"].get("authority_spec"):
+        c.execute("BEGIN IMMEDIATE")
+    old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
+    if not old:
+        raise HTTPException(404, "未找到内容。")
+    from ...skills import guard_generic_entity
+
+    guard_generic_entity(c, old)
+    if old["payload"].get("active_asset") is False:
+        raise HTTPException(409, "历史条目保留原审定记录，请在当前成果中办理。")
+    if old["payload"].get("authority_spec"):
+        from ...authority import guard_action
+
+        guard_action(c, old, b)
+    from ...domains.reviews import guard_marked_action
+
+    guard_marked_action(c, old, b)
+    if act == "approve" and old["status"] != "review":
+        raise HTTPException(400, "请先提交审核，再确认审核结果。")
+    if act == "complete" and old["kind"] != "task":
+        raise HTTPException(400, "该内容不属于可办结的任务。")
+    if act == "publish" and old["status"] not in ["approved", "published"]:
+        raise HTTPException(400, "请先审核通过，再发布成果。")
+    if act == "return" and not str(b.get("reason", "")).strip():
+        raise HTTPException(400, "请填写需要补充或修改的内容。")
+    c.execute(
+        "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
+        (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), b.get("reason", act)),
+    )
+    c.execute("UPDATE entities SET status=?,version=version+1,updated_at=? WHERE id=?", (targets[act], now(), eid))
+    if old["payload"].get("authority_spec"):
+        from ...authority import sync_relations
+
+        sync_relations(c, entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone()))
+    labels = {
+        "submit": "提交审核",
+        "approve": "审核通过",
+        "return": "退回补充",
+        "publish": "发布成果",
+        "revise": "发起修订",
+        "archive": "归档停用",
+        "complete": "完成任务",
+    }
+    log(c, eid, labels[act], b.get("reason", ""), b.get("actor", "本地体验用户"))
+    if act == "complete" and old["payload"].get("project_id"):
+        project_id = old["payload"]["project_id"]
+        project = entity_json(
+            c.execute("SELECT * FROM entities WHERE id=? AND kind=?", (project_id, "project")).fetchone()
         )
-        c.execute("UPDATE entities SET status=?,version=version+1,updated_at=? WHERE id=?", (targets[act], now(), eid))
-        if old["payload"].get("authority_spec"):
-            from ...authority import sync_relations
-
-            sync_relations(c, entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone()))
-        labels = {
-            "submit": "提交审核",
-            "approve": "审核通过",
-            "return": "退回补充",
-            "publish": "发布成果",
-            "revise": "发起修订",
-            "archive": "归档停用",
-            "complete": "完成任务",
-        }
-        log(c, eid, labels[act], b.get("reason", ""), b.get("actor", "本地体验用户"))
-        if act == "complete" and old["payload"].get("project_id"):
-            project_id = old["payload"]["project_id"]
-            project = entity_json(
-                c.execute("SELECT * FROM entities WHERE id=? AND kind=?", (project_id, "project")).fetchone()
-            )
-            if project:
-                tasks = c.execute(
-                    "SELECT status FROM entities WHERE kind='task' AND json_extract(payload,'$.project_id')=?",
-                    (project_id,),
-                ).fetchall()
-                finished = sum(t["status"] == "completed" for t in tasks)
-                c.execute(
-                    "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-                    (
-                        project_id,
-                        project["version"],
-                        json.dumps(project, ensure_ascii=False),
-                        now(),
-                        "任务办理后更新专题进度",
-                    ),
-                )
-                project["payload"]["progress"] = round(finished / max(1, len(tasks)) * 100)
-                project["payload"]["completed_tasks"] = finished
-                c.execute(
-                    "UPDATE entities SET payload=?,version=version+1,updated_at=? WHERE id=?",
-                    (json.dumps(project["payload"], ensure_ascii=False), now(), project_id),
-                )
-                log(c, project_id, "更新专题进度", f"已完成 {finished} / {len(tasks)} 项工作任务")
-        if act == "return":
-            tid = "TASK-USER-" + uuid.uuid4().hex[:8]
-            p = {"related_id": eid, "reason": b["reason"], "responsible": "资产整理人员"}
+        if project:
+            tasks = c.execute(
+                "SELECT status FROM entities WHERE kind='task' AND json_extract(payload,'$.project_id')=?",
+                (project_id,),
+            ).fetchall()
+            finished = sum(t["status"] == "completed" for t in tasks)
             c.execute(
-                "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
                 (
-                    tid,
-                    "task",
-                    "补充完善：" + old["title"][:45],
-                    b["reason"],
-                    old["domain"],
-                    old["org_id"],
-                    "draft",
-                    "user",
-                    json.dumps(p, ensure_ascii=False),
+                    project_id,
+                    project["version"],
+                    json.dumps(project, ensure_ascii=False),
                     now(),
-                    now(),
-                    1,
+                    "任务办理后更新专题进度",
                 ),
             )
+            project["payload"]["progress"] = round(finished / max(1, len(tasks)) * 100)
+            project["payload"]["completed_tasks"] = finished
             c.execute(
-                "INSERT INTO relations VALUES(?,?,?,?,?,?,?)",
-                ("rel-" + uuid.uuid4().hex, eid, tid, "requires", "需要补充", "confirmed", "{}"),
+                "UPDATE entities SET payload=?,version=version+1,updated_at=? WHERE id=?",
+                (json.dumps(project["payload"], ensure_ascii=False), now(), project_id),
             )
-        c.commit()
-    return detail(eid)
+            log(c, project_id, "更新专题进度", f"已完成 {finished} / {len(tasks)} 项工作任务")
+    if act == "return":
+        tid = "TASK-USER-" + uuid.uuid4().hex[:8]
+        p = {"related_id": eid, "reason": b["reason"], "responsible": "资产整理人员"}
+        c.execute(
+            "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                tid,
+                "task",
+                "补充完善：" + old["title"][:45],
+                b["reason"],
+                old["domain"],
+                old["org_id"],
+                "draft",
+                "user",
+                json.dumps(p, ensure_ascii=False),
+                now(),
+                now(),
+                1,
+            ),
+        )
+        c.execute(
+            "INSERT INTO relations VALUES(?,?,?,?,?,?,?)",
+            ("rel-" + uuid.uuid4().hex, eid, tid, "requires", "需要补充", "confirmed", "{}"),
+        )
+    return entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone())
 
 
 @router.post("/api/entities/{eid}/restore")
@@ -491,6 +513,10 @@ def _restore_entity(eid, body):
         payload = snapshot.get("payload", {})
         if isinstance(payload, str):
             payload = json.loads(payload)
+        if old["payload"].get("r2_review"):
+            from ...domains.reviews import preserve_review_identity
+
+            payload = preserve_review_identity(old, payload)
         conn.execute(
             "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
             (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), "还原前快照：" + reason),
