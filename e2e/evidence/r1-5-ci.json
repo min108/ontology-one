@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "source_commit": "ebc24f86f802f1d886ce07471303f97f2af54664",
+  "ci_run_id": 43821587650,
+  "ci_job_id": 133145758327,
+  "ci_result": "success",
+  "browser_version": "159.0.8154.6",
+  "fixture_commit": "1359118dd672431dcd0cde2eb81f2b0f994eef37",
+  "browser_tests": {
+    "expected": 90,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0
+  },
+  "cleanup": {
+    "created_database_count": 4,
+    "cleaned_database_count": 4,
+    "services_stopped": true
+  },
+  "harness": {
+    "sdk_connection_verified": true,
+    "sdk_version": "0.2.1rc2",
+    "model_provider": "local_synthetic_messages",
+    "model_requests": 2,
+    "held_requests": 1,
+    "observed_processes": [
+      15793,
+      15816
+    ],
+    "observed_processes_reaped": true
+  },
+  "artifacts": [
+    {
+      "id": 14205700446,
+      "name": "r1-foundation-ci-43821587650",
+      "bytes": 239323578,
+      "sha256": "1d33c5fa892c4d259ec3cb7edc1c5b016512ee86ee435baf64be9082fd24f537"
+    },
+    {
+      "id": 14205421914,
+      "name": "r1-foundation-browser-summary-43821587650",
+      "bytes": 38799,
+      "sha256": "3397984b319339e06117d03b61ca57fb38968a753bad95cd2ab12a20d8ae324e"
+    }
+  ]
+}
