@@ -135,6 +135,13 @@ class Sandbox:
         shutil.copytree(
             self.source / "backend", self.root / "backend", ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
         )
+        for directory in ("migrations", "scripts"):
+            if (self.source / directory).is_dir():
+                shutil.copytree(
+                    self.source / directory,
+                    self.root / directory,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                )
         # A copied application must retain its authoritative release identity;
         # version-aware runtime modules must not silently fall back to a
         # different release merely because the acceptance root is disposable.
@@ -231,6 +238,7 @@ async def app(scope, receive, send):
                 str(self.workers),
                 "--no-access-log",
             ]
+            self.python("from backend.infra.migrations import run_migrations; run_migrations()")
             self.process = subprocess.Popen(
                 command, cwd=self.root, env=self.env, stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True
             )
@@ -248,9 +256,7 @@ async def app(scope, receive, send):
                     time.sleep(0.2)
                 else:
                     raise RuntimeError(f"Test server startup timed out; see {self.log_path}")
-            self.python(
-                "from backend.security.store import initialize_control,bootstrap_superadmin; initialize_control(); bootstrap_superadmin()"
-            )
+            self.python("from backend.security.store import bootstrap_superadmin; bootstrap_superadmin()")
             return self
         except BaseException:
             self.__exit__(*sys.exc_info())

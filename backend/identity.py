@@ -91,9 +91,9 @@ def login(body: Login, request: Request, response: Response):
         getattr(request.state, "request_id", ""),
     )
     principal = _logged_in(raw, request)
-    from .db import ensure_tenant_schema
+    from .infra.migrations import provision_tenant
 
-    ensure_tenant_schema(principal.tenant_id)
+    provision_tenant(principal.tenant_id)
     result = store.session_payload(principal, raw)
     _cookie(response, request, raw)
     return result
@@ -143,9 +143,9 @@ def workspace(body: Workspace, request: Request):
     current = store.session_payload(principal, _raw(request))
     if body.tenant_id not in {item["tenant_id"] for item in current["workspaces"]}:
         raise HTTPException(403, "未授权进入此机构业务工作区。")
-    from .db import ensure_tenant_schema
+    from .infra.migrations import provision_tenant
 
-    ensure_tenant_schema(body.tenant_id)
+    provision_tenant(body.tenant_id)
     store.switch_workspace(principal, body.tenant_id)
     return store.session_payload(_logged_in(_raw(request), request), _raw(request))
 

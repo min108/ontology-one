@@ -103,6 +103,9 @@ def schema_columns():
     init_special_schema(collector)
     ensure_source_schema(collector)
     ensure_skill_schema(collector)
+    from backend.demo import _ensure as ensure_demo_schema
+
+    ensure_demo_schema(collector)
     result = {}
     for sql in collector.statements:
         match = re.search(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_]+)\s*\((.*)\)\s*ENGINE", sql, re.I | re.S)
@@ -235,9 +238,11 @@ def _empty_workspace(connection, tenant_id, allowed, *, lock=False):
             "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE'"
         )
     }
-    if existing - allowed.keys():
+    if existing - allowed.keys() - {"schema_migrations"}:
         raise RestoreError("目标库包含当前应用无法识别的表，拒绝恢复。")
     for table in existing:
+        if table == "schema_migrations":
+            continue
         rows = connection.execute(f"SELECT * FROM `{table}`" + (" FOR UPDATE" if lock else "")).fetchall()
         if table == "entities":
             if any(
@@ -272,7 +277,9 @@ def restore_snapshot(snapshot, archive, principal, reason):
     except Exception as exc:
         if not getattr(exc, "args", None) or exc.args[0] != 1049:
             raise
-    db.ensure_tenant_schema(tenant_id)
+    from backend.infra.migrations import provision_tenant
+
+    provision_tenant(tenant_id)
     with use_context(principal):
         root = workspace_root(create=True)
         uploads = scoped_path("data/uploads", create_parent=True)

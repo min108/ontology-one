@@ -1,0 +1,9 @@
+test_missing_migration_test_is_detected (test_check_migrations.MigrationCheck.test_missing_migration_test_is_detected) ... ok
+test_new_business_ddl_is_detected (test_check_migrations.MigrationCheck.test_new_business_ddl_is_detected) ... ok
+test_real_repository_passes (test_check_migrations.MigrationCheck.test_real_repository_passes) ... ok
+test_sequence_gap_is_detected (test_check_migrations.MigrationCheck.test_sequence_gap_is_detected) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.482s
+
+OK
