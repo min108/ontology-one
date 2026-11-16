@@ -66,7 +66,19 @@ Ctrl/⌘+K、顶栏和首页输入框共用 GlobalSearch/Omnibox。普通文字�
 - 一轮与全后端重型任务重叠的 34 项定向运行因 5 秒超时失败：首个搜索用例耗 23.6 秒并产生后续 act 连锁失败，CSV 关闭用例耗 9.1 秒。保留 `work/home-load-failure.log`，不提高超时、不弱化断言，不把这次运行列为通过。
 - ESLint、Prettier、Stylelint、词表、令牌、生成词表、legacy 收缩/导入边界检查通过。
 - 空闲串行环境全前端 250/250 通过（21 文件），完整重跑覆盖此前负载失败的全部用例；legacy + strict TypeScript 通过，CSS/声明隔离 9/9 通过。
-- 生产构建与真实新两条 E2E：产品 checkpoint 后由 run.py 导出该 HEAD 并构建/执行，完成后补实际结果；不得把以上单测视为浏览器通过。
+- 生产构建与真实两条 E2E 已通过：run.py 导出产品提交 `90a46ae91c93811e0d934b10b3ac05d72e34580f`，独立离线 npm ci、legacy + strict、CSS 产物检查与 Vite 构建通过（Vite 10.91 秒）；Playwright 单 worker 16.45 秒，expected=2、unexpected=0、flaky=0、skipped=0。第二条实际验证 Authority 编辑取消保留标题与文件，接受后到原 Materials 队列且无自动上传。
+- 浏览器证据：`work/evidence/r1/home-browser-1/{runner.json,results.json,playwright.log,frontend-build.log}`。原 0.7.0 夹具提交 `1359118dd672431dcd0cde2eb81f2b0f994eef37`；本次四个临时库全部清理，`services_stopped=true`。最终报告提交不改产品代码。
 - 最终原 75 + Shell 与 A.2 截图由质量工作包在集成 SHA 复跑。
+
+复跑命令（Node 22，MySQL 连接凭据在环境内准备；不输出凭据）：
+
+```sh
+npm --prefix frontend test -- --run --maxWorkers=2
+npm --prefix frontend run test:isolation
+frontend/node_modules/.bin/tsc --project frontend/tsconfig.json
+E2E_CHROMIUM=/usr/bin/chromium E2E_WORKERS=1 python e2e/run.py --target foundation --api-port 8865 --agent-port 8866 --evidence work/evidence/r1/home-browser-replay -- --config e2e/home.config.mjs
+```
+
+独立源码提交包括已验证的取消导航桥 `749b7e9e934d0a0bbe9c69daa8dd28f4fb3fa02f`（从质量代理纯桥提交 cherry-pick）与工作台主体 `90a46ae91c93811e0d934b10b3ac05d72e34580f`。旧 Overview 的 A.2 全操作及截图对照仍留给最终质量工作包；没有提前登记退役。
 
 `requirements.txt`、两条受保护 Windows workflow、`frontend/src/legacy/api.ts` 与基点逐字节不变。无新依赖、无密钥文件、无上传原文持久化、无 push/PR/tag。AGENTS/STATUS/PLAN 由根代理统一整合；代码地图新增 `features/home`、Shell 的 RecentRecorder/HomeIntake、`foundation-home.spec.mjs`。
