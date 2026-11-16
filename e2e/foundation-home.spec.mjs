@@ -338,13 +338,15 @@ test.describe("R1-6 Overview A.2 operational parity", () => {
     await expect(
       page.getByRole("heading", { name: dataItem.title, exact: true }).first(),
     ).toBeVisible();
-    const recent = overview.recent.find((item) => item.kind === "knowledge");
+    // Overview chooses one published knowledge/rule item per topic; use its real selection.
+    const recent = overview.recent[0];
     expect(recent).toBeDefined();
+    expect(["knowledge", "rule"]).toContain(recent.kind);
     await page.goto(
       "/assets?" +
         new URLSearchParams({
-          kind: "knowledge",
-          knowledge_view: "all",
+          kind: recent.kind,
+          ...(recent.kind === "knowledge" ? { knowledge_view: "all" } : {}),
           q: recent.id,
         }),
     );
