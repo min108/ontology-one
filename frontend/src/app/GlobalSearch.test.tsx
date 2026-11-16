@@ -153,3 +153,44 @@ it('keeps the group search entry only for federation.read and closes on navigati
   expect(onClose).toHaveBeenCalledOnce();
   useSessionStore.setState({ permission_keys: [] });
 });
+
+it('lists built commands immediately and Enter routes without semantic search', async () => {
+  const { onClose } = renderSearch();
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: '/briefing' } });
+  expect(screen.getByRole('option')).toHaveTextContent(terms.labels.home_command_briefing);
+  fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+  expect(screen.getByTestId('location')).toHaveTextContent('/briefing');
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(invokeCapability).not.toHaveBeenCalled();
+});
+it('groups results using known business kinds', () => {
+  const items = parseSearchItems({
+    items: [
+      { id: 'm', kind: 'material', title: 'Material' },
+      { id: 'k', kind: 'knowledge', title: 'Knowledge' },
+    ],
+  });
+  expect(items.map((item) => item.group)).toEqual([terms.kinds.material, terms.kinds.knowledge]);
+});
+
+it('keeps search open and the current route when a retained editor refuses navigation', async () => {
+  let refuse = true;
+  const guard = (event: Event) => {
+    if (refuse) event.preventDefault();
+  };
+  window.addEventListener('ontology:request-route-navigation', guard);
+  try {
+    const { onClose } = renderSearch();
+    await search('needle');
+    fireEvent.click(screen.getByRole('option'));
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox')).toHaveValue('needle');
+    refuse = false;
+    fireEvent.click(screen.getByRole('option'));
+    expect(screen.getByTestId('location')).toHaveTextContent('/materials/MAT-1');
+    expect(onClose).toHaveBeenCalledOnce();
+  } finally {
+    window.removeEventListener('ontology:request-route-navigation', guard);
+  }
+});

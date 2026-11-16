@@ -10,7 +10,7 @@ import { LegacyRedirect } from './LegacyRedirect';
 import { WorkspaceLanding } from './WorkspaceLanding';
 import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from './navigation';
 
-const Overview = lazy(() => import('@legacy/pages/Overview'));
+const Home = lazy(() => import('../features/home/Home'));
 const Security = lazy(() => import('@legacy/pages/Security'));
 const Administration = lazy(() => import('@legacy/pages/Administration'));
 const ModelPage = lazy(() => import('../features/admin/model/ModelPage'));
@@ -79,14 +79,7 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
       }
     >
       <Routes>
-        <Route
-          path="/"
-          element={
-            <LegacyPage>
-              <Overview />
-            </LegacyPage>
-          }
-        />
+        <Route path="/" element={<Home />} />
         {primaryNavigation(principal.role)
           .filter((entry) => entry.key !== 'home')
           .map((entry) => (

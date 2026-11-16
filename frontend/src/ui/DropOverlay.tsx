@@ -15,7 +15,7 @@ export function DropOverlay({
     let depth = 0;
     const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files');
     const enter = (event: DragEvent) => {
-      if (hasFiles(event)) {
+      if (hasFiles(event) && !event.defaultPrevented) {
         event.preventDefault();
         depth += 1;
         setVisible(true);
@@ -31,6 +31,11 @@ export function DropOverlay({
       if (hasFiles(event)) event.preventDefault();
     };
     const drop = (event: DragEvent) => {
+      if (event.defaultPrevented) {
+        depth = 0;
+        setVisible(false);
+        return;
+      }
       if (hasFiles(event)) {
         event.preventDefault();
         depth = 0;

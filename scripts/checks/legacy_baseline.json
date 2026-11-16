@@ -89,6 +89,7 @@
     "main.tsx",
     "pages/Settings.tsx",
     "components/HarnessConfiguration.tsx",
-    "components/harness-configuration.css"
+    "components/harness-configuration.css",
+    "pages/Overview.tsx"
   ]
 }

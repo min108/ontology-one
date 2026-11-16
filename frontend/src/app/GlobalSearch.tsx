@@ -8,6 +8,9 @@ import { useScopeStore } from '../state/scope';
 import { useSessionStore } from '../state/session';
 import { Omnibox, type OmniboxItem } from '../ui/Omnibox';
 import { terms } from '../i18n/zh-CN';
+import { commandsFor, matchingCommands } from '../features/home/commands';
+import { readRecent } from '../features/home/recent';
+import { requestRouteNavigation } from './guardedNavigation';
 
 type SearchItem = OmniboxItem & { kind: string };
 function object(value: unknown): Record<string, unknown> {
@@ -44,8 +47,8 @@ export function parseSearchItems(value: unknown): SearchItem[] {
     };
   });
 }
-export type GlobalSearchProps = { open: boolean; onClose: () => void };
-export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
+export type GlobalSearchProps = { open: boolean; onClose: () => void; initialValue?: string };
+export function GlobalSearch({ open, onClose, initialValue = '' }: GlobalSearchProps) {
   const tenantId = useScopeStore((state) => state.tenantId);
   const scopeKey = useScopeStore((state) => state.scopeKey);
   if (!open || !tenantId || !scopeKey) return null;
@@ -56,6 +59,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
       tenantId={tenantId}
       scopeKey={scopeKey}
       onClose={onClose}
+      initialValue={initialValue}
     />
   );
 }
@@ -63,21 +67,38 @@ function WorkspaceSearch({
   tenantId,
   scopeKey,
   onClose,
+  initialValue,
 }: {
   tenantId: string;
   scopeKey: string;
   onClose: () => void;
+  initialValue: string;
 }) {
   const navigate = useNavigate();
+  const selectRoute = (href: string) => {
+    if (requestRouteNavigation(href, navigate)) onClose();
+  };
   const canSearchGroup = useSessionStore((state) => state.permission_keys.includes('federation.read'));
-  const [value, setValue] = useState('');
+  const session = useSessionStore((state) => state.session);
+  const [value, setValue] = useState(initialValue);
   const [debounced, setDebounced] = useState('');
   const text = value.trim();
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(text), 250);
     return () => window.clearTimeout(timer);
   }, [text]);
-  const ready = Boolean(text) && text === debounced;
+  const commandMode = text.startsWith('/');
+  const ready = Boolean(text) && !commandMode && text === debounced;
+  const commands = matchingCommands(
+    commandsFor({
+      canEdit: !!session?.permissions.can_edit && !session.workspace.readonly,
+      canReview: !!session?.permissions.can_review && !session.workspace.readonly,
+      manageUsers: !!session?.permissions.manage_users,
+      federation: canSearchGroup,
+    }),
+    text,
+  );
+  const recent = session ? readRecent({ userId: session.user.id, tenantId, scopeKey }) : [];
   const query = useQuery(
     {
       queryKey: workspaceQueryKey(tenantId, scopeKey, 'semantic.search', debounced),
@@ -88,7 +109,20 @@ function WorkspaceSearch({
     },
     queryClient,
   );
-  const items = ready && !query.isError ? (query.data ?? []) : [];
+  const searchItems = ready && !query.isError ? (query.data ?? []) : [];
+  const items: OmniboxItem[] = commandMode
+    ? commands.map((item) => ({
+        id: 'command:' + item.id,
+        label: item.label,
+        group: terms.labels.home_commands,
+      }))
+    : !text
+      ? recent.map((item) => ({
+          id: 'recent:' + item.href,
+          label: item.title,
+          group: terms.labels.home_recent,
+        }))
+      : searchItems;
   return (
     <Omnibox
       footer={
@@ -105,16 +139,29 @@ function WorkspaceSearch({
       value={value}
       onSearch={(next) => setValue(next.slice(0, 500))}
       items={items}
-      loading={Boolean(text) && (!ready || query.isFetching)}
+      loading={!commandMode && Boolean(text) && (!ready || query.isFetching)}
       error={ready && query.isError ? terms.labels.global_search_failed : undefined}
       onRetry={() => {
         void query.refetch();
       }}
       onSelect={(item) => {
-        const selected = items.find((entry) => entry.id === item.id);
+        if (commandMode) {
+          const command = commands.find((entry) => 'command:' + entry.id === item.id);
+          if (command) {
+            selectRoute(command.href);
+          }
+          return;
+        }
+        if (!text) {
+          const visit = recent.find((entry) => 'recent:' + entry.href === item.id);
+          if (visit) {
+            selectRoute(visit.href);
+          }
+          return;
+        }
+        const selected = searchItems.find((entry) => entry.id === item.id);
         if (!selected) return;
-        navigate(entityHref(selected.id, selected.kind));
-        onClose();
+        selectRoute(entityHref(selected.id, selected.kind));
       }}
     />
   );

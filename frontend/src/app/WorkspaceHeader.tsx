@@ -13,6 +13,7 @@ import { useUiStore } from '../state/ui';
 import { LegacyBlock } from '../ui/LegacyBlock';
 import { TopBar } from '../ui/TopBar';
 import { UserMenu } from './UserMenu';
+import { requestRouteNavigation } from './guardedNavigation';
 import styles from './WorkspaceShell.module.css';
 
 export function WorkspaceHeader({ onSearch }: { onSearch: () => void }) {
@@ -42,7 +43,7 @@ export function WorkspaceHeader({ onSearch }: { onSearch: () => void }) {
       workspaceName={session.workspace.name}
       collapsed={collapsed}
       onSearch={onSearch}
-      onHome={() => void navigate('/')}
+      onHome={() => void requestRouteNavigation('/', navigate)}
       identity={
         <Select
           id="active-workspace"

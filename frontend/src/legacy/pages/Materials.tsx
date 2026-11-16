@@ -1,8 +1,10 @@
+import {useIncomingFiles} from '../../features/home/useIncomingFiles';
+import {terms} from '../../i18n/zh-CN';
 import {useWorkspaceGuard} from '../../app/useWorkspaceGuard';
 import {beginWorkspaceUpload} from '../../state/workspace-guard';
 import {csrfHeaders,workspaceHeaders,registerPendingUpload,assertBusinessReady,notifyUnauthorized} from '../api';
 import {AccessButton} from '../components/AccessButton';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, FileText, FolderOpen, Search, Upload, Sparkles, ShieldCheck, X, Plus, BookOpen, Files, Check, RotateCcw } from 'lucide-react';
 import { useApi } from '../api';
@@ -47,18 +49,21 @@ export function Materials() {
   const failed = queue.filter(item => item.status === 'error').length;
   const remaining = queue.filter(item => item.status === 'pending' || item.status === 'error').length;
   useWorkspaceGuard(remaining > 0);
+  useIncomingFiles('materials', files => { const missing = [...new Set(files)].filter(file => !queue.some(item => item.file === file)); if (!missing.length) { setUploadOpen(true); return true; } if (busyRef.current || queue.length + missing.length > 40) { setUploadError(terms.labels.home_material_limit); return false; } addFiles(missing, true); setUploadOpen(true); return false; });
+  useEffect(() => { if(window.location.pathname === '/materials' && params.get('upload') === '1') setUploadOpen(true); }, [params.get('upload')]);
+  function closeUpload() { setUploadOpen(false); if(window.location.pathname === '/materials' && params.has('upload')) { const next = new URLSearchParams(params); next.delete('upload'); setParams(next, {replace:true}); } }
   function facetOptions(field: string, names: Record<string, string>, all: string) {
     const counts = listing.data?.facets?.[field] || {};
     return [{ value: '', label: all, count: Object.values(counts).reduce((a, b) => a + b, 0) }, ...Object.entries(names).filter(([key]) => !['failed', 'running'].includes(key) || counts[key]).map(([value, label]) => ({ value, label, count: counts[value] || 0 }))];
   }
-  function addFiles(files: File[]) {
+  function addFiles(files: File[], handoff = false) {
     if (busyRef.current) return;
     setUploadError('');
     setQueue(previous => {
       const added = [...previous];
       for (const file of files) {
-        const key = `${file.name}-${file.size}-${file.lastModified}`;
-        if (added.some(item => item.key === key)) continue;
+        const key = handoff ? crypto.randomUUID() : `${file.name}-${file.size}-${file.lastModified}`;
+        if (added.some(item => handoff ? item.file === file : item.key === key)) continue;
         if (added.length >= 40) { setUploadError('每批最多 40 份材料，请完成本批后再继续上传。'); break; }
         added.push({ key, token: crypto.randomUUID(), file, status: 'pending', progress: 0 });
       }
@@ -102,7 +107,7 @@ export function Materials() {
         update(item.key, { status: 'uploading', progress: 0, error: '' });
         try {
           if (item.file.size > 25 * 1024 * 1024) throw new Error('超过单份 25 MB 上限，请按完整章节拆分');
-          if (!/\.(txt|md|pdf|docx|html|htm)$/i.test(item.file.name)) throw new Error('该格式不支持。请使用 TXT、MD、PDF、DOCX 或 HTML');
+          if (!/\.(txt|md|csv|pdf|docx|html|htm)$/i.test(item.file.name)) throw new Error(terms.labels.home_material_formats);
           const result = await send(item);
           update(item.key, { status: 'success', progress: 100, id: result.id }); success += 1;
         } catch (error) { if(error instanceof DOMException&&error.name==='AbortError')break; update(item.key, { status: 'error', error: error instanceof Error ? error.message : '上传失败，可单独重试', progress: 0 }); }
@@ -123,10 +128,10 @@ export function Materials() {
       {listing.data && listing.data.total > 24 && <div className="materials-pagination"><AccessButton className="btn" disabled={page === 1} onClick={() => setPage(page - 1)}>上一页</AccessButton><span>第 {page} / {Math.ceil(listing.data.total / 24)} 页</span><AccessButton className="btn" disabled={page * 24 >= listing.data.total} onClick={() => setPage(page + 1)}>下一页</AccessButton></div>}
     </Card>
     <div className="materials-footnotes"><div><Files size={20} /><div><strong>一份材料可以贡献多类资产</strong><p>要求、事实、分析思路和实践经验分别整理，通过共同来源彼此关联。</p></div></div><div><FolderOpen size={20} /><div><strong>宽大业务表使用台账接入</strong><p>多级表头、单位口径和字段映射，在<Link to="/datasets">台账接入工作台</Link>中处理。</p></div></div></div>
-    {uploadOpen && <Modal title="批量上传待整理材料" onClose={() => !busy && setUploadOpen(false)} wide><p className="muted">可一次选择多份文件，共用本批归属与业务领域。上传后先查看连续原文，自主选择人工整理或 AI 对话调优。</p><FileIntake files={queue.map(item => item.file)} onFiles={addFiles} multiple accept=".txt,.md,.pdf,.docx,.html,.htm" maxFileSize={25 * 1024 * 1024} maxFiles={40} disabled={busy} showFiles={false} title="选择或拖入一批原始材料" description="TXT / Markdown / PDF / Word / HTML · 每份不超过 25 MB · 每批最多 40 份" onValidationError={setUploadError} />
+    {uploadOpen && <Modal title="批量上传待整理材料" onClose={() => !busy && closeUpload()} wide><p className="muted">可一次选择多份文件，共用本批归属与业务领域。上传后先查看连续原文，自主选择人工整理或 AI 对话调优。</p><FileIntake files={queue.map(item => item.file)} onFiles={addFiles} multiple accept=".txt,.md,.csv,.pdf,.docx,.html,.htm" maxFileSize={25 * 1024 * 1024} maxFiles={40} disabled={busy} showFiles={false} title="选择或拖入一批原始材料" description={terms.labels.home_material_formats + ' ' + terms.labels.home_material_limit} onValidationError={setUploadError} />
       <div className="grid-2"><label className="form-field">归属单位<select className="select" disabled={busy} value={org} onChange={event => setOrg(event.target.value)}><option value="">暂未明确</option>{organizations.data?.items.map(item => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label><label className="form-field">业务领域<input className="input" disabled={busy} value={domain} onChange={event => setDomain(event.target.value)} placeholder="如：数据治理、采购管理" /></label></div>
       {!!queue.length && <><div className="materials-upload-summary"><strong>{queue.length} 份材料</strong><span>{completed} 已保存 · {failed} 未完成 · {queue.length - completed - failed} 待处理</span>{!busy && completed > 0 && <AccessButton className="btn btn-ghost" onClick={() => setQueue(queue.filter(item => item.status !== 'success'))}>移出已完成项</AccessButton>}</div><div className="materials-upload-queue" aria-live="polite">{queue.map(item => <div className={`materials-upload-item is-${item.status}`} key={item.key}><FileText size={19} /><div className="materials-upload-info"><strong>{item.file.name}</strong><small>{item.status === 'error' ? item.error : item.status === 'success' ? '原件与连续原文已保存，尚未分段' : item.status === 'uploading' ? item.progress >= 95 ? '文件已传输，正在读取原文…' : `正在上传 ${item.progress}%` : `${(item.file.size / 1024).toFixed(1)} KB · 等待上传`}</small>{item.status === 'uploading' && <progress value={item.progress} max="100" />}</div>{item.status === 'success' ? <Link className="btn btn-ghost" to={`/materials/${item.id}`}><Check size={15} /> 查看原文</Link> : item.status === 'error' ? <AccessButton className="btn btn-ghost" disabled={busy} onClick={() => upload(item.key)}><RotateCcw size={14} /> 重试</AccessButton> : null}{!busy && item.status !== 'success' && <AccessButton className="materials-icon-button" title={`移除 ${item.file.name}`} onClick={() => setQueue(queue.filter(value => value.key !== item.key))}><X size={15} /></AccessButton>}</div>)}</div></>}
-      <div className="materials-hint"><ShieldCheck size={17} /><span>逐份接入，某份失败不会影响其他材料；成功项不会重复上传。扫描 PDF 请先进行文字识别，原始文件与整理成果均保存在本地。</span></div>{uploadError && <div className="materials-error" role="alert">{uploadError}</div>}<div className="materials-modal-actions"><AccessButton className="btn" disabled={busy} onClick={() => setUploadOpen(false)}>{completed ? '完成，返回目录' : '取消'}</AccessButton><AccessButton className="btn btn-primary" disabled={busy || !remaining} onClick={() => upload()}><Upload size={16} />{busy ? '正在逐份接入…' : completed || failed ? `继续上传 ${remaining} 份` : `开始上传${remaining ? ` ${remaining} 份` : ''}`}</AccessButton></div>
+      <div className="materials-hint"><ShieldCheck size={17} /><span>逐份接入，某份失败不会影响其他材料；成功项不会重复上传。扫描 PDF 请先进行文字识别，原始文件与整理成果均保存在本地。</span></div>{uploadError && <div className="materials-error" role="alert">{uploadError}</div>}<div className="materials-modal-actions"><AccessButton className="btn" disabled={busy} onClick={closeUpload}>{completed ? '完成，返回目录' : '取消'}</AccessButton><AccessButton className="btn btn-primary" disabled={busy || !remaining} onClick={() => upload()}><Upload size={16} />{busy ? '正在逐份接入…' : completed || failed ? `继续上传 ${remaining} 份` : `开始上传${remaining ? ` ${remaining} 份` : ''}`}</AccessButton></div>
     </Modal>}
   </div>;
 }
