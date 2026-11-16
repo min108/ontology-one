@@ -147,6 +147,12 @@ function OrganizationDirectory() {
                       </div>
                     ))}
                   </dl>
+                  {!['active', 'disabled'].includes(selected.status) && (
+                    <Alert type="warning" title={copy.identity_org_offline_check} />
+                  )}
+                  {selected.status === 'disabled' && (
+                    <p className={styles.help}>{copy.identity_org_enable_first}</p>
+                  )}
                   {selected.disabled_at && (
                     <p>
                       <Timestamp value={selected.disabled_at} /> · {selected.disabled_reason}

@@ -104,7 +104,11 @@ describe('server view preferences', () => {
     old.reject(new Error('older write failed'));
     await waitFor(() => expect(usePreferenceStore.getState().saving).toBe(false));
     expect(usePreferenceStore.getState().error).toBe('');
-    expect(request.mock.calls.filter(([, init]) => init?.method === 'PUT').map(([, init]) => JSON.parse(init.body).value)).toEqual(['pro', 'simple']);
+    expect(
+      request.mock.calls
+        .filter(([, init]) => init?.method === 'PUT')
+        .map(([, init]) => JSON.parse(init.body).value),
+    ).toEqual(['pro', 'simple']);
   });
   it('drops queued writes and ignores a late save after the identity is cleared', async () => {
     request.mockResolvedValue({ preferences: { view_mode: 'simple' } });

@@ -14,6 +14,7 @@ type Row = {
   id: string;
   created_at: string;
   actor_username: string;
+  actor_id: string;
   action: string;
   resource: string;
   tenant_id: string;
@@ -67,6 +68,7 @@ function AuditRecords() {
     id: String(item.id || ''),
     created_at: String(item.created_at || ''),
     actor_username: String(item.actor_username || ''),
+    actor_id: String(item.actor_id || ''),
     action: String(item.action || ''),
     resource: String(item.resource || ''),
     tenant_id: String(item.tenant_id || ''),
@@ -125,6 +127,15 @@ function AuditRecords() {
           <p>
             {copy.identity_audit_raw_action}: <code>{row.action}</code>
           </p>
+          <p>
+            {copy.identity_audit_raw_outcome}: <code>{row.outcome}</code>
+          </p>
+          <p>
+            {copy.identity_audit_actor_id}: <code>{row.actor_id || '—'}</code>
+          </p>
+          <p>
+            {copy.identity_audit_tenant_id}: <code>{row.tenant_id || '—'}</code>
+          </p>
           <pre className={styles.detail}>{JSON.stringify(row.details, null, 2)}</pre>
           <p>
             {copy.identity_request_id}: <code>{row.request_id}</code>
@@ -161,8 +172,8 @@ function AuditRecords() {
                 {
                   actor_id: copy.identity_audit_actor_id,
                   tenant_id: copy.identity_audit_tenant_id,
-                  action: copy.identity_audit_action,
-                  outcome: copy.identity_audit_outcome,
+                  action: copy.identity_audit_raw_action,
+                  outcome: copy.identity_audit_raw_outcome,
                   since: copy.identity_audit_since,
                   until: copy.identity_audit_until,
                 }[key]

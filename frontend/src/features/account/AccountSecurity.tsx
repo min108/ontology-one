@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import type { AuthSession } from '../../api/session.types';
 import { clearLocalWorkspace, useSessionStore } from '../../state/session';
 import { useWorkspaceGuard } from '../../app/useWorkspaceGuard';
+import { roleLabel } from '../../app/identity';
 import { PageHeader } from '../../ui/PageHeader';
 import { StateBlock } from '../../ui/StateBlock';
 import {
@@ -103,10 +104,7 @@ export default function AccountSecurity() {
                 [copy.identity_name, session.user.display_name],
                 [copy.identity_username, session.user.username],
                 [copy.identity_organization, session.workspace.name],
-                [
-                  copy.identity_role,
-                  session.roles.find((role) => role.id === session.user.role)?.name || session.user.role,
-                ],
+                [copy.identity_role, roleLabel(session.user.role)],
                 [
                   copy.identity_permissions,
                   session.permissions.can_edit

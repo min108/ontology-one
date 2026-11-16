@@ -71,6 +71,13 @@ describe('new identity pages', () => {
     expect(screen.getByText('admin', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('HQ', { exact: true })).toBeInTheDocument();
   });
+  it('provides the design theme before the authenticated shell exists', () => {
+    useSessionStore.setState({ session: null });
+    render(<AuthBoundary>{null}</AuthBoundary>);
+    expect(
+      screen.getByRole('heading', { name: terms.labels.identity_login }).closest('.zy-root'),
+    ).not.toBeNull();
+  });
   it('clears login passwords after failure and retains the account name', async () => {
     useSessionStore.setState({ session: null });
     login.mockRejectedValue({ status: 401 });

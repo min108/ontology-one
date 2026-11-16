@@ -3,7 +3,12 @@ import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { accounts, authDirectory, roles } from "./fixture.mjs";
 
-const terms = JSON.parse(readFileSync(resolve(process.env.E2E_APPLICATION_ROOT || ".", "terms/zh-CN.json"), "utf8"));
+const terms = JSON.parse(
+  readFileSync(
+    resolve(process.env.E2E_APPLICATION_ROOT || ".", "terms/zh-CN.json"),
+    "utf8",
+  ),
+);
 const c = terms.labels,
   a = terms.actions;
 const unique = (prefix) =>
@@ -69,9 +74,9 @@ async function login(page, username, password) {
 async function read(page, path) {
   return page.evaluate(async (path) => {
     const headers = {};
-    if (!path.startsWith('/api/auth/')) {
-      const session = await (await fetch('/api/auth/session')).json();
-      headers['X-Workspace-Id'] = session.workspace.tenant_id;
+    if (!path.startsWith("/api/auth/")) {
+      const session = await (await fetch("/api/auth/session")).json();
+      headers["X-Workspace-Id"] = session.workspace.tenant_id;
     }
     const response = await fetch(path, { headers });
     if (!response.ok) throw new Error(`Read failed: ${response.status}`);
@@ -87,12 +92,28 @@ test.describe("identity: login UI", () => {
     page,
   }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(`${terms.brand.product_name} · ${terms.brand.product_descriptor}`);
-    await expect(page.getByText(`${terms.brand.product_name} · ${terms.brand.product_name_en}`, { exact: true })).toBeVisible();
-    await expect(page.getByText(terms.brand.tagline, { exact: true })).toBeVisible();
-    await expect(page.getByText(c.identity_login_contact, { exact: true })).toBeVisible();
-    const version = readFileSync(resolve(process.env.E2E_APPLICATION_ROOT || '.', 'VERSION'), 'utf8').trim();
-    await expect(page.getByText(`${terms.brand.product_name} ${version}`, { exact: true })).toBeVisible();
+    await expect(page).toHaveTitle(
+      `${terms.brand.product_name} · ${terms.brand.product_descriptor}`,
+    );
+    await expect(
+      page.getByText(
+        `${terms.brand.product_name} · ${terms.brand.product_name_en}`,
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(terms.brand.tagline, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(c.identity_login_contact, { exact: true }),
+    ).toBeVisible();
+    const version = readFileSync(
+      resolve(process.env.E2E_APPLICATION_ROOT || ".", "VERSION"),
+      "utf8",
+    ).trim();
+    await expect(
+      page.getByText(`${terms.brand.product_name} ${version}`, { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText(/group\.admin/)).toHaveCount(0);
     const username = unique("missing");
     await page
@@ -112,14 +133,24 @@ test.describe("identity: login UI", () => {
       page.getByLabel(c.identity_password, { exact: true }),
     ).toHaveValue("");
   });
-  test('L-01: connection failure offers reconnect without losing the login route', async ({ page }, info) => {
-    info.annotations.push({ type: 'UI fault injection', description: 'Browser session request aborted to verify the connection recovery UI.' });
-    await page.route('**/api/auth/session', route => route.abort('connectionrefused'));
-    await page.goto('/');
+  test("L-01: connection failure offers reconnect without losing the login route", async ({
+    page,
+  }, info) => {
+    info.annotations.push({
+      type: "UI fault injection",
+      description:
+        "Browser session request aborted to verify the connection recovery UI.",
+    });
+    await page.route("**/api/auth/session", (route) =>
+      route.abort("connectionrefused"),
+    );
+    await page.goto("/");
     await expect(button(page, a.identity_reconnect)).toBeVisible();
-    await page.unroute('**/api/auth/session');
+    await page.unroute("**/api/auth/session");
     await button(page, a.identity_reconnect).click();
-    await expect(page.getByLabel(c.identity_login_account, { exact: true })).toBeVisible();
+    await expect(
+      page.getByLabel(c.identity_login_account, { exact: true }),
+    ).toBeVisible();
     await expect(button(page, a.identity_reconnect)).toHaveCount(0);
   });
   test("L-01: rate-limit response has a recoverable plain-language state", async ({
@@ -194,7 +225,13 @@ for (const role of roles)
 
 test.describe("headquarters: isolated identity mutations", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
-  test.beforeEach(async ({ page }) => { await login(page, accounts.superadmin.username, accounts.superadmin.password); });
+  test.beforeEach(async ({ page }) => {
+    await login(
+      page,
+      accounts.superadmin.username,
+      accounts.superadmin.password,
+    );
+  });
   test("ADM-01–05: create, edit, reset, disable and enable only a new account", async ({
     page,
   }) => {
@@ -513,7 +550,7 @@ test.describe("headquarters: isolated identity mutations", () => {
       page.getByRole("region", exact(c.identity_audit)),
     ).toHaveAttribute("aria-busy", "false");
     await page
-      .getByLabel(c.identity_audit_action, { exact: true })
+      .getByLabel(c.identity_audit_raw_action, { exact: true })
       .fill("login");
     await button(page, a.identity_filter).click();
     await expect(page).toHaveURL(

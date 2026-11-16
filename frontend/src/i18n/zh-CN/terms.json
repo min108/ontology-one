@@ -703,7 +703,7 @@
     "identity_audit_until": "结束时间（北京时间）",
     "identity_audit_details": "记录详情",
     "identity_audit_anonymous": "未登录请求",
-    "identity_audit_exact": "按所填编号或名称精确筛选，时间按北京时间显示。",
+    "identity_audit_exact": "按编号或标识精确筛选，可在记录详情中查找。",
     "identity_audit_time_invalid": "请检查时间范围，开始时间不能晚于结束时间。",
     "identity_no_audit": "当前筛选下没有记录，可重置筛选。",
     "identity_page_total": "条记录",
@@ -730,7 +730,8 @@
     "identity_audit_other": "其他操作",
     "identity_audit_raw_action": "操作标识",
     "identity_org_offline_check": "机构开通尚未完成，请联系平台管理员离线检查。",
-    "identity_org_enable_first": "请先启用机构，再修改目录信息。"
+    "identity_org_enable_first": "请先启用机构，再修改目录信息。",
+    "identity_audit_raw_outcome": "结果标识"
   },
   "states": {
     "loading": {
@@ -850,13 +851,17 @@
     "org_update": "调整机构",
     "org_disable": "停用机构",
     "org_enable": "启用机构",
-    "workspace_switch": "切换机构"
+    "workspace_switch": "切换机构",
+    "bootstrap_superadmin": "初始化总部管理员",
+    "preference_update": "更新个人偏好"
   },
   "identity_audit_outcomes": {
     "success": "成功",
     "allowed": "已允许",
     "denied": "已拒绝",
     "failure": "失败",
-    "failed": "失败"
+    "failed": "失败",
+    "rate_limited": "登录过于频繁",
+    "pending": "正在处理"
   }
 }

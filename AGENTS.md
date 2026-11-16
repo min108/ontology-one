@@ -29,6 +29,7 @@
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。
 - `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。app 包已承载新六工作区外壳、路由、状态与请求层；原82文件整体移入legacy，旧App/main通过90项浏览器对照后退役，剩80。旧样式构建期加作用域，门户使用独立legacy-root。
+- `frontend/src/features/{auth,account,admin,identity}`：R1-7 新登录、账号安全、账号授权、机构目录与审计；`state/preferences.ts` 串行保存本人视图偏好，阻止迟到读取覆盖用户选择。旧身份组件待真实 A.2 对照后退役，见 R1-7-FRONTEND.md。
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
 - `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；`ops/offline/`：准备依赖并在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。

@@ -51,7 +51,7 @@ export async function loadPreferences(userId: string, tenantId: string): Promise
       const mode = result.preferences.view_mode;
       if (mode !== undefined && mode !== 'simple' && mode !== 'pro')
         throw new Error('Invalid preference mode');
-      if (choice === 0 && owner.choice === 0 && mode !== undefined)
+      if (choice === 0 && owner.choice === 0 && (mode === 'simple' || mode === 'pro'))
         useUiStore.getState().setViewMode(fromPreferenceViewMode(mode));
       owner.loaded = true;
       usePreferenceStore.setState({

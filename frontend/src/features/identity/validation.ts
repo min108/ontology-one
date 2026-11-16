@@ -21,7 +21,7 @@ export function allowedGrantAccess(
     : [];
 }
 export function excludedParents(items: { id: string; parent_id?: string | null }[], id: string): Set<string> {
-  const excluded = new Set([id]);
+  const excluded = new Set(id ? [id] : []);
   let changed = true;
   while (changed) {
     changed = false;
