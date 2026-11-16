@@ -1,0 +1,19 @@
+.table {
+  min-width: var(--zy-content-min);
+  overflow-x: auto;
+  background: var(--zy-gray-0);
+  border: var(--zy-border-width) solid var(--zy-gray-200);
+  border-radius: var(--zy-radius-card);
+}
+
+.controls {
+  padding: var(--zy-space-3);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--zy-space-3);
+}
+
+.table td {
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,21 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--zy-space-4);
+  margin-bottom: var(--zy-space-6);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--zy-space-3);
+  flex-wrap: wrap;
+}
+
+.title h1 {
+  font-size: var(--zy-font-h2);
+  line-height: var(--zy-line-h2);
+  margin: var(--zy-space-2) var(--zy-none);
+}

@@ -44,3 +44,9 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(len(KINDS), 16)
         self.assertEqual(KINDS["data"], "数据项")
         self.assertEqual(KINDS["analysis"], "分析记录")
+
+    def test_kind_labels_share_the_generated_vocabulary(self) -> None:
+        from backend.capabilities.read import KINDS
+        from backend.core.terms import TERMS
+
+        self.assertEqual(KINDS, {key: TERMS["kinds"][key] for key in KINDS})

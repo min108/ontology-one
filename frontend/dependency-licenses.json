@@ -1,0 +1,341 @@
+{
+  "verifiedOn": "2026-11-16",
+  "node": "22.23.4",
+  "react": "19.3.0",
+  "direct": [
+    {
+      "name": "@ant-design/x",
+      "version": "2.10.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": ">=18.0.0",
+      "nodeEngine": null
+    },
+    {
+      "name": "@antv/g6",
+      "version": "5.1.1",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "@tanstack/react-query",
+      "version": "5.107.1",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": "^18 || ^19",
+      "nodeEngine": null
+    },
+    {
+      "name": "@xyflow/react",
+      "version": "12.12.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": ">=17",
+      "nodeEngine": null
+    },
+    {
+      "name": "antd",
+      "version": "6.7.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": ">=18.0.0",
+      "nodeEngine": null
+    },
+    {
+      "name": "diff",
+      "version": "9.0.0",
+      "scope": "dependencies",
+      "license": "BSD-3-Clause",
+      "reactPeer": null,
+      "nodeEngine": ">=0.3.1"
+    },
+    {
+      "name": "echarts",
+      "version": "6.1.0",
+      "scope": "dependencies",
+      "license": "Apache-2.0",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "lucide-react",
+      "version": "0.468.0",
+      "scope": "dependencies",
+      "license": "ISC",
+      "reactPeer": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc",
+      "nodeEngine": null
+    },
+    {
+      "name": "react",
+      "version": "19.3.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": ">=0.10.0"
+    },
+    {
+      "name": "react-dom",
+      "version": "19.3.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": "^19.3.0",
+      "nodeEngine": null
+    },
+    {
+      "name": "react-markdown",
+      "version": "10.1.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": ">=18",
+      "nodeEngine": null
+    },
+    {
+      "name": "react-router-dom",
+      "version": "7.18.4",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": ">=18",
+      "nodeEngine": ">=20.0.0"
+    },
+    {
+      "name": "recharts",
+      "version": "2.15.4",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
+      "nodeEngine": ">=14"
+    },
+    {
+      "name": "rehype-sanitize",
+      "version": "6.0.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "remark-gfm",
+      "version": "4.0.1",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "zustand",
+      "version": "5.1.0",
+      "scope": "dependencies",
+      "license": "MIT",
+      "reactPeer": ">=18.0.0",
+      "nodeEngine": ">=12.20.0"
+    },
+    {
+      "name": "@eslint/js",
+      "version": "10.0.1",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^20.19.0 || ^22.13.0 || >=24"
+    },
+    {
+      "name": "@playwright/test",
+      "version": "1.65.1",
+      "scope": "devDependencies",
+      "license": "Apache-2.0",
+      "reactPeer": null,
+      "nodeEngine": ">=20"
+    },
+    {
+      "name": "@testing-library/dom",
+      "version": "10.4.2",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": ">=18"
+    },
+    {
+      "name": "@testing-library/jest-dom",
+      "version": "7.0.1",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": ">=22"
+    },
+    {
+      "name": "@testing-library/react",
+      "version": "16.3.3",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": "^18.0.0 || ^19.0.0",
+      "nodeEngine": ">=18"
+    },
+    {
+      "name": "@testing-library/user-event",
+      "version": "14.6.12",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": ">=12"
+    },
+    {
+      "name": "@types/node",
+      "version": "22.19.15",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "@types/react",
+      "version": "19.3.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "@types/react-dom",
+      "version": "19.3.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "version": "4.7.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^14.18.0 || >=16.0.0"
+    },
+    {
+      "name": "eslint",
+      "version": "10.15.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^20.19.0 || ^22.13.0 || >=24"
+    },
+    {
+      "name": "jsdom",
+      "version": "31.0.1",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^22.22.2 || ^24.15.0 || >=26.0.0"
+    },
+    {
+      "name": "openapi-typescript",
+      "version": "7.13.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "postcss-prefix-selector",
+      "version": "2.2.1",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": null
+    },
+    {
+      "name": "prettier",
+      "version": "3.10.1",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": ">=14"
+    },
+    {
+      "name": "stylelint",
+      "version": "18.0.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^22.22.2 || ^24.15.0 || >=26.0.0"
+    },
+    {
+      "name": "stylelint-config-standard",
+      "version": "41.0.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^22.22.2 || ^24.15.0 || >=26.0.0"
+    },
+    {
+      "name": "typescript",
+      "version": "5.9.3",
+      "scope": "devDependencies",
+      "license": "Apache-2.0",
+      "reactPeer": null,
+      "nodeEngine": ">=14.17"
+    },
+    {
+      "name": "typescript-eslint",
+      "version": "8.72.2",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^18.18.0 || ^20.9.0 || >=21.1.0"
+    },
+    {
+      "name": "vite",
+      "version": "6.4.5",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^18.0.0 || ^20.0.0 || >=22.0.0"
+    },
+    {
+      "name": "vitest",
+      "version": "5.1.0",
+      "scope": "devDependencies",
+      "license": "MIT",
+      "reactPeer": null,
+      "nodeEngine": "^22.12.0 || ^24.0.0 || >=26.0.0"
+    }
+  ],
+  "transitiveLicenseCounts": {
+    "(MIT OR CC0-1.0)": 1,
+    "(MPL-2.0 OR Apache-2.0)": 1,
+    "0BSD": 3,
+    "Apache-2.0": 24,
+    "BSD-2-Clause": 8,
+    "BSD-3-Clause": 14,
+    "BlueOak-1.0.0": 4,
+    "CC-BY-4.0": 1,
+    "CC0-1.0": 2,
+    "ISC": 54,
+    "MIT": 573,
+    "MIT AND ISC": 2,
+    "MIT-0": 3,
+    "PSF-2.0": 1,
+    "Python-2.0": 1,
+    "UNSPECIFIED": 2,
+    "Unlicense": 1
+  },
+  "metadataExceptions": {
+    "format@0.2.2": {
+      "license": "MIT",
+      "evidence": "node_modules/format/package.json licenses[0].type"
+    },
+    "khroma@2.1.0": {
+      "license": "MIT",
+      "evidence": "node_modules/khroma/license"
+    }
+  },
+  "font": {
+    "family": "Noto Sans SC / Noto Serif SC",
+    "weights": [
+      400,
+      700
+    ],
+    "license": "OFL-1.1",
+    "evidence": "public/fonts/LICENSE-NOTO.txt"
+  }
+}

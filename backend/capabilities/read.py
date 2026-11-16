@@ -10,25 +10,29 @@ from backend.api.v2.models import ListResponse
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.registry import capability
 from backend.core.errors import StrictModel
+from backend.core.terms import TERMS
 from backend.security import store
 
 KINDS = {
-    "organization": "单位 / 部门",
-    "person": "人员",
-    "material": "材料",
-    "dataset": "数据台账",
-    "data": "数据项",
-    "rule": "规则",
-    "skill": "技能",
-    "knowledge": "知识经验",
-    "project": "场景工作室 / 专项整理",
-    "task": "任务",
-    "matter": "核查事项",
-    "evidence": "依据引用",
-    "issue": "问题线索",
-    "case": "案例",
-    "analysis": "分析记录",
-    "collection": "知识专栏",
+    key: TERMS["kinds"][key]
+    for key in (
+        "organization",
+        "person",
+        "material",
+        "dataset",
+        "data",
+        "rule",
+        "skill",
+        "knowledge",
+        "project",
+        "task",
+        "matter",
+        "evidence",
+        "issue",
+        "case",
+        "analysis",
+        "collection",
+    )
 }
 
 

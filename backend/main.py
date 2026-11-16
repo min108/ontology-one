@@ -11,6 +11,7 @@ from .mcp_server import build_mcp_app
 from .skill_harness import EXECUTOR as harness_executor
 from .asset_kinds import canonical_entity, canonical_kind
 from .version import APP_VERSION
+from .core.brand import BRAND
 
 mcp_app = build_mcp_app()
 
@@ -37,7 +38,7 @@ async def lifespan(app):
                 await asyncio.gather(worker, return_exceptions=True)
 
 
-app = FastAPI(title="Ontology One · 集团本体平台", version=APP_VERSION, lifespan=lifespan)
+app = FastAPI(title=f"{BRAND['product_name']} · {BRAND['product_descriptor']}", version=APP_VERSION, lifespan=lifespan)
 from .security.middleware import SecurityMiddleware
 
 app.add_middleware(SecurityMiddleware)

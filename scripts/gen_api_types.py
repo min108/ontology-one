@@ -14,9 +14,10 @@ def openapi_schema() -> dict:
     from fastapi import FastAPI
 
     from backend.api.v2.routes import router
+    from backend.core.brand import BRAND
     from backend.version import APP_VERSION
 
-    app = FastAPI(title="Ontology One REST v2", version=APP_VERSION)
+    app = FastAPI(title=f"{BRAND['product_name_en']} REST v2", version=APP_VERSION)
     app.include_router(router)
     return app.openapi()
 

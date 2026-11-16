@@ -1,0 +1,33 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--zy-space-1);
+  color: var(--zy-gray-900);
+  font-size: var(--zy-font-caption);
+  line-height: var(--zy-line-caption);
+}
+
+.tag svg {
+  width: var(--zy-font-caption);
+  height: var(--zy-font-caption);
+}
+
+.success {
+  background: var(--zy-success-50);
+  border-color: var(--zy-success-500);
+}
+
+.danger {
+  background: var(--zy-danger-50);
+  border-color: var(--zy-danger-500);
+}
+
+.warning {
+  background: var(--zy-warning-50);
+  border-color: var(--zy-warning-500);
+}
+
+.neutral {
+  background: var(--zy-gray-50);
+  border-color: var(--zy-gray-300);
+}

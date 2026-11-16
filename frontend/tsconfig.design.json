@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "strict": true, "types": ["vite/client", "vitest/globals"] },
+  "include": ["src/design", "src/ui", "src/i18n", "src/features/dev"]
+}

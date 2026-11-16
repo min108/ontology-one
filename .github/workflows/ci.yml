@@ -77,6 +77,11 @@ jobs:
           npm --prefix frontend run lint
           npm --prefix frontend run format:check
           npm --prefix frontend run lint:styles
+          python scripts/gen_api_types.py --check
+          python scripts/gen_terms.py --check
+          python scripts/checks/check_tokens.py
+          python scripts/checks/check_terms.py
+          npm --prefix frontend test -- --run
       - name: Backend and pipeline tests
         run: |
           set -euo pipefail

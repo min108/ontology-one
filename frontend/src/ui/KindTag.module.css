@@ -1,0 +1,82 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--zy-space-1);
+  color: var(--zy-gray-900);
+  background: var(--zy-gray-0);
+  font-size: var(--zy-font-caption);
+  line-height: var(--zy-line-caption);
+}
+
+.tag svg {
+  width: var(--zy-font-caption);
+  height: var(--zy-font-caption);
+}
+
+.organization {
+  border-left: var(--zy-space-1) solid var(--zy-kind-organization);
+}
+
+.position {
+  border-left: var(--zy-space-1) solid var(--zy-kind-position);
+}
+
+.person {
+  border-left: var(--zy-space-1) solid var(--zy-kind-person);
+}
+
+.party {
+  border-left: var(--zy-space-1) solid var(--zy-kind-party);
+}
+
+.material {
+  border-left: var(--zy-space-1) solid var(--zy-kind-material);
+}
+
+.dataset {
+  border-left: var(--zy-space-1) solid var(--zy-kind-dataset);
+}
+
+.term {
+  border-left: var(--zy-space-1) solid var(--zy-kind-term);
+}
+
+.object-type {
+  border-left: var(--zy-space-1) solid var(--zy-kind-object-type);
+}
+
+.link-type {
+  border-left: var(--zy-space-1) solid var(--zy-kind-link-type);
+}
+
+.data {
+  border-left: var(--zy-space-1) solid var(--zy-kind-data);
+}
+
+.metric {
+  border-left: var(--zy-space-1) solid var(--zy-kind-metric);
+}
+
+.rule {
+  border-left: var(--zy-space-1) solid var(--zy-kind-rule);
+}
+
+.skill {
+  border-left: var(--zy-space-1) solid var(--zy-kind-skill);
+}
+
+.process {
+  border-left: var(--zy-space-1) solid var(--zy-kind-process);
+}
+
+.knowledge {
+  border-left: var(--zy-space-1) solid var(--zy-kind-knowledge);
+}
+
+.event {
+  border-left: var(--zy-space-1) solid var(--zy-kind-event);
+}
+
+.collection {
+  border-left: var(--zy-space-1) solid var(--zy-kind-collection);
+}

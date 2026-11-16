@@ -1,0 +1,17 @@
+.bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--zy-space-3);
+  margin-bottom: var(--zy-space-4);
+}
+
+.bar > :first-child {
+  flex: 1;
+  min-width: var(--zy-nav-width);
+}
+
+.bar svg {
+  width: var(--zy-icon-size);
+  height: var(--zy-icon-size);
+}
