@@ -1,0 +1,89 @@
+{
+  "status": "passed",
+  "scope": "local Linux diagnostic; final canonical Chromium CI remains separate",
+  "source_commit": "d8fe2aab902f67e000b8264931696870a243c153",
+  "fixture_commit": "1359118dd672431dcd0cde2eb81f2b0f994eef37",
+  "browser": "156.0.8078.79",
+  "node": "v22.23.4",
+  "tests": {
+    "expected": 90,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0
+  },
+  "sdk": {
+    "sdk_connection_verified": true,
+    "sdk_version": "0.2.1rc2",
+    "model_provider": "local_synthetic_messages",
+    "model_requests": 2,
+    "held_requests": 1,
+    "observed_processes": [
+      179276,
+      179280
+    ],
+    "observed_processes_reaped": true
+  },
+  "cleanup": {
+    "databases_created": 4,
+    "databases_cleaned": 4,
+    "exact_names_match": true,
+    "services_stopped": true,
+    "authentication_state_removed": true
+  },
+  "evidence_directory": "work/evidence/r1/foundation-r1-5-nav-final",
+  "files": [
+    {
+      "file": "runner.json",
+      "bytes": 1335,
+      "sha256": "85489ad0eab015511bbe3cdfec180648f895e537e0ead3de6bec1a61c70aa834"
+    },
+    {
+      "file": "environment.json",
+      "bytes": 332,
+      "sha256": "148ab878d5329bdcdc331e1da5bd4f77fc92eb2b1d2b6777732a865d862d9dbd"
+    },
+    {
+      "file": "results.json",
+      "bytes": 149082,
+      "sha256": "7af5d149d14d09ba0b26ae0d62f7ad39f585a9221073f11e1bea1a8bc01a1f41"
+    },
+    {
+      "file": "harness-result.json",
+      "bytes": 752,
+      "sha256": "894347af47140409b9b02b54a80f36d6f46b7f1c8e1dab8eead738b5c8b58b83"
+    }
+  ],
+  "packages": {
+    "summary": {
+      "files": 11,
+      "source_bytes": 430760,
+      "index_sha256": "4dfe04ffade3184303fad24f5568aca893117c44de42f04cb60091725a6af268"
+    },
+    "modeler": {
+      "files": 27,
+      "source_bytes": 11111169,
+      "index_sha256": "5fc193cb084b728b1773a0829ac8c80c93f5e52bac04fd42f667494e76434769"
+    },
+    "reviewer": {
+      "files": 27,
+      "source_bytes": 11434769,
+      "index_sha256": "912ceec0e0a1046ac14969a741fef636b9b0048f4b7816db42ea889881e93cb7"
+    },
+    "admin": {
+      "files": 27,
+      "source_bytes": 11322608,
+      "index_sha256": "77eb1d0a9efa545ce8959fdf1668943da95fcad13ec97bc5068bbd36c004b40d"
+    },
+    "superadmin": {
+      "files": 2,
+      "source_bytes": 1448138,
+      "index_sha256": "96569c2b39d49b3bac0c4d8b503193c397870256b8fe0da3964e7f42471e7368"
+    },
+    "harness": {
+      "files": 3,
+      "source_bytes": 287767,
+      "index_sha256": "97b70294279445a62ba12cab4b55a8c5827749ef4673b412ed9f70dda907a1d2"
+    }
+  },
+  "scheduling_note": "Executed before project scheduling change d4c5903; final CI uses pages 89 then dependent SDK 1."
+}
