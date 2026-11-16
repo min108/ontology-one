@@ -230,3 +230,13 @@ class ManagementTests(unittest.TestCase):
             "/api/v2/capabilities/model.configure:invoke", content=b"{}", headers={"Content-Type": "text/plain"}
         )
         self.assertEqual(response.status_code, 415)
+
+    def test_every_online_binding_is_ineligible_for_restore(self) -> None:
+        for binding in ("rest", "tool", "mcp", "recipe"):
+            with self.subTest(binding=binding), patch("scripts.restore_backup.restore_snapshot") as restore:
+                ctx = CapabilityContext(
+                    self.person, binding=binding, permissions=frozenset({"admin.settings"}), assistant="builder"
+                )
+                with self.assertRaises(ApiError):
+                    registry.invoke("backup.restore", ctx, {"archive": "/not-opened.zip", "reason": "演练"})
+                restore.assert_not_called()

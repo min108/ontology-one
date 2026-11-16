@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+from backend.api.v2.routes import registry
 from backend.capabilities.context import CapabilityContext
-from backend.capabilities.registry import registry
 from backend.core.errors import ApiError
 from backend.security.permissions import permissions_for
 from tests.security.test_permissions import principal
