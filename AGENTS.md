@@ -24,6 +24,7 @@
 
 - `backend/main.py`：薄 API 装配；原内联路由已原样移到 api/v1/core.py。v2 入口在 api/v2，业务能力在 capabilities，配置/错误/编号/日志在 core。
 - `backend/security/`：store、policy、middleware、context、applications，身份、目录、会话、审计与应用授权。
+- R1-8 管理包：`features/admin` 与 `capabilities/model`、`capabilities/backup` 承接设置；`api/v2/system.py` 提供安全元数据和二进制绑定。浏览器15项后退役Settings/HarnessConfiguration及其专属CSS，DemoWorkspace继续保留。离线恢复仅可信offline绑定且持独占锁；模型新入口保持16KiB和严格拒重复JSON。包内报告见R1-8-REPORT，待主干复验。
 - `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control` 与 `migrations/tenant` 当前0001，恢复定义在 migrations/restore。
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。

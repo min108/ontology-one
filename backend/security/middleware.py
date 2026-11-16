@@ -247,6 +247,16 @@ class SecurityMiddleware:
                 if not message.get("more_body", False):
                     break
             raw = b"".join(chunks)
+            if model_body:
+                # Preserve the original sensitive configuration parser: the
+                # generic FastAPI decoder would otherwise collapse duplicates.
+                from ..skill_harness import _loads
+
+                try:
+                    _loads(raw)
+                except (ValueError, TypeError, RecursionError):
+                    await error(422, "模型配置格式无效，请核对服务地址、模型标识及密钥。")
+                    return
             if policy_body:
                 try:
                     body = json.loads(raw)

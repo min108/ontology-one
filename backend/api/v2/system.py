@@ -4,7 +4,7 @@ import json
 import os
 
 from fastapi import APIRouter, Request
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from backend import skill_harness, system
 from backend.capabilities.context import CapabilityContext
@@ -20,6 +20,7 @@ from backend.security.permissions import permissions_for
 from backend.version import APP_VERSION
 
 router = APIRouter(prefix="/system")
+ZIP_RESPONSES = {200: {"content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}}
 
 
 def context() -> CapabilityContext:
@@ -49,14 +50,14 @@ async def test_model(request: Request) -> dict:
     return {"ok": bool(result.get("ok")), "status": ModelStatus.public(result.get("status", {})).model_dump()}
 
 
-@router.get("/backup")
+@router.get("/backup", response_class=FileResponse, responses=ZIP_RESPONSES)
 def download_backup() -> Response:
     ctx = require_admin()
     registry.invoke("backup.export", ctx, {})
     return system.backup()
 
 
-@router.get("/release")
+@router.get("/release", response_class=FileResponse, responses=ZIP_RESPONSES)
 def download_release() -> Response:
     ctx = require_admin()
     if not (ctx.principal.home_tenant_id == "hq" and ctx.principal.is_superadmin):

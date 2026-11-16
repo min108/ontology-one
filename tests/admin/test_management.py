@@ -182,6 +182,7 @@ class ManagementTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
+        Path("work").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir="work") as folder:
             root = Path(folder)
             for name, control in (("upgrade-1", "ours"), ("upgrade-2", "others")):
@@ -203,7 +204,7 @@ class ManagementTests(unittest.TestCase):
             self.assertNotIn("ours", response.text)
             verify.assert_called_once_with(root / "upgrade-1")
 
-    def test_recipe_binding_cannot_restore_even_with_maintenance_lock(self) -> None:
+    def test_recipe_binding_is_not_an_offline_restore_channel(self) -> None:
         ctx = CapabilityContext(self.person, binding="recipe", permissions=frozenset({"admin.settings"}))
         with (
             patch("backend.security.store.append_audit"),
@@ -240,3 +241,30 @@ class ManagementTests(unittest.TestCase):
                 with self.assertRaises(ApiError):
                     registry.invoke("backup.restore", ctx, {"archive": "/not-opened.zip", "reason": "演练"})
                 restore.assert_not_called()
+
+    def test_sensitive_json_duplicate_members_are_rejected_before_configuration(self) -> None:
+        bodies = [
+            '{"base_url":"https://model.test","model":"test","api_key":"secret-one","api_key":"secret-two"}',
+            '{"base_url":"https://model.test","model":"test","input":{"key":"secret-one","key":"secret-two"}}',
+            '{"base_url":"https://model.test","model":"test","input":{},"input":{"api_key":"secret-two"}}',
+        ]
+        for body in bodies:
+            with self.subTest(body_kind=bodies.index(body)), patch("backend.skill_harness._save_configuration") as save:
+                response = self.client.post(
+                    "/api/v2/capabilities/model.configure:invoke",
+                    content=body,
+                    headers={"Content-Type": "application/json"},
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertNotIn("secret-one", response.text)
+                self.assertNotIn("secret-two", response.text)
+                save.assert_not_called()
+
+    def test_binary_routes_declare_zip_responses(self) -> None:
+        from scripts.gen_api_types import openapi_schema
+
+        paths = openapi_schema()["paths"]
+        for path in ("/api/v2/system/backup", "/api/v2/system/release"):
+            content = paths[path]["get"]["responses"]["200"]["content"]
+            self.assertEqual(set(content), {"application/zip"})
+            self.assertEqual(content["application/zip"]["schema"], {"type": "string", "format": "binary"})

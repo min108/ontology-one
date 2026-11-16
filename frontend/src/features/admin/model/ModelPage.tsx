@@ -29,7 +29,7 @@ export default function ModelPage() {
     </div>
   );
 }
-function ModelForm({ initial }: { initial: ModelStatus }) {
+export function ModelForm({ initial }: { initial: ModelStatus }) {
   const { session, canManage } = useManagementSession();
   const canVerify = canManage && session?.workspace.tenant_id === session?.user.home_tenant_id;
   const [status, setStatus] = useState(initial);

@@ -31,6 +31,7 @@ from tests.fixtures.v070.load import load_fixture
 class ManagementMySQL(unittest.TestCase):
     def test_real_configuration_archive_and_exclusive_empty_workspace_restore(self) -> None:
         namespace = "ontology_r18_" + secrets.token_hex(6)
+        Path("work").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir="work") as directory:
             root = Path(directory).absolute()
             with patch.dict(

@@ -1,4 +1,4 @@
-# R1-8 管理区（实施中，浏览器验收前检查点）
+# R1-8 管理区（包内完成，待主干复验）
 
 基线：ebc24f86f802f1d886ce07471303f97f2af54664，VERSION 1.0.0。独立工作区 wp/r1-8-admin。R1-7 未合入的本支线登记项精确 8，最终集成由 root 合成为 12。
 
@@ -10,7 +10,7 @@
 
 管理四页保持三旧角色入口。非管理员模型只读、备份只读说明，集成应用仅管理员，源码下载仅总部超管。跨机构维护不能验证模型。模型与运行显示服务配置、运行可用性、版本和安全失败原因，就绪诊断明确仍是 R1 的有限检查。保留所有 demo 功能于原 DemoWorkspace，不改治理权限。
 
-## SET 操作对照（真实浏览器结果待补）
+## SET 操作对照（完整结果见下方收口记录）
 
 | 清单 | 接续位置/行为 | 验收方式 |
 |---|---|---|
@@ -25,7 +25,7 @@
 | SET09 | Windows 便携说明、用户主动发行包链接 | 精确 URL 静态规则/浏览器零自动公网请求 |
 | SET10 | HQ 超管源码归档 | 权限测试/浏览器实际下载 |
 
-## A.2 退役状态
+## A.2 初始检查点状态
 
 Settings.tsx、HarnessConfiguration.tsx 及独占样式暂未删除，待真实 SET 对照通过再更新退役清单。DemoWorkspace 不退役。原 75 条保留路由冒烟及 fixture 未修改。
 
@@ -62,3 +62,37 @@ python e2e/run_admin.py --api-port 8875 --agent-port 8876 --evidence work/admin-
 
 
 第二次本地浏览器整组（f6a7ccd）：**11 通过、4 失败、0 未执行**。三项失败是相同的演示 URL 断言未考虑旧导航保留的合法 `via` 查询参数；按 pathname `/admin/demo` 和 hash `#demo` 分别精确检查。另一项是测试环境配置的旧 tmpfs 目录已不存在，模型验证正确返回 503，未发生提供方请求。其余真实机构/源码下载、查询草稿与 HQ 演示加载/归档/恢复、跨机构验证禁止均通过。全部数据库和服务已清理。下一轮使用独立真实 `/dev/shm/ontology-r1-8`；不改运行时检查、权限或超时。
+
+## 包内收口与来源边界
+
+完整操作浏览器在 **5c83f28370c4cf04a9528549a5edca18cb2d2459** 的隔离检出执行：15/15 通过，0 失败、0 重试、0 跳过，用时约 1 分钟。Node 22.23.4、本地 Chromium 156.0.8078.79、1366×768。实际固定 SDK 对本地合成 Messages 提供方完成 1 次验证；这不是公网真实模型验证。三角色各执行 6 个真实样本下载、3 次实际剪贴板复制；工作区和源码 ZIP 实际生成；已发布演示标准的查询草稿实际准备；总部自有机构演示加载、归档、恢复后 ID 一致；跨机构验证由前后端拒绝。4 个临时数据库均清理、API/agent 停止。
+
+浏览器通过后，独立审查指出新增 P2：generic JSON 解码会折叠重复 api_key，而旧敏感配置解析器拒绝重复字段。先新增反例确认新接口错误返回 200，然后在有界流式读取后、重放给 FastAPI 前复用原 skill_harness._loads；重复顶层密钥/字段、嵌套重复键均固定 422，保存函数未调用且响应不含输入密钥。该后续加固由定向安全测试验证，未冒称已包含在 5c83f28 浏览器来源中；最终规范浏览器与主干全量回归由 root 复验。
+
+## A.2 最终对照
+
+| 项目 | 结果 |
+|---|---|
+| 入口与地址 | /settings 的查询/hash 继续保留并转模型页；#demo 转演示页；旧 via 导航上下文合法保留 |
+| 数据与字段 | 地址、模型、配置/连接/运行状态与版本、安全失败原因；迁移版本和本部署已校验备份；原归档业务内容和原件一致 |
+| 操作 | SET01–10 上表均有实际接续；SET02 六说明卡按既定计划取消，链接由导航承接 |
+| 权限 | 三旧角色读取入口保持；管理员配置/备份；跨机构禁止模型验证；HQ 超管源码；演示写入仅本机构管理员 |
+| 校验/状态/反馈 | 原敏感解析器、16 KiB 上限与业务验证保留；错误实际重试，输入保持；配置与验证成功均刷新全局状态；未配置/无权限有人工路径 |
+| 测试 | 15 项真实浏览器操作；配置/导出/离线恢复实际 MySQL；原模型草稿守卫测试原 ID/两处 dirtyCount 断言迁移到新 ModelForm，8 项所在测试文件通过 |
+| 清理 | 删除 legacy/pages/Settings.tsx、legacy/components/HarnessConfiguration.tsx、专属 harness-configuration.css；原82库存不删条目，retired 精确追加3项，本支线 legacy 剩77；DemoWorkspace 未改 |
+
+共享 legacy/styles.css 仍供其它承接页面使用，未以设置页退役为由删除共享样式。页面与集成应用术语豁免未向其它管理页扩大。功能源码 requirements.txt、受保护 Windows workflows 与原 75 路由基准均不改。
+
+## Linux 测试环境的准确启动方式
+
+必须把**整段** mkdir、前置检查与 runner 放在同一个 exec_command，设置 `sandbox_permissions="with_additional_permissions"`、`additional_permissions.file_system.write=["/dev/shm"]`；不能只授权子目录。该执行内建立独占 `/dev/shm/ontology-r1-8`，设置 ONTOLOGY_HARNESS_TMP_ROOT 后实际调用 `backend.skill_harness._work_root()` 并确认返回这个真实 tmpfs 路径，再运行 e2e/run_admin.py。后台会话继承同一 profile。仅子目录授权可能留下另一挂载视图，不能当成 tmpfs 已就绪。用户已有环境修复授权，不再请求重复许可。最后仅删除本包独占空目录，不触碰其他任务路径。
+
+## 最终交接验证
+
+- 新增后端 30 项均已实际执行通过：29 项轻量测试（含严格重复 JSON、二进制 OpenAPI 契约与独立浏览器 runner）+ 1 项真实 MySQL 配置/归档/离线恢复。MySQL 复用现有 RUN_JOBS_MYSQL_TESTS=1，无新开关；默认 discover 收集，root 最终验收须开启该既有开关。
+- 新增前端 14 项通过；相关客户端/守卫共 33 项通过。退役后迁移的原守卫测试文件 8/8 通过，原 ID 与两处 dirtyCount 断言保留。
+- 浏览器来源固定 5c83f28，15/15。后续严格 JSON 修复先失败再通过，最新相关后端 64/64；二进制响应补明示 application/zip OpenAPI（原先被默认描述为 JSON），没有改变下载运行行为。
+- A.2 退役后的 typecheck 与 build 通过（Vite 20.49s）；Python Ruff/format、词表、生成类型、令牌、策略覆盖、legacy 库存、离线源及构建 URL 均通过。requirements、受保护 workflows、store.py、旧75路由文件均字节未改。
+- 本分支不宣称执行了主干完整回归、规范 Playwright 浏览器、真实公网模型或 Windows 原生验收；由 root 集成后独立执行。后台进程、4个隔离数据库、专用 tmpfs目录全部清理。没有 push、PR 或 tag。
+
+最终共享文件合并点：AppRoutes 只替换 model/backup/system/demo；capabilities.context 只增 offline 绑定；routes.py 在 Union 前加载三能力且挂载system子路由；middleware精确限制model.configure；policy精确七条system路由；terms源新增admin前缀；retired精确追加3项；生成API应在主干组合12项后重生。R1-7恢复internals未修改，调用其稳定接口。
