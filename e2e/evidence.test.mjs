@@ -102,3 +102,11 @@ test("authorization headers are rejected even in allowed logs", (t) => {
     /Authentication/,
   );
 });
+
+test("the package index also counts against the download budget", (t) => {
+  const { source, destination } = fixture(t);
+  mkdirSync(resolve(source, "screenshots/admin"), { recursive: true });
+  for (let index = 0; index < 10; index++)
+    writeFileSync(resolve(source, `screenshots/admin/${index}.png`), "");
+  assert.throws(() => packageEvidence(source, destination, "", 200), /budget/);
+});

@@ -110,9 +110,13 @@ export function packageEvidence(
       };
     });
     const bytes = files.reduce((sum, file) => sum + file.bytes, 0);
-    if (bytes > budget)
+    const record = { bytes, files };
+    const indexBytes = Buffer.byteLength(
+      JSON.stringify({ completeArtifact, ...record }, null, 2) + "\n",
+    );
+    if (bytes + indexBytes > budget)
       throw new Error(`${group} exceeds evidence download budget`);
-    index.packages[group] = { bytes, files };
+    index.packages[group] = record;
   }
   for (const [group, record] of Object.entries(index.packages)) {
     const directory = resolve(destination, group);
