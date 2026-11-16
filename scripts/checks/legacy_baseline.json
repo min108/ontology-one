@@ -86,6 +86,7 @@
   ],
   "retired": [
     "App.tsx",
-    "main.tsx"
+    "main.tsx",
+    "pages/Overview.tsx"
   ]
 }
