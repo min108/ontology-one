@@ -11,10 +11,19 @@ export const redirects = [
   [
     "/security?probe=security#password",
     "/account/security?probe=security#password",
+    "账号安全",
   ],
-  ["/administration?probe=users#members", "/admin/users?probe=users#members"],
-  ["/settings?probe=model#connection", "/admin/model?probe=model#connection"],
-  ["/settings?probe=demo#demo", "/admin/demo?probe=demo#demo"],
+  [
+    "/administration?probe=users#members",
+    "/admin/users?probe=users#members",
+    "账号与权限",
+  ],
+  [
+    "/settings?probe=model#connection",
+    "/admin/model?probe=model#connection",
+    "模型与运行",
+  ],
+  ["/settings?probe=demo#demo", "/admin/demo?probe=demo#demo", "演示资料"],
 ];
 export const layouts = [
   { name: "1366", width: 1366, height: 768, zoom: "native 100%" },

@@ -86,6 +86,8 @@ jobs:
           python scripts/checks/check_policy_coverage.py
           npm --prefix frontend test -- --run
           node --test e2e/*.test.mjs
+      - name: Verify frozen formatting history independently
+        run: python scripts/checks/check_historical_format.py --output work/evidence/r1/ci/historical-format.json
       - name: Backend and pipeline tests
         run: |
           set -euo pipefail

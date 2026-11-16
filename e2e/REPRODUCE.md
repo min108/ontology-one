@@ -48,6 +48,13 @@ real cancellation with a local, explicitly synthetic held Messages provider; it 
 not certify a live external model. Previous failed and interrupted R1-5 runs remain
 documented in `R1-5-ACCEPTANCE.md`.
 
+After the new pages pass their A.2 operation comparisons, the four legacy redirect
+checks assert each replacement page's exact level-1 heading instead of the retired
+`data-legacy-page` wrapper. The original URL, query and hash assertions remain exact.
+This is the A.2 page-contract evolution for account security, users, model and demo;
+it is not an H.2 security exception, a weakening of the original 75, or a claim that
+the pending new-page operation acceptance has already passed.
+
 ## Visual and accessibility contract
 
 The matrix is 10 authenticated page states × 3 layouts × 2 actual saved view modes,
@@ -145,3 +152,15 @@ metadata, plus manifest, archive and archive digest. It makes no inferred pass c
 `backend-results.json` verifies all 489 frozen baseline IDs and exactly 39 permitted
 Windows-native skips from the complete unittest output. Both foundation and offline
 jobs must succeed for final R1 acceptance.
+
+`historical-format.json` independently verifies the frozen formatting commit
+`353b9b2784e84b006394c7b982a2002477676bb3` against its exact parent
+`50e160bbb49cc7be25446e23de088e563cba68c3`: identical inventories of 151 Python files,
+150 textual changes, 150 strict AST matches, 151 matches after only docstring
+whitespace normalization, zero behavioral differences and no non-Python/out-of-scope
+diff. Per-file before/after SHA-256 values are included. The historical
+`ast_equiv.py` is unchanged; its successful exit code is not accepted as proof.
+
+```sh
+python scripts/checks/check_historical_format.py --output work/evidence/r1/ci/historical-format.json
+```

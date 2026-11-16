@@ -287,6 +287,7 @@ def main() -> int:
     commit = source_commit(args.target)
     environment["E2E_SOURCE_COMMIT"] = commit
     source = export_source(commit, work)
+    environment["E2E_APPLICATION_ROOT"] = str(source)
     # Browser tests and authentication snapshots run from this private work tree,
     # independent of the application snapshot (which may be the old release).
     shutil.copytree(ROOT / "e2e", work / "e2e", ignore=shutil.ignore_patterns("__pycache__"))
