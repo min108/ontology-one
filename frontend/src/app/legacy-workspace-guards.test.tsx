@@ -7,6 +7,7 @@ import { UploadDatasetModal } from '@legacy/pages/Datasets';
 import { AuthorityDetail } from '@legacy/pages/Authority';
 import { blankAuthoritySpec } from '@legacy/pages/authority-types';
 import { HarnessConfigurationPanel } from '@legacy/components/HarnessConfiguration';
+import DataSources from '@legacy/pages/DataSources';
 import { readWorkspaceGuards, setWorkspaceTransition } from '../state/workspace-guard';
 
 const { request, queryData } = vi.hoisted(() => ({
@@ -46,6 +47,73 @@ afterEach(() => {
 });
 
 describe('legacy draft and modal cooperation', () => {
+  function openSourceGrants() {
+    queryData.set('/sources/source', {
+      source: {
+        id: 'source',
+        title: 'Source',
+        kind: 'mysql',
+        enabled: true,
+        version: 1,
+        permissions: { manage: true, discover: true, query: true },
+      },
+      resources: [],
+      mappings: [],
+      grants: [{ user_id: 'u1', discover: true, query: false }],
+    });
+    queryData.set('/admin/users', {
+      items: [
+        { id: 'u1', username: 'one', display_name: 'One', home_tenant_id: 'org', is_active: true },
+        { id: 'u2', username: 'two', display_name: 'Two', home_tenant_id: 'org', is_active: true },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={['/data-sources/source']}>
+        <Routes>
+          <Route path="/data-sources/:sourceId" element={<DataSources />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getAllByRole('tab')[2]);
+    return document.querySelector<HTMLFormElement>('.src-grant-form')!;
+  }
+  it('source grant edits revert cleanly and only successful saves advance their baseline', async () => {
+    const form = openSourceGrants();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'u1' } });
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    request.mockRejectedValueOnce(new Error('grant failed'));
+    fireEvent.submit(form);
+    await screen.findByText('grant failed');
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    request.mockResolvedValueOnce({});
+    fireEvent.submit(form);
+    await waitFor(() => expect(readWorkspaceGuards().dirtyCount).toBe(0));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'u2' } });
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+  });
+  it('source grant completion keeps changes made after submission dirty', async () => {
+    const form = openSourceGrants();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'u1' } });
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    let complete!: (value: unknown) => void;
+    request.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    fireEvent.submit(form);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    await act(async () => complete({}));
+    expect(readWorkspaceGuards().dirtyCount).toBe(1);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(readWorkspaceGuards().dirtyCount).toBe(0);
+  });
   it('loading saved model settings does not mark an already typed new key as saved', () => {
     const { rerender } = render(<HarnessConfigurationPanel status={null} onSaved={vi.fn()} />);
     fireEvent.change(document.querySelector<HTMLInputElement>('input[type="password"]')!, {
