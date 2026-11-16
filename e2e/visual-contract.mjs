@@ -5,6 +5,16 @@ export const visualLayouts = [
   { name: "1366-native125", width: 1366, height: 768, zoom: 1.25 },
 ];
 export const visualModes = ["simple", "professional"];
+// A real immutable 0.7 fixture event; latest audit/session rows are tested by identity operations.
+export const visualAuditHistory = {
+  id: "11",
+  action: "demo_loaded",
+  resource: "business-demo-0.7",
+  tenant_id: "dept-01",
+  outcome: "success",
+  actor_username: "fixture.admin",
+  request_id: "fixture",
+};
 export const visualPages = [
   {
     name: "home",

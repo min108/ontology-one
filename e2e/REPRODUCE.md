@@ -5,6 +5,12 @@ packaged does **not** mean it passed. Inspect `runner.json`, `results.json`,
 `backend-results.json`, `offline-result.json`, and the matching source SHA. Baseline
 capture is explicitly not final acceptance.
 
+The copyable owner procedure is in `CANONICAL-CAPTURE.md`. Final browser inventories
+are legacy 75, original replacement views 5, core 106 (89+4+12+1), admin 15 and visual
+9 tests / 63 images: 210 tests overall. `check_results.py` verifies every project and
+single-attempt result, matching source/browser metadata and complete resource cleanup;
+the historical R1-5 count of 90 is not the final inventory.
+
 ## Environment and isolation
 
 Use Python 3.12, Node 22, the committed frontend lockfile and Playwright 1.65.1.
@@ -123,6 +129,7 @@ Chromium 156 results must never be relabeled canonical Chromium 159 evidence.
 ```sh
 git worktree add --detach work/v070-source 1359118dd672431dcd0cde2eb81f2b0f994eef37
 python scripts/drills/upgrade_from_v070.py --v070-source work/v070-source --output work/evidence/r1/ci/upgrade-drill.json
+python scripts/drills/compare_identity_v070.py --v070-source work/v070-source --current-source . --output work/evidence/r1/ci/identity-v070-comparison.json
 python ops/offline/prepare.py --output work/offline/ci
 python ops/offline/verify.py --bundle work/offline/ci --evidence work/evidence/r1/offline
 ```
@@ -137,6 +144,13 @@ starts the real backend and fetches health, HTML and its built JS. The exact bun
 manifest, image IDs, source SHA, logs and observed results are uploaded. Use
 `prepare.py --export-images` when transferring the bundle to a host without those
 images. Dependency changes require fresh preparation; old-lock cache reuse fails.
+
+The six audit visual states use the real UI filters for the unique original event
+id=11 / demo_loaded / business-demo-0.7 / dept-01 / success, verify the complete real
+response and leave its details expanded. No audit content is masked, including its
+fixed historical timestamp and request ID. The identity operation suite separately
+tests latest records, pagination, and real mutation audits; visual selection neither
+deletes audit rows nor substitutes a mock response.
 
 ## Readable and complete evidence
 

@@ -105,6 +105,10 @@ jobs:
           set -euo pipefail
           git worktree add --detach work/v070-source 1359118dd672431dcd0cde2eb81f2b0f994eef37
           python scripts/drills/upgrade_from_v070.py --v070-source work/v070-source --output work/evidence/r1/ci/upgrade-drill.json 2>&1 | tee work/evidence/r1/ci/upgrade-drill.log
+      - name: Original identity and grant behavior comparison across migration
+        run: |
+          set -euo pipefail
+          python scripts/drills/compare_identity_v070.py --v070-source work/v070-source --current-source . --output work/evidence/r1/ci/identity-v070-comparison.json 2>&1 | tee work/evidence/r1/ci/identity-v070-comparison.log
       - name: Frontend build
         run: |
           set -euo pipefail
@@ -123,6 +127,8 @@ jobs:
         run: python e2e/run_admin.py --evidence work/evidence/r1/e2e-admin-ci
       - name: Canonical visuals in a separate fresh fixture scope
         run: python e2e/run.py --target foundation --visual-only --evidence work/evidence/r1/e2e-visual-ci
+      - name: Verify exact browser inventories and cleanup
+        run: python e2e/check_results.py --output work/evidence/r1/ci/browser-acceptance.json
       - name: Upload available evidence
         id: complete-evidence
         if: always()
@@ -130,6 +136,17 @@ jobs:
         with:
           name: r1-foundation-ci-${{ github.run_id }}
           path: work/evidence/r1/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload readable aggregate acceptance summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-acceptance-summary-${{ github.run_id }}
+          path: |
+            work/evidence/r1/ci/browser-acceptance.json
+            work/evidence/r1/ci/backend-results.json
+            work/evidence/r1/ci/historical-format.json
           if-no-files-found: warn
           retention-days: 30
       - name: Prepare readable browser evidence
@@ -579,6 +596,17 @@ jobs:
             work/packages/foundation/manifest.json
             work/packages/foundation/SHA256SUMS
             work/packages/foundation.tar.gz
+            work/packages/foundation.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload readable final evidence manifest
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r1-evidence-manifest-${{ github.run_id }}
+          path: |
+            work/packages/foundation/manifest.json
+            work/packages/foundation/SHA256SUMS
             work/packages/foundation.tar.gz.sha256
           if-no-files-found: error
           retention-days: 30

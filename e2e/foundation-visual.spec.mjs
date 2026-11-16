@@ -16,6 +16,7 @@ import {
   visualPages,
   assertVisualInventory,
   seriousViolations,
+  visualAuditHistory,
 } from "./visual-contract.mjs";
 import {
   assertCanonicalCapture,
@@ -32,6 +33,46 @@ const visualPolicy = JSON.parse(
   readFileSync(new URL("./visual-policy.json", import.meta.url), "utf8"),
 );
 validateVisualPolicy(visualPolicy);
+
+async function selectHistoricalAudit(page) {
+  const expected = visualAuditHistory;
+  await page.getByLabel("操作标识", { exact: true }).fill(expected.action);
+  await page.getByLabel("机构编号", { exact: true }).fill(expected.tenant_id);
+  await page.getByLabel("结果标识", { exact: true }).fill(expected.outcome);
+  const pending = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/api/v2/audit" &&
+      url.searchParams.get("action") === expected.action &&
+      url.searchParams.get("tenant_id") === expected.tenant_id &&
+      url.searchParams.get("outcome") === expected.outcome
+    );
+  });
+  await page.getByRole("button", { name: "筛选记录", exact: true }).click();
+  const response = await pending;
+  expect(response.ok()).toBe(true);
+  const result = await response.json();
+  expect(result.total).toBe(1);
+  expect(result.items).toHaveLength(1);
+  expect(String(result.items[0].id)).toBe(expected.id);
+  expect(result.items[0]).toMatchObject({
+    action: expected.action,
+    resource: expected.resource,
+    tenant_id: expected.tenant_id,
+    outcome: expected.outcome,
+    actor_username: expected.actor_username,
+    request_id: expected.request_id,
+  });
+  const row = page.getByRole("row").filter({ hasText: expected.resource });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText(expected.actor_username);
+  await expect(row).toContainText(expected.tenant_id);
+  await row.locator("summary").click();
+  await expect(row.locator("details")).toHaveAttribute("open", "");
+  await expect(row.locator("details")).toContainText(expected.action);
+  await expect(row.locator("pre")).toContainText('"entity_count": 20');
+  await expect(row.locator("pre")).toContainText('"synthetic": true');
+}
 
 async function openNative(layout, use) {
   const options = {
@@ -129,11 +170,13 @@ async function recordPage(page, name, layout, launched, testInfo) {
     animations: "disabled",
     caret: "hide",
     scale: "css",
-    mask: [
-      page.locator(
-        '[data-visual-dynamic="timestamp"], [data-visual-dynamic="request-id"]',
-      ),
-    ],
+    mask: name.endsWith("--audit")
+      ? []
+      : [
+          page.locator(
+            '[data-visual-dynamic="timestamp"], [data-visual-dynamic="request-id"]',
+          ),
+        ],
     maskColor: "#ffffff",
   });
   const dimensions = {
@@ -153,7 +196,11 @@ async function recordPage(page, name, layout, launched, testInfo) {
     metrics,
     png: dimensions,
     screenshotScale: "css",
+    dynamicMasks: name.endsWith("--audit") ? [] : ["timestamp", "request-id"],
     fonts,
+    ...(name.endsWith("--audit")
+      ? { auditState: visualAuditHistory, auditDetailsOpen: true }
+      : {}),
     view: name.split("--")[0],
     authenticated: !name.startsWith("login--"),
   };
@@ -229,6 +276,7 @@ for (const layout of visualLayouts) {
         await expect(
           page.getByRole("navigation", { name: "工作区导航", exact: true }),
         ).toBeVisible();
+        await page.waitForLoadState("networkidle");
         await page
           .getByRole("button", { name: "个人账号", exact: true })
           .click();
@@ -261,6 +309,7 @@ for (const layout of visualLayouts) {
             ).toBeEnabled();
           if (item.legacy)
             await expect(page.locator("[data-legacy-page]")).toBeVisible();
+          if (item.name === "audit") await selectHistoricalAudit(page);
           await recordPage(
             page,
             `${mode}--${item.name}`,

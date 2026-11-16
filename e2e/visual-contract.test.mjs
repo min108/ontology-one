@@ -1,12 +1,31 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import {
   visualPages,
   visualLayouts,
   visualModes,
   assertVisualInventory,
   seriousViolations,
+  visualAuditHistory,
 } from "./visual-contract.mjs";
+
+test("visual audit selects exactly one immutable original fixture event, not latest randomized sessions", () => {
+  const control = JSON.parse(
+    readFileSync("tests/fixtures/v070/control.json", "utf8"),
+  );
+  const rows = control.tables.sec_audit.filter(
+    (row) =>
+      row.action === visualAuditHistory.action &&
+      row.tenant_id === visualAuditHistory.tenant_id &&
+      row.outcome === visualAuditHistory.outcome,
+  );
+  assert.equal(rows.length, 1);
+  const actual = Object.fromEntries(
+    Object.keys(visualAuditHistory).map((key) => [key, String(rows[0][key])]),
+  );
+  assert.deepEqual(actual, visualAuditHistory);
+});
 
 test("visual matrix covers all replacement areas, both views, and actual native zoom", () => {
   assertVisualInventory();
