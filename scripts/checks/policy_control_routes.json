@@ -1,0 +1,162 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/health",
+    "reason": "Public health endpoint; no business data."
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/login",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/me",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/session",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/logout",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/sessions",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/auth/sessions/{}",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/password",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/workspace",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/oidc/config",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/oidc",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/tenants",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/users",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/users",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/admin/users/{}",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/grants",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/grants",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/admin/grants/{}",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/audit",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/federation/overview",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/federation/search",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/federation/entities/{}/{}",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/federation/graph",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "POST",
+    "path": "/api/federation/entities/{}/{}/visibility",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "POST",
+    "path": "/api/federation/links",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/federation/links/{}",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/federation/links",
+    "reason": "Existing 0.7.0 control endpoint: session/CSRF middleware plus endpoint authorization; exact registration only."
+  },
+  {
+    "method": "GET",
+    "path": "/api/agent/{}",
+    "reason": "Existing 0.7.0 compatibility catch-all: middleware authorizes concrete business paths only; endpoint rejects unsupported paths."
+  },
+  {
+    "method": "POST",
+    "path": "/api/agent/{}",
+    "reason": "Existing 0.7.0 compatibility catch-all: middleware authorizes concrete business paths only; endpoint rejects unsupported paths."
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/agent/{}",
+    "reason": "Existing 0.7.0 compatibility catch-all: middleware authorizes concrete business paths only; endpoint rejects unsupported paths."
+  },
+  {
+    "method": "GET",
+    "path": "/api/harness/runs{}",
+    "reason": "Existing 0.7.0 compatibility catch-all: middleware authorizes concrete business paths only; endpoint rejects unsupported paths."
+  },
+  {
+    "method": "POST",
+    "path": "/api/harness/runs{}",
+    "reason": "Existing 0.7.0 compatibility catch-all: middleware authorizes concrete business paths only; endpoint rejects unsupported paths."
+  }
+]
