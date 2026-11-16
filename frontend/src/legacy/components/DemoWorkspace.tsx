@@ -42,7 +42,7 @@ export default function DemoWorkspace(){
     {!canManage&&<p className="demo-note">请由管理员切回所属机构加载或恢复演示资料。</p>}
     <details className="demo-guide" open={state?.loaded||undefined}><summary>按这条路线验证</summary><ol>
       <li><strong>先看素材与台账。</strong>在素材整理查看两份模拟原文，练习阅读分段与有出处的成果提取；在数据台账导入核对两份台账的字段、单位和粒度。</li>
-      <li><strong>准备独立审核账号。</strong>首次安装通常只有总部管理员。请在<Link to="/administration">账号与权限</Link>为同一机构创建一个独立的审核账号，由另一位实际使用人设置并保管密码。编辑或提交技能的人不能代替另一人审核。</li>
+      <li><strong>准备独立审核账号。</strong>首次安装通常只有总部管理员。请在<Link to="/admin/users">账号与权限</Link>为同一机构创建一个独立的审核账号，由另一位实际使用人设置并保管密码。编辑或提交技能的人不能代替另一人审核。</li>
       <li><strong>完成正常审核。</strong>在业务资产审核发布六项演示数据标准及核对说明；在技能开发打开“演示合同付款余额核对”，运行样例测试，提交后由独立审核账号审核发布。</li>
       <li><strong>准备台账查询。</strong>数据标准发布后，点击下面按钮准备查询草稿。在数据源管理为审核账号授予发现权限，再由另一账号审核发布查询口径；这仍是内置模拟记录，不代表连接了真实数据库。</li>
       <li><strong>开始自由对话。</strong>到<Link to="/applications">本体应用</Link>选择已发布的演示技能、资产和台账查询，提出业务问题。依据、查询来源及处理过程会随任务展示。</li>
