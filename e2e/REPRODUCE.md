@@ -202,3 +202,12 @@ same 30 MiB content-plus-index budget, with a separate runner/environment/result
 summary and the complete-artifact link. These are actual original `1359118` pages,
 not a reconstruction of the old design. They supplement the unchanged original 75
 and supply A.2 visual comparison evidence; they are not new-version visual baselines.
+
+Authenticated visual states create a real fresh session with the same browser
+context's request client before the first application navigation. The login request
+uses the browser's actual user agent; cookies stay in its private profile and the
+response body is never inspected or written. This avoids collecting the expected
+unauthenticated bootstrap `/api/auth/session` 401 as an authenticated-page error.
+Every console error (including any later 401) and uncaught page error still fails;
+none are filtered or cleared. Login UI behavior remains in identity acceptance and
+the three unauthenticated login screenshots.

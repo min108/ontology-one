@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, test, expect } from "./runtime.mjs";
 import { accounts, authDirectory, evidence } from "./fixture.mjs";
+import { openAuthenticatedVisualPage } from "./visual-auth.mjs";
 import {
   launchNativeContext,
   measureNativePage,
@@ -257,22 +258,14 @@ for (const layout of visualLayouts) {
       test.setTimeout(180_000);
       const launched = await openNative(layout, testInfo.project.use);
       try {
-        // Fresh UI login keeps earlier scope-switch tests from mutating this session.
-        // Cookies remain in the private profile; never copy a real user's profile.
+        // The real fresh context cookie jar is authenticated before first navigation.
+        // Login UI behavior remains covered by identity acceptance and login visuals.
         const page = launched.context.pages()[0];
-        const problems = [];
-        page.on("pageerror", (error) => problems.push(error.message));
-        page.on("console", (message) => {
-          if (message.type() === "error") problems.push(message.text());
-        });
-        await page.goto("/");
-        await page
-          .getByLabel("账号", { exact: true })
-          .fill(accounts.superadmin.username);
-        await page
-          .getByLabel("密码", { exact: true })
-          .fill(accounts.superadmin.password);
-        await page.getByRole("button", { name: /登录/ }).click();
+        const problems = await openAuthenticatedVisualPage(
+          launched.context,
+          page,
+          accounts.superadmin,
+        );
         await expect(
           page.getByRole("navigation", { name: "工作区导航", exact: true }),
         ).toBeVisible();
