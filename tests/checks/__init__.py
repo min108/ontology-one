@@ -1,1 +1,1 @@
-"""Repository check script contracts."""
+"""Repository quality gate regression tests."""

@@ -30,9 +30,10 @@
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。
 - `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。0.7.0 外壳/页面仍原位，R1-5 整体移入 legacy。
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
+- `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；`ops/offline/`：准备依赖并在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
 - `docs/blueprint/`：蓝图、进度、轮次记录与 ADR；`work/`：不入库的日志、临时数据与证据。
-- e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；新业务前端域与离线工具链正在后续工作包集成。
+- e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；新业务前端域正在后续工作包集成，离线工具须在最终依赖上重新验证。
 
 ## 4 常用命令
 
@@ -48,8 +49,8 @@ npm --prefix frontend ci
 npm --prefix frontend run dev
 RUN_HARNESS_SDK_TESTS=1 RUN_FEDERATION_MYSQL_TESTS=1 RUN_JOBS_MYSQL_TESTS=1 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m unittest discover -s .github/scripts -p 'test_*.py'
-.venv/bin/ruff format --check backend scripts ops tests migrations .github/scripts
-.venv/bin/ruff check backend scripts ops tests migrations .github/scripts
+.venv/bin/ruff format --check backend scripts ops tests migrations .github/scripts e2e/run.py
+.venv/bin/ruff check backend scripts ops tests migrations .github/scripts e2e/run.py
 npm --prefix frontend run lint
 npm --prefix frontend run format:check
 npm --prefix frontend run lint:styles
@@ -57,6 +58,8 @@ npm --prefix frontend test -- --run
 python scripts/gen_terms.py --check
 python scripts/gen_api_types.py --check
 python scripts/checks/check_migrations.py
+python scripts/checks/check_policy_coverage.py
+python scripts/checks/check_offline.py --require-dist
 npm --prefix frontend run build
 ```
 

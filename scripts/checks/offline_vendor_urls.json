@@ -1,0 +1,26 @@
+[
+  {
+    "url": "https://react.dev/errors/",
+    "kind": "react_diagnostic",
+    "scope": "frontend/dist/*.js",
+    "reason": "React production error decoder link, constructed as an error message; not requested."
+  },
+  {
+    "url": "https://reactrouter.com/en/main/routers/picking-a-router.",
+    "kind": "router_diagnostic",
+    "scope": "frontend/dist/*.js",
+    "reason": "React Router assertion text directs developers to documentation; no network access."
+  },
+  {
+    "url": "https://github.com/ungap/url-search-params.",
+    "kind": "polyfill_diagnostic",
+    "scope": "frontend/dist/*.js",
+    "reason": "React Router error text recommends an optional IE11 polyfill; application does not load it."
+  },
+  {
+    "url": "https://reactflow.dev?utm_source=attribution",
+    "kind": "reactflow_attribution",
+    "scope": "frontend/dist/*.js",
+    "reason": "Existing React Flow attribution anchor, opened only on user click; no automatic fetch."
+  }
+]

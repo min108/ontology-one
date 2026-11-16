@@ -18,3 +18,27 @@ E2E_TARGET=foundation E2E_BASE_URL=http://127.0.0.1:8765 \
 
 `work/e2e-auth/` 内是临时合成账户会话，只用于运行测试，不进入证据包或 Git。
 证据构件只收测试结果、浏览器版本记录和截图。
+
+## 一条命令装载、启动和回归
+
+先安装 Python 运行依赖、前端锁定依赖及 Playwright 对应 Chromium，并让 Node 22 位于 PATH。CI 检出使用 `fetch-depth: 0`，确保历史提交 `1359118dd672431dcd0cde2eb81f2b0f994eef37` 可供 `git archive` 导出。
+
+```bash
+python e2e/run.py --target legacy
+python e2e/run.py --target foundation
+```
+
+`MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_USER`、`MYSQL_PASSWORD` 只提供连接凭据。runner 自行生成随机 `e2e_r1_*` 命名空间，忽略外部 `MYSQL_DATABASE` 与 storage 选择；拒绝 `ONTOLOGY_MYSQL_URL`，也没有指定库名的命令参数。建立任何库之前确认所有目标库不存在。退出时先终止本次 API/agent 进程组，再按实际创建的精确库名清理；不会按前缀执行 DROP，也不会清理预先存在的库。
+
+每次在 `work/e2e-runs/<随机名>/` 导出源码：legacy 固定使用 0.7.0 原始提交，foundation 使用当前 HEAD（须先提交要验证的应用变更）。两个目标都对各自源码执行 `npm ci` 与完整前端构建，使用原结构 loader 载入夹具；foundation 随后执行统一 `scripts/migrate.py`。API 与 agent 均使用真实服务、独立 storage，worker 关闭，健康检查通过后才执行浏览器测试。
+
+端口已被使用时可换一组；集成前可显式指向另一个 worktree 的原始夹具：
+
+```bash
+python e2e/run.py --target legacy --api-port 8785 --agent-port 8786 \
+  --fixture /path/to/tests/fixtures/v070
+```
+
+`E2E_TARGET` 和 `E2E_DEPENDENCY_ROOT` 仍有效；浏览器依赖默认来自当前检出的 `frontend`，不在历史源码中增加测试依赖。`E2E_CHROMIUM` 指向本机浏览器时，报告记录实际浏览器版本；CI 不设置该变量，以使用锁定的 Playwright Chromium。
+
+`--evidence` 或 `E2E_EVIDENCE_DIR` 可指定本检出 `work/` 内的新空目录。默认报告位置为 `work/evidence/r1/e2e-<目标>-<随机名>/`，包含源码提交、实际测试数、服务日志与精确数据库清理记录。认证状态在该次私有 work 目录中生成，并于退出时移除；不会放入证据目录。失败、零测试、跳过和重试均不能得到成功结果。`-- --grep ...` 可用于诊断筛选，报告记录筛选参数及实际测试数，完整验收运行不加筛选。

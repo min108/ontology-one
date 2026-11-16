@@ -73,8 +73,8 @@ jobs:
           docker build -f ops/skill-runner.Dockerfile -t ontology-skill-test:0.5.0 .
       - name: Code checks
         run: |
-          ruff format --check backend scripts ops tests migrations .github/scripts
-          ruff check backend scripts ops tests migrations .github/scripts
+          ruff format --check backend scripts ops tests migrations .github/scripts e2e/run.py
+          ruff check backend scripts ops tests migrations .github/scripts e2e/run.py
           npm --prefix frontend run lint
           npm --prefix frontend run format:check
           npm --prefix frontend run lint:styles
@@ -83,6 +83,7 @@ jobs:
           python scripts/checks/check_tokens.py
           python scripts/checks/check_terms.py
           python scripts/checks/check_migrations.py
+          python scripts/checks/check_policy_coverage.py
           npm --prefix frontend test -- --run
       - name: Backend and pipeline tests
         run: |
@@ -104,6 +105,12 @@ jobs:
         run: |
           set -euo pipefail
           npm --prefix frontend run build 2>&1 | tee work/evidence/r1/ci/frontend.log
+      - name: Offline source and artifact checks
+        run: python scripts/checks/check_offline.py --require-dist
+      - name: Install fixed browser for acceptance
+        run: frontend/node_modules/.bin/playwright install --with-deps chromium
+      - name: Original UI browser baseline
+        run: python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
       - name: Upload available evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
