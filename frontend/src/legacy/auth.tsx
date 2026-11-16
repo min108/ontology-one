@@ -1,4 +1,4 @@
-import {brand} from './i18n/brand';
+import {brand} from '../i18n/brand';
 import {APP_VERSION} from './version';
 import {createContext,useCallback,useContext,useEffect,useState,ReactNode,FormEvent} from 'react';
 import {api,ApiError,invalidateRequests,setCsrfToken,setWorkspaceId,setBusinessBlocked} from './api';

@@ -1,4 +1,4 @@
-import {brand} from '../i18n/brand';
+import {brand} from '../../i18n/brand';
 import {AccessButton} from '../components/AccessButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';

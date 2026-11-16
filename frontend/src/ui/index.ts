@@ -17,3 +17,4 @@ export * from './DropOverlay';
 export * from './TaskTray';
 export * from './NotificationCenter';
 export * from './types';
+export * from './LegacyBlock';

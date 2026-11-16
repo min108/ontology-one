@@ -1,4 +1,4 @@
-import {brand} from '../i18n/brand';
+import {brand} from '../../i18n/brand';
 import type {Edge, Node} from '@xyflow/react';
 
 export type GraphImageScope = string | {

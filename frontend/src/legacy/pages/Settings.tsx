@@ -1,4 +1,4 @@
-import {brand} from '../i18n/brand';
+import {brand} from '../../i18n/brand';
 import {APP_VERSION} from '../version';
 import {useState} from 'react';
 import {Link} from 'react-router-dom';
