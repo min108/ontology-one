@@ -486,7 +486,14 @@
     "filter_placeholder": "按名称筛选",
     "show_details": "查看详情",
     "ontology": "本体",
-    "govern": "治理"
+    "govern": "治理",
+    "client_request_cancelled": "当前请求已取消。",
+    "client_login_expired": "登录已失效，请重新登录。",
+    "client_workspace_changed": "机构已在另一窗口切换，正在重新载入。",
+    "client_request_failed": "请求未完成，请稍后重试。",
+    "client_response_invalid": "服务返回的内容无法读取，请稍后重试。",
+    "session_permissions_failed": "权限未能载入，请重新连接服务。",
+    "session_load_failed": "登录会话未能载入，请重新连接服务。"
   },
   "states": {
     "loading": {
