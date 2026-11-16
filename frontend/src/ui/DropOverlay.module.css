@@ -1,0 +1,24 @@
+.overlay {
+  position: fixed;
+  inset: var(--zy-none);
+  background: var(--zy-overlay);
+  z-index: var(--zy-layer-overlay);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  padding: var(--zy-space-6);
+}
+
+.panel {
+  background: var(--zy-gray-0);
+  padding: var(--zy-space-8);
+  border-radius: var(--zy-radius-panel);
+  border: var(--zy-focus-width) dashed var(--zy-primary-500);
+  text-align: center;
+  box-shadow: var(--zy-shadow-lg);
+}
+
+.panel h2 {
+  font-size: var(--zy-font-h2);
+  line-height: var(--zy-line-h2);
+}

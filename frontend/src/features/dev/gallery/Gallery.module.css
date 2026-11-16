@@ -1,0 +1,28 @@
+.gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zy-space-6);
+  max-width: var(--zy-reading-width);
+  margin: auto;
+}
+
+.gallery > p {
+  margin: var(--zy-none);
+  color: var(--zy-gray-600);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--zy-space-6);
+}
+
+.row {
+  margin-top: var(--zy-space-4);
+}
+
+@media (width < 1024px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

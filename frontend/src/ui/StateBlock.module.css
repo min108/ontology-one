@@ -1,0 +1,32 @@
+.block {
+  padding: var(--zy-space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--zy-space-3);
+  background: var(--zy-gray-0);
+  border: var(--zy-border-width) solid var(--zy-gray-200);
+  border-radius: var(--zy-radius-card);
+}
+
+.block h3 {
+  margin: var(--zy-none);
+  font-size: var(--zy-font-h4);
+  line-height: var(--zy-line-h4);
+}
+
+.block p {
+  margin: var(--zy-none);
+  color: var(--zy-gray-600);
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+}
+
+.icon {
+  color: var(--zy-primary-600);
+}
+
+.request {
+  font-size: var(--zy-font-dense);
+  overflow-wrap: anywhere;
+}

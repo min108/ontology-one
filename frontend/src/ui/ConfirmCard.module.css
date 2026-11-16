@@ -1,0 +1,7 @@
+.important {
+  border-left: var(--zy-space-1) solid var(--zy-warning-500);
+}
+
+.standard {
+  border-left: var(--zy-space-1) solid var(--zy-primary-500);
+}

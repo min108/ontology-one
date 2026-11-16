@@ -1,0 +1,44 @@
+@import url('/fonts/fonts.css');
+@import url('./tokens.css');
+
+.zy-root {
+  color: var(--zy-gray-900);
+  background: var(--zy-gray-50);
+  font-family: var(--zy-font-family);
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+  font-synthesis: none;
+  min-width: 0;
+}
+
+.zy-root :where(button, input, select, textarea):not(:where(.legacy-root, .legacy-root *)) {
+  font-family: inherit;
+}
+
+.zy-root :where(h1, h2, h3, h4):not(:where(.legacy-root, .legacy-root *)) {
+  font-family: var(--zy-font-family);
+  font-weight: var(--zy-weight-heading);
+}
+
+.zy-root
+  :where(a, button, input, select, textarea, [tabindex]):not(
+    :where(.legacy-root, .legacy-root *)
+  ):focus-visible {
+  outline: var(--zy-focus-width) solid var(--zy-primary-500);
+  outline-offset: var(--zy-space-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zy-root *,
+  .zy-root *::before,
+  .zy-root *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media print {
+  .zy-root {
+    background: var(--zy-gray-0);
+  }
+}

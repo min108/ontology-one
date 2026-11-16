@@ -1,0 +1,25 @@
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--zy-space-6);
+  margin: var(--zy-none);
+  padding: var(--zy-space-2) var(--zy-page-padding);
+  background: var(--zy-gray-25);
+  border-bottom: var(--zy-border-width) solid var(--zy-gray-200);
+  font-size: var(--zy-font-dense);
+  line-height: var(--zy-line-dense);
+}
+
+.identity > div {
+  display: flex;
+  gap: var(--zy-space-2);
+}
+
+.identity dt {
+  color: var(--zy-gray-600);
+}
+
+.identity dd {
+  margin: var(--zy-none);
+  overflow-wrap: anywhere;
+}
