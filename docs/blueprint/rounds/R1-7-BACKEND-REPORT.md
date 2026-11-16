@@ -81,3 +81,69 @@ sec_user_prefs为控制库用户偏好，进入完整部署备份/恢复，不�
 身份浏览器发现GET /api/v2/orgs返回500：真实0.7控制目录中HQ的org_id为null，而DTO原先要求string。现明确允许null，未迁移或覆盖任何旧org_id。顺带核实原db.ensure_tenant_schema及真实HQ夹具：业务根ID恒为tenant id（hq），不能使用可空的目录org_id定位。根快照两归属字段均取目标tenant id，符合1359118的entity_json投影语义；目录org_id=None、实体自身org_id='hq'各自原样保留，不修改全局entity_json。
 
 新增4项回归，修复前纯契约两项分别以DTO校验失败和根查询参数None失败；修复后共6项定向通过（24.213秒），包含真实迁移HTTP读取、从dept-01工作区调用HQ改名/归属/事务回滚，以及已有反方向HQ调用dept-01的归属和回滚。API生成物同步，Ruff/生成一致性通过。日志work/hq-null-red.log、work/hq-null-green.log。包内可收集数相应为842（新增70）；完整集成结果仍由root独立核验，不据此追加全量通过声明。
+
+## H.2 最终静态逐项审计（代码 4f29db8）
+
+本附表先只读核对源码与现有测试；发现候选过滤缺少直接反例后，按负责人补充指令新增并单独运行1项真实MySQL测试，未修改运行代码。对照已格式化基线1090384核对计划清单，再以包起点ebc24f86到4f29db8的差异隔离本包变化；不用格式化前行号作定位。除下述新增单例外，证据是现有测试代码的具体断言，不等同于本次重新运行全部测试。
+
+### 计数口径和覆盖限制
+
+R1-PLAN §7.b列出的清单确实是14个文件、20个显式位置：其中19个是Python拒绝/可用性条件，1个是application_options的SQL候选过滤。不能将其描述为20个独立的if拒绝分支。相对R1-7包起点还有R1-3增加的authorize_v2条件1处，以及applications._same、Principal dataclass比较2处间接身份边界，共计23个授权/可用性相关变更位置。载荷恒false、创建/重置置0、0005清值另计，不混入23。
+
+初审时19项有直接的“旧flag允许，其他条件仍拒绝”测试，application_options仅有静态证据。现补MI.test_application_options_keep_flagged_active_local_candidates_and_manager_guards关闭这一缺口：完整真实0.7夹具迁移后，将本机构active builder旧flag置1、同机构另一用户停用，精确断言候选集合仍含builder且不含停用/其他机构账号；真实modeler登录及实际签发/认证的application主体均403。没有mock _manager、require_admin、SQL或数据库。20个位置现均有直接或共用guard反例证据，但不把单个反例说成穷举全部相邻条件。
+
+缩写：`PG`为`tests/identity/test_password_guards.py::PasswordGuardTests`；`MI`为`tests/migrations/test_identity.py`内同名方法。表中PG测试用的主体P显式携带must_change_password=True；MI的live-store测试同样构造flagged主体。
+
+| 计划编号 | 取消条件的位置 | 实际保留的守卫 | 现有测试证据与范围 |
+|---|---|---|---|
+| 01 | security/policy.py::authorize | session身份、旧角色集合、只读原始API限制、路由默认拒绝、动作/字段级角色校验 | PG.test_v1_password_flag_allowed_role_still_checked：旧flag读通过，viewer不在旧角色集合而拒绝；scripts/check_security.py::run_checks保留角色、CSRF、越权与联邦范围检查 |
+| 02 | security/store.py::assert_principal_current | 空主体/身份类型、实时会话与机构有效性、身份字段比较、readonly写拒绝；受控只读任务写拒绝 | MI.test_password_flag_does_not_bypass_live_store_guards：flag写通过，readonly写拒绝，auth_version/tenant/role/duties变更与停用后读写拒绝；tests/test_jobs_mysql.py::test_tenant_bound_jobs_storage_cache_restart_and_revocation保留只读任务写拒绝 |
+| 03 | security/store.py::assert_job_principal_current | session类型、捕获机构、实时会话与账号有效性、身份字段比较、readonly写拒绝 | 同一MI方法直接调用此函数：flag写通过，身份四字段变化分别在读/写模式拒绝，账号停用拒绝；原jobs MySQL用例保留撤权与捕获工作区边界 |
+| 04 | security/store.py::authorized_control_connection | session类型、受控只读任务禁止控制写；锁定actor/session、入口身份比对、提交前账号/会话/机构再验证；credential/revoke/workspace原有窄后置条件 | 同一MI方法：flag事务通过，身份四字段变更及停用拒绝；事务中改duties提交失败且回滚；原jobs MySQL用例直接验证只读任务不能进入此事务。此函数不新增通用role门，业务管理入口原require_admin仍负责该限制 |
+| 05 | security/context.py::readonly_session_execution | Principal类型、session、所属机构、非readonly、guard可调用；has_readonly_session_execution继续比较捕获身份并调用取消guard | PG.test_readonly_execution_flag_allowed_foreign_still_denied、test_readonly_execution_application_still_denied；原jobs MySQL用例guard返回False时仍拒绝 |
+| 06 | security/applications.py::_principal | 应用启用、凭据未撤销/未过期、委托账号启用、机构active、所属机构一致、有效角色、delegate_auth_version一致 | PG.test_application_flag_does_not_override_expiry；tests/test_applications.py::ApplicationsTest.test_credential_and_delegation_fail_closed保留全部8个非flag失败变体 |
+| 07 | security/applications.py::_delegate | 用户存在/启用、同机构、角色白名单 | PG.test_delegate_flag_allowed_inactive_still_denied：flag允许、停用拒绝；另外两个条件以源码差异确认保留，不称本用例已逐个覆盖 |
+| 08 | security/applications.py::_public | 凭据撤销/过期、应用启用、委托启用/同机构/auth_version仍决定usable及invalid_reason | PG.test_application_credential_public_flag_and_auth_version：flag不使usable变假，版本变化使其不可用 |
+| 09 | security/applications.py::application_options | _manager要求session；require_admin经实时身份/写权限再要求admin；SQL仍限定home_tenant_id=当前机构、is_active=1；映射仍published且源enabled | MI.test_application_options_keep_flagged_active_local_candidates_and_manager_guards：旧flag本机构active账号入选、停用/其他机构不入选；真实非管理员与已认证应用主体分别403 |
+| 10 | ai.py::_principal | session与admin/modeler/reviewer集合；assert_execution_principal_current(require_write=False)实时执行身份检查 | PG.test_ai_password_flag_and_application：flag允许、application拒绝 |
+| 11 | ai.py::require_admin | assert_storage_write写权限、session、admin | PG.test_ai_admin_role_remains_required：flag admin通过、reviewer拒绝；测试替身替代storage guard，不能据此声称它执行了真实存储写检查 |
+| 12 | demo.py::_principal | session；write时admin、非readonly、当前=所属机构；实时主体检查 | PG.test_demo_password_flag_and_cross_tenant_write：flag允许、跨机构写拒绝 |
+| 13 | mcp_tools.py::_SessionPolicy._current | 当前=捕获主体、session、非readonly、实时主体检查 | PG.test_mcp_password_flag_and_readonly；test_legacy_flag_survives_frames_without_changing_readonly_identity另覆盖auth_version/tenant/role/duties变化拒绝 |
+| 14 | sources.py::_role | 实时主体、调用方指定角色集合、非readonly | PG.test_sources_password_flag_and_role：flag允许、reviewer不在指定admin集合而拒绝 |
+| 15 | integrations.py::invoke_as_session | authenticate_session无效401；use_context后调用原_invoke工具策略 | PG.test_integrations_password_flag_and_invalid_session：flag允许、无效会话拒绝；_invoke为替身，本测试不冒称覆盖工具内部全部策略 |
+| 16 | skill_harness.py::_principal | session、admin/build各自角色、写路径非readonly；实时主体require_write=admin或build | PG.test_harness_password_flag_and_readonly_write：flag build允许、readonly build拒绝 |
+| 17 | harness_runs.py::RunStore.submit | store关闭、session类型、实时主体、总数/本人运行上限、同一活动任务不重放；后续运行所有权/捕获范围复核 | PG.test_harness_submission_old_flag_reaches_live_guard：flag到达真实身份guard调用点，application先拒绝；guard替身主动抛错，不宣称已完成真实任务。原tests/test_harness_runs.py的test_every_detail_and_cancel_are_owner_and_tenant_bound、test_duplicate_active_work_is_not_replayed、test_captured_scope_downgrade_discards_a_prepared_result保留 |
+| 18 | agent_tasks.py::current | 当前=所属机构、session、assert_execution_principal_current(require_write=False) | PG.test_agent_tasks_password_flag_and_cross_tenant：flag允许、跨机构拒绝 |
+| 19 | skills.py::_role | 实时主体、session、角色集合、非readonly | PG.test_skills_password_flag_and_readonly；原tests/test_skills.py::Governance.test_application_readonly_and_reviewer_write_denied仍逐个验证application/readonly/reviewer写拒绝 |
+| 20 | agent_tools.py::SessionToolBridge._current | check_cancel开启时cancelled或stopping拒绝、session类型、实时主体 | PG.test_agent_tool_password_flag_and_identity、test_agent_tool_cancel_still_denies：旧flag允许、application与cancelled分别拒绝；stopping条件以差异确认保留 |
+
+额外三处：
+
+| 位置 | 改动与保留边界 | 直接证据 |
+|---|---|---|
+| security/policy.py::authorize_v2 | 删除flag条件，明确session身份；保留角色集合、路由默认拒绝与permission keys包含检查 | PG.test_v2_password_flag_allowed_application_still_denied；tests/identity/test_contracts.py::test_v2_old_password_flag_does_not_block |
+| security/applications.py::_same | 仅从比较字段列表移除旧flag；identity_kind、application_id、credential_id、permission_version、user/username、home/tenant/db、role/auth_version、session_id、is_superadmin、readonly全保留 | PG.test_application_flag_does_not_override_expiry验证仅flag差异允许、permission_version差异拒绝；原ApplicationsTest.test_live_version_comparison_and_scope_permissions保留版本/机构拒绝 |
+| security/context.py::Principal.must_change_password | 字段和值保留；compare=False使JSON往返旧快照不因该位不同失配；其他dataclass字段仍参与比较 | PG.test_legacy_flag_survives_frames_without_changing_readonly_identity同时测readonly上下文和MCP捕获主体；test_queued_legacy_flag_frame_reaches_live_guard确认队列保留旧值并经过live guard、错误tenant拒绝。后者用guard替身，不称真实队列全链路验收 |
+
+载荷/写入变更也已核对：store._principal、_joined_principal、_user_public、session_payload返回兼容false；bootstrap_superadmin/create_user/update_user重置路径显式0；control0005仅清旧值。MI.test_old_password_flag_is_cleared、test_new_org_account_can_login_without_password_gate、test_password_advice_follows_reset_and_self_change覆盖迁移、创建及重置后的状态。密码强度、登录限速、CSRF、主动改密撤销旧会话未取消；scripts/check_security.py::run_checks仍验证旧cookie401。
+
+### 所有旧断言改写的精确清单
+
+以下按ebc24f86..4f29db8的tests/scripts差异列出；新文件中的新断言不算旧断言改写。计划列明的0.7语义变化只有前五行；Windows代码只做静态核对，未在Linux冒称原生执行。
+
+| 文件 / 精确用例或作用域 | 改写 | 分类 |
+|---|---|---|
+| scripts/check_security.py::run_checks初始admin登录段 | user.must_change_password真→假；GET /entities 403→200；报告标签forced change→optional change；紧随其后的主动改密、cookie轮换和旧cookie401保持 | H.2-1 |
+| tests/test_skills.py::Governance.test_application_readonly_and_reviewer_write_denied | 只把旧flag变体从403循环移为成功断言；application、readonly、reviewer写三个失败变体保留 | H.2-1 |
+| tests/test_applications.py::ApplicationsTest.test_credential_and_delegation_fail_closed | 只把must_change_password=1从无效cases移为非None断言；其余8个变体及非法token不查库断言保留 | H.2-1 |
+| tests/windows_portable_smoke.py::Acceptance.account_and_crud | 顶层flag真→假；错误标识INITIAL_PASSWORD_CHANGE_NOT_REQUIRED→INITIAL_PASSWORD_STILL_BLOCKS；其他HQ身份与CRUD检查保持 | H.2-1 |
+| scripts/check_security.py::run_checks.federation_scope | 固定总数51/类别数量1、1、12、37→非空、ID唯一、HQ唯一、类别白名单、场景所需5个机构存在；报告标签相应更新；其后的搜索结果、草稿/已发布可见性和workspace拒绝均不变 | H.2-3 |
+| tests/migrations/test_integration.py::MigrationMySQL.test_baseline_preserves_every_old_row_and_column | 完整当前迁移仍执行。sec_users/sec_tenants因新增列改为所有旧列逐行投影比较，只有sec_users旧flag归一0；另外精确断言新列集合。其他表hash及tenant entities12/relations7均保留 | R1迁移结构演进；其中flag数据期望是H.2-1 |
+| tests/migrations/test_integration.py::MigrationMySQL.test_fresh_install_control_and_lazy_tenant | current 1→显式5，完整初始化/运行门路径保留 | R1迁移登记演进，非H.2 |
+| tests/migrations/test_framework.py::Discovery.test_baseline_sequences_have_tests | control [1]→明确[1,2,3,4,5]；tenant仍[1] | R1迁移登记演进，非H.2 |
+| tests/capabilities/test_contracts.py::ContractTests.test_all_five_contracts_have_valid_models | 旧ID保留；精确集合5→9；前三个写能力effect/confirm须state_change/L3，其他须read/L0；additionalProperties/tool_name断言保持 | R1能力登记演进，非H.2 |
+| tests/capabilities/test_contracts.py::ContractTests.test_every_role_matches_declared_permissions | 只有新写能力调用参数换为合法最小DTO，继续进入原权限/handler断言；旧5能力仍{}，异常期望表达式不改 | R1新增能力输入装配，非H.2 |
+
+纯schema初始化装配更新另列，不是断言改写、不是H.2：`tests/test_jobs_mysql.py::JobsMySQLTests.test_tenant_bound_jobs_storage_cache_restart_and_revocation`内部异步test、`tests/test_demo_mysql.py::DemoMySQL.test_fixtures_are_drafts_idempotent_tenant_local_and_safely_archived`、`tests/test_federation_mysql.py::FederationMySQLTests.test_real_sessions_visibility_citations_links_and_revocation`三处仅把store.initialize_control换为统一run_migrations。原ID、业务场景与断言保留。真实1359118生成器、历史fixture、0001迁移与v1恢复定义没有改动。
+
+本附表补齐用例的实际运行：仅新增application_options单例，1/1通过，5.189秒，独立随机MySQL命名空间按tearDown清理；日志work/h2-options.log。Ruff和该文件format检查通过，git diff --check通过。没有重跑全后端、SDK或8脚本；此小提交仅文档与新增测试，不改运行代码或生成API。包内用例数因此从842增加到843（相对起点新增71），不据此声称843项已完整运行。

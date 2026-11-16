@@ -104,6 +104,42 @@ class IdentityMigration(unittest.TestCase):
         self.assertFalse(payload["must_change_password"])
         self.assertFalse(payload["user"]["must_change_password"])
 
+    def test_application_options_keep_flagged_active_local_candidates_and_manager_guards(self) -> None:
+        from backend.security import applications
+
+        self.prepare()
+        manager, _ = self.login("fixture.admin")
+        with store.control_connection() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE sec_users SET must_change_password=1 WHERE username='fixture.builder'")
+            cur.execute("UPDATE sec_users SET is_active=0 WHERE username='fixture.change-password'")
+            cur.execute("SELECT username,home_tenant_id,is_active,must_change_password FROM sec_users")
+            rows = {row["username"]: row for row in cur.fetchall()}
+        self.assertEqual(rows["fixture.builder"]["must_change_password"], 1)
+        self.assertEqual(rows["fixture.builder"]["home_tenant_id"], manager.tenant_id)
+        self.assertTrue(rows["fixture.builder"]["is_active"])
+        self.assertFalse(rows["fixture.change-password"]["is_active"])
+        self.assertNotEqual(rows["fixture.superadmin"]["home_tenant_id"], manager.tenant_id)
+        builder, _ = self.login("fixture.builder")
+        with use_context(manager):
+            options = applications.application_options()
+            self.assertEqual(
+                {user["username"] for user in options["users"]},
+                {"fixture.admin", "fixture.builder", "fixture.reviewer"},
+            )
+            issued = applications.create_application(
+                applications.ApplicationCreate(
+                    name="Options guard fixture", delegate_user_id=builder.user_id, tool_scopes=["ontology_query"]
+                )
+            )
+        application = applications.authenticate_application(issued["credential"]["token"], "options-test")
+        self.assertIsNotNone(application)
+        self.assertEqual(application.identity_kind, "application")
+        for denied in (builder, application):
+            with self.subTest(identity=denied.identity_kind), use_context(denied):
+                with self.assertRaises(HTTPException) as error:
+                    applications.application_options()
+                self.assertEqual(error.exception.status_code, 403)
+
     def test_fresh_and_upgraded_control_schema_match(self) -> None:
         names = self.prepare()
         current = backup.snapshot_database(names["control"])
