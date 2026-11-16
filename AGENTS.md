@@ -2,7 +2,7 @@
 
 ## 1 项目与轮次
 
-知元（英文名 Ontology One）是集团本体管理平台。当前进行 R1（目标 1.0.0），实际进度见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
+知元（英文名 Ontology One）是集团本体管理平台。R1（1.0.0）已完成实施方自验，待独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
 ## 2 硬规则摘要
 
