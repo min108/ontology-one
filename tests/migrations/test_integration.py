@@ -64,13 +64,41 @@ class MigrationMySQL(unittest.TestCase):
 
     def test_baseline_preserves_every_old_row_and_column(self) -> None:
         databases = self.fixture()
-        before = self.hashes(databases.values())
+        originals = {name: backup.snapshot_database(name) for name in databases.values()}
+        before = {name: value["hashes"] for name, value in originals.items()}
         migrations.run_migrations()
         for name in databases.values():
             after = backup.snapshot_database(name)
             self.assertIn("schema_migrations", after["tables"])
             for table, digest in before[name].items():
-                self.assertEqual(after["hashes"][table], digest, (name, table))
+                if name == databases["control"] and table in {"sec_users", "sec_tenants"}:
+                    old_rows = originals[name]["tables"][table]
+                    expected = [
+                        {**row, **({"must_change_password": 0} if table == "sec_users" else {})} for row in old_rows
+                    ]
+                    projected = [
+                        {key: row[key] for key in originals[name]["columns"][table]} for row in after["tables"][table]
+                    ]
+                    self.assertEqual(sorted(expected, key=backup.canonical), sorted(projected, key=backup.canonical))
+                    new_columns = set(after["columns"][table]) - set(originals[name]["columns"][table])
+                    self.assertEqual(
+                        new_columns,
+                        {"duties"}
+                        if table == "sec_users"
+                        else {
+                            "parent_id",
+                            "short_name",
+                            "org_code",
+                            "sort_order",
+                            "level",
+                            "is_demo",
+                            "mirror_of",
+                            "disabled_at",
+                            "disabled_reason",
+                        },
+                    )
+                else:
+                    self.assertEqual(after["hashes"][table], digest, (name, table))
             if name != databases["control"]:
                 self.assertEqual(len(after["columns"]["entities"]), 12)
                 self.assertEqual(len(after["columns"]["relations"]), 7)
@@ -174,7 +202,7 @@ class MigrationMySQL(unittest.TestCase):
             migrations.run_migrations()
         migrations.provision_tenant("hq")
         migrations.validate_runtime()
-        self.assertEqual(migrations.migration_status("control", store._config()["database"])["current"], 1)
+        self.assertEqual(migrations.migration_status("control", store._config()["database"])["current"], 5)
 
     def test_interrupted_fresh_install_resumes_offline(self) -> None:
         with (

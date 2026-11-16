@@ -186,13 +186,13 @@ def migrate_database(
             conn.execute("SELECT RELEASE_LOCK(?)", (lock,))
 
 
-def provision_tenant(tenant_id: str) -> None:
+def provision_tenant(tenant_id: str, *, pending: bool = False) -> None:
     """Only a directory-owned, wholly empty database can be created online."""
     from backend.security.store import get_tenant
 
     require_healthy_state()
     tenant = get_tenant(tenant_id)
-    if not tenant or tenant["status"] != "active":
+    if not tenant or tenant["status"] not in ({"provisioning"} if pending else {"active"}):
         raise MigrationError("机构不存在或已停用。")
     migrate_database("tenant", tenant["db_name"], tenant_id=tenant_id, fresh_only=True)
 
@@ -206,6 +206,8 @@ def validate_runtime() -> None:
     if migration_status("control", control)["pending"]:
         raise MigrationError("账户目录需要升级，请先运行迁移工具。")
     for tenant in store.list_tenants():
+        if tenant["status"] in {"provisioning", "provision_failed"} and tenant["id"].startswith("org-"):
+            continue
         status = migration_status("tenant", tenant["db_name"])
         if status["tables"] and status["pending"]:
             raise MigrationError("机构工作区需要升级，请先运行迁移工具。")

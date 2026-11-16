@@ -23,8 +23,8 @@
 ## 3 代码地图
 
 - `backend/main.py`：薄 API 装配；原内联路由已原样移到 api/v1/core.py。v2 入口在 api/v2，业务能力在 capabilities，配置/错误/编号/日志在 core。
-- `backend/security/`：store、policy、middleware、context、applications，身份、目录、会话、审计与应用授权。
-- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control` 与 `migrations/tenant` 当前0001，恢复定义在 migrations/restore。
+- `backend/security/`：store、policy、middleware、context、applications、directory、preferences，身份、目录、会话、审计与应用授权。
+- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control` 当前0001–0005，机构库仍0001；恢复定义v1–v4按连续可信迁移历史选择，未知版本拒绝。
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。

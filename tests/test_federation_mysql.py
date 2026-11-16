@@ -34,7 +34,7 @@ class FederationMySQLTests(unittest.TestCase):
         database_names = {base + "_control"}
         clients = []
         try:
-            store.initialize_control()
+            __import__("backend.infra.migrations", fromlist=["run_migrations"]).run_migrations()
             database_names.update(tenant["db_name"] for tenant in store.list_tenants())
             federation.initialize_federation()
             initial = "Fixture1-" + secrets.token_hex(12)

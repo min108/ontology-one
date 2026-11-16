@@ -81,12 +81,12 @@ class ApplicationsTest(unittest.TestCase):
         self.assertEqual(apps._principal(value, "").session_id, "")
 
     def test_credential_and_delegation_fail_closed(self):
+        self.assertIsNotNone(apps._principal({**row(), "must_change_password": 1}, "request"))
         cases = (
             {"enabled": 0},
             {"revoked_at": time.time()},
             {"expires_at": time.time() - 1},
             {"is_active": 0},
-            {"must_change_password": 1},
             {"tenant_status": "disabled"},
             {"home_tenant_id": "hq"},
             {"auth_version": 4},

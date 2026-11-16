@@ -58,6 +58,9 @@ class Organization(StrictModel):
     id: str
     name: str
     category: str
+    parent_id: str | None = None
+    sort_order: int = 0
+    level: int = 0
 
 
 class ReadinessCheck(StrictModel):
@@ -130,7 +133,11 @@ def kinds(ctx: CapabilityContext, body: EmptyInput) -> ListResponse[Kind]:
 @read_capability("org.tree", "机构树", EmptyInput, ListResponse[Organization])
 def organization_tree(ctx: CapabilityContext, body: EmptyInput) -> ListResponse[Organization]:
     rows = store.list_tenants()
-    items = [Organization(id=row["id"], name=row["name"], category=row["category"]) for row in rows]
+    items = [
+        Organization(**{key: row[key] for key in Organization.model_fields if key in row})
+        for row in rows
+        if row.get("status", "active") == "active"
+    ]
     return ListResponse[Organization](items=items, total=len(items))
 
 

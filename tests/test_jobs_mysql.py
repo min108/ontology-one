@@ -116,7 +116,7 @@ class JobsMySQLTests(unittest.TestCase):
 
         async def test():
             nonlocal admin
-            store.initialize_control()
+            __import__("backend.infra.migrations", fromlist=["run_migrations"]).run_migrations()
             store.bootstrap_superadmin("job-admin", password)
             token = store.login("job-admin", password, "127.0.0.1", "queue-test")
             admin = store.authenticate_session(token, "test")[0]

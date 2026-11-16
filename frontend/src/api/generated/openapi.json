@@ -1,6 +1,218 @@
 {
   "components": {
     "schemas": {
+      "AuditInput": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "page": {
+            "default": 1,
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 30,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "title": "AuditInput",
+        "type": "object"
+      },
+      "AuditOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 30,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AuditOutput",
+        "type": "object"
+      },
+      "AuditRow": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Username"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Details",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "resource": {
+            "title": "Resource",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "actor_id",
+          "actor_username",
+          "tenant_id",
+          "action",
+          "resource",
+          "outcome",
+          "request_id",
+          "details"
+        ],
+        "title": "AuditRow",
+        "type": "object"
+      },
       "EmptyInput": {
         "additionalProperties": false,
         "properties": {},
@@ -56,6 +268,152 @@
           "error"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "Grant": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "enum": [
+              "read_published",
+              "read_private",
+              "write"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "tenant_id",
+          "access",
+          "reason",
+          "created_by",
+          "created_at",
+          "username",
+          "tenant_name"
+        ],
+        "title": "Grant",
+        "type": "object"
+      },
+      "GrantCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "enum": [
+              "read_published",
+              "read_private",
+              "write"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Reason",
+            "type": "string"
+          },
+          "tenant_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "tenant_id",
+          "access",
+          "reason"
+        ],
+        "title": "GrantCreate",
+        "type": "object"
+      },
+      "GrantManageInput": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "set",
+              "revoke"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "grant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GrantCreate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grant_id": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Grant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "GrantManageInput",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
         "type": "object"
       },
       "IdentityOutput": {
@@ -120,6 +478,42 @@
         "title": "Kind",
         "type": "object"
       },
+      "ListResponse_Grant_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Grant"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 30,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ListResponse[Grant]",
+        "type": "object"
+      },
       "ListResponse_Kind_": {
         "additionalProperties": false,
         "properties": {
@@ -156,12 +550,12 @@
         "title": "ListResponse[Kind]",
         "type": "object"
       },
-      "ListResponse_Organization_": {
+      "ListResponse_User_": {
         "additionalProperties": false,
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/Organization"
+              "$ref": "#/components/schemas/User"
             },
             "title": "Items",
             "type": "array"
@@ -189,7 +583,27 @@
           "items",
           "total"
         ],
-        "title": "ListResponse[Organization]",
+        "title": "ListResponse[User]",
+        "type": "object"
+      },
+      "MutationOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ok": {
+            "const": true,
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "MutationOutput",
         "type": "object"
       },
       "NextAction": {
@@ -211,28 +625,152 @@
         "title": "NextAction",
         "type": "object"
       },
-      "Organization": {
+      "OrgManageInput": {
         "additionalProperties": false,
         "properties": {
-          "category": {
-            "title": "Category",
+          "action": {
+            "enum": [
+              "create",
+              "update",
+              "disable",
+              "enable"
+            ],
+            "title": "Action",
             "type": "string"
           },
-          "id": {
-            "title": "Id",
-            "type": "string"
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "headquarters",
+                  "resident",
+                  "headquarters_department",
+                  "subsidiary"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
           },
           "name": {
-            "title": "Name",
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "org_code": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Code"
+          },
+          "org_id": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Org Id",
             "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "short_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Name"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
           }
         },
         "required": [
-          "id",
-          "name",
-          "category"
+          "action"
         ],
-        "title": "Organization",
+        "title": "OrgManageInput",
+        "type": "object"
+      },
+      "PreferenceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "PreferenceInput",
+        "type": "object"
+      },
+      "PreferencesOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "preferences": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Preferences",
+            "type": "object"
+          }
+        },
+        "required": [
+          "preferences"
+        ],
+        "title": "PreferencesOutput",
         "type": "object"
       },
       "ReadinessCheck": {
@@ -337,6 +875,505 @@
         ],
         "title": "SearchOutput",
         "type": "object"
+      },
+      "User": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_version": {
+            "title": "Auth Version",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "home_tenant_id": {
+            "title": "Home Tenant Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_superadmin": {
+            "title": "Is Superadmin",
+            "type": "boolean"
+          },
+          "must_change_password": {
+            "const": false,
+            "default": false,
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "modeler",
+              "reviewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "home_tenant_id",
+          "role",
+          "is_active",
+          "is_superadmin",
+          "auth_version",
+          "tenant_name"
+        ],
+        "title": "User",
+        "type": "object"
+      },
+      "UserCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "must_change_password": {
+            "default": true,
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "modeler",
+              "reviewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "tenant_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 80,
+            "minLength": 3,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "tenant_id",
+          "role",
+          "password"
+        ],
+        "title": "UserCreate",
+        "type": "object"
+      },
+      "UserManageInput": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "create",
+              "update"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "changes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "create": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserCreate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_id": {
+            "default": "",
+            "maxLength": 64,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "UserManageInput",
+        "type": "object"
+      },
+      "UserUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin",
+                  "modeler",
+                  "reviewer"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "title": "UserUpdate",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "backend__api__v2__models__ListResponse_Organization___1": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/backend__capabilities__read__Organization"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 30,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ListResponse[Organization]",
+        "type": "object"
+      },
+      "backend__api__v2__models__ListResponse_Organization___2": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/backend__api__v2__orgs__Organization"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 30,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ListResponse[Organization]",
+        "type": "object"
+      },
+      "backend__api__v2__orgs__Organization": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "headquarters",
+              "resident",
+              "headquarters_department",
+              "subsidiary"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "disabled_reason": {
+            "default": "",
+            "title": "Disabled Reason",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_demo": {
+            "default": false,
+            "title": "Is Demo",
+            "type": "boolean"
+          },
+          "level": {
+            "default": 0,
+            "title": "Level",
+            "type": "integer"
+          },
+          "mirror_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mirror Of"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "org_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Code"
+          },
+          "org_id": {
+            "title": "Org Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "short_name": {
+            "default": "",
+            "title": "Short Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "default": 0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "org_id",
+          "status"
+        ],
+        "title": "Organization",
+        "type": "object"
+      },
+      "backend__capabilities__read__Organization": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "level": {
+            "default": 0,
+            "title": "Level",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sort_order": {
+            "default": 0,
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category"
+        ],
+        "title": "Organization",
+        "type": "object"
       }
     }
   },
@@ -346,6 +1383,162 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v2/audit": {
+      "get": {
+        "operationId": "audit_api_v2_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Audit"
+      }
+    },
     "/api/v2/capabilities/{id}:invoke": {
       "post": {
         "operationId": "invoke_api_v2_capabilities__id__invoke_post",
@@ -370,6 +1563,18 @@
                   },
                   {
                     "$ref": "#/components/schemas/SearchInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OrgManageInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UserManageInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GrantManageInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AuditInput"
                   }
                 ],
                 "title": "Body"
@@ -391,13 +1596,19 @@
                       "$ref": "#/components/schemas/ListResponse_Kind_"
                     },
                     {
-                      "$ref": "#/components/schemas/ListResponse_Organization_"
+                      "$ref": "#/components/schemas/backend__api__v2__models__ListResponse_Organization___1"
                     },
                     {
                       "$ref": "#/components/schemas/ReadinessOutput"
                     },
                     {
                       "$ref": "#/components/schemas/SearchOutput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MutationOutput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AuditOutput"
                     }
                   ],
                   "title": "Response Invoke Api V2 Capabilities  Id  Invoke Post"
@@ -478,6 +1689,127 @@
           }
         },
         "summary": "Invoke"
+      }
+    },
+    "/api/v2/grants": {
+      "get": {
+        "operationId": "grants_api_v2_grants_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Grant_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Grants"
+      }
+    },
+    "/api/v2/orgs": {
+      "get": {
+        "operationId": "orgs_api_v2_orgs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__api__v2__models__ListResponse_Organization___2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Orgs"
+      }
+    },
+    "/api/v2/prefs": {
+      "get": {
+        "operationId": "preferences_api_v2_prefs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Preferences"
+      }
+    },
+    "/api/v2/prefs/{key}": {
+      "put": {
+        "operationId": "put_preference_api_v2_prefs__key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferenceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Preference"
+      }
+    },
+    "/api/v2/users": {
+      "get": {
+        "operationId": "users_api_v2_users_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_User_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Users"
       }
     }
   }

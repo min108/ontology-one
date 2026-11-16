@@ -14,6 +14,7 @@ from backend.security.context import require_context
 from backend.security.permissions import permissions_for
 
 importlib.import_module("backend.capabilities.read")
+importlib.import_module("backend.capabilities.identity")
 router = APIRouter(prefix="/api/v2")
 CapabilityInput = reduce(or_, (item.input for item in registry.entries.values()))
 CapabilityOutput = reduce(or_, (item.output for item in registry.entries.values()))
@@ -27,3 +28,7 @@ def invoke(id: str, body: CapabilityInput, request: Request) -> BaseModel:
         person, permissions=frozenset(permissions_for(person)), idempotency_key=request.headers.get("Idempotency-Key")
     )
     return registry.invoke(id, ctx, body.model_dump(exclude_unset=True))
+
+
+for module in ("orgs", "users", "grants", "audit", "prefs"):
+    router.include_router(importlib.import_module("backend.api.v2." + module).router)

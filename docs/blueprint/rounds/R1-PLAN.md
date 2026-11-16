@@ -836,3 +836,7 @@ npm --prefix frontend ci && npm --prefix frontend run build
 | SET-08 | 恢复说明（恢复只能用命令行离线执行） | `/admin/backup`（P-08） |
 | SET-09 | Windows 便携运行说明与“查看平台发行包”链接 | `/admin/backup`（P-17） |
 | SET-10 | 导出程序源码包（仅总部超管） | `/admin/backup` |
+
+### R1-7 后端分包交接
+
+以 ebc24f86 为独立起点，新增四个身份能力、control0002–0005、分版本可信恢复与目录生命周期。接口、测试与H.2逐条断言清单见 R1-7-BACKEND-REPORT.md；完整结果在分包结束时补录，前端及主干集成另验收。

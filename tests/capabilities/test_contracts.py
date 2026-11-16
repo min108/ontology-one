@@ -11,13 +11,25 @@ from tests.security.test_permissions import principal
 class ContractTests(unittest.TestCase):
     def test_all_five_contracts_have_valid_models(self) -> None:
         self.assertEqual(
-            set(registry.entries), {"session.whoami", "meta.kinds", "org.tree", "agent.readiness", "semantic.search"}
+            set(registry.entries),
+            {
+                "session.whoami",
+                "meta.kinds",
+                "org.tree",
+                "agent.readiness",
+                "semantic.search",
+                "org.manage",
+                "user.manage",
+                "grant.manage",
+                "audit.query",
+            },
         )
         for item in registry.entries.values():
             for model in (item.input, item.output):
                 self.assertEqual(model.model_json_schema()["additionalProperties"], False)
-            self.assertEqual(item.effect, "read")
-            self.assertEqual(item.confirm, "L0")
+            mutation = item.id in {"org.manage", "user.manage", "grant.manage"}
+            self.assertEqual(item.effect, "state_change" if mutation else "read")
+            self.assertEqual(item.confirm, "L3" if mutation else "L0")
             self.assertEqual(item.tool_name, item.id.replace(".", "_"))
 
     def test_every_role_matches_declared_permissions(self) -> None:
@@ -36,7 +48,19 @@ class ContractTests(unittest.TestCase):
                         RuntimeError if role != "unknown" and set(item.permissions) <= ctx.permissions else ApiError
                     )
                     with self.assertRaises(expected):
-                        registry.invoke(item.id, ctx, {})
+                        registry.invoke(
+                            item.id,
+                            ctx,
+                            {
+                                "user.manage": {
+                                    "action": "update",
+                                    "user_id": "target",
+                                    "changes": {"display_name": "New"},
+                                },
+                                "org.manage": {"action": "disable", "org_id": "sub-01"},
+                                "grant.manage": {"action": "revoke", "grant_id": "grant"},
+                            }.get(item.id, {}),
+                        )
 
     def test_kind_vocabulary_has_sixteen_entries(self) -> None:
         from backend.capabilities.read import KINDS

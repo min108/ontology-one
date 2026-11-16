@@ -40,11 +40,7 @@ def _decode(value):
 
 def _principal(*, write=False):
     p = require_context()
-    if (
-        p.identity_kind != "session"
-        or p.must_change_password
-        or (write and (p.role != "admin" or p.readonly or p.tenant_id != p.home_tenant_id))
-    ):
+    if p.identity_kind != "session" or (write and (p.role != "admin" or p.readonly or p.tenant_id != p.home_tenant_id)):
         raise HTTPException(403, "请由管理员切回所属机构管理演示资料。")
     return assert_principal_current(p, require_write=write)
 

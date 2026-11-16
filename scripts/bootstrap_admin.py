@@ -16,4 +16,4 @@ if __name__ == "__main__":
         raise SystemExit("两次密码不一致。")
     run_migrations()
     ident = bootstrap_superadmin(args.username, password)
-    print("初始化完成。已存在超管时不会覆盖账户；首次登录须修改密码。账户标识：" + str(ident))
+    print("初始化完成。已存在超管时不会覆盖账户；可在账号安全中主动修改初始密码。账户标识：" + str(ident))

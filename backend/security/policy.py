@@ -239,7 +239,15 @@ _EVIDENCE_REVIEW = re.compile(r"^/api/special-projects/[^/]+/evidence(?:/[^/]+)?
 
 
 # Empty permission tuples mean authenticated use; per-capability keys are checked by the gateway.
-V2_RULES = (("POST", "/api/v2/capabilities/{id}:invoke", ()),)
+V2_RULES = (
+    ("POST", "/api/v2/capabilities/{id}:invoke", ()),
+    ("GET", "/api/v2/users", ("admin.users",)),
+    ("GET", "/api/v2/orgs", ("admin.users",)),
+    ("GET", "/api/v2/grants", ("admin.org",)),
+    ("GET", "/api/v2/audit", ("audit.read",)),
+    ("GET", "/api/v2/prefs", ()),
+    ("PUT", "/api/v2/prefs/{key}", ()),
+)
 _V2 = tuple((method, _pattern(path), permissions) for method, path, permissions in V2_RULES)
 
 
@@ -247,7 +255,7 @@ def authorize_v2(principal, method: str, path: str) -> Decision:
     from .permissions import ROLES as V2_ROLES
     from .permissions import permissions_for
 
-    if principal.role not in V2_ROLES or principal.must_change_password:
+    if principal.role not in V2_ROLES or principal.identity_kind != "session":
         return Decision(False)
     rule = next((rule for rule in _V2 if rule[0] == method and rule[1].fullmatch(path)), None)
     if rule is None:
@@ -287,8 +295,6 @@ def authorize(principal, method: str, path: str, body: Mapping | None = None) ->
         return Decision(False, 403, "应用管理需要机构管理员权限。")
     if principal.role not in ROLES:
         return Decision(False)
-    if getattr(principal, "must_change_password", False) and not path.startswith("/api/auth/"):
-        return Decision(False, 403, "请先修改初始密码。")
     if is_control_path(path):
         return Decision(True)
     # Cross-tenant read grants are consumed only by dedicated federation routes.

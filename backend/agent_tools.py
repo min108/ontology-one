@@ -172,7 +172,7 @@ class SessionToolBridge:
     def _current(self, *, check_cancel=True):
         if check_cancel and (self.cancelled.is_set() or self.stopping.is_set()):
             raise HTTPException(409, "运行已取消。")
-        if self.principal.identity_kind != "session" or self.principal.must_change_password:
+        if self.principal.identity_kind != "session":
             raise HTTPException(403, "当前会话不能访问智能体工具。")
         return assert_principal_current(self.principal)
 

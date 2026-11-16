@@ -135,4 +135,6 @@ class Discovery(unittest.TestCase):
 
     def test_baseline_sequences_have_tests(self) -> None:
         for kind in ("control", "tenant"):
-            self.assertEqual([m.version for m in migrations.discover(kind)], [1])
+            self.assertEqual(
+                [m.version for m in migrations.discover(kind)], [1, 2, 3, 4, 5] if kind == "control" else [1]
+            )

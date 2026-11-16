@@ -30,7 +30,7 @@ class DemoMySQL(unittest.TestCase):
         created = []
         password = "DemoFixture9-" + secrets.token_hex(16)
         try:
-            store.initialize_control()
+            __import__("backend.infra.migrations", fromlist=["run_migrations"]).run_migrations()
             store.bootstrap_superadmin("demo-owner", password)
             token = store.login("demo-owner", password, "127.0.0.1", "demo-test")
             owner = store.authenticate_session(token, "test")[0]

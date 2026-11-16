@@ -95,12 +95,7 @@ def _fail(code, message, status=422):
 
 def _role(roles=ROLES):
     principal = assert_principal_current(require_context())
-    if (
-        principal.identity_kind != "session"
-        or principal.role not in roles
-        or principal.readonly
-        or principal.must_change_password
-    ):
+    if principal.identity_kind != "session" or principal.role not in roles or principal.readonly:
         _fail("skill_forbidden", "当前账号无权执行此技能开发操作。", 403)
     return principal
 
