@@ -1,8 +1,9 @@
-import { lazy, StrictMode, Suspense, type ReactNode } from 'react';
+import { lazy, StrictMode, Suspense, useContext, type ReactNode } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, Route, Routes, UNSAFE_LocationContext, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Graph from '@legacy/pages/Graph';
+import InstanceGraph from '@legacy/pages/InstanceGraph';
 import { setWorkspaceTransition } from '../state/workspace-guard';
 
 type Viewport = { x: number; y: number; zoom: number };
@@ -115,6 +116,47 @@ describe.each([false, true])('graph viewport ownership (instances: %s)', (instan
       expect(window.location.pathname + window.location.search).toBe(target);
     },
   );
+  it('retains its original route ownership when Location updates before the route match', async () => {
+    const initial = instances ? '/graph?view=instances&node=data' : '/graph';
+    const target = instances ? '/build?view=instances&node=data' : '/build';
+    const Page = instances ? InstanceGraph : Graph;
+    function RetainedRoute() {
+      const currentLocation = useContext(UNSAFE_LocationContext);
+      // Reproduce the transition boundary: the old route match still owns relative
+      // navigation while its retained child observes the destination Location.
+      return (
+        <Routes location={initial}>
+          <Route
+            path="/graph"
+            element={
+              <UNSAFE_LocationContext.Provider value={currentLocation}>
+                <output data-testid="observed-path">{currentLocation.location.pathname}</output>
+                <Page />
+              </UNSAFE_LocationContext.Provider>
+            }
+          />
+        </Routes>
+      );
+    }
+    window.history.replaceState(null, '', initial);
+    render(
+      <StrictMode>
+        <BrowserRouter>
+          <Link to={target}>Move location</Link>
+          <RetainedRoute />
+        </BrowserRouter>
+      </StrictMode>,
+    );
+    const previousCanvas = await screen.findByTestId('flow');
+    fireEvent.click(screen.getByText('Move location'));
+    expect(screen.getByTestId('observed-path')).toHaveTextContent('/build');
+    expect(screen.getByTestId('flow')).toBe(previousCanvas);
+    expect(previousCanvas).toBeVisible();
+    // Use the callback from the retained component's NEW render, not only the
+    // closure captured before navigation: that is the browser regression.
+    act(() => flow.onMoveEnd!(null, viewport));
+    expect(window.location.pathname + window.location.search).toBe(target);
+  });
   it('does not save after the workspace is leaving even before unmount', async () => {
     const complete = await openGraph(instances);
     const target = window.location.pathname + window.location.search;
