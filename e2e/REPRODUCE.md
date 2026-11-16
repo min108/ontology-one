@@ -1,0 +1,147 @@
+# R1 final browser, visual and offline evidence
+
+These commands describe the CI procedure. A command being documented or a report being
+packaged does **not** mean it passed. Inspect `runner.json`, `results.json`,
+`backend-results.json`, `offline-result.json`, and the matching source SHA. Baseline
+capture is explicitly not final acceptance.
+
+## Environment and isolation
+
+Use Python 3.12, Node 22, the committed frontend lockfile and Playwright 1.65.1.
+CI installs its Chromium 159.0.8154.6 (v1255) with system dependencies on
+`ubuntu-24.04`. Install local Noto fonts from the application's committed assets.
+`MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD` are connection credentials
+only; the runner generates a fresh random namespace, verifies every candidate
+database is absent. New institution databases additionally require a matching server-derived
+hash from that run’s control catalogue before entering the exact owned cleanup list.
+Unknown names, another namespace and same-prefix schemas without a catalogue owner
+are rejected. Only the recorded exact created databases are dropped in `finally`.
+It starts both real services, disables the background worker and cleans private
+authentication states and native Chromium profiles. Never supply a production
+database or `ONTOLOGY_MYSQL_URL`.
+
+```sh
+python -m pip install -r requirements.txt -r requirements-dev.txt
+npm --prefix frontend ci
+frontend/node_modules/.bin/playwright install --with-deps chromium
+python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
+python e2e/run.py --target foundation --harness --evidence work/evidence/r1/e2e-foundation-ci
+python e2e/run_admin.py --evidence work/evidence/r1/e2e-admin-ci
+python e2e/run.py --target foundation --visual-only --evidence work/evidence/r1/e2e-visual-ci
+```
+
+Use new evidence paths on every attempt. The runner exports application source from
+the exact HEAD; commit intended code before the run. The original target always
+exports `1359118dd672431dcd0cde2eb81f2b0f994eef37`, builds that frontend and loads its
+original fixture structure. Foundation loads the same fixture and runs all current
+migrations before startup. `--fixture PATH` permits the integration fixture location;
+the default is `tests/fixtures/v070`. Alternate ports use `--api-port`/`--agent-port`.
+
+The original 75 tests are unchanged. New operation tests run in `foundation-pages`;
+the real SDK test runs last with one worker in that behavior run. A second runner
+uses a fresh namespace and original fixture for visual work with one worker, so
+concurrent behavior-test writes and audit order cannot contaminate screenshots. Admin
+configuration/demo operations use their own `run_admin.py` scope and provider lifecycle,
+so clearing a model credential cannot overwrite the held SDK test’s configuration. Failed dependency projects cannot produce an overall passing result. No
+retries or business-deadline extension is used. SDK uses the actual installed SDK and
+real cancellation with a local, explicitly synthetic held Messages provider; it does
+not certify a live external model. Previous failed and interrupted R1-5 runs remain
+documented in `R1-5-ACCEPTANCE.md`.
+
+## Visual and accessibility contract
+
+The matrix is 10 authenticated page states × 3 layouts × 2 actual saved view modes,
+plus the login page at each layout: 63 PNGs. The states are home, Shell with the old
+materials page, account security, users, organizations, audit, model configuration,
+backup, system, and demo. Login has no authenticated view preference and is not
+misrepresented as having two views. New-page owners provide real initial-load-ready
+markers. Screenshots wait for local fonts, disable animation and mask only explicitly
+marked dynamic timestamps and request identifiers. Counts, permissions, headings, controls and business
+content remain visible. Horizontal overflow fails.
+
+Layouts are 1366×768 and 1920×1080 at 100%, and the same physical browser window as
+1366×768 content at real 125%. Each case first measures Chromium's outer/inner
+height difference at 100%, then computes the window height. A fresh persistent
+profile uses `partition.default_zoom_level = {x: log(1.25)/log(1.2)}`; `viewport:null`
+prevents viewport emulation. Required observations include DPR 1→1.25,
+`visualViewport.scale === 1`, approximately 1093×614 CSS pixels at 125%, actual PNG
+dimensions and the exact preference object. There is no CDP pinch or emulated DPR.
+`metrics.json` records calibration and actual browser version per image. The older
+R1-5 1093×614 screenshots remain labeled CSS-equivalent, not retroactive native zoom.
+
+Pinned dev-only `@axe-core/playwright@4.14.0` scans the complete rendered page. All
+violations and incomplete rule IDs are recorded; serious/critical violations fail.
+No rule is disabled and no arbitrary region is excluded. The MPL-2.0 test-tool
+exception is recorded in `frontend/dependency-licenses.json`; axe is not an
+application runtime import.
+
+## Canonical baseline bootstrap and strict comparison
+
+The committed default `visual-policy.json` is `{"mode":"compare"}`. Missing images
+fail and are not written; a small real Playwright contract test verifies that behavior
+without starting a browser. Zero differing pixels are permitted. CLI snapshot-update
+flags are rejected by the runner.
+
+After all new-page behavior is accepted, the owner can make a dedicated explicit
+commit changing the policy to
+`{"mode":"capture","reason":"R1 canonical visual baseline bootstrap"}`. The normal
+branch push CI runs without a workflow-dispatch API. Capture is allowed only inside
+GitHub Actions with Chromium 159.0.8154.6 and no executable override. Behavior, axe,
+font, overflow and native zoom assertions still run. `runner.json` and each image's
+metadata say `baseline-capture-not-acceptance`. A green capture run is not the final
+acceptance gate.
+
+The owner downloads and reviews the 33 small `r1-visual-LAYOUT-PAGE-RUN` artifacts.
+Each includes the actual PNG, source/browser/native metrics, axe findings and a
+SHA-256 index with a link to the complete artifact. For each reviewed
+`visual/LAYOUT/MODE--PAGE/actual.png`, copy the image to
+`e2e/visual-baselines/LAYOUT--MODE--PAGE.png` and its `metrics.json` to the same stem
+with `.json`. Login's state stem is `login--unauthenticated`. Commit all 63 reviewed
+PNGs and their provenance **together with resetting the policy to compare**.
+Then the ordinary two-job CI must pass on that exact integrated SHA. Do not change
+the protected/default branch or use hidden API calls to create a capture run.
+
+`E2E_CHROMIUM=/usr/bin/chromium` is permitted for local behavioral diagnostics and
+its actual version is reported. It cannot capture canonical baselines. Local
+Chromium 156 results must never be relabeled canonical Chromium 159 evidence.
+
+## Real upgrade/recovery and final offline dependencies
+
+```sh
+git worktree add --detach work/v070-source 1359118dd672431dcd0cde2eb81f2b0f994eef37
+python scripts/drills/upgrade_from_v070.py --v070-source work/v070-source --output work/evidence/r1/ci/upgrade-drill.json
+python ops/offline/prepare.py --output work/offline/ci
+python ops/offline/verify.py --bundle work/offline/ci --evidence work/evidence/r1/offline
+```
+
+The independent offline CI job checks out the same SHA and prepares a fresh bundle
+online, including the final axe dependency and every control/tenant/restore migration.
+It does not cache source or previous results. Verification uses a MySQL container
+with `--network none`; the install/build/start container shares only that isolated
+network namespace. It proves no default route/public TCP connection, installs Python
+with `--no-index` and npm with `--offline`, builds the frontend, executes migrations,
+starts the real backend and fetches health, HTML and its built JS. The exact bundle
+manifest, image IDs, source SHA, logs and observed results are uploaded. Use
+`prepare.py --export-images` when transferring the bundle to a host without those
+images. Dependency changes require fresh preparation; old-lock cache reuse fails.
+
+## Readable and complete evidence
+
+```sh
+node e2e/evidence.mjs work/evidence/r1/e2e-legacy-ci work/e2e-ci-packages
+node e2e/evidence.mjs work/evidence/r1/e2e-foundation-ci work/e2e-foundation-ci-packages
+node e2e/evidence.mjs work/evidence/r1/e2e-visual-ci work/e2e-visual-ci-packages
+node e2e/evidence.mjs work/evidence/r1/e2e-admin-ci work/e2e-admin-ci-packages
+python scripts/build_evidence.py --input work/evidence/r1/ci --input work/e2e-ci-packages --input work/e2e-foundation-ci-packages --input work/e2e-visual-ci-packages --input work/e2e-admin-ci-packages --steps e2e/REPRODUCE.md --output work/packages/foundation
+python scripts/build_evidence.py --input work/evidence/r1/offline-preparation --input work/evidence/r1/offline --steps e2e/REPRODUCE.md --output work/packages/offline
+```
+
+CI sets `E2E_COMPLETE_ARTIFACT_URL` after uploading the complete evidence. Small
+browser packages have a hard 30 MiB budget including their index, leaving ZIP
+overhead below the connector's 32 MiB limit. They omit authentication state, raw
+trace archives and HTML reports; content and symlink checks apply before copying.
+The explicit Python builder records SHA-256 per file, source SHA/version and run
+metadata, plus manifest, archive and archive digest. It makes no inferred pass claim.
+`backend-results.json` verifies all 489 frozen baseline IDs and exactly 39 permitted
+Windows-native skips from the complete unittest output. Both foundation and offline
+jobs must succeed for final R1 acceptance.

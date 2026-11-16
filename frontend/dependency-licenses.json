@@ -298,6 +298,14 @@
       "license": "MIT",
       "reactPeer": null,
       "nodeEngine": "^22.12.0 || ^24.0.0 || >=26.0.0"
+    },
+    {
+      "name": "@axe-core/playwright",
+      "version": "4.14.0",
+      "scope": "devDependencies",
+      "license": "MPL-2.0",
+      "reactPeer": null,
+      "nodeEngine": ">=22.12.0"
     }
   ],
   "transitiveLicenseCounts": {
@@ -314,6 +322,7 @@
     "MIT": 573,
     "MIT AND ISC": 2,
     "MIT-0": 3,
+    "MPL-2.0": 2,
     "PSF-2.0": 1,
     "Python-2.0": 1,
     "UNSPECIFIED": 2,
@@ -331,11 +340,14 @@
   },
   "font": {
     "family": "Noto Sans SC / Noto Serif SC",
-    "weights": [
-      400,
-      700
-    ],
+    "weights": [400, 700],
     "license": "OFL-1.1",
     "evidence": "public/fonts/LICENSE-NOTO.txt"
+  },
+  "testToolExceptions": {
+    "@axe-core/playwright@4.14.0 / axe-core@4.14.0": {
+      "license": "MPL-2.0",
+      "scope": "Development-only browser accessibility verification; not imported by application or served at runtime."
+    }
   }
 }

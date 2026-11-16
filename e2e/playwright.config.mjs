@@ -1,11 +1,29 @@
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "./runtime.mjs";
 import { evidence, target } from "./fixture.mjs";
 import { acceptanceSelection } from "./projects.mjs";
+import { validateVisualPolicy } from "./visual-policy.mjs";
+
+const visualPolicy = validateVisualPolicy(
+  JSON.parse(
+    readFileSync(new URL("./visual-policy.json", import.meta.url), "utf8"),
+  ),
+);
 
 export default defineConfig({
   testDir: resolve("e2e"),
-  ...acceptanceSelection(target, process.env.E2E_HARNESS_ACCEPTANCE === "1"),
+  ...acceptanceSelection(
+    target,
+    process.env.E2E_HARNESS_ACCEPTANCE === "1",
+    process.env.E2E_VISUAL_ACCEPTANCE === "1",
+    process.env.E2E_VISUAL_ONLY === "1",
+  ),
+  snapshotPathTemplate: resolve(
+    process.env.E2E_VISUAL_BASELINE_DIR || "e2e/visual-baselines",
+    "{arg}{ext}",
+  ),
+  updateSnapshots: visualPolicy.updateSnapshots,
   fullyParallel: true,
   workers: Number(process.env.E2E_WORKERS || 3),
   retries: 0,
