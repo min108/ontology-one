@@ -250,6 +250,7 @@ def main() -> int:
         E2E_DEPENDENCY_ROOT=str(dependencies),
     )
     commit = source_commit(args.target)
+    environment["E2E_SOURCE_COMMIT"] = commit
     source = export_source(commit, work)
     # Browser tests and authentication snapshots run from this private work tree,
     # independent of the application snapshot (which may be the old release).

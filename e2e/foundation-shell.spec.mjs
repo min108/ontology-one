@@ -61,6 +61,8 @@ async function identity(page) {
 }
 
 async function capture(page, role, name, testInfo) {
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => document.fonts.ready);
   const directory = resolve(evidence, "shell-screenshots", role);
   mkdirSync(directory, { recursive: true });
   const path = resolve(directory, `${name}.png`);
@@ -126,6 +128,12 @@ for (const role of roles) {
         ).toBeVisible();
         await secondary(page).locator('a[href="/graph"]').click();
         await expect(page).toHaveURL((url) => url.pathname === "/graph");
+        // Graph has a separate retained-route acceptance; capture the stable materials view.
+        await primary(page).locator('a[href="/build"]').click();
+        await expect(page).toHaveURL((url) => url.pathname === "/materials");
+        await expect(
+          page.getByRole("heading", { name: "素材整理", exact: true }),
+        ).toBeVisible();
         await capture(page, role, `shell-${layout.name}`, testInfo);
       });
     }
