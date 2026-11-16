@@ -289,13 +289,44 @@ test.describe("headquarters: isolated identity mutations", () => {
     await expect(userRow(page, username)).toContainText(c.identity_enabled);
   });
 
-  test("ADM-03: a new administrator editing itself is signed out", async ({
+  test("ADM-03 ADM-06: other-superadmin reason is audited and self-edit signs out", async ({
     page,
     browser,
     baseURL,
   }) => {
     const username = unique("selfedit");
     await createUser(page, username, { role: "admin" });
+    const target = (await read(page, "/api/v2/users")).items.find(
+      (item) => item.username === username,
+    );
+    expect(target.is_superadmin).toBe(true);
+    const reason = unique("其他超管调整原因");
+    await button(userRow(page, username), a.identity_edit_user).click();
+    await dialog(page)
+      .getByLabel(c.identity_name, { exact: true })
+      .fill(`${username}总部调整`);
+    await expect(button(dialog(page), a.identity_review)).toBeDisabled();
+    await dialog(page)
+      .getByLabel(c.identity_reason_required, { exact: true })
+      .fill(reason);
+    await confirm(page);
+    await expect(userRow(page, username)).toContainText(`${username}总部调整`);
+    const audit = await read(
+      page,
+      "/api/v2/audit?action=user_update&outcome=success",
+    );
+    const recorded = audit.items.find((item) => item.resource === target.id);
+    expect(recorded.details.reason).toBe(reason);
+    await load(
+      page,
+      "/admin/audit?action=user_update&outcome=success",
+      c.identity_audit,
+    );
+    const auditRow = page
+      .getByRole("row")
+      .filter({ has: page.getByText(target.id, { exact: true }) });
+    await auditRow.getByText(a.identity_details, { exact: true }).click();
+    await expect(auditRow.locator("pre")).toContainText(reason);
     const own = await browser.newContext({
       baseURL,
       storageState: { cookies: [], origins: [] },

@@ -22,10 +22,21 @@ export function requestId(error: unknown): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 export const time = (value: string): string =>
-  value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '—';
+  value
+    ? new Date(value).toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+      })
+    : '—';
 export function Timestamp({ value }: { value: string }) {
   return (
-    <time data-visual-dynamic="timestamp" dateTime={value}>
+    <time className={styles.timestamp} data-visual-dynamic="timestamp" dateTime={value}>
       {time(value)}
     </time>
   );

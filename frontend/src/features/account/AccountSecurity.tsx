@@ -103,7 +103,7 @@ export default function AccountSecurity() {
               {[
                 [copy.identity_name, session.user.display_name],
                 [copy.identity_username, session.user.username],
-                [copy.identity_organization, session.workspace.name],
+                [copy.identity_current_organization, session.workspace.name],
                 [copy.identity_role, roleLabel(session.user.role)],
                 [
                   copy.identity_permissions,

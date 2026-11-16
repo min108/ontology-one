@@ -285,9 +285,7 @@ describe('identity administration pages', () => {
       'subsidiary',
     );
     expect(screen.getByLabelText(terms.labels.identity_org_parent, { exact: true })).toHaveValue('hq');
-    expect(screen.getByRole('spinbutton', { name: terms.labels.identity_org_sort })).toHaveValue(
-      '0',
-    );
+    expect(screen.getByRole('spinbutton', { name: terms.labels.identity_org_sort })).toHaveValue('0');
   });
   it('requires enabling a disabled organization before editing it', async () => {
     request.mockResolvedValue({ items: [{ ...orgs[1], status: 'disabled' }], total: 1 });

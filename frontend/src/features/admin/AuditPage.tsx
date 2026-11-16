@@ -138,7 +138,7 @@ function AuditRecords() {
           </p>
           <pre className={styles.detail}>{JSON.stringify(row.details, null, 2)}</pre>
           <p>
-            {copy.identity_request_id}: <code>{row.request_id}</code>
+            {copy.identity_request_id}: <code data-visual-dynamic="request-id">{row.request_id}</code>
           </p>
         </details>
       ),

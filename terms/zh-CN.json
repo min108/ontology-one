@@ -588,6 +588,7 @@
     "identity_name": "姓名",
     "identity_role": "账号角色",
     "identity_organization": "归属机构",
+    "identity_current_organization": "当前机构",
     "identity_permissions": "当前权限",
     "identity_superadmin": "总部超级管理员",
     "identity_can_edit": "可建设和维护",
@@ -953,6 +954,7 @@
     "failure": "失败",
     "failed": "失败",
     "rate_limited": "登录过于频繁",
-    "pending": "正在处理"
+    "pending": "正在处理",
+    "started": "已开始"
   }
 }

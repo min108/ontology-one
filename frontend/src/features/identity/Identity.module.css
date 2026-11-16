@@ -197,3 +197,8 @@
   padding: 0;
   min-width: 0;
 }
+
+.timestamp {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

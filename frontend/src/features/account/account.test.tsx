@@ -9,6 +9,7 @@ import { terms } from '../../i18n/zh-CN';
 import { LoginPage } from '../auth/LoginPage';
 import { AuthBoundary } from '../auth/AuthBoundary';
 import AccountSecurity from './AccountSecurity';
+import { Timestamp } from '../identity/common';
 import type { AuthSession } from '../../api/session.types';
 const request = vi.hoisted(() => vi.fn());
 vi.mock('../../api/client', async (importOriginal) => ({
@@ -64,12 +65,43 @@ beforeEach(() => {
   request.mockResolvedValue({ items: [] });
 });
 describe('new identity pages', () => {
+  it('renders fixed-width Shanghai timestamps across single and double digit dates', () => {
+    const { container } = render(
+      <>
+        <Timestamp value="2026-01-02T01:04:05Z" />
+        <Timestamp value="2026-11-16T15:14:25Z" />
+      </>,
+    );
+    const values = [...container.querySelectorAll('time')];
+    expect(values.map((node) => node.textContent)).toEqual(['2026/01/02 09:04:05', '2026/11/16 23:14:25']);
+    expect(values.every((node) => node.dataset.visualDynamic === 'timestamp')).toBe(true);
+    expect(values[0]).toHaveAttribute('datetime', '2026-01-02T01:04:05Z');
+  });
   it('uses the shared role label while preserving live identity facts', async () => {
     wrapper(<AccountSecurity />);
     await screen.findByText(terms.labels.identity_no_sessions);
     expect(screen.getByText(terms.roles.admin, { exact: true })).toBeInTheDocument();
     expect(screen.getByText('admin', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('HQ', { exact: true })).toBeInTheDocument();
+  });
+  it('labels the active workspace separately from the account home organization', async () => {
+    useSessionStore.setState({
+      session: {
+        ...session,
+        workspace: {
+          tenant_id: 'dept-01',
+          name: 'Office',
+          category: 'headquarters_department',
+          readonly: false,
+        },
+      },
+    });
+    wrapper(<AccountSecurity />);
+    await screen.findByText(terms.labels.identity_no_sessions);
+    expect(
+      screen.getByText(terms.labels.identity_current_organization, { exact: true }).nextElementSibling,
+    ).toHaveTextContent('Office');
+    expect(screen.queryByText(terms.labels.identity_organization, { exact: true })).not.toBeInTheDocument();
   });
   it('provides the design theme before the authenticated shell exists', () => {
     useSessionStore.setState({ session: null });
