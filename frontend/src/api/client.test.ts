@@ -100,7 +100,12 @@ describe('workspace client', () => {
   it('never forwards identity headers to an external or ambiguous path', async () => {
     const fetcher = vi.fn();
     vi.stubGlobal('fetch', fetcher);
-    for (const path of ['https://example.org/x', '//example.org', '/\\example.org', '/api/../outside']) {
+    for (const path of [
+      'https://cross-origin.test/x',
+      '//cross-origin.test',
+      '/\\cross-origin.test',
+      '/api/../outside',
+    ]) {
       await expect(api(path)).rejects.toThrow();
     }
     expect(fetcher).not.toHaveBeenCalled();

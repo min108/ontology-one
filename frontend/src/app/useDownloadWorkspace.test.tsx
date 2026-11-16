@@ -9,7 +9,7 @@ function Links({ tenantId, late = false }: { tenantId: string; late?: boolean })
       <a data-testid="download" href="/api/materials/sample/export?format=md#section">
         download
       </a>
-      <a data-testid="external" href="https://example.invalid/api/export?workspace_id=foreign">
+      <a data-testid="external" href="https://cross-origin.test/api/export?workspace_id=foreign">
         external
       </a>
       <a data-testid="page" href="/materials/sample?workspace_id=foreign">
@@ -33,7 +33,7 @@ describe('legacy download tenant binding', () => {
     );
     expect(view.getByTestId('external')).toHaveAttribute(
       'href',
-      'https://example.invalid/api/export?workspace_id=foreign',
+      'https://cross-origin.test/api/export?workspace_id=foreign',
     );
     expect(view.getByTestId('page')).toHaveAttribute('href', '/materials/sample?workspace_id=foreign');
   });
