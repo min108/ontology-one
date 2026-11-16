@@ -515,9 +515,9 @@
     "shell_readonly": "当前为只读访问，建设维护操作不可用。",
     "shell_reviewonly": "当前可查看与审核，建设维护操作不可用。",
     "shell_switch_title": "切换机构",
-    "shell_switch_dirty": "未保存的编辑和浏览器暂存会清除。",
+    "shell_switch_dirty": "未保存的编辑会清除。",
     "shell_switch_upload": "正在上传的文件会中止，未提交的内容会清除。",
-    "shell_switch_stored": "浏览器暂存将清除，是否继续切换机构？",
+    "shell_switch_stored": "浏览器暂存将清除。",
     "shell_not_found": "没有找到这个页面",
     "shell_assistant_online": "助手已连接",
     "shell_assistant_unverified": "助手待验证",
@@ -527,7 +527,16 @@
     "shell_navigation_secondary": "工作区内导航",
     "shell_breadcrumb": "当前位置",
     "shell_work_in_progress": "正在切换机构，请稍候。",
-    "shell_mark": "中信标识"
+    "shell_mark": "中信标识",
+    "shell_unknown_role": "身份未识别",
+    "shell_switch_continue": "是否继续切换机构？",
+    "client_request_cancelled": "当前请求已取消。",
+    "client_login_expired": "登录已失效，请重新登录。",
+    "client_workspace_changed": "机构已在另一窗口切换，正在重新载入。",
+    "client_request_failed": "请求未完成，请稍后重试。",
+    "client_response_invalid": "服务返回的内容无法读取，请稍后重试。",
+    "session_permissions_failed": "权限未能载入，请重新连接服务。",
+    "session_load_failed": "登录会话未能载入，请重新连接服务。"
   },
   "states": {
     "loading": {
@@ -625,5 +634,12 @@
     "interview": "访谈记录",
     "working_paper": "工作底稿",
     "other": "其他"
+  },
+  "roles": {
+    "admin": "机构管理员",
+    "modeler": "建设人员",
+    "reviewer": "审核官",
+    "analyst": "应用人员",
+    "viewer": "查阅者"
   }
 }
