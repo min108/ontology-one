@@ -226,7 +226,7 @@ white overlays (audit passes an empty list). Carets and animations are temporari
 suppressed. DOM overlays/styles and animation state are restored and the CDP session
 detached in finally, including capture errors. No screenshot is cropped or resized.
 
-Expanded audit evidence naturally scrolls the complete fixed historical row into
-view and requires both the row and JSON details to intersect the viewport at ratio 1.
+Expanded audit evidence naturally centers the complete fixed historical row in
+view (rather than aligning its fractional border to the viewport edge) and requires both the row and JSON details to intersect the viewport at ratio 1.
 This keeps the smaller native-125% image useful without masking, resizing, or changing
 the real record. Review must also check that the fixed header does not cover the row.

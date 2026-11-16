@@ -78,7 +78,13 @@ async function selectHistoricalAudit(page) {
   await expect(row.locator("details")).toContainText(expected.action);
   await expect(row.locator("pre")).toContainText('"entity_count": 20');
   await expect(row.locator("pre")).toContainText('"synthetic": true');
-  await row.scrollIntoViewIfNeeded();
+  await row.evaluate((element) =>
+    element.scrollIntoView({
+      block: "center",
+      inline: "nearest",
+      behavior: "instant",
+    }),
+  );
   await expect(row).toBeInViewport({ ratio: 1 });
   await expect(row.locator("pre")).toBeInViewport({ ratio: 1 });
 }
