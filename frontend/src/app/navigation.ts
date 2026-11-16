@@ -71,7 +71,9 @@ export function secondaryNavigation(
   return entries[workspace].filter((entry) => {
     if (entry.href.startsWith('/admin/') && !completed.has(entry.href)) return false;
     if (entry.key === 'group') return principal.permissions.includes('federation.read');
-    if (['users', 'integrations'].includes(entry.key)) return principal.role === 'admin';
+    if (entry.key === 'users')
+      return principal.role === 'admin' && principal.permissions.includes('admin.users');
+    if (entry.key === 'integrations') return principal.role === 'admin';
     if (entry.key === 'orgs') return principal.superadmin && principal.permissions.includes('admin.org');
     if (entry.key === 'audit') return principal.superadmin && principal.permissions.includes('audit.read');
     return true;

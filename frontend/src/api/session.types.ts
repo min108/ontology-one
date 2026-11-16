@@ -23,5 +23,7 @@ export type AuthSession = {
   permissions: { manage_users: boolean; manage_grants: boolean; can_edit: boolean; can_review: boolean };
   csrf_token: string;
   must_change_password: boolean;
+  permission_keys?: string[];
+  password_change_recommended?: boolean;
 };
 export type SessionIdentity = { user_id: string; tenant_id: string; permissions: string[] };

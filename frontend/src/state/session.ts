@@ -12,6 +12,7 @@ import { queryClient } from '../api/query';
 import { terms } from '../i18n/zh-CN';
 import { useScopeStore } from './scope';
 import { defaultViewMode, useUiStore } from './ui';
+import { clearPreferences } from './preferences';
 import {
   isWorkspaceLeaving,
   readWorkspaceGuards,
@@ -58,6 +59,7 @@ function current(token: number): boolean {
 
 /** Also retained as the legacy password-change cleanup API. */
 export function clearLocalWorkspace(): void {
+  clearPreferences();
   invalidateClientRequests();
   void queryClient.cancelQueries().catch(() => undefined);
   queryClient.clear();
