@@ -324,7 +324,10 @@ test.describe("headquarters: isolated identity mutations", () => {
     );
     const auditRow = page
       .getByRole("row")
-      .filter({ has: page.getByText(target.id, { exact: true }) });
+      .filter({
+        has: page.getByRole("cell", { name: `${target.id} hq`, exact: true }),
+      });
+    await expect(auditRow).toHaveCount(1);
     await auditRow.getByText(a.identity_details, { exact: true }).click();
     await expect(auditRow.locator("pre")).toContainText(reason);
     const own = await browser.newContext({
