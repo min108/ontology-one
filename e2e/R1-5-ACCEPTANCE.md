@@ -1,6 +1,6 @@
 # R1-5 浏览器验收协议
 
-当前状态：已执行多轮本地 foundation 验收并如实保留失败证据，见下表；整轮通过只以对应 runner/result 为准。每轮使用明确集成 SHA 与单个构建/浏览器执行窗口。旧 UI 75 条的 canonical CI 基准不重复运行。
+当前状态：源码 `d8fe2aab902f67e000b8264931696870a243c153` 的本地完整90条已通过，零失败/重试/跳过；失败诊断记录仍保留，见下表。正式canonical最终验收与后续提交不能借用本次结果。每轮使用明确集成 SHA 与单个构建/浏览器执行窗口。旧 UI 75 条的 canonical CI 基准不重复运行。
 
 ## 基准与证据入口
 
@@ -74,6 +74,8 @@ CI 不设置 `E2E_CHROMIUM`，使用固定 Playwright 浏览器。本地 CDN 403
 | 42e14727a1445a6b0537aa20f9788476f0ac3de1 | 定向 7/10；SDK问题无资料命中、空态新建按钮定位二义性、Graph离场返航 | foundation-focused-harness |
 | b3fe18c64c81afd0896039ab56d3ebb02af055cc | 87/90；旧75全过、真实SDK与机构切换过；两例Graph返航、一例二级导航读取早于渲染 | foundation-r1-5-full |
 | e85ebd549fbf5396265b209e3bb710dfed281bb3 | 89/90；仅admin等效125的Graph返航失败 | foundation-r1-5-verified |
+| 14c53f51e3b1d9fc29817f5a1da323ab4a4525aa | 按负责人安排正常中断：18过、2失败、3中断、67未执行；不计完成 | foundation-r1-5-mounted-path |
+| d8fe2aab902f67e000b8264931696870a243c153 | **90/90通过，0失败/重试/跳过，2.6分钟** | foundation-r1-5-nav-final |
 
 上述失败轮均无重试/跳过，4/4本次创建数据库精确清理、双服务停止、认证态移除。`foundation-r1-5-verified` 是预先选定的目录名，runner 状态仍为 failed，不能按目录名认定通过。
 
@@ -92,3 +94,12 @@ b3/e85 的真实 SDK 用例均单独通过：真实固定 SDK 0.2.1rc2，本地�
 | 36551 | 再次更新vx/vy/vz |
 
 因此，不能仅以最终URL含viewport参数就认定Graph动画是首因。初次返航仅补via，导航提供器在新浏览器URL与旧render Location并存时的规范化副作用也必须覆盖；Graph固定挂载归属与导航提供器真实全URL检查需联合验证。测试保留快速离场，没有添加等待动画结束的延时来规避竞争。
+
+
+### 本地 A2 浏览器闭环
+
+`d8fe2aa` 完整无筛选执行 `python e2e/run.py --target foundation --harness`：旧75路线、14条Shell/权限/重定向/切换/布局用例、1条真实SDK全通过。快速Graph离场未删减、未等待动画完成来规避竞争。实际SDK进程179276/179280均回收，4个创建库按同一精确名单清理，双服务停止，认证目录已移除。
+
+摘要与文件SHA-256见 [evidence/r1-5-local.json](evidence/r1-5-local.json)。大截图不入库。小包在本worktree `work/evidence-packages-r1-5-nav-final/`：summary430760 bytes；modeler11111169、reviewer11434769、admin11322608（各27截图）；superadmin1448138（2截图）；harness287767（3截图）。每包另有含SHA-256的index，连索引计入30 MiB预算。
+
+本次实际执行使用原并发配置；随后 `d4c5903` 将CI与本地配置改为pages89成功后SDK单worker1，以隔离真实30秒模型业务deadline与截图负载。该调度的静态契约与75/90用例发现已通过，最终exact-head CI需执行新调度。1366为原始CSS视口，1093×614仍明确标等效125%，不能因本轮通过就改称原生缩放。
