@@ -84,5 +84,8 @@
     "styles.css",
     "version.ts"
   ],
-  "retired": []
+  "retired": [
+    "App.tsx",
+    "main.tsx"
+  ]
 }

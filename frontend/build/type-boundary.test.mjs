@@ -35,7 +35,7 @@ test('new consumers remain strict when they import a legacy declaration', () => 
   try {
     writeFileSync(
       resolve(directory, 'probe.ts'),
-      "import App from '@legacy/App'; const value: number = null; void value; void App;\n",
+      "import { api } from '@legacy/api'; const value: number = null; void value; void api;\n",
     );
     writeFileSync(
       resolve(directory, 'tsconfig.json'),

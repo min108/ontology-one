@@ -39,3 +39,5 @@
 - 所有媒体查询均应逐选择器处理；例如窄屏块还含页面标题、表格、卡片、网格和设置页布局，不能整块删除。
 - `html` 的 `scroll-padding-top:98px/80px` 与旧顶栏高度相关，但作用于全局锚点，需由新外壳决定替换值；不直接归入安全删除范围。
 - reset、body、字体、滚动条、减少动效、表单、按钮、卡片、徽标、表格、弹窗、Toast、loading/empty、页面与汇报页样式仍属承接功能。Overview、Settings 专属布局及本次口号移除留下的页面装饰规则是另一类清理，不能冒充旧 Shell 专属规则一起删。
+
+根集成补充：Overview仍承接期间的1个 /settings#demo 链接改为 /admin/demo#demo；其余活动页面旧管理目标零残留。90项浏览器验收通过后退役旧App/main，并按上述选择器边界清理 styles.css 的103条、auth.css的27条旧Shell选择器。两文件分别保留232、56条规则，声明与媒体上下文逐项不变；.badge.brand、页面打印、身份控件、旧登录/安全/账号页、access-disabled/auth-error/sr-only均保留。旧html锚点偏移由新设计层html统一令牌值接替。精确清单在r1-evidence/r1-5。
