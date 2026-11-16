@@ -36,14 +36,14 @@ def packages(root: Path) -> dict[str, Path]:
         width, height, zoom = LAYOUTS[layout]
         css_width, css_height = round(width / zoom), round(height / zoom)
         # Header-only fixture intentionally exercises file/metadata contracts, not image rendering.
-        (folder / "actual.png").write_bytes(
-            b"\x89PNG\r\n\x1a\n" + b"\0" * 8 + struct.pack(">II", css_width, css_height)
-        )
+        (folder / "actual.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 8 + struct.pack(">II", width, height))
         (folder / "axe.json").write_text(json.dumps({"violations": []}))
         (folder / "metrics.json").write_text(
             json.dumps(
                 {
                     "sourceCommit": COMMIT,
+                    "screenshotMethod": "cdp-physical-viewport",
+                    "screenshotScale": "physical",
                     "browser": BROWSER,
                     "policy": {"mode": "capture"},
                     "resultKind": "baseline-capture-not-acceptance",
@@ -85,6 +85,23 @@ def packages(root: Path) -> dict[str, Path]:
 
 
 class VisualBaselineTests(unittest.TestCase):
+    def test_cropped_css_png_and_false_screenshot_method_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            images = packages(Path(directory))
+            stem = "1366-native125--simple--home"
+            folder = images[stem]
+            original = (folder / "actual.png").read_bytes()
+            for width, height in ((1093, 614), (874, 491)):
+                (folder / "actual.png").write_bytes(original[:16] + struct.pack(">II", width, height))
+                with self.assertRaisesRegex(ValueError, "PNG dimensions"):
+                    validate_state(folder, stem, COMMIT, "capture")
+            (folder / "actual.png").write_bytes(original)
+            metadata = json.loads((folder / "metrics.json").read_text())
+            metadata["screenshotScale"] = "css"
+            (folder / "metrics.json").write_text(json.dumps(metadata))
+            with self.assertRaisesRegex(ValueError, "PNG dimensions"):
+                validate_state(folder, stem, COMMIT, "capture")
+
     def test_download_catalog_checks_each_archive_against_the_reported_github_digest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

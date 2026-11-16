@@ -36,8 +36,10 @@ export function assertNativeMetrics(actual, expected, png) {
     throw new Error(
       `Unexpected native zoom metrics: ${JSON.stringify(actual)}`,
     );
-  if (png.width !== actual.innerWidth || png.height !== actual.innerHeight)
-    throw new Error("PNG dimensions do not match the measured CSS viewport");
+  if (png.width !== expected.width || png.height !== expected.height)
+    throw new Error(
+      "PNG dimensions do not match the complete physical viewport",
+    );
 }
 
 export async function measureNativePage(page) {

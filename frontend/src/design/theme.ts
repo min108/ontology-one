@@ -33,6 +33,7 @@ export const theme: ThemeConfig = {
     motionDurationMid: '0.2s',
   },
   components: {
+    Breadcrumb: { itemColor: '#4d5868', linkColor: '#4d5868', separatorColor: '#4d5868' },
     Table: {
       fontSize: 14,
       headerBg: '#f5f7fa',

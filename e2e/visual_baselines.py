@@ -116,7 +116,9 @@ def validate_state(directory: Path, stem: str, commit: str, mode: str) -> dict:
         or metrics.get("outerWidth") != width
         or abs(metrics.get("innerWidth", 0) - width / zoom) > 1
         or abs(metrics.get("innerHeight", 0) - height / zoom) > 1
-        or (png_width, png_height) != (metrics.get("innerWidth"), metrics.get("innerHeight"))
+        or (png_width, png_height) != (width, height)
+        or metadata.get("screenshotMethod") != "cdp-physical-viewport"
+        or metadata.get("screenshotScale") != "physical"
     ):
         raise ValueError(f"{stem}: native zoom/PNG dimensions differ")
     preferences = {} if zoom == 1 else {"partition": {"default_zoom_level": {"x": math.log(zoom) / math.log(1.2)}}}

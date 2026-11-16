@@ -102,7 +102,11 @@ export function UserMenu() {
         ],
       }}
     >
-      <Button autoInsertSpace={false} type="text" aria-label={terms.labels.shell_account}>
+      <Button
+        autoInsertSpace={false}
+        type="text"
+        aria-label={`${terms.labels.shell_account}：${session.user.display_name} ${roleLabel(session.user.role)}`}
+      >
         <span className={styles['user-name']}>
           <strong>{session.user.display_name}</strong>
           <small>{roleLabel(session.user.role)}</small>

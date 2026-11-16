@@ -211,3 +211,22 @@ unauthenticated bootstrap `/api/auth/session` 401 as an authenticated-page error
 Every console error (including any later 401) and uncaught page error still fails;
 none are filtered or cleared. Login UI behavior remains in identity acceptance and
 the three unauthenticated login screenshots.
+
+Native screenshot correction: image dimensions are the complete **physical** viewport,
+1366×768 (including the native 125% layout) or 1920×1080. They are not the CSS inner
+viewport dimensions. Playwright 1.65.1's ordinary screenshot clip crops native zoom:
+local Chromium 156 reproduced `device` 1093×614 with missing right/bottom corners,
+and `css` 874×491. The helper therefore calls standard CDP `Page.captureScreenshot`
+with `format: png`, `fromSurface: true`, `captureBeyondViewport: false`, no clip or
+scale and no Emulation commands. It records `screenshotMethod: cdp-physical-viewport`
+and `screenshotScale: physical`. PNG width/height must equal the expected physical
+viewport exactly; profile/DPR/inner/visualViewport checks remain independent and strict.
+Only explicit `data-visual-dynamic=timestamp|request-id` rectangles receive temporary
+white overlays (audit passes an empty list). Carets and animations are temporarily
+suppressed. DOM overlays/styles and animation state are restored and the CDP session
+detached in finally, including capture errors. No screenshot is cropped or resized.
+
+Expanded audit evidence naturally scrolls the complete fixed historical row into
+view and requires both the row and JSON details to intersect the viewport at ratio 1.
+This keeps the smaller native-125% image useful without masking, resizing, or changing
+the real record. Review must also check that the fixed header does not cover the row.

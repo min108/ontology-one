@@ -48,7 +48,7 @@ test("native metrics require layout zoom, stable visual scale and real PNG dimen
     devicePixelRatio: 1.25,
   };
   const expected = { width: 1366, height: 768, zoom: 1.25 };
-  assertNativeMetrics(actual, expected, { width: 1093, height: 614 });
+  assertNativeMetrics(actual, expected, { width: 1366, height: 768 });
   for (const patch of [
     { devicePixelRatio: 1 },
     { visualScale: 1.25 },
@@ -58,15 +58,16 @@ test("native metrics require layout zoom, stable visual scale and real PNG dimen
     assert.throws(
       () =>
         assertNativeMetrics({ ...actual, ...patch }, expected, {
-          width: 1093,
-          height: 614,
+          width: 1366,
+          height: 768,
         }),
       /native/,
     );
-  assert.throws(
-    () => assertNativeMetrics(actual, expected, { width: 1366, height: 768 }),
-    /PNG/,
-  );
+  for (const cropped of [
+    { width: 1093, height: 614 },
+    { width: 874, height: 491 },
+  ])
+    assert.throws(() => assertNativeMetrics(actual, expected, cropped), /PNG/);
 });
 
 test("native launcher always selects full Chromium while allowing explicit local executable diagnostics", async () => {

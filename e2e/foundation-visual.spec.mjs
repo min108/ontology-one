@@ -4,6 +4,11 @@ import { resolve } from "node:path";
 import { chromium, test, expect } from "./runtime.mjs";
 import { accounts, authDirectory, evidence } from "./fixture.mjs";
 import { openAuthenticatedVisualPage } from "./visual-auth.mjs";
+import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
+import {
+  captureNativeViewport,
+  nativeScreenshotMethod,
+} from "./native-screenshot.mjs";
 import {
   launchNativeContext,
   measureNativePage,
@@ -73,6 +78,9 @@ async function selectHistoricalAudit(page) {
   await expect(row.locator("details")).toContainText(expected.action);
   await expect(row.locator("pre")).toContainText('"entity_count": 20');
   await expect(row.locator("pre")).toContainText('"synthetic": true');
+  await row.scrollIntoViewIfNeeded();
+  await expect(row).toBeInViewport({ ratio: 1 });
+  await expect(row.locator("pre")).toBeInViewport({ ratio: 1 });
 }
 
 async function openNative(layout, use) {
@@ -166,19 +174,9 @@ async function recordPage(page, name, layout, launched, testInfo) {
     resolve(directory, "axe.json"),
     JSON.stringify(axeReport, null, 2) + "\n",
   );
-  const png = await page.screenshot({
+  const png = await captureNativeViewport(page, {
     path: resolve(directory, "actual.png"),
-    animations: "disabled",
-    caret: "hide",
-    scale: "css",
-    mask: name.endsWith("--audit")
-      ? []
-      : [
-          page.locator(
-            '[data-visual-dynamic="timestamp"], [data-visual-dynamic="request-id"]',
-          ),
-        ],
-    maskColor: "#ffffff",
+    maskKinds: name.endsWith("--audit") ? [] : ["timestamp", "request-id"],
   });
   const dimensions = {
     width: png.readUInt32BE(16),
@@ -196,7 +194,8 @@ async function recordPage(page, name, layout, launched, testInfo) {
     expected: layout,
     metrics,
     png: dimensions,
-    screenshotScale: "css",
+    screenshotScale: "physical",
+    screenshotMethod: nativeScreenshotMethod,
     dynamicMasks: name.endsWith("--audit") ? [] : ["timestamp", "request-id"],
     fonts,
     ...(name.endsWith("--audit")
@@ -270,25 +269,7 @@ for (const layout of visualLayouts) {
           page.getByRole("navigation", { name: "工作区导航", exact: true }),
         ).toBeVisible();
         await page.waitForLoadState("networkidle");
-        await page
-          .getByRole("button", { name: "个人账号", exact: true })
-          .click();
-        const radio = page.getByRole("radio", {
-          name: mode === "simple" ? "简洁视图" : "专业视图",
-          exact: true,
-        });
-        await radio.check();
-        await expect(radio).toBeChecked();
-        await expect
-          .poll(() =>
-            page.evaluate(async () => {
-              const response = await fetch("/api/v2/prefs");
-              if (!response.ok) throw new Error("View preference read failed");
-              return (await response.json()).preferences.view_mode;
-            }),
-          )
-          .toBe(mode === "professional" ? "pro" : "simple");
-        await page.keyboard.press("Escape");
+        await selectSavedViewMode(page, mode);
         for (const item of visualPages) {
           await page.goto(item.path);
           if (item.heading)

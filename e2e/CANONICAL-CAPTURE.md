@@ -109,6 +109,12 @@ python e2e/visual_baselines.py verify \
 第二层校验逐个包的 `index.json`，验证所有 PNG/metrics/axe 的字节数和 SHA-256、完整链接、
 33 包 / 63 状态、规范浏览器与源码、DPR/visualViewport/PNG 尺寸以及无严重 axe 违规。
 不得将本地 Chromium 156 或旧 CSS 等效缩放图片改名导入。
+PNG 必须是完整物理视口：1366×768（包括真实125%）或1920×1080，绝非CSS inner尺寸。
+125%仍须真实DPR1.25、inner约1093×614、visualViewport.scale=1。标准CDP整视口
+Page.captureScreenshot不传clip/scale、不用Emulation；metadata方法为cdp-physical-viewport，
+screenshotScale为physical。普通Playwright device截图虽1093×614却裁掉右/底边，css又缩成
+874×491，均拒绝入库；逐图必须检查完整右/下边界。仅白名单动态标记临时白遮罩，audit为空；
+caret/动画临时处理及CDP连接在成功和失败后均恢复/释放，不对PNG裁切或缩放。
 
 ## 3. 逐张查看并记录实施方逐图审查
 
