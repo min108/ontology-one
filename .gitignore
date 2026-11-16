@@ -18,3 +18,9 @@ data/
 upgrade-copy-*/
 .DS_Store
 source-credentials.json
+
+# Development-only caches and reports.
+.ruff_cache/
+.pytest_cache/
+.coverage
+frontend/coverage/
