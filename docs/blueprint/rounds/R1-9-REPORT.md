@@ -21,4 +21,6 @@
 
 ## 复现与待补证
 
+首次生成来源e89357b的[CI 43847090819](https://github.com/min108/ontology-one/actions/runs/43847090819)：offline job完整通过，实际断网结果及构件已核验，依赖包包含images.tar。foundation尚未完成时，静态审查确认新profile的正常未登录401会进入登录后视觉错误计数；9830eb1调整测试准备为同一真实BrowserContext.request先登录（使用真实浏览器User-Agent与共享cookie），再导航。所有页面错误及后续401继续完整记录，未过滤或清空错误；界面登录由身份操作测试覆盖。33项Node工具契约通过。后续正常推送重跑最终矩阵，首次不算完整浏览器或视觉验收。
+
 [完整命令](../../../e2e/REPRODUCE.md)与[生成、下载、审查、比较流程](../../../e2e/CANONICAL-CAPTURE.md)由CI执行。下一步：专门capture提交及两个job实测，下载并核验33包、逐图审查63图；基线和compare策略同提交，再等待精确提交的foundation与offline均通过。最终SHA、run、构件摘要、十门结论和外部条件统一写入R1-REPORT。
