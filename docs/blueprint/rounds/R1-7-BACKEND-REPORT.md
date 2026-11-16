@@ -147,3 +147,19 @@ R1-PLAN §7.b列出的清单确实是14个文件、20个显式位置：其中19�
 纯schema初始化装配更新另列，不是断言改写、不是H.2：`tests/test_jobs_mysql.py::JobsMySQLTests.test_tenant_bound_jobs_storage_cache_restart_and_revocation`内部异步test、`tests/test_demo_mysql.py::DemoMySQL.test_fixtures_are_drafts_idempotent_tenant_local_and_safely_archived`、`tests/test_federation_mysql.py::FederationMySQLTests.test_real_sessions_visibility_citations_links_and_revocation`三处仅把store.initialize_control换为统一run_migrations。原ID、业务场景与断言保留。真实1359118生成器、历史fixture、0001迁移与v1恢复定义没有改动。
 
 本附表补齐用例的实际运行：仅新增application_options单例，1/1通过，5.189秒，独立随机MySQL命名空间按tearDown清理；日志work/h2-options.log。Ruff和该文件format检查通过，git diff --check通过。没有重跑全后端、SDK或8脚本；此小提交仅文档与新增测试，不改运行代码或生成API。包内用例数因此从842增加到843（相对起点新增71），不据此声称843项已完整运行。
+
+## 验收门7：真实旧版与迁移后授权/审计输出对照
+
+新增独立演练`scripts/drills/compare_identity_v070.py`，不是当前v2与当前store互相比对。旧端须为干净的完整提交1359118dd672431dcd0cde2eb81f2b0f994eef37；两个独立Python解释器各自导入对应版本backend.main，通过真实ASGI HTTP请求穿过该版认证中间件、策略、v1路由和MySQL服务。使用TestClient传输，不启生命周期/网络监听/SDK；原夹具加载和显式run_migrations负责初始化，未mock授权、SQL、时间或UUID。可用--current-source指定最终集成目录，默认本脚本所在检出。
+
+同一套原0.7夹具库中，先由原版创建HQ、HQ切dept-01、部门admin、modeler、reviewer的真实会话，完成这5次登录和1次工作区切换后才采集输出。当前版迁移后复用相同会话，不额外登录。两端分别读取GET /api/admin/grants及逐页GET /api/admin/audit（100条/页），所有响应body/status、每条记录及每个字段直接相等，未过滤字段、历史ID或错误内容；比较阶段无需任何namespace重映射（只在原夹具加载时按现有装载器派生隔离库名）。
+
+当前服务来源314d4a07f142ed3de7ad343eb5f19afee2e4d183（旧服务来源1359118dd672431dcd0cde2eb81f2b0f994eef37）上实际执行成功：五个范围、98条授权、15条原夹具历史审计ID均保留。HQ及HQ切dept返回同一完整21条审计，部门admin只见本机构11条，modeler/reviewer的grants和audit均403，部门admin的grants也403；所有这些响应在两版精确一致。比原夹具多出的6条审计是比较开始前原版真实登录/切换产生，两版均原样读取，不排除它们来“对齐”结果。全套before/after原始JSON与来源SHA保存在ignored work/identity-v070-comparison.json，运行摘要在work/identity-v070-comparison.log；不保存会话token，token只在父子进程内存管道中传递。4个独立随机命名空间数据库按finally清理，无共享配置修改，所有探测进程已退出。
+
+这是独立短演练，未新增unittest收集项，包内收集口径仍843；不把它说成843完整通过，也不代替最终主干完整验证。root合并R1-7与其他包后应以--current-source指向最终集成检出再执行同一演练，登记最终SHA与报告；本段只声称已核验上述包内代码。命令示例（MySQL环境按既有安全方式注入）：
+
+```bash
+python scripts/drills/compare_identity_v070.py --v070-source /path/to/clean-1359118 --current-source /path/to/final-checkout --output work/identity-v070-comparison.json
+```
+
+对照成功后仅补充证据输出保护与安全stdout摘要：保存前拒绝任何本次会话token或合成登录密码进入证据；stdout仅两个来源SHA、五范围、完整响应等式成功、计数和清理数量，不含cookie/token/password。该输出保护变更已静态核对并通过Ruff/format，按负责人指令不再次运行MySQL；CI应对最终脚本和集成代码重跑并收集安全摘要。
