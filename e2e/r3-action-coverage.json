@@ -37,7 +37,7 @@
       "decision": "D10",
       "files": ["foundation-identity.spec.mjs"],
       "before": "accounts/grants tabs",
-      "after": "same datasets via segmented radio; authorization and persistence assertions retained"
+      "after": "same datasets via the visible segmented label, checked radio verified; authorization and persistence assertions retained"
     },
     {
       "decision": "D1",
@@ -77,7 +77,7 @@
       "decision": "D3/D5",
       "files": ["foundation-admin.spec.mjs"],
       "before": "backup recovery text and source download always unfolded; secondary navigation directly available",
-      "after": "open retained recovery and Windows fold rows, keyboard-expand management navigation, retain exact instructions/release URL/download success/role rights/system version checks; VERSION read from exported application root"
+      "after": "open retained recovery and Windows fold rows, keyboard-expand management navigation, retain exact instructions/release URL/download success/role rights/system version checks; verified model result uses its status role; VERSION read from exported application root"
     }
   ],
   "cross_role_ui_constraint": "Existing edit-and-adopt behavior immediately applies the draft; UI case uses editor A then submitter B. Exact A-edit/B-adopt provenance combination is additionally covered by backend R3 tests."

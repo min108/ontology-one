@@ -476,7 +476,9 @@ test.describe("headquarters: isolated identity mutations", () => {
     await createUser(page, username, { role: "admin" });
     const users = await read(page, "/api/v2/users");
     const user = users.items.find((user) => user.username === username);
-    await page.getByRole("radio", exact(c.identity_grants_tab)).click();
+    const grantsTab = page.getByRole("radio", exact(c.identity_grants_tab));
+    await grantsTab.locator("..").click();
+    await expect(grantsTab).toBeChecked();
     for (const access of ["read_published", "read_private", "write"]) {
       await button(page, a.identity_create_grant).first().click();
       await dialog(page)

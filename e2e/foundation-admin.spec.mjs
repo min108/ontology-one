@@ -207,9 +207,9 @@ test.describe("administrator operations", () => {
     await page
       .getByRole("button", { name: "验证服务连接", exact: true })
       .click();
-    await expect(
-      page.getByRole("heading", { name: "连接已验证", exact: true }),
-    ).toBeVisible({ timeout: 60000 });
+    await expect(page.getByRole("status")).toHaveText("连接已验证", {
+      timeout: 60000,
+    });
     const verified = await invoke(page, "/v2/system/model");
     expect(verified.body.verified).toBe(true);
     await page.getByLabel("清除已保存的模型密钥", { exact: true }).check();
