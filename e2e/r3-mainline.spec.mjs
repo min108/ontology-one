@@ -525,6 +525,10 @@ for (
       record("A10 就此提问自动选中、手动调整、回答出处可打开要素");
       await button(page, "生成报告").last().click();
       // R3's automatic correction must navigate with no second user click.
+      await expect.poll(() => reportResponses.at(-1)?.status() === 200 || reportResponses.length >= 2, {
+        timeout: 180_000,
+      }).toBe(true);
+      expect(reportResponses.at(-1).status()).toBe(200);
       await expect(page).toHaveURL(/\/apply\/artifacts\//, {
         timeout: 180_000,
       });
