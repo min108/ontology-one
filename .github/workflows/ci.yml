@@ -141,6 +141,9 @@ jobs:
       - name: R2 five-step mainline through the official SDK
         if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python e2e/run_r2.py --output work/evidence/r2/mainline
+      - name: Reviewed 63-state canonical visual matrix
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
+        run: python e2e/run.py --target foundation --visual-only --evidence work/evidence/r3/visual
       - name: R3 complete UI actions and structural acceptance
         if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python e2e/run_r3.py --output work/evidence/r3/actions

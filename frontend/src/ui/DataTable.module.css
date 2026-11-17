@@ -18,6 +18,6 @@
   overflow-wrap: anywhere;
 }
 
-.table :global(.ant-pagination-total-text) {
+.table [class~='ant-pagination-total-text'] {
   margin-inline-end: auto;
 }

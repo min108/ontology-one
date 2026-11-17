@@ -1187,7 +1187,7 @@
     "r3_gallery_source_list": "核对条款",
     "r3_gallery_source_aside": "出处与口径",
     "r3_main_review_self_detail": "提交人与最后编辑人需要交由其他审核人员审核。",
-    "r3_ui_table_total": "第 {start}–{end} 项，共 {total} 项"
+    "r3_ui_table_total": "第 {start} 至 {end} 项，共 {total} 项"
   },
   "states": {
     "loading": {
