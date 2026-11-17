@@ -583,6 +583,12 @@ def relations(node: str = "", status: str = "", q: str = "", page: int = 1, page
 
 def relation_work_entry(c, row):
     """Operational membership is reviewed in its own versioned workflow."""
+    if json.loads(row["payload"] or "{}").get("derived"):
+        return {
+            "href": "/assets/" + row["source"],
+            "label": "修改要素内容",
+            "reason": "派生关联由要素内容生成，随要素一起审核，请在要素草稿中修改。",
+        }
     endpoints = [
         entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone())
         for eid in (row["source"], row["target"])

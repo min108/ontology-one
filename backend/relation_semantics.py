@@ -55,7 +55,39 @@ RELATION_SEMANTICS = {
     "supersedes": ("替代历史版本", "由新版本承接", True, "evolution"),
     "merged_into": ("并入现行成果", "承接历史内容", False, "evolution"),
 }
+# Existing 45 tuples above are a compatibility contract, including uses_method.
+RELATION_SEMANTICS.update(
+    {
+        "has_property": ("具有数据项", "是…的数据项", False, "structure"),
+        "link_source": ("起于", "是…的起点", False, "structure"),
+        "link_target": ("止于", "是…的终点", False, "structure"),
+        "measures": ("度量", "有指标", False, "structure"),
+        "governs": ("规范", "受规则约束", False, "input"),
+        "implements": ("实现接口", "被实现", False, "structure"),
+        "extends": ("扩展自", "被扩展", False, "structure"),
+        "defines": ("指称", "术语为", False, "interpretation"),
+        "holds_position": ("担任", "任职者", False, "organization"),
+        "position_in": ("设于", "下设岗位", False, "organization"),
+        "plays_role": ("作为其往来主体", "往来主体", False, "organization"),
+        "typed_input": ("以…为输入", "作为…的输入", False, "input"),
+        "typed_output": ("产出", "由…产出", False, "formation"),
+        "participated_by": ("参与主体", "参与", False, "organization"),
+        "performed_by": ("由…经办", "经办", False, "organization"),
+        "follows_rule": ("依照", "适用于流程", False, "input"),
+        "uses_input": ("使用", "被…使用", False, "input"),
+        "produces_output": ("形成", "形成于", False, "formation"),
+    }
+)
+
+
+def relation_reading(typ, source_kind="", label=""):
+    if typ == "uses_method" and source_kind == "process":
+        return ("运用", "被…运用", False, "structure")
+    return RELATION_SEMANTICS.get(typ, (label or typ or "关联", "", False, "reference"))
+
+
 FAMILY_LABELS = {
+    "structure": "结构与构成",
     "provenance": "来源与形成",
     "input": "输入与依据",
     "formation": "形成与交付",
@@ -97,9 +129,7 @@ def semantic_relation(row, source_kind="", target_kind="", reading="business"):
     """A plain dict usable by graph/detail APIs; original IDs always retained."""
     d = dict(row) if isinstance(row, Mapping) or hasattr(row, "keys") else row._asdict()
     typ = d.get("type", "")
-    forward, inverse, reverse, family = RELATION_SEMANTICS.get(
-        typ, (d.get("label") or typ or "关联", "", False, "reference")
-    )
+    forward, inverse, reverse, family = relation_reading(typ, source_kind, d.get("label"))
     original_source, original_target = d["source"], d["target"]
     reversed_for_reading = bool(reading == "business" and reverse and inverse)
     return {
