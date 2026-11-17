@@ -108,7 +108,7 @@ export function WorkspaceShell() {
       collapsed={navCollapsed}
       assistantOpen={assistantOpen}
       assistant={
-        <>
+        <div className={styles['assistant-layout']}>
           <header className={styles['assistant-header']}>
             <h2>{terms.labels.r3_ui_assistant_title}</h2>
             <Button
@@ -124,10 +124,10 @@ export function WorkspaceShell() {
               {terms.actions.r3_ui_assistant_open}
             </Link>
           </div>
-          <LegacyBlock variant="contents">
+          <LegacyBlock page={false} className={styles['assistant-task']}>
             <LegacyHarnessConversation />
           </LegacyBlock>
-        </>
+        </div>
       }
       navigation={
         <div className={`sidebar ${styles.navigation}`}>

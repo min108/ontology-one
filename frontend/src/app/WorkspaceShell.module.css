@@ -121,3 +121,58 @@
     display: none;
   }
 }
+
+.assistant-layout {
+  display: flex;
+  flex-direction: column;
+  height: var(--zy-full);
+  min-height: var(--zy-none);
+}
+
+.assistant-layout > .assistant-header,
+.assistant-layout > .assistant-body {
+  flex-shrink: 0;
+}
+
+.assistant-task {
+  flex: 1;
+  min-height: var(--zy-none);
+  padding: var(--zy-space-4);
+  overflow: hidden;
+}
+
+.assistant-task[class~='legacy-root'] [class~='legacy-conversation'] {
+  display: flex;
+  flex-direction: column;
+  height: var(--zy-full);
+  margin: var(--zy-none);
+  box-sizing: border-box;
+}
+
+.assistant-task[class~='legacy-root'] [class~='legacy-conversation'] > header,
+.assistant-task[class~='legacy-root'] [class~='legacy-conversation'] > footer {
+  flex-shrink: 0;
+}
+
+.assistant-task[class~='legacy-root'] [class~='legacy-user-message'] {
+  min-height: var(--zy-none);
+  max-height: calc(var(--zy-full) / 4);
+  overflow: auto;
+}
+
+.assistant-task[class~='legacy-root'] [class~='legacy-progress'],
+.assistant-task[class~='legacy-root'] [class~='legacy-assistant-message'],
+.assistant-task[class~='legacy-root'] [class~='legacy-connection'],
+.assistant-task[class~='legacy-root'] [class~='legacy-conversation-error'] {
+  flex: 1 1 auto;
+  min-height: var(--zy-none);
+  overflow: auto;
+}
+
+.assistant-task[class~='legacy-root'] [class~='legacy-conversation'] > footer {
+  flex-wrap: wrap;
+}
+
+.assistant-task[class~='legacy-root'] [class~='legacy-conversation'] > footer > span {
+  flex-basis: var(--zy-full);
+}

@@ -55,6 +55,7 @@ test("real SDK task survives closing its global view and is stopped through the 
     model_provider: "local_synthetic_messages",
     run_id: null,
     states: [],
+    reopening_checks: [],
     screenshots: [],
   };
   let run;
@@ -123,7 +124,10 @@ test("real SDK task survives closing its global view and is stopped through the 
     expect(
       await panel.evaluate((node) => Boolean(node.closest(".legacy-root"))),
     ).toBe(true);
-    for (const layout of layouts) {
+    for (const layout of [
+      ...layouts,
+      { name: "1920", width: 1920, height: 1080, zoom: "native 100%" },
+    ]) {
       await page.setViewportSize({
         width: layout.width,
         height: layout.height,
@@ -148,7 +152,7 @@ test("real SDK task survives closing its global view and is stopped through the 
     await expect(conversation).toBeHidden();
     expect((await read()).status).toBe("running");
     await expect(page).toHaveURL(taskUrl);
-    record.states.push("escape_closed_while_running");
+    record.reopening_checks.push("escape_closed_while_running");
     await openRun();
     await expect(page).toHaveURL(taskUrl);
     await expect(conversation).toBeVisible();
@@ -156,7 +160,7 @@ test("real SDK task survives closing its global view and is stopped through the 
       conversation.getByRole("button", { name: "停止本轮处理", exact: true }),
     ).toBeVisible();
     expect((await read()).status).toBe("running");
-    record.states.push("same_url_reopened_while_running");
+    record.reopening_checks.push("same_url_reopened_while_running");
     await page.reload();
     await expect(page).toHaveURL(taskUrl);
     await expect(conversation).toBeVisible();
@@ -164,7 +168,7 @@ test("real SDK task survives closing its global view and is stopped through the 
       conversation.getByRole("button", { name: "停止本轮处理", exact: true }),
     ).toBeVisible();
     expect((await read()).status).toBe("running");
-    record.states.push("deep_link_reloaded_while_running");
+    record.reopening_checks.push("deep_link_reloaded_while_running");
     await conversation
       .getByRole("button", { name: "收起智能处理对话", exact: true })
       .click();
