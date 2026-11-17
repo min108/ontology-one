@@ -9,7 +9,7 @@ import hashlib
 import json
 import re
 from contextlib import closing
-from datetime import date
+from datetime import UTC, datetime
 
 from backend import db
 from backend.core.errors import ApiError
@@ -30,21 +30,91 @@ def _object(value: object) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def hard_constraint(entity: dict) -> bool:
-    payload = entity.get("payload") or {}
-    text = " ".join(plain(payload.get(k)) for k in ("content", "rule_text", "obligation", "definition"))
-    return bool(payload.get("authority_spec")) or bool(
-        re.search(
-            r"时限|期限|阈值|金额|审批权限|(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万]+)\s*(?:个工作日|工作日|日内|天内|万元|元|小时|%)",
-            text,
-        )
+_HARD_WORDS = re.compile(
+    r"时限|期限|阈值|金额|审批权限|(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万]+)"
+    r"\s*(?:个工作日|工作日|日内|天内|万元|元|小时|%)"
+)
+_NUMERIC_DATE_TYPES = {"integer", "decimal", "number", "date", "datetime"}
+_NUMERIC_DATE_CALLS = {"max", "min", "abs", "round", "len", "days_between", "today", "year", "month"}
+
+
+def hard_constraint(entity: dict, *, expression_schema: dict | None = None) -> bool:
+    """Inspect governed prose and validated OXL, never a supplied sentence alone.
+
+    The caller supplies declarations loaded from the current tenant. Invalid
+    expressions cannot downgrade the evidence requirement while QG3 reports the
+    expression problem. Test-case inputs are not themselves rule constraints.
+    """
+    from backend.kernel import oxl
+
+    payload = _object(entity.get("payload"))
+    judgement = _object(payload.get("judgement"))
+    blocks = [judgement.get("condition"), judgement.get("requirement")]
+    exceptions = judgement.get("exceptions") or []
+    if isinstance(exceptions, list):
+        blocks.extend(exceptions)
+    if payload.get("formula"):
+        blocks.append(payload["formula"])
+    text = " ".join(
+        [plain(entity.get("title")), plain(entity.get("summary"))]
+        + [
+            plain(payload.get(key))
+            for key in (
+                "content",
+                "rule_text",
+                "obligation",
+                "definition",
+                "scope",
+                "conditions",
+                "exceptions",
+                "constraints",
+            )
+        ]
+        + [plain(block) for block in blocks]
     )
+    if payload.get("authority_spec") or _HARD_WORDS.search(text):
+        return True
+    schema = expression_schema or {"properties": (), "relations": {}}
+    for block in blocks:
+        if not isinstance(block, dict) or not block.get("oxl"):
+            continue
+        try:
+            expression = oxl.parse(block["oxl"], **schema)
+        except oxl.OXLError:
+            return True
+        pending = [expression.root]
+        while pending:
+            node = pending.pop()
+            if node.kind in {"binary", "aggregate"} or (node.kind == "call" and node.value in _NUMERIC_DATE_CALLS):
+                return True
+            if node.kind == "literal" and type(node.value) in {int, float}:
+                return True
+            if node.kind == "property":
+                field = expression.properties.get(node.value, {})
+                name = " ".join(str(field.get(key) or "") for key in ("key", "name", "unit", "note"))
+                if field.get("datatype", field.get("data_type")) in _NUMERIC_DATE_TYPES or _HARD_WORDS.search(name):
+                    return True
+            if node.kind == "literal" and isinstance(node.value, str):
+                try:
+                    datetime.fromisoformat(node.value.replace("Z", "+00:00"))
+                except ValueError:
+                    pass
+                else:
+                    return True
+            pending.extend(node.children)
+    return False
 
 
 def _dates(meta: dict) -> bool:
+    def instant(value: object) -> datetime:
+        if not isinstance(value, str):
+            raise ValueError("Date must be text")
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
     try:
-        start = date.fromisoformat(meta.get("valid_from") or "")
-        end = date.fromisoformat(meta["valid_to"]) if meta.get("valid_to") else None
+        start = instant(meta.get("valid_from"))
+        end = instant(meta["valid_to"]) if meta.get("valid_to") is not None else None
         return end is None or end >= start
     except (ValueError, TypeError):
         return False
@@ -52,12 +122,14 @@ def _dates(meta: dict) -> bool:
 
 def _process_complete(payload: dict) -> bool:
     steps = payload.get("steps") or []
+    if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+        return False
     if not plain(payload.get("trigger")) or not plain(payload.get("end_result")) or len(steps) < 2:
         return False
-    if any(not isinstance(step, dict) for step in steps):
+    if any(not isinstance(step.get("key"), str) or not step["key"].strip() for step in steps):
         return False
-    keys = {step.get("key") for step in steps}
-    if len(keys) != len(steps) or not all(isinstance(key, str) and key.strip() for key in keys):
+    keys = {step["key"] for step in steps}
+    if len(keys) != len(steps):
         return False
     edges = {key: set() for key in keys}
     for step in steps:
@@ -67,8 +139,11 @@ def _process_complete(payload: dict) -> bool:
             or not (step.get("basis") or step.get("outputs"))
         ):
             return False
-        for target in step.get("next") or []:
-            if target not in keys:
+        following = step.get("next") or []
+        if not isinstance(following, list):
+            return False
+        for target in following:
+            if not isinstance(target, str) or target not in keys:
                 return False
             edges[step["key"]].add(target)
             edges[target].add(step["key"])
@@ -87,7 +162,8 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
     identity = kind in {"position", "party"}
     applicable = kind in ASSETS or identity
     evidence = facts.get("evidence", False)
-    if hard_constraint(entity):
+    hard = facts["hard_constraint"] if "hard_constraint" in facts else hard_constraint(entity)
+    if hard:
         evidence = evidence and facts.get("regulation_evidence", False)
     if kind == "process":
         evidence = evidence and facts.get("step_evidence", False)
@@ -123,9 +199,7 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
         complete = _process_complete(payload)
     outcomes = (evidence, meaning, complete, facts.get("relations", False), facts.get("snapshot", False))
     reasons = (
-        "请补充可逐字定位的原文出处。"
-        if not hard_constraint(entity)
-        else "时限、金额或审批要求须有制度原文依据；目前依据不足，待确认。",
+        "请补充可逐字定位的原文出处。" if not hard else "时限、金额或审批要求须有制度原文依据；目前依据不足，待确认。",
         "请补充一句话定义、单位与粒度或身份标识，并处理同名不同义的内容。",
         "请补齐适用范围、条件、例外和生效日期；有判定式时至少两个用例全部通过。"
         if kind == "rule"
@@ -159,29 +233,32 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
                 "waiver_reason": "",
             }
         )
-    return _result(checks)
+    return _result(checks, hard_constraint=hard)
 
 
-def _result(checks: list[dict]) -> dict:
+def _result(checks: list[dict], *, hard_constraint: bool = False) -> dict:
     blockers = [f"{item['label']}：{item['reason']}" for item in checks if item["status"] == "fail"]
-    return {"passed": not blockers, "checks": checks, "blockers": blockers}
+    return {"passed": not blockers, "checks": checks, "blockers": blockers, "hard_constraint": hard_constraint}
 
 
 def _valid_reference(conn: db.Connection, ref: object) -> tuple[bool, bool]:
     if not isinstance(ref, dict):
         return False, False
     if ref.get("kind", "anchor") == "dataset":
+        if not all(isinstance(ref.get(key), str) and ref[key].strip() for key in ("dataset_id", "sheet", "column")):
+            return False, False
         row = conn.execute(
-            "SELECT payload FROM entities WHERE id=? AND kind='dataset'", (ref.get("dataset_id"),)
+            "SELECT s.payload FROM dataset_sheets s JOIN entities e ON e.id=s.dataset_id AND e.kind='dataset' "
+            "WHERE s.dataset_id=? AND s.sheet_name=?",
+            (ref["dataset_id"], ref["sheet"]),
         ).fetchone()
-        payload = _object(row["payload"]) if row else {}
-        fields = payload.get("columns") or payload.get("fields") or []
+        fields = _object(row["payload"]).get("columns", []) if row else []
+        if not isinstance(fields, list):
+            return False, False
         names = {
-            field.get("name") if isinstance(field, dict) else field
-            for field in fields
-            if isinstance(field, (str, dict))
+            field.get("name") for field in fields if isinstance(field, dict) and isinstance(field.get("name"), str)
         }
-        return bool(row and ref.get("column") in names), False
+        return bool(row and ref["column"] in names), False
     if ref.get("kind", "anchor") != "anchor":
         # External notes and future statement records are not verified anchors.
         return False, False
@@ -252,8 +329,14 @@ def _relations_pass(
         return bool(outgoing) or declared_empty
     if kind == "process":
         steps = entity["payload"].get("steps") or []
-        return bool(steps) and all(
-            any(_object(row.get("payload")).get("step_key") == step.get("key") for row in outgoing) for step in steps
+        return (
+            isinstance(steps, list)
+            and bool(steps)
+            and all(
+                isinstance(step, dict)
+                and any(_object(row.get("payload")).get("step_key") == step.get("key") for row in outgoing)
+                for step in steps
+            )
         )
     return True
 
@@ -342,12 +425,24 @@ def check_entity(
         ).fetchone()
     )
     steps = payload.get("steps") or []
+    step_evidence = False
+    if entity["kind"] == "process" and isinstance(steps, list) and steps:
+        step_evidence = all(
+            isinstance(step, dict)
+            and isinstance(step.get("source_refs"), list)
+            and bool(step["source_refs"])
+            and all(_valid_reference(conn, ref)[0] for ref in step["source_refs"])
+            for step in steps
+        )
+    try:
+        schema = expression_context(conn, entity) if payload.get("judgement") or payload.get("formula") else None
+    except (ValueError, ApiError):
+        schema = None
     facts = {
+        "hard_constraint": hard_constraint(entity, expression_schema=schema),
         "evidence": bool(verified) and all(v[0] for v in verified),
         "regulation_evidence": any(v[1] for v in verified),
-        "step_evidence": all(
-            step.get("source_refs") and all(_valid_reference(conn, r)[0] for r in step["source_refs"]) for step in steps
-        ),
+        "step_evidence": step_evidence,
         "duplicate": duplicate,
         "tests": tests,
         "snapshot": snapshot,
@@ -368,7 +463,7 @@ def check_entity(
             and waiver.get("reason")
         ):
             item.update(status="waived", waiver_reason=waiver["reason"], reason="审核人员已记录豁免理由。")
-    return _result(result["checks"])
+    return _result(result["checks"], hard_constraint=result["hard_constraint"])
 
 
 def persist(conn: db.Connection, entity: dict, result: dict) -> None:
