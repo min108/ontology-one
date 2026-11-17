@@ -3,7 +3,7 @@
 | 轮 | 版本 | 状态 | 验收日期 | 报告 |
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
-| R2 | 1.1.0 | 独立验收有条件不通过；R2.1 八项修复验证中 | — | [R2-REPORT](rounds/R2-REPORT.md) |
+| R2 | 1.1.0 | 独立验收有条件不通过；R2.1 八项修复及三次真实界面自验完成，待独立复验 | — | [R2-REPORT](rounds/R2-REPORT.md) |
 
 ## 当前基线
 
