@@ -6,6 +6,19 @@ import { terms } from '../i18n/zh-CN';
 import { StateBlock } from './StateBlock';
 import type { Action, ViewMode } from './types';
 import styles from './DataTable.module.css';
+const columnWidths: Record<string, string> = {
+  kind: 'var(--zy-col-tag)',
+  type: 'var(--zy-col-tag)',
+  status: 'var(--zy-col-tag)',
+  role: 'var(--zy-col-tag)',
+  updated: 'var(--zy-col-time)',
+  created: 'var(--zy-col-time)',
+  time: 'var(--zy-col-time)',
+  actions: 'var(--zy-col-time)',
+  version: 'var(--zy-col-short)',
+  count: 'var(--zy-col-short)',
+  source: 'var(--zy-col-text)',
+};
 export interface DataTableProps<T extends object> {
   columns: TableColumnsType<T>;
   dataSource: T[];
@@ -34,12 +47,10 @@ export function DataTable<T extends object>({
       .get(`${urlKey}.columns`)
       ?.split(',')
       .filter((key) => available.includes(key));
+    const allowed =
+      viewMode === 'professional' ? saved : saved?.filter((key) => defaults.includes(key)).slice(0, 6);
     return {
-      columns: saved?.length
-        ? viewMode === 'professional'
-          ? saved
-          : saved.filter((key) => defaults.includes(key)).slice(0, 6)
-        : defaults,
+      columns: allowed?.length ? allowed : defaults,
       compact: viewMode === 'professional' && params.get(`${urlKey}.density`) === 'compact',
       page: Math.max(1, Number(params.get(`${urlKey}.page`)) || 1),
     };
@@ -60,7 +71,9 @@ export function DataTable<T extends object>({
     window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
     setSettings(next);
   }
-  const shown = columns.filter((_column, index) => settings.columns.includes(available[index]));
+  const shown = columns
+    .filter((_column, index) => settings.columns.includes(available[index]))
+    .map((column) => ({ ...column, width: column.width ?? columnWidths[String(column.key)] }));
   if (!dataSource.length && !tableProps?.loading) return <StateBlock state="empty" action={emptyAction} />;
   return (
     <div className={styles.table}>

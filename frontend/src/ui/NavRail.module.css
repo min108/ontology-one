@@ -107,9 +107,10 @@
 
 .collapsed .secondary {
   position: absolute;
-  left: calc(var(--zy-nav-collapsed) - var(--zy-gap-tight));
+  left: 100%;
   top: var(--zy-none);
   width: var(--zy-nav-width);
+  box-sizing: border-box;
   padding: var(--zy-gap-tight);
   border: var(--zy-border-width) solid var(--zy-color-border);
   border-radius: var(--zy-radius-card);

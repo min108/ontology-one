@@ -20,7 +20,11 @@ it('uses one shared page skeleton without a separate identity stripe and retains
     screen.getByRole('heading', { name: terms.labels.gallery }).closest('[data-page-header]'),
   ).not.toBeNull();
   expect(container.querySelector('[data-page-content]')).not.toBeNull();
-  expect(container.querySelector('main')?.previousElementSibling?.tagName).toBe('HEADER');
+  const main = container.querySelector('main')!;
+  expect(main.parentElement?.firstElementChild?.children).toHaveLength(1);
+  expect(main.parentElement?.firstElementChild?.firstElementChild).toHaveAttribute('data-topbar');
+  expect(main.previousElementSibling?.tagName).toBe('ASIDE');
+  expect(main.firstElementChild).toHaveAttribute('data-page-template');
   fireEvent.change(screen.getByLabelText(terms.labels.filter), { target: { value: 'no-matching-sample' } });
   expect(screen.queryByRole('row', { name: new RegExp(terms.labels.sample_title) })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: terms.actions.reset }));

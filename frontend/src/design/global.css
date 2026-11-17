@@ -21,7 +21,7 @@ body {
 }
 
 .zy-root :where(button, input, select, textarea):not(:where(.legacy-root, .legacy-root *)) {
-  font-family: inherit;
+  font: inherit;
 }
 
 .zy-root :where(h1, h2, h3, h4):not(:where(.legacy-root, .legacy-root *)) {

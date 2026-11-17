@@ -62,6 +62,21 @@ describe('navigation and table boundaries', () => {
     );
     expect(screen.getAllByRole('columnheader')).toHaveLength(6);
   });
+  it('restores readable business columns when the saved selection is professional-only', () => {
+    window.history.replaceState(null, '', '/?table.columns=department');
+    const props = {
+      columns,
+      dataSource: [{ id: 'record', name: 'Saved business name' }],
+      rowKey: 'id',
+      emptyAction: action,
+    };
+    const { rerender } = render(<DataTable {...props} viewMode="professional" />);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(1);
+    rerender(<DataTable {...props} viewMode="simple" />);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(6);
+    expect(screen.getByText('Saved business name')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: terms.actions.columns })).not.toBeInTheDocument();
+  });
   it('Omnibox ArrowUp wraps to the last result', () => {
     const onSelect = vi.fn();
     render(

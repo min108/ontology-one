@@ -13,30 +13,38 @@ vi.mock('../../api/client', async (original) => ({
 }));
 const report = {
   id: 'ART-private',
-  title: '付款制度报告',
+  title: 'Payment report',
   source_kind: 'mock',
   current_version: 1,
   created_at: '2026-11-17T00:30:00Z',
-  versions: [{ version: 1, created_at: '2026-11-17T00:30:00Z', change_note: '生成' }],
+  versions: [{ version: 1, created_at: '2026-11-17T00:30:00Z', change_note: 'Generated' }],
   spec: {
-    source_label: '模拟模型演练结果',
+    source_label: 'Simulated model result',
     blocks: [
-      { type: 'paragraph', text: '按[付款规则](/assets/rule_internal)应在30日内办理。', citations: ['c1'] },
-      { type: 'table', columns: ['事项', '时限'], rows: [['付款', '30日']], citations: ['c1'] },
+      {
+        type: 'paragraph',
+        text: '[Payment rule](/assets/rule_internal) requires payment within 30 days.',
+        citations: ['c1'],
+      },
+      { type: 'table', columns: ['Item', 'Deadline'], rows: [['Payment', '30 days']], citations: ['c1'] },
     ],
     citations: {
       c1: {
-        title: '付款规则',
-        source_title: '付款管理制度',
+        title: 'Payment rule',
+        source_title: 'Payment regulation',
         entity_id: 'rule_internal',
-        quote: '付款应在30日内办理。',
+        quote: 'Payment is due within 30 days.',
         version: 1,
         path: '/materials/original',
-        locator: '第1条',
+        locator: 'Article 1',
         anchor_id: 'anchor_hidden',
       },
     },
-    revision: { count: 1, before: 'rule_internal要求99日。', after: 'rule_internal要求30日。' },
+    revision: {
+      count: 1,
+      before: 'rule_internal requires 99 days.',
+      after: 'rule_internal requires 30 days.',
+    },
   },
 };
 function open(path = '/apply/artifacts/ART-private') {
@@ -62,17 +70,17 @@ it('opens source superscripts in a drawer, closes it and preserves the report', 
   vi.mocked(api).mockResolvedValue({ data: report });
   const view = open();
   expect(await screen.findByRole('heading', { name: report.title })).toBeInTheDocument();
-  const citation = screen.getAllByRole('button', { name: '查看引用依据 1' })[0];
+  const citation = screen.getAllByRole('button', { name: terms.actions.r3_report_source + ' 1' })[0];
   expect(citation.closest('sup')).not.toBeNull();
   fireEvent.click(citation);
   const drawer = await screen.findByRole('dialog');
-  expect(within(drawer).getByText('付款管理制度')).toBeInTheDocument();
-  expect(within(drawer).getByText('付款应在30日内办理。').closest('mark')).not.toBeNull();
+  expect(within(drawer).getByText('Payment regulation')).toBeInTheDocument();
+  expect(within(drawer).getByText('Payment is due within 30 days.').closest('mark')).not.toBeNull();
   expect(within(drawer).getByRole('link', { name: terms.actions.r3_report_open_material })).toHaveAttribute(
     'href',
     '/materials/original',
   );
-  fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+  fireEvent.click(within(drawer).getByRole('button', { name: terms.actions.r3_ui_close }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(screen.getByRole('heading', { name: report.title })).toBeInTheDocument();
   expect(view.container.textContent).not.toContain('anchor_hidden');
@@ -85,8 +93,8 @@ it('keeps server-owned before and after answers visibly distinguished', async ()
   const compare = await screen.findByText(terms.actions.r3_report_compare);
   fireEvent.click(compare);
   expect(screen.getByRole('heading', { name: terms.labels.r3_report_before })).toBeInTheDocument();
-  expect(screen.getByText('付款规则要求99日。')).toBeInTheDocument();
-  expect(screen.getByText('付款规则要求30日。')).toBeInTheDocument();
+  expect(screen.getByText('Payment rule requires 99 days.')).toBeInTheDocument();
+  expect(screen.getByText('Payment rule requires 30 days.')).toBeInTheDocument();
   expect(screen.getAllByText(terms.labels.r3_report_revised).length).toBeGreaterThan(0);
 });
 
