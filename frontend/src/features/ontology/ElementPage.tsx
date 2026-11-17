@@ -254,7 +254,12 @@ function Element({ id }: { id: string }) {
             )}
             <GateChecklist gates={detail.gates} professional={professional} />
             {professional && ['rule', 'metric'].includes(entity.kind) && (
-              <RuleTests id={id} disabled={!!query.refreshing || !!query.error} onComplete={query.reload} />
+              <RuleTests
+                key={entity.id + ':' + entity.version}
+                id={id}
+                disabled={!!query.refreshing || !!query.error}
+                onComplete={query.reload}
+              />
             )}
             <TechnicalDetails>
               {detail.can_edit && ['rule', 'metric'].includes(entity.kind) && entity.status === 'draft' && (
