@@ -1,8 +1,15 @@
 import { Alert, Button, Progress } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, invokeCapability } from '../../api/client';
-import { PageHeader } from '../../ui/PageHeader';
+import { PageHeader, PageLayout, NextStepBar, OriginTag } from '../../ui';
+import { useQuery } from '@tanstack/react-query';
+import { workspaceQueryKey } from '../../api/query';
+import { useSessionStore } from '../../state/session';
+import { useScopeStore } from '../../state/scope';
+import { ResourceState, useResource } from '../admin/shared';
+import type { RecipeStart, RecipeResult, ProposalResult } from '../../api/generated/types';
+import { sentence } from './model';
 import { StatusTag } from '../../ui/StatusTag';
 import { BuildForbidden } from './shared';
 import { fileProblems } from '../home/intake';
@@ -21,7 +28,24 @@ function Intake({ canEdit }: { canEdit: boolean }) {
   const [file, setFile] = useState<File>();
   const [autoStart, setAutoStart] = useState(false);
   const [runId, setRunId] = useState(params.get('run') || '');
-  const [run, setRun] = useState<Recipe>();
+  const [startedRun, setRun] = useState<Recipe>();
+  const session = useSessionStore((state) => state.session);
+  const scopeKey = useScopeStore((state) => state.scopeKey);
+  const runQuery = useQuery({
+    queryKey: workspaceQueryKey(session?.workspace.tenant_id || '', scopeKey, 'intake:' + runId),
+    enabled: !!runId,
+    queryFn: ({ signal }) => api<RecipeResult>('/v2/recipes/' + encodeURIComponent(runId), { signal }),
+    refetchInterval: (query) =>
+      ['queued', 'running'].includes(query.state.data?.data.status || '') ? 1500 : false,
+  });
+  const run = runQuery.data?.data || (startedRun?.id === runId ? startedRun : undefined);
+  const result = useResource<ProposalResult>(
+    '/v2/changesets/' + encodeURIComponent(run?.changeset_id || ''),
+    !!run?.changeset_id,
+  );
+  const itemCount = result.data?.data.items.length;
+  const checkCount =
+    result.data?.data.items.filter((item) => item.tier !== 'sure' && !item.processed_elsewhere).length || 0;
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const input = useRef<HTMLInputElement>(null);
@@ -48,9 +72,9 @@ function Intake({ canEdit }: { canEdit: boolean }) {
       form.set('file', file);
       form.set('upload_token', crypto.randomUUID());
       const uploaded = await api<{ id: string }>('/materials/upload', { method: 'POST', body: form, signal });
-      const value = await invokeCapability<{ data: Recipe }>(
+      const value = await invokeCapability<RecipeResult>(
         'recipe.start',
-        { material_id: uploaded.id },
+        { material_id: uploaded.id } satisfies RecipeStart,
         { signal },
       );
       if (signal?.aborted) return;
@@ -81,81 +105,93 @@ function Intake({ canEdit }: { canEdit: boolean }) {
     setAutoStart(false);
     void start();
   }, [autoStart, file, busy, canEdit, start]);
-  useEffect(() => {
-    if (!runId) return;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const value = await api<{ data: Recipe }>('/v2/recipes/' + encodeURIComponent(runId), {
-          signal: controller.signal,
-        });
-        if (controller.signal.aborted) return;
-        setRun(value.data);
-        if (['queued', 'running'].includes(value.data.status)) timer = setTimeout(() => void poll(), 1500);
-      } catch (failure) {
-        if (!controller.signal.aborted)
-          setError(failure instanceof Error ? failure.message : copy.r2_failure);
-      }
-    };
-    void poll();
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, [runId]);
   return (
-    <div className={styles.page}>
-      <PageHeader title={copy.r2_intake_title} />
-      <p>{copy.r2_intake_help}</p>
+    <PageLayout
+      variant="archive"
+      header={
+        <PageHeader
+          title={copy.r2_intake_title}
+          lead={
+            itemCount !== undefined
+              ? sentence(copy.r3_main_intake_done, { count: itemCount, check: checkCount })
+              : run
+                ? copy.r3_main_intake_running
+                : copy.r2_intake_help
+          }
+          primaryAction={
+            run?.changeset_id
+              ? {
+                  label: copy.r3_main_intake_view,
+                  onClick: () => navigate('/build/changesets/' + run.changeset_id),
+                }
+              : {
+                  label: busy ? copy.r2_uploading : actions.r2_start,
+                  disabled: !file || !canEdit || busy,
+                  onClick: () => void start(),
+                }
+          }
+        />
+      }
+    >
       {error && <Alert type="error" title={error} role="alert" />}
       {!canEdit && <Alert type="info" title={copy.r2_readonly} />}
-      <section
-        className={styles.intake}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          choose(Array.from(event.dataTransfer.files));
-        }}
-      >
-        <input
-          ref={input}
-          hidden
-          type="file"
-          aria-label={copy.r2_choose_file}
-          accept=".txt,.md,.pdf,.docx,.html,.htm"
-          onChange={(event) => {
-            choose(Array.from(event.target.files || []));
-            event.target.value = '';
+      {!run && (
+        <section
+          className={styles.intake}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            choose(Array.from(event.dataTransfer.files));
           }}
-        />
-        <p>{file?.name || copy.r2_file_help}</p>
-        <div className={styles.actions}>
-          <Button autoInsertSpace={false} disabled={!canEdit || busy} onClick={() => input.current?.click()}>
-            {copy.r2_choose_file}
-          </Button>
-          <Button
-            autoInsertSpace={false}
-            type="primary"
-            loading={busy}
-            disabled={!file || !canEdit}
-            onClick={() => void start()}
-          >
-            {actions.r2_start}
-          </Button>
-        </div>
-        {busy && <p role="status">{copy.r2_uploading}</p>}
-      </section>
+        >
+          <input
+            ref={input}
+            hidden
+            type="file"
+            aria-label={copy.r2_choose_file}
+            accept=".txt,.md,.pdf,.docx,.html,.htm"
+            onChange={(event) => {
+              choose(Array.from(event.target.files || []));
+              event.target.value = '';
+            }}
+          />
+          <p>{file?.name || copy.r2_file_help}</p>
+          <div className={styles.actions}>
+            <Button
+              autoInsertSpace={false}
+              disabled={!canEdit || busy}
+              onClick={() => input.current?.click()}
+            >
+              {copy.r2_choose_file}
+            </Button>
+          </div>
+          {busy && <p role="status">{copy.r2_uploading}</p>}
+        </section>
+      )}
+      {runQuery.isError && <ResourceState error={copy.r2_failure} reload={() => void runQuery.refetch()} />}
       {run && (
         <section className={styles.card} aria-live="polite">
           <h2>{copy.r2_progress}</h2>
           <StatusTag domain="recipe" status={run.status} />
           <p>{run.stage_message}</p>
           <Progress percent={Math.round(((run.progress?.done || 0) / (run.progress?.total || 4)) * 100)} />
-          {run.changeset_id && <Link to={'/build/changesets/' + run.changeset_id}>{actions.r2_view}</Link>}
+          <OriginTag origin={run.used_model ? 'ai' : 'local'} />
+          {run.changeset_id && (
+            <Button
+              type="text"
+              onClick={() => {
+                setRunId('');
+                setRun(undefined);
+                navigate('/build/intake', { replace: true });
+              }}
+            >
+              {copy.r3_main_intake_new}
+            </Button>
+          )}
         </section>
       )}
-    </div>
+      <NextStepBar current={1} description={copy.r3_main_next_check} />
+    </PageLayout>
   );
 }

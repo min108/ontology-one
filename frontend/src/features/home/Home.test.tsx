@@ -1,16 +1,18 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Home from './Home';
 import { terms } from '../../i18n/zh-CN';
-import { queryClient } from '../../api/query';
+import { useUiStore } from '../../state/ui';
+let queryClient: QueryClient;
 import { api } from '../../api/client';
 import { useSessionStore } from '../../state/session';
 import { useScopeStore } from '../../state/scope';
 vi.mock('../../api/client', () => ({ api: vi.fn(), invokeCapability: vi.fn() }));
 beforeEach(() => {
-  queryClient.clear();
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  useUiStore.setState({ viewMode: 'professional' });
   vi.mocked(api).mockReset();
   useScopeStore.getState().setScope('a');
   useSessionStore.setState({
@@ -56,10 +58,11 @@ it('renders actual institution counts and no more than four metric cards', async
       </QueryClientProvider>
     </MemoryRouter>,
   );
-  expect(await screen.findByText('Tenant A')).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: terms.labels.home_workbench })).toBeInTheDocument();
+  expect(screen.queryByText('Tenant A')).not.toBeInTheDocument();
   expect(await screen.findAllByTestId('home-metric')).toHaveLength(4);
   expect(screen.getByText('99')).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: terms.labels.home_pending })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: new RegExp(terms.labels.home_pending) })).toBeInTheDocument();
 });
 it('does not turn a failed overview request into zero metrics', async () => {
   vi.mocked(api).mockRejectedValue(new Error('offline'));
@@ -135,4 +138,31 @@ it('foreign readonly institutions do not display unqueried running counts or all
   expect(screen.queryByText(terms.labels.home_none_running)).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: terms.labels.home_choose_files })).toBeDisabled();
   expect(vi.mocked(api).mock.calls.some(([path]) => path.includes('runs'))).toBe(false);
+});
+
+it('shows one starting action and hides every zero summary in an empty simple workbench', async () => {
+  useUiStore.setState({ viewMode: 'simple' });
+  vi.mocked(api).mockImplementation(async (path) => {
+    if (path === '/overview')
+      return { assets: 0, relations: 0, counts: { organization: 1 }, data_rows: 0, relation_statuses: {} };
+    if (path === '/work/catalog') return { tasks: [] };
+    return { items: [], total: 0 };
+  });
+  const { container } = render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <Home />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  expect(await screen.findByText(terms.labels.r3_main_start)).toBeVisible();
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('heading', { name: new RegExp(terms.labels.home_pending) }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screen.queryAllByTestId('home-metric')).toHaveLength(0);
+  expect(screen.queryByText('0')).not.toBeInTheDocument();
+  expect(container.querySelectorAll('.ant-btn-primary')).toHaveLength(1);
+  expect(screen.getByRole('button', { name: terms.labels.home_choose_files })).toBeEnabled();
 });

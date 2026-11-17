@@ -1,10 +1,18 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { BusinessCard, type ElementDetail } from './ElementPage';
+import { testQuery, testSession } from '../build/testQuery';
+import { api } from '../../api/client';
+import { terms } from '../../i18n/zh-CN';
 import { assetKinds } from './CatalogPage';
 
-it('presents the four kinds and a literal, anchored business card', () => {
+vi.mock('../../api/client', async (original) => ({
+  ...(await original<typeof import('../../api/client')>()),
+  api: vi.fn(),
+}));
+it('presents the four kinds and a literal, anchored business card', async () => {
+  testSession();
   expect(assetKinds).toEqual(['data', 'rule', 'skill', 'knowledge']);
   const detail: ElementDetail = {
     entity: {
@@ -40,12 +48,20 @@ it('presents the four kinds and a literal, anchored business card', () => {
     <MemoryRouter>
       <BusinessCard detail={detail} />
     </MemoryRouter>,
+    { wrapper: testQuery() },
   );
   expect(screen.getByText('<script>literal</script>')).toBeInTheDocument();
   expect(container.querySelector('script')).toBeNull();
-  expect(screen.getByRole('link', { name: 'Article 1' })).toHaveAttribute(
+  vi.mocked(api).mockResolvedValue({
+    text: 'Pay within 30 days.',
+    focus: { start: 0, end: 19 },
+    source_version: 'V-1',
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Article 1' }));
+  const drawer = await screen.findByRole('dialog');
+  expect(within(drawer).getByRole('link', { name: terms.labels.r3_main_source_page })).toHaveAttribute(
     'href',
     '/materials/M-1?anchor=A-1&source_version=V-1',
   );
-  expect(screen.getByText('Check the source.')).toBeInTheDocument();
+  expect(drawer.querySelector('mark')).toHaveTextContent('Pay within 30 days.');
 });

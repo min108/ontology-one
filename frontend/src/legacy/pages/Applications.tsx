@@ -32,7 +32,7 @@ function internalLink(item:Provenance,currentTenantId:string){if(item.entity_id&
 export default function Applications(){
   const {session:auth}=useAuth();
   const [params,setParams]=useSearchParams();
-  const requestedSession=params.get('session')||'',requestedRun=params.get('run')||'';
+  const requestedSession=params.get('session')||'',requestedRun=params.get('run')||'',requestedElement=params.get('element')||'';
   const capabilities=useApi<Capability>('/agent/capabilities');
   const enabled=!!capabilities.data&&!capabilities.data.requires_home_workspace;
   const options=useApi<Options>(enabled?'/agent/options':''),catalog=useApi<{items:SessionItem[]}>(enabled?'/agent/sessions':'');
@@ -42,6 +42,8 @@ export default function Applications(){
   const [expandedRuns,setExpandedRuns]=useState<Record<string,boolean>>({});
   const [skillIds,setSkillIds]=useState<string[]>([]),[mappingIds,setMappingIds]=useState<string[]>([]),[entityIds,setEntityIds]=useState<string[]>([]);
   const followOutput=useRef(true),live=useRef(true),generation=useRef(0),requests=useRef(new Set<AbortController>()),messages=useRef<HTMLDivElement>(null),composer=useRef<HTMLTextAreaElement>(null);
+  const appliedReference=useRef('');
+  useEffect(()=>{if(!requestedElement||requestedSession||!enabled||!options.data||appliedReference.current===requestedElement)return;appliedReference.current=requestedElement;if(options.data.assets.some(item=>item.id===requestedElement)){setEntityIds([requestedElement]);setAutomatic(false);setReferences(true)}},[requestedElement,requestedSession,enabled,options.data]);
   const sid=session?.id||'',isRunning=!!session?.active_run_id||!!activeRun||active(run?.status),configured=!!capabilities.data?.configured;
   useEffect(()=>{live.current=true;const clear=()=>{generation.current++;for(const controller of requests.current)controller.abort();requests.current.clear();setSession(null);setRun(null);setActiveRun('');setQuestion('');setExpandedRuns({});setSkillIds([]);setMappingIds([]);setEntityIds([]);setError('');setConnection('')};window.addEventListener('ontology:scope-cleared',clear);window.addEventListener('pagehide',clear);return()=>{live.current=false;generation.current++;for(const controller of requests.current)controller.abort();window.removeEventListener('ontology:scope-cleared',clear);window.removeEventListener('pagehide',clear)}},[]);
   useEffect(()=>{const reload=()=>capabilities.reload();window.addEventListener('ontology:harness-configured',reload);return()=>window.removeEventListener('ontology:harness-configured',reload)},[capabilities.reload]);

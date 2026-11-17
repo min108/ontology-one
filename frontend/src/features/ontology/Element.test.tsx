@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
 import { useUiStore } from '../../state/ui';
+import { testQuery, testSession } from '../build/testQuery';
 import ElementPage, { type ElementDetail } from './ElementPage';
 
 vi.mock('../../api/client', async (original) => ({
@@ -87,18 +88,23 @@ async function openElement(value = detail()) {
         <Route path="/ontology/elements/:id" element={<ElementPage />} />
       </Routes>
     </MemoryRouter>,
+    { wrapper: testQuery() },
   );
   await screen.findByRole('heading', { name: 'Payment requirements' });
   return rendered;
 }
 beforeEach(() => {
+  testSession();
   vi.clearAllMocks();
   useUiStore.setState({ viewMode: 'simple' });
 });
 
 it('shows readable nested business information with vocabulary labels and excludes all internal fields', async () => {
   const { container } = await openElement();
-  const structure = screen.getByRole('tabpanel', { name: terms.labels.r2_card_structure });
+  expect(screen.queryByRole('region', { name: terms.labels.r2_card_structure })).not.toBeInTheDocument();
+  expect(screen.queryByText(/rule_private_id/)).not.toBeInTheDocument();
+  act(() => useUiStore.getState().setViewMode('professional'));
+  const structure = screen.getByRole('region', { name: terms.labels.r2_card_structure });
   for (const text of [
     terms.labels.r2_card_field_scope,
     terms.labels.r2_card_field_conditions,
@@ -130,9 +136,9 @@ it('shows readable nested business information with vocabulary labels and exclud
   ]) {
     expect(structure).not.toHaveTextContent(text);
   }
-  expect(screen.queryByText(/rule_private_id/)).not.toBeInTheDocument();
-  act(() => useUiStore.getState().setViewMode('professional'));
-  expect(screen.getByText(/rule_private_id/)).toBeInTheDocument();
+  expect(screen.getByText(/rule_private_id/)).not.toBeVisible();
+  fireEvent.click(screen.getByText(terms.labels.r3_ui_technical));
+  expect(screen.getByText(/rule_private_id/)).toBeVisible();
   act(() => useUiStore.getState().setViewMode('simple'));
   expect(screen.queryByText(/rule_private_id/)).not.toBeInTheDocument();
 });
@@ -140,21 +146,23 @@ it('shows readable nested business information with vocabulary labels and exclud
 it('shows the identifier only in professional view while keeping internal payload fields hidden', async () => {
   useUiStore.setState({ viewMode: 'professional' });
   await openElement();
-  expect(screen.getByText(/rule_private_id/)).toBeInTheDocument();
-  expect(screen.getByRole('tabpanel', { name: terms.labels.r2_card_structure })).not.toHaveTextContent(
+  expect(screen.getByText(/rule_private_id/)).not.toBeVisible();
+  fireEvent.click(screen.getByText(terms.labels.r3_ui_technical));
+  expect(screen.getByText(/rule_private_id/)).toBeVisible();
+  expect(screen.getByRole('region', { name: terms.labels.r2_card_structure })).not.toHaveTextContent(
     'secret',
   );
 });
 
 it('formats versions and activity in Beijing time and translates action identifiers', async () => {
   await openElement();
-  fireEvent.click(screen.getByRole('tab', { name: terms.labels.r2_card_versions }));
-  const versions = screen.getByRole('tabpanel', { name: terms.labels.r2_card_versions });
+  fireEvent.click(screen.getByText(terms.labels.r2_card_versions));
+  const versions = screen.getByRole('region', { name: terms.labels.r2_card_versions });
   expect(versions).toHaveTextContent('v3 · 2026-11-17 02:05 · Independent review approved');
   expect(versions).toHaveTextContent('v2 · 2026-11-17 02:04 · Complete the scope');
   expect(versions).not.toHaveTextContent('invalid-secret');
-  fireEvent.click(screen.getByRole('tab', { name: terms.labels.r2_card_activity }));
-  const activity = screen.getByRole('tabpanel', { name: terms.labels.r2_card_activity });
+  fireEvent.click(screen.getByText(terms.labels.r2_card_activity));
+  const activity = screen.getByRole('region', { name: terms.labels.r2_card_activity });
   expect(activity).toHaveTextContent(
     `${terms.actions.catalog_2_4} · Independent review completed · 2026-11-17 02:05`,
   );
@@ -171,10 +179,22 @@ it('shows an empty state when payload contains only metadata or unsupported nest
     conditions: { unknown_internal: ['secret'] },
     content: null,
   };
+  useUiStore.setState({ viewMode: 'professional' });
   await openElement(value);
   expect(
-    within(screen.getByRole('tabpanel', { name: terms.labels.r2_card_structure })).getByText(
+    within(screen.getByRole('region', { name: terms.labels.r2_card_structure })).getByText(
       terms.labels.r2_card_empty,
     ),
   ).toBeInTheDocument();
+});
+
+it('renders a draft in the new archive page without a published question action', async () => {
+  const value = detail();
+  value.entity.status = 'draft';
+  value.can_edit = true;
+  await openElement(value);
+  expect(screen.getByText(terms.statuses.element.draft)).toBeVisible();
+  expect(screen.getByRole('button', { name: terms.labels.r3_main_edit_draft })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: terms.labels.r3_main_ask })).not.toBeInTheDocument();
+  expect(screen.getByText(terms.labels.r3_main_draft_note)).toBeVisible();
 });

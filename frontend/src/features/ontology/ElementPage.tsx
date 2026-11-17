@@ -1,11 +1,21 @@
-import { Descriptions, Tabs } from 'antd';
-import { Link, useParams } from 'react-router-dom';
+import { Button, Descriptions } from 'antd';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { terms } from '../../i18n/zh-CN';
 import { useUiStore } from '../../state/ui';
-import { PageHeader } from '../../ui/PageHeader';
-import { StatusTag } from '../../ui/StatusTag';
+import {
+  PageHeader,
+  PageLayout,
+  FoldRow,
+  TechnicalDetails,
+  KindTag,
+  StatusTag,
+  formatDateTime,
+} from '../../ui';
+import { SourceEvidence } from '../build/SourceEvidence';
+import { askHref, sentence } from '../build/model';
 import { ResourceState, useResource } from '../admin/shared';
-import { sourceHref, type Evidence, useBuildIdentity } from '../build/shared';
+import { type Evidence, useBuildIdentity } from '../build/shared';
 import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
@@ -50,23 +60,6 @@ function activityLabel(action: string): string {
   // Older records already carry a business-facing Chinese action name.
   return /^[\p{Script=Han}\s、，。（）]+$/u.test(action) ? action : '';
 }
-function beijingTime(value: string): string {
-  // Older database timestamps without an offset also represent UTC.
-  const normalized = value.trim().replace(' ', 'T');
-  const date = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : normalized + 'Z');
-  if (Number.isNaN(date.getTime())) return copy.identity_not_recorded;
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value;
-  return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`;
-}
 export interface ElementDetail {
   entity: {
     id: string;
@@ -83,32 +76,48 @@ export interface ElementDetail {
   can_edit: boolean;
 }
 export function BusinessCard({ detail }: { detail: ElementDetail }) {
+  const [source, setSource] = useState<Evidence>();
   const sources = Array.isArray(detail.entity.payload.source_refs)
     ? (detail.entity.payload.source_refs as Evidence[])
     : [];
   return (
     <article className={styles.card} aria-label={detail.entity.title}>
-      <p className={styles.paragraph}>{detail.card.one_liner}</p>
-      <h2>{copy.r2_card_points}</h2>
-      <ul>
-        {detail.card.points.map((point, i) => (
-          <li key={i}>{point}</li>
-        ))}
-      </ul>
+      <p className={styles.statement}>{detail.card.one_liner}</p>
+      {detail.card.points.length > 0 && (
+        <>
+          <h2>{copy.r2_card_points}</h2>
+          <ul>
+            {detail.card.points.slice(0, 3).map((point, i) => (
+              <li key={i}>{point}</li>
+            ))}
+          </ul>
+        </>
+      )}
       <h2>{copy.r2_card_sources}</h2>
       {!sources.length && <p>{copy.r2_card_empty}</p>}
-      {sources.map((source, i) => (
+      {sources.slice(0, 1).map((ref, i) => (
         <blockquote className={styles.quote} key={i}>
-          <p>{source.quote}</p>
-          {source.material_id && source.anchor_id ? (
-            <Link to={sourceHref(source)}>{source.locator || copy.r2_source_open}</Link>
-          ) : (
-            <span>{source.locator}</span>
-          )}
+          <p>{ref.quote}</p>
+          <Button type="text" autoInsertSpace={false} onClick={() => setSource(ref)}>
+            {ref.locator || copy.r3_main_view_original}
+          </Button>
         </blockquote>
       ))}
-      <h2>{copy.r2_card_usage}</h2>
-      <p>{detail.card.usage}</p>
+      {sources.length > 1 && (
+        <FoldRow
+          title={copy.r3_main_source}
+          summary={sentence(copy.r3_main_count, { count: sources.length })}
+        >
+          {sources.slice(1).map((ref, i) => (
+            <p key={i}>
+              <Button type="text" onClick={() => setSource(ref)}>
+                {ref.locator || copy.r3_main_view_original}
+              </Button>
+            </p>
+          ))}
+        </FoldRow>
+      )}
+      <SourceEvidence source={source} onClose={() => setSource(undefined)} />
     </article>
   );
 }
@@ -119,86 +128,179 @@ export default function ElementPage() {
 }
 function Element({ id }: { id: string }) {
   const viewMode = useUiStore((state) => state.viewMode);
+  const navigate = useNavigate();
   const query = useResource<{ data: ElementDetail }>('/v2/elements/' + encodeURIComponent(id));
-  if (!query.data) return <ResourceState error={query.error} reload={query.reload} />;
+  if (!query.data)
+    return (
+      <PageLayout variant="archive" header={<PageHeader title={copy.r2_catalog_title} />}>
+        <ResourceState error={query.error} reload={query.reload} />
+      </PageLayout>
+    );
   const detail = query.data.data,
-    entity = detail.entity;
-  const labels: Record<string, string> = terms.kinds;
+    entity = detail.entity,
+    professional = viewMode === 'professional';
   const fields = Object.entries(fieldLabels).flatMap(([key, label]) => {
     const text = businessText(entity.payload[key]);
     return text ? [{ key, label, children: <span className={styles.paragraph}>{text}</span> }] : [];
   });
+  const conditions = fields.filter((field) => ['scope', 'conditions', 'constraints'].includes(field.key));
   const activities = (entity.activities || []).flatMap((event) => {
     const label = activityLabel(event.action);
     return label ? [{ ...event, label }] : [];
   });
+  const sources = Array.isArray(entity.payload.source_refs) ? entity.payload.source_refs : [];
   return (
-    <div className={styles.page}>
-      <Link to="/ontology/catalog">{terms.actions.r2_card_back}</Link>
-      <PageHeader title={entity.title} status={<StatusTag status={entity.status} />} />
-      <p>
-        {labels[entity.kind] || copy.unknown_kind}
-        {viewMode === 'professional' && <> · {entity.id}</>} · v{entity.version} · {entity.domain}
-      </p>
-      <BusinessCard detail={detail} />
-      {detail.can_edit && <Link to={'/assets/' + encodeURIComponent(id)}>{terms.actions.r2_card_edit}</Link>}
-      <Tabs
-        items={[
-          {
-            key: 'structure',
-            label: copy.r2_card_structure,
-            children: fields.length ? (
-              <Descriptions column={1} items={fields} />
-            ) : (
-              <p>{copy.r2_card_empty}</p>
-            ),
-          },
-          {
-            key: 'relations',
-            label: copy.r2_card_relations,
-            children: detail.card.relations.length ? (
-              <ul>
-                {detail.card.relations.map((sentence, i) => (
-                  <li key={i}>{sentence}</li>
-                ))}
-              </ul>
-            ) : (
-              <p>{copy.r2_card_empty}</p>
-            ),
-          },
-          {
-            key: 'versions',
-            label: copy.r2_card_versions,
-            children: detail.versions.length ? (
-              <ul>
-                {detail.versions.map((version) => (
-                  <li key={version.id}>
-                    v{version.version} · {beijingTime(version.created_at)} ·{' '}
-                    {version.reason || version.change_note}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>{copy.r2_card_empty}</p>
-            ),
-          },
-          {
-            key: 'activity',
-            label: copy.r2_card_activity,
-            children: activities.length ? (
-              <ul>
-                {activities.map((event) => (
-                  <li key={event.id}>
-                    {event.label} · {event.detail} · {beijingTime(event.created_at)}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>{copy.r2_card_empty}</p>
-            ),
-          },
-        ]}
-      />
-    </div>
+    <PageLayout
+      variant="archive"
+      header={
+        <PageHeader
+          title={entity.title}
+          back={{ label: terms.actions.r2_card_back, href: '/ontology/catalog' }}
+          status={
+            <>
+              <KindTag kind={entity.kind} />
+              <StatusTag status={entity.status} />
+              {professional && (
+                <span>
+                  v{entity.version} · {entity.domain}
+                </span>
+              )}
+            </>
+          }
+          primaryAction={
+            entity.status === 'published'
+              ? { label: copy.r3_main_ask, onClick: () => navigate(askHref(id)) }
+              : detail.can_edit
+                ? {
+                    label: copy.r3_main_edit_draft,
+                    onClick: () => navigate('/assets/' + encodeURIComponent(id)),
+                  }
+                : undefined
+          }
+        />
+      }
+    >
+      <div className={styles['archive-columns']}>
+        <div className={styles.stack}>
+          <BusinessCard detail={detail} />
+          <div className={styles.folds}>
+            <FoldRow title={copy.r3_main_conditions} summary={copy.r3_main_conditions_summary}>
+              <div role="region" aria-label={copy.r3_main_conditions}>
+                {conditions.length ? (
+                  <Descriptions column={1} items={conditions} />
+                ) : (
+                  <p>{copy.r2_card_empty}</p>
+                )}
+              </div>
+            </FoldRow>
+            <FoldRow
+              title={copy.r2_card_relations}
+              summary={sentence(copy.r3_main_relation_summary, { count: detail.card.relations.length })}
+            >
+              <div role="region" aria-label={copy.r2_card_relations}>
+                {detail.card.relations.length ? (
+                  <ul>
+                    {detail.card.relations.map((relation, i) => (
+                      <li key={i}>{relation}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{copy.r2_card_empty}</p>
+                )}
+              </div>
+            </FoldRow>
+            <FoldRow
+              title={copy.r2_card_versions}
+              summary={sentence(copy.r3_main_version_summary, { count: detail.versions.length })}
+            >
+              <div role="region" aria-label={copy.r2_card_versions}>
+                {detail.versions.length ? (
+                  <ul>
+                    {detail.versions.map((version) => (
+                      <li key={version.id}>
+                        v{version.version} · {formatDateTime(version.created_at)} ·{' '}
+                        {version.reason || version.change_note}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{copy.r2_card_empty}</p>
+                )}
+              </div>
+            </FoldRow>
+            <FoldRow
+              title={copy.r2_card_activity}
+              summary={sentence(copy.r3_main_activity_summary, { count: activities.length })}
+            >
+              <div role="region" aria-label={copy.r2_card_activity}>
+                {activities.length ? (
+                  <ul>
+                    {activities.map((event) => (
+                      <li key={event.id}>
+                        {event.label} · {event.detail} · {formatDateTime(event.created_at)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{copy.r2_card_empty}</p>
+                )}
+              </div>
+            </FoldRow>
+            {professional && (
+              <>
+                <FoldRow
+                  title={copy.r2_card_structure}
+                  summary={sentence(copy.r3_main_count, { count: fields.length })}
+                  defaultOpen
+                >
+                  <div role="region" aria-label={copy.r2_card_structure}>
+                    {fields.length ? <Descriptions column={1} items={fields} /> : <p>{copy.r2_card_empty}</p>}
+                  </div>
+                </FoldRow>
+                <FoldRow
+                  title={copy.r3_main_five_checks}
+                  summary={copy.r3_main_pro_checks_summary}
+                  defaultOpen
+                >
+                  <ul className={styles.checks}>
+                    <li>
+                      {copy.r3_main_source_check} ·{' '}
+                      {sources.length ? copy.r3_main_check_pass : copy.r3_main_check_pending}
+                    </li>
+                    <li>
+                      {copy.r3_main_content_check} · {copy.r3_main_check_unknown}
+                    </li>
+                    <li>
+                      {copy.r3_main_duplicate_check} · {copy.r3_main_check_unknown}
+                    </li>
+                    <li>
+                      {copy.r3_main_check_scope} ·{' '}
+                      {conditions.length ? copy.r3_main_check_pass : copy.r3_main_check_unknown}
+                    </li>
+                    <li>
+                      {copy.r3_main_check_review} ·{' '}
+                      {entity.status === 'published' ? copy.r3_main_check_pass : copy.r3_main_check_pending}
+                    </li>
+                  </ul>
+                </FoldRow>
+              </>
+            )}
+            <TechnicalDetails>
+              <p>{entity.id}</p>
+              <pre>{JSON.stringify(entity.payload, null, 2)}</pre>
+            </TechnicalDetails>
+          </div>
+        </div>
+        <aside className={`${styles.card} ${styles.stack}`}>
+          <h2>{copy.r2_card_usage}</h2>
+          <p>{detail.card.usage}</p>
+          <h2>{copy.r3_main_next}</h2>
+          <p>{entity.status === 'published' ? copy.r3_main_next_ask : copy.r3_main_draft_note}</p>
+          {detail.can_edit && entity.status === 'published' && (
+            <Link to={'/assets/' + encodeURIComponent(id)}>{terms.actions.r2_card_edit}</Link>
+          )}
+        </aside>
+      </div>
+    </PageLayout>
   );
 }

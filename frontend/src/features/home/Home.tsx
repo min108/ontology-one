@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Drawer, Input } from 'antd';
+import { Alert, Button, Drawer, Tooltip } from 'antd';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -8,10 +8,10 @@ import { workspaceQueryKey } from '../../api/query';
 import { useSessionStore } from '../../state/session';
 import { useScopeStore } from '../../state/scope';
 import { useAddressState } from '../../app/addressState';
-import { StateBlock } from '../../ui/StateBlock';
+import { StateBlock, PageLayout, PageHeader, NextStepBar } from '../../ui';
+import { useUiStore } from '../../state/ui';
 import { terms } from '../../i18n/zh-CN';
 import { parseOverview, parseRuns, parseTotal, taskCounts, todoEntries } from './model';
-import { openHomeSearch } from './commands';
 import { readRecent } from './recent';
 import styles from './Home.module.css';
 
@@ -31,8 +31,8 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
   const session = useSessionStore((state) => state.session)!;
   const { params, update } = useAddressState();
   const detail = params.get('detail') ?? '';
-  const [input, setInput] = useState(''),
-    [recentRevision, setRecentRevision] = useState(0);
+  const [recentRevision, setRecentRevision] = useState(0);
+  const professional = useUiStore((state) => state.viewMode === 'professional');
   useEffect(() => {
     const refresh = () => setRecentRevision((n) => n + 1);
     window.addEventListener('ontology:recent-changed', refresh);
@@ -126,140 +126,159 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
     : [];
   const selected = metrics.find((metric) => metric.id === detail);
   const retry = terms.labels.home_retry;
+  const positive = rows.filter((row) => row.count > 0);
+  const isEmpty =
+    data && !data.assets && !data.relations && !data.rows && !positive.length && !runs.data?.items.length;
+  const pending = pendingQueries.some((query) => query.isPending);
   return (
-    <div
-      className={styles.home}
+    <PageLayout
+      variant="workbench"
       data-home-workbench
       role="region"
       aria-label={terms.labels.home_workbench}
-      aria-busy={
-        overview.isPending || pendingQueries.some((query) => query.isPending) || (!foreign && runs.isPending)
+      aria-busy={overview.isPending || pending || (!foreign && runs.isPending)}
+      header={
+        <PageHeader
+          title={terms.labels.home_workbench}
+          display={
+            isEmpty
+              ? terms.labels.r3_main_start
+              : positive.length
+                ? terms.labels.r3_main_focus
+                : terms.labels.r3_main_ready
+          }
+          lead={isEmpty ? terms.labels.r3_main_start_lead : undefined}
+          primaryAction={{
+            label: terms.labels.home_choose_files,
+            disabled: !canEdit,
+            onClick: () => window.dispatchEvent(new Event('ontology:choose-files')),
+          }}
+          note={!canEdit ? terms.labels.home_readonly_files : undefined}
+        />
       }
     >
-      <header>
-        <p>
-          {terms.labels.home_welcome}
-          {session.user.display_name}
-        </p>
-        <h1>{terms.labels.home_workbench}</h1>
-        <span>{session.workspace.name}</span>
-      </header>
-      <section className={styles.entry} aria-label={terms.labels.home_search}>
-        <Input.Search
-          aria-label={terms.labels.home_omni}
-          placeholder={terms.labels.home_omni}
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          maxLength={500}
-          enterButton={terms.labels.home_search}
-          onSearch={openHomeSearch}
+      <NextStepBar
+        current={1}
+        full
+        description={isEmpty ? terms.labels.r3_main_start_lead : terms.labels.r3_main_next_check}
+      />
+      {overview.isError && (
+        <StateBlock
+          state="error"
+          description={terms.labels.home_unavailable}
+          action={{ label: retry, onClick: () => void overview.refetch() }}
         />
-        <Button disabled={!canEdit} onClick={() => window.dispatchEvent(new Event('ontology:choose-files'))}>
-          {terms.labels.home_choose_files}
-        </Button>
-        {!canEdit && <p>{terms.labels.home_readonly_files}</p>}
-      </section>
+      )}
+      {overview.isPending && (
+        <StateBlock state="loading" action={{ label: retry, onClick: () => void overview.refetch() }} />
+      )}
+      {pendingQueries.some((query) => query.isError) && (
+        <StateBlock
+          state="error"
+          description={terms.labels.home_unavailable}
+          action={{ label: retry, onClick: retryPending }}
+        />
+      )}
       <div className={styles.columns}>
-        <Card title={<h2>{terms.labels.home_pending}</h2>}>
-          <p>{terms.labels.home_pending_scope}</p>
-          {pendingQueries.some((query) => query.isError) && (
-            <StateBlock
-              state="error"
-              description={terms.labels.home_unavailable}
-              action={{ label: retry, onClick: retryPending }}
-            />
-          )}
-          {pendingQueries.some((query) => query.isPending) ? (
-            <StateBlock state="loading" action={{ label: retry, onClick: retryPending }} />
-          ) : (
+        {(positive.length > 0 || pending) && (
+          <section className={styles.card}>
+            <h2>
+              {terms.labels.home_pending} · {positive.reduce((total, row) => total + row.count, 0)}
+            </h2>
+            <Tooltip title={terms.labels.home_pending_scope}>
+              <Button type="text" aria-label={terms.labels.r3_main_metric_help}>
+                ?
+              </Button>
+            </Tooltip>
+            {pending ? (
+              <StateBlock state="loading" action={{ label: retry, onClick: retryPending }} />
+            ) : (
+              <ul className={styles.links}>
+                {positive.slice(0, 2).map((row) => (
+                  <li key={row.href}>
+                    <Link to={row.href}>
+                      {row.label}
+                      <strong>{row.count.toLocaleString()}</strong>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+        {!foreign && (runs.isPending || runs.isError || !!runs.data?.items.length) && (
+          <section className={styles.card}>
+            <h2>
+              {terms.labels.home_running}
+              {runs.data?.items.length ? ` · ${runs.data.items.length}` : ''}
+            </h2>
+            {runs.isPending ? (
+              <StateBlock state="loading" action={{ label: retry, onClick: () => void runs.refetch() }} />
+            ) : runs.isError ? (
+              <StateBlock
+                state="error"
+                description={terms.labels.home_unavailable}
+                action={{ label: retry, onClick: () => void runs.refetch() }}
+              />
+            ) : (
+              <>
+                {runs.data?.partial && <Alert type="warning" title={terms.labels.home_partial} />}
+                <ul className={styles.links}>
+                  {runs.data?.items.slice(0, 2).map((item) => {
+                    const href = activityHref(item);
+                    return (
+                      <li key={item.kind + ':' + item.id}>
+                        {href ? <Link to={href}>{item.title}</Link> : <span>{item.title}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+        {recent.length > 0 && (
+          <section className={styles.card}>
+            <h2>
+              {terms.labels.home_recent} · {recent.length}
+            </h2>
             <ul className={styles.links}>
-              {rows.map((row) => (
-                <li key={row.href}>
-                  <Link to={row.href}>
-                    {row.label}
-                    <strong>{row.count.toLocaleString()}</strong>
-                  </Link>
+              {recent.slice(0, 2).map((item) => (
+                <li key={item.href}>
+                  <Link to={item.href}>{item.title}</Link>
                 </li>
               ))}
             </ul>
-          )}
-          {!pendingQueries.some((query) => query.isPending || query.isError) &&
-            rows.every((row) => row.count === 0) && <p>{terms.labels.home_none_pending}</p>}
-        </Card>
-        <Card title={<h2>{terms.labels.home_running}</h2>}>
-          <p>{foreign ? terms.labels.home_foreign_runs : terms.labels.home_running_scope}</p>
-          {foreign ? null : runs.isPending ? (
-            <StateBlock state="loading" action={{ label: retry, onClick: () => void runs.refetch() }} />
-          ) : runs.isError ? (
-            <StateBlock
-              state="error"
-              description={terms.labels.home_unavailable}
-              action={{ label: retry, onClick: () => void runs.refetch() }}
-            />
-          ) : (
-            <>
-              {runs.data?.partial && <Alert type="warning" title={terms.labels.home_partial} />}
-              <ul className={styles.links}>
-                {runs.data?.items.map((item) => {
-                  const href = activityHref(item);
-                  return (
-                    <li key={item.kind + ':' + item.id}>
-                      {href ? <Link to={href}>{item.title}</Link> : <span>{item.title}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
-              {!runs.data?.items.length && <p>{terms.labels.home_none_running}</p>}
-            </>
-          )}
-        </Card>
+          </section>
+        )}
       </div>
-      <section>
-        <h2>{terms.labels.home_recent}</h2>
-        {recent.length ? (
-          <ul className={styles.recent}>
-            {recent.map((item) => (
-              <li key={item.href}>
-                <Link to={item.href}>{item.title}</Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>{terms.labels.home_recent_empty}</p>
-        )}
+      {foreign && <p>{terms.labels.home_foreign_runs}</p>}
+      <section className={styles.card}>
+        <h2>{terms.labels.r3_main_common}</h2>
+        <div className={styles.actions}>
+          <Link to="/ontology/catalog">{terms.labels.r2_catalog_title}</Link>
+          <Link to="/applications">{terms.actions.r2_ask}</Link>
+          <Link to="/briefing">{terms.labels.home_command_briefing}</Link>
+        </div>
       </section>
-      <section>
-        <h2>{terms.labels.home_overview}</h2>
-        <p>{terms.labels.home_metric_scope}</p>
-        {overview.isPending ? (
-          <StateBlock state="loading" action={{ label: retry, onClick: () => void overview.refetch() }} />
-        ) : overview.isError ? (
-          <StateBlock
-            state="error"
-            description={terms.labels.home_unavailable}
-            action={{ label: retry, onClick: () => void overview.refetch() }}
-          />
-        ) : (
+      {professional && metrics.some((metric) => metric.value > 0) && (
+        <section>
+          <h2>{terms.labels.home_overview}</h2>
           <div className={styles.metrics}>
-            {metrics.map((metric) => (
-              <button key={metric.id} data-testid="home-metric" onClick={() => update({ detail: metric.id })}>
-                <span>{metric.label}</span>
-                <strong>{metric.value.toLocaleString()}</strong>
-              </button>
-            ))}
+            {metrics
+              .filter((metric) => metric.value > 0)
+              .map((metric) => (
+                <button
+                  key={metric.id}
+                  data-testid="home-metric"
+                  onClick={() => update({ detail: metric.id })}
+                >
+                  <span>{metric.label}</span>
+                  <strong>{metric.value.toLocaleString()}</strong>
+                </button>
+              ))}
           </div>
-        )}
-      </section>
-      <Card title={<h2>{terms.labels.home_briefing}</h2>}>
-        <p>{terms.labels.home_briefing_description}</p>
-        <Link to="/briefing">{terms.labels.home_command_briefing}</Link>
-      </Card>
-      {data?.assets === 0 && session.permissions.manage_users && (
-        <Alert
-          type="info"
-          title={terms.labels.home_demo_empty}
-          action={<Link to="/admin/demo">{terms.labels.home_demo}</Link>}
-        />
+        </section>
       )}
       <Drawer
         title={selected?.label ?? terms.labels.home_details}
@@ -304,6 +323,6 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
           </>
         )}
       </Drawer>
-    </div>
+    </PageLayout>
   );
 }

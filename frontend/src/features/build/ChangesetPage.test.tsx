@@ -4,6 +4,7 @@ import { ConfigProvider } from 'antd';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { api, ApiError, invokeCapability } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
+import { testQuery, testSession } from './testQuery';
 import ChangesetPage from './ChangesetPage';
 
 vi.mock('../../api/client', async (original) => ({
@@ -46,6 +47,7 @@ const seed = () => ({
 });
 let proposal = seed();
 beforeEach(() => {
+  testSession();
   vi.clearAllMocks();
   proposal = seed();
   vi.mocked(api).mockImplementation(async () => ({ data: structuredClone(proposal) }) as never);
@@ -59,12 +61,13 @@ function open() {
         </Routes>
       </MemoryRouter>
     </ConfigProvider>,
+    { wrapper: testQuery() },
   );
 }
 it('sends only editable fields, shows failure inside the dialog, refreshes and retains the page', async () => {
   open();
-  const heading = await screen.findByRole('heading', { name: terms.labels.r2_changeset_title });
-  fireEvent.click(screen.getByRole('button', { name: terms.actions.catalog_1_1 }));
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
+  const heading = screen.getByRole('heading', { name: terms.labels.r2_changeset_title });
   const modal = screen.getByRole('dialog');
   fireEvent.change(within(modal).getByLabelText(terms.labels.r2_title), {
     target: { value: 'Revised title' },
@@ -104,5 +107,64 @@ it('disables submission when the server reports no remaining draft to submit', a
   proposal.items[0].decision = 'accepted';
   proposal.items[0].applied_entity_id = 'rule-1';
   open();
-  expect(await screen.findByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: terms.labels.r3_main_submitted })).toBeDisabled();
+});
+
+it('requires all items handled before one L2 submit confirmation and then submits once', async () => {
+  proposal.can_submit = true;
+  open();
+  const submit = await screen.findByRole('button', { name: terms.actions.catalog_1_6 });
+  expect(submit).toBeDisabled();
+  expect(screen.getByText('还有 1 条没处理')).toBeVisible();
+  vi.mocked(invokeCapability).mockImplementation(async (operation) => {
+    if (operation === 'changeset.decide_items') {
+      proposal.items[0].decision = 'accepted';
+      proposal.items[0].applied_entity_id = 'rule-1';
+    }
+    if (operation === 'changeset.apply_and_submit') proposal.can_submit = false;
+    return {} as never;
+  });
+  fireEvent.click(screen.getByRole('button', { name: terms.actions.catalog_1_0 }));
+  await waitFor(() => expect(submit).toBeEnabled());
+  expect(screen.getByRole('link', { name: terms.labels.r2_view_draft })).toHaveAttribute(
+    'href',
+    '/ontology/elements/rule-1',
+  );
+  fireEvent.click(submit);
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(within(dialog).getByText(/将提交 1 条/)).toBeVisible());
+  expect(invokeCapability).not.toHaveBeenCalledWith(
+    'changeset.apply_and_submit',
+    expect.anything(),
+    expect.anything(),
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.catalog_1_6 }));
+  expect(await screen.findByRole('button', { name: terms.labels.r3_main_submitted })).toBeDisabled();
+  expect(
+    vi.mocked(invokeCapability).mock.calls.filter(([op]) => op === 'changeset.apply_and_submit'),
+  ).toHaveLength(1);
+});
+it('shows the original in place with exact highlight and keeps the selected item after closing', async () => {
+  const quote = 'Original';
+  proposal.items[0].evidence = [
+    {
+      material_id: 'M-1',
+      anchor_id: 'A-1',
+      source_version: 'V-1',
+      quote,
+      start: 0,
+      end: quote.length,
+      locator: 'Article 1',
+    },
+  ] as never;
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.labels.r3_main_view_original }));
+  const drawer = screen.getByRole('dialog');
+  expect(drawer.querySelector('mark')).toHaveTextContent(quote);
+  expect(within(drawer).getByRole('link', { name: terms.labels.r3_main_source_page })).toHaveAttribute(
+    'href',
+    '/materials/M-1?anchor=A-1&source_version=V-1',
+  );
+  fireEvent.click(within(drawer).getByRole('button', { name: /关闭|Close/ }));
+  expect(screen.getByRole('button', { name: 'Original title' })).toHaveAttribute('aria-current', 'true');
 });

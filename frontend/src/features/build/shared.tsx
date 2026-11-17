@@ -15,69 +15,15 @@ export function BuildForbidden() {
 
 export const copy = terms.labels;
 export const actions = terms.actions;
-export interface Entity {
-  id: string;
-  title: string;
-  summary: string;
-  kind: string;
-  status: string;
-  version: number;
-  payload: { content?: string; definition?: string; conditions?: string[]; source_refs?: Evidence[] };
-}
-export interface Evidence {
-  material_id: string;
-  anchor_id: string;
-  source_version: string;
-  quote: string;
-  start: number;
-  end: number;
-  locator: string;
-}
-export interface Candidate {
-  kind: string;
-  title: string;
-  content: string;
-}
-export interface Item {
-  id: string;
-  tier: 'sure' | 'check' | 'doubt';
-  decision: string;
-  one_liner: string;
-  rationale: string;
-  content_origin: string;
-  after_data: Candidate;
-  evidence: Evidence[];
-  validation: { level: string; issues: string[] };
-  duplicate_of?: string;
-  applied_entity_id?: string;
-}
-export interface Proposal {
-  can_submit: boolean;
-  id: string;
-  title: string;
-  summary: string;
-  status: string;
-  items: Item[];
-  source_text: string;
-  source_material_id: string;
-}
-export interface Recipe {
-  id: string;
-  title: string;
-  status: string;
-  stage_message: string;
-  changeset_id?: string;
-  progress?: { done: number; total: number };
-  used_model: number;
-}
-export interface Review {
-  entity: Entity;
-  submitter: string;
-  submitted_at: string;
-  can_decide: boolean;
-  blocked_reason: string;
-  source_refs: Evidence[];
-}
+export type {
+  Evidence,
+  Proposal,
+  Recipe,
+  Review,
+  ProposalItem as Item,
+  CandidatePatch as Candidate,
+} from '../../api/generated/types';
+import type { Evidence } from '../../api/generated/types';
 export const sourceHref = (ref: Evidence) =>
   '/materials/' +
   encodeURIComponent(ref.material_id) +
