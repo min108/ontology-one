@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { test, expect } from "./runtime.mjs";
 import { c, login, read, postResponse, confirmAction } from "./r3-support.mjs";
 import { checkStructure, assertNoLeaks } from "./r3-structure.mjs";
+import { reportIssueSummary } from "./r3-report-diagnostics.mjs";
 import {
   selectSavedViewMode,
   readSavedViewMode,
@@ -117,6 +118,7 @@ for (
               detail = error.error?.details || error.detail || {};
             reportChecks.push({
               code: detail.code,
+              issue_summary: reportIssueSummary(detail.issues),
               ...(!live ? { issues: detail.issues } : {}),
             });
             if (reportResponses[0] === response)
