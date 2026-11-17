@@ -19,7 +19,10 @@ import {
 const output = process.env.E2E_EVIDENCE_DIR;
 const live = (process.env.E2E_R3_LIVE || process.env.E2E_R2_LIVE) === "1";
 const documentText =
-  "第一条 办理付款前应核对合同约定与验收资料；验收通过后30日内完成付款申请。\n第二条 累计付款不得超过合同金额；有异议的款项应记录原因并暂停支付。\n第三条 经办人员应保存验收记录，审核人员复核付款依据。";
+  "第一条 办理付款前应核对合同约定与验收资料；验收通过后30日内完成付款申请。\n第二条 累计付款不得超过合同金额；有异议的款项应记录原因并暂停支付。\n第三条 经办人员应保存验收记录，审核人员复核付款依据。" +
+  (process.env.E2E_R4 === "1"
+    ? "\n第四条 适用范围：本机构合同付款；适用条件：验收完成；例外：存在争议时暂停付款；生效日期：2026-01-01。"
+    : "");
 function safeFailure(error) {
   const frames = String(error?.stack || "")
     .split("\n")
