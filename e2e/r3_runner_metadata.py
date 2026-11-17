@@ -1,7 +1,7 @@
 """Allowlisted, secret-free provider metadata for browser acceptance receipts."""
 
 import re
-from urllib.parse import unquote, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 
 def model_metadata(environment: dict[str, str]) -> dict[str, str | None]:
@@ -21,7 +21,9 @@ def model_metadata(environment: dict[str, str]) -> dict[str, str | None]:
             if parsed.port is not None:
                 host += f":{parsed.port}"
             candidate = urlunsplit((parsed.scheme, host, parsed.path, "", ""))
-            if not secret or secret not in unquote(candidate):
+            # Receipt paths are deliberately narrower than accepted provider URLs.
+            # Reject encoded paths instead of guessing the number of decoding layers.
+            if "%" not in candidate and (not secret or secret not in candidate):
                 safe_url = candidate
     except ValueError:
         pass

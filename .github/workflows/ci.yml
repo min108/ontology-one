@@ -85,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: r3-ci-summary-${{ github.run_id }}
+          name: r3-ci-part-visual-${{ github.run_id }}
           path: |
             work/evidence/
             !work/evidence/**/report/**
@@ -183,7 +183,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: r3-ci-summary-${{ github.run_id }}
+          name: r3-ci-part-remaining-${{ github.run_id }}
           path: |
             work/evidence/
             !work/evidence/**/report/**
@@ -329,7 +329,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: r3-ci-summary-${{ github.run_id }}
+          name: r3-ci-part-foundation-${{ github.run_id }}
           path: |
             work/evidence/r1/ci/
             work/evidence/r1/e2e-*/results.json
@@ -341,4 +341,17 @@ jobs:
             !work/evidence/**/report/**
             !work/evidence/**/results/**
           if-no-files-found: warn
+          retention-days: 30
+  summary:
+    needs: [foundation, canonical-visual, r3-remaining]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Merge all executed scopes into one summary
+        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r3-ci-summary-${{ github.run_id }}
+          pattern: r3-ci-part-*-${{ github.run_id }}
+          delete-merged: true
           retention-days: 30

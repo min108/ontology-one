@@ -47,3 +47,15 @@ class RunnerMetadataTests(unittest.TestCase):
             model_metadata({"DEEPSEEK_BASE_URL": "http://[::1]:8123/v1?private=yes"})["base_url"],
             "http://[::1]:8123/v1",
         )
+
+    def test_nested_percent_encoding_cannot_preserve_a_credential(self) -> None:
+        for prefix in ("%73", "%2573", "%252573", "%25252573"):
+            with self.subTest(prefix=prefix):
+                self.assertIsNone(
+                    model_metadata(
+                        {
+                            "DEEPSEEK_BASE_URL": "https://example.test/" + prefix + "ynthetic-key-for-audit/v1",
+                            "DEEPSEEK_API_KEY": "synthetic-key-for-audit",
+                        }
+                    )["base_url"]
+                )

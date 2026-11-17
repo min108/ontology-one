@@ -133,7 +133,7 @@ it('R3.1 inner dialog owns Escape and a later Escape closes the assistant', () =
 
 it('R3.1 narrow split pages do not expose an ineffective expand-navigation action', () => {
   vi.spyOn(window, 'matchMedia').mockImplementation((media) => ({
-    matches: media === '(max-width: 1439px)',
+    matches: media.startsWith('(max-width:'),
     media,
     onchange: null,
     addListener: vi.fn(),

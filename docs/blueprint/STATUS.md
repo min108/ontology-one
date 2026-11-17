@@ -4,9 +4,11 @@
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
 | R2 | 1.1.0 | 已验收（R2.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R2-REPORT](rounds/R2-REPORT.md)、[R2-ACCEPTANCE](rounds/R2-ACCEPTANCE.md) |
-| R3 | 1.2.0 | U1–U9实现与分项自验完成；Claude独立验收待执行 | — | [R3-REPORT](rounds/R3-REPORT.md)、[R3-PLAN](rounds/R3-PLAN.md) |
+| R3 / R3.1 | 1.2.0 | R3 有条件通过；R3.1 定向修复与复验记录见报告 | 2026-11-17（R3） | [R3-REPORT](rounds/R3-REPORT.md)、[R3-ACCEPTANCE](rounds/R3-ACCEPTANCE.md)、[R3-PLAN](rounds/R3-PLAN.md) |
 
 ## 当前基线
+
+R3.1 从 `263fdea` 合并验收规划 `a777cc9` 后继续，严格限于验收第 4 节；版本、迁移和权限边界不变。独立复核、真实模型三连跑及快速/完整 CI 按 R3-REPORT 的 R3.1 节核对。以下保留 R3 原交付及 R2/R1 历史证据。
 
 R3 分支 `dev/r3-ui-foundation`，规划起点 `016c6c6`，版本1.2.0。界面基础、主线精修及旧页过渡均已实现，无工作包延后；三路独立审查累计19项已修复并复核。两次完整CI均失败；定向CI `44026467722`补验失败与未执行范围成功，集成应用补齐由 `44029599125` 单页补验成功，精确渠道、模型、环境与源码见[R3-REPORT](rounds/R3-REPORT.md)。真实DeepSeek deepseek-chat / 界面 / 本地Linux / `452e8a68a0d77e24db00dc1945ef68010478c074`连续三次通过52/44/41秒，首次数字拦截及自动修订均为是/否/否。控制库0001–0005、机构库0001–0003、可信恢复v1–v6不变；以下保留R2/R1历史过程。
 
