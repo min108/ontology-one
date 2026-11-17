@@ -67,34 +67,68 @@ export function leakedText(text) {
     [...text.matchAll(pattern)].map((match) => ({ kind, value: match[0] })),
   );
 }
+export async function visibleLeakText(page, { professional = false } = {}) {
+  return page.evaluate(
+    ({ professional }) => {
+      const values = [];
+      function visit(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const parent = node.parentElement;
+          if (
+            getComputedStyle(parent).visibility !== "hidden" &&
+            !(
+              parent.closest("details:not([open])") &&
+              !parent.closest("summary")
+            )
+          )
+            values.push(node.textContent);
+          return;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const el = node,
+          style = getComputedStyle(el);
+        if (
+          el.closest("script,style,svg,[aria-hidden=true]") ||
+          style.display === "none" ||
+          (!el.getClientRects().length && style.display !== "contents")
+        )
+          return;
+        if (el.closest("details:not([open])") && !el.closest("summary")) {
+          // The closed details container still exposes its summary.
+          if (el.tagName !== "DETAILS") return;
+        }
+        if (professional && el.closest("[data-technical-details]")) return;
+        if (el.tagName === "BR") {
+          values.push("\n");
+          return;
+        }
+        // Markdown emphasis/code/link elements split DOM text nodes without
+        // splitting the visible word. Only layout blocks and explicit breaks
+        // separate text; retain the existing exclusions without reading an
+        // ancestor's innerText (which would reintroduce excluded descendants).
+        const block = ![
+          "inline",
+          "inline-block",
+          "inline-flex",
+          "inline-grid",
+          "contents",
+        ].includes(style.display);
+        if (block) values.push("\n");
+        for (const child of el.childNodes) visit(child);
+        if (block) values.push("\n");
+      }
+      visit(document.body);
+      return values.join("");
+    },
+    { professional },
+  );
+}
 export async function assertNoLeaks(
   page,
   label,
   { professional = false } = {},
 ) {
-  const text = await page.evaluate(
-    ({ professional }) => {
-      const values = [],
-        walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode()) {
-        const node = walker.currentNode,
-          el = node.parentElement;
-        if (
-          !el ||
-          el.closest("script,style,svg,[aria-hidden=true]") ||
-          !el.getClientRects().length ||
-          getComputedStyle(el).visibility === "hidden"
-        )
-          continue;
-        if (el.closest("details:not([open])") && !el.closest("summary"))
-          continue;
-        if (professional && el.closest("[data-technical-details]")) continue;
-        values.push(node.textContent);
-      }
-      return values.join("\n");
-    },
-    { professional },
-  );
+  const text = await visibleLeakText(page, { professional });
   const leaks = leakedText(text);
   if (live && leaks.length && process.env.E2E_EVIDENCE_DIR) {
     const counts = {};
