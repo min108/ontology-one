@@ -4,6 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, JsonValue
 
+from backend.capabilities.gate_models import GateResult
+
 
 def empty_legacy_text(value: object) -> object:
     """Only historical null text is normalized; other invalid values still fail."""
@@ -41,6 +43,18 @@ class Candidate(ReadModel):
     kind: Literal["rule", "data", "knowledge", "skill"]
     title: str
     content: str = ""
+    definition: str = ""
+    scope: str = ""
+    conditions: list[str] = Field(default_factory=list)
+    exceptions: str = ""
+    valid_from: str = ""
+    valid_to: str = ""
+    unit: str = ""
+    grain: str = ""
+    boundary: str = ""
+    judgement: dict[str, JsonValue] | None = None
+    applies_to_id: str = ""
+    applies_to_title: str = ""
 
 
 class ItemValidation(ReadModel):
@@ -61,6 +75,7 @@ class ProposalItem(ReadModel):
     duplicate_of: str | None = None
     applied_entity_id: str | None = None
     processed_elsewhere: bool = False
+    gates: GateResult | None = None
 
 
 class Proposal(ReadModel):
@@ -72,6 +87,7 @@ class Proposal(ReadModel):
     items: list[ProposalItem]
     source_text: str
     source_material_id: str
+    submit_blockers: list[str] = Field(default_factory=list)
 
 
 class ProposalResult(ReadModel):
@@ -139,6 +155,7 @@ class Review(ReadModel):
     can_decide: bool
     blocked_reason: str
     source_refs: LegacySourceRefs
+    gates: GateResult | None = None
 
 
 class ReviewResult(ReadModel):

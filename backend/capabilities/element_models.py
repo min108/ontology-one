@@ -6,6 +6,7 @@ from pydantic import BeforeValidator, ConfigDict, JsonValue
 from typing_extensions import TypedDict
 
 from backend.capabilities.build_models import ReadText, legacy_source_refs
+from backend.capabilities.gate_models import GateResult
 from backend.core.errors import StrictModel
 
 
@@ -80,6 +81,10 @@ class ElementCard(TypedDict):
     points: list[str]
     relations: list[str]
     usage: str
+    text: NotRequired[str]
+    header: NotRequired[dict[str, JsonValue]]
+    rules: NotRequired[list[str]]
+    sources: NotRequired[list[str]]
 
 
 class ElementDetail(TypedDict):
@@ -89,6 +94,7 @@ class ElementDetail(TypedDict):
     card: ElementCard
     versions: list[ElementVersion]
     can_edit: bool
+    gates: NotRequired[GateResult]
 
 
 class ElementDetailResult(StrictModel):

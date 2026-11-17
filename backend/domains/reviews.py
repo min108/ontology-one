@@ -3,11 +3,12 @@
 import json
 from contextlib import closing
 
-from backend import db, provenance
+from backend import db
 from backend.core.errors import ApiError
+from backend.kernel import gates
 from backend.security.context import Principal, require_context
 
-ASSETS = ("rule", "data", "knowledge", "skill")
+ASSETS = tuple(sorted(gates.ASSETS))
 WORKFLOW_ACTIONS = ("提交审核", "审核通过", "发布成果", "退回补充", "发起修订", "归档停用")
 
 
@@ -51,14 +52,8 @@ def guard_marked_action(conn: db.Connection, entity: dict, body: dict) -> None:
             raise ApiError("SEPARATION_OF_DUTIES")
         if not meta.get("submitted_by"):
             raise ApiError("PRECONDITION_FAILED", "这项内容需要先由建设人员提交审核。")
-        if action != "return":
-            refs = entity["payload"].get("source_refs", [])
-            if not refs:
-                raise ApiError("EVIDENCE_NOT_FOUND")
-            for ref in refs:
-                if not isinstance(ref, dict) or not ref.get("material_id"):
-                    raise ApiError("EVIDENCE_NOT_FOUND")
-                provenance.normalize_source_ref(conn, ref["material_id"], ref)
+        # The kernel checks all five gates after identity checks, including
+        # verified evidence and the two explicitly permitted reviewer waivers.
 
 
 def is_same_person(person: Principal, actor: str | None) -> bool:
@@ -100,6 +95,7 @@ def review_info(conn: db.Connection, entity: dict) -> dict:
         else "",
         "source_refs": entity["payload"].get("source_refs", []),
         "history": actions[:30],
+        "gates": gates.check_entity(conn, entity),
     }
 
 
@@ -116,16 +112,16 @@ def inbox(kind: str = "") -> dict:
         raise ApiError("VALIDATION_FAILED")
     with closing(db.connect()) as conn:
         rows = conn.execute(
-            "SELECT * FROM entities WHERE status='review' AND kind IN ('rule','data','knowledge','skill') "
+            f"SELECT * FROM entities WHERE status='review' AND kind IN ({','.join('?' for _ in ASSETS)}) "
             + ("AND kind=? " if kind else "")
             + "ORDER BY updated_at DESC LIMIT 200",
-            (kind,) if kind else (),
+            (*ASSETS, kind) if kind else ASSETS,
         )
         items = [review_info(conn, db.entity_json(row)) for row in rows]
         return {"items": items, "total": len(items)}
 
 
-def decide(ident: str, decision: str, version: int, reason: str) -> dict:
+def decide(ident: str, decision: str, version: int, reason: str, *, waivers: dict | None = None) -> dict:
     from backend.api.v1.core import entity_action_in_transaction
 
     with closing(db.connect()) as conn, conn:
@@ -144,13 +140,8 @@ def decide(ident: str, decision: str, version: int, reason: str) -> dict:
                 conn, ident, {"action": "return", "reason": reason.strip(), "expected_version": version}
             )
         else:
-            refs = entity["payload"].get("source_refs", [])
-            if not refs:
-                raise ApiError("EVIDENCE_NOT_FOUND")
-            for ref in refs:
-                if not isinstance(ref, dict) or not ref.get("material_id"):
-                    raise ApiError("EVIDENCE_NOT_FOUND")
-                provenance.normalize_source_ref(conn, ref["material_id"], ref)
+            if waivers:
+                gates.waive(conn, entity, waivers)
             entity_action_in_transaction(
                 conn,
                 ident,

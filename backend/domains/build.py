@@ -1,6 +1,7 @@
 """Recipe A composes legacy ingestion, extraction, anchors and adoption."""
 
 import json
+import re
 import uuid
 from contextlib import closing
 
@@ -8,6 +9,8 @@ from fastapi import HTTPException
 
 from backend import ai, db, jobs, materials, provenance
 from backend.core.errors import ApiError
+from backend.kernel import gates
+from backend.kernel.metadata import sync_meta
 from backend.security.context import require_context
 
 JSON_FIELDS = {
@@ -64,6 +67,10 @@ def start(material_id: str) -> dict:
     with closing(db.connect()) as conn, conn:
         conn.execute("SELECT id FROM entities WHERE id=? FOR UPDATE", (material_id,)).fetchone()
         item = materials.material(conn, material_id)
+        # Recipe A is explicitly the institution's regulation intake. Classifying
+        # the material here does not change its original text or immutable anchors.
+        sync_meta(conn, item, {"subtype": "regulation"})
+        ensure_org_root(conn)
         if jobs.active_for("material_extract", material_id) or jobs.active_for("recipe_run", material_id):
             raise ApiError("RUN_BUSY")
         ident, stamp = "RCP-" + uuid.uuid4().hex[:24], db.now()
@@ -219,6 +226,7 @@ async def run_recipe(ident: str) -> None:
             for index, candidate in enumerate(item["payload"].get("candidates", []), 1):
                 if processed_elsewhere(candidate):
                     continue
+                candidate = enrich_candidate(conn, candidate, provenance.get_source_version(conn, material_id)["text"])
                 evidence, issues = [], []
                 for quote in candidate.get("source_quotes", []):
                     try:
@@ -302,6 +310,7 @@ def get(ident: str) -> dict:
             item["processed_elsewhere"] = item_processed_elsewhere(item, candidates)
             if item["processed_elsewhere"]:
                 item["decision"] = "processed_elsewhere"
+            item["gates"] = preview_item(conn, item)
         result["can_submit"] = any(
             item["decision"] in {"accepted", "edited"}
             and (
@@ -314,6 +323,14 @@ def get(ident: str) -> dict:
             for item in result["items"]
         )
         result["can_submit"] = bool(result["can_submit"])
+        result["submit_blockers"] = [
+            item["after_data"]["title"] + "：" + "；".join(item["gates"]["blockers"])
+            for item in result["items"]
+            if item["decision"] in {"accepted", "edited"}
+            and not item["processed_elsewhere"]
+            and not item["gates"]["passed"]
+        ]
+        result["can_submit"] = result["can_submit"] and not result["submit_blockers"]
         ref = result["source_refs"][0]
         source = provenance.get_source_version(conn, ref["material_id"], ref.get("source_version"))
         result["source_text"] = source["text"]
@@ -346,14 +363,41 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict
             item = decode(row)
             if item_processed_elsewhere(item, candidates):
                 continue
-            if item["applied_entity_id"]:
+            if item["applied_entity_id"] and not edit:
                 raise ApiError("ITEM_CHANGED", "这条内容已形成草稿，请在草稿页继续修改。")
             if decision in {"accepted", "edited"} and item["validation"]["level"] == "error":
                 raise ApiError("EVIDENCE_NOT_FOUND")
             after = item["after_data"] | (edit or {})
+            if not str(after.get("title", "")).strip() or not str(after.get("content", "")).strip():
+                raise ApiError("VALIDATION_FAILED", "名称和正文不能为空。")
             validation = item["validation"]
-            if edit and any(after.get(key) != item["after_data"].get(key) for key in ("title", "content", "kind")):
+            if edit and after != item["after_data"]:
                 validation["last_content_editor_id"] = require_context().user_id
+            if item["applied_entity_id"]:
+                from backend.kernel.elements import update_draft
+
+                old = db.entity_json(
+                    conn.execute(
+                        "SELECT * FROM entities WHERE id=? FOR UPDATE", (item["applied_entity_id"],)
+                    ).fetchone()
+                )
+                if not old or old["status"] not in {"draft", "returned"} or old["version"] != item["applied_version"]:
+                    raise ApiError("VERSION_CONFLICT")
+                if after["kind"] != old["kind"]:
+                    raise ApiError("VALIDATION_FAILED", "已形成草稿的种类不能更换，请在要素页继续办理。")
+                payload = {**old["payload"], **candidate_payload(after, item["evidence"])}
+                updated = update_draft(
+                    conn,
+                    old,
+                    {
+                        "title": after["title"],
+                        "payload": payload,
+                        "meta": candidate_meta(after),
+                        "reason": "核对页补齐发布条件",
+                    },
+                )
+                confirm_applicability(conn, updated, after)
+                conn.execute("UPDATE changeset_items SET applied_version=? WHERE id=?", (updated["version"], item_id))
             conn.execute(
                 "UPDATE changeset_items SET decision=?,after_data=?,target_kind=?,one_liner=?,"
                 "decided_by=?,validation=?,decided_at=? WHERE id=?",
@@ -379,6 +423,7 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict
 def apply(ident: str, *, submit: bool) -> dict:
     from backend.api.v1.core import entity_action_in_transaction
     from backend.domains.reviews import mark_draft
+    from backend.kernel.elements import sync_after_write
 
     person = require_context()
     with closing(db.connect()) as conn, conn:
@@ -415,6 +460,9 @@ def apply(ident: str, *, submit: bool) -> dict:
                     item["validation"].get("last_content_editor_id") or item["decided_by"] or person.user_id,
                     ident,
                 )
+                entity = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (entity["id"],)).fetchone())
+                confirm_applicability(conn, entity, item["after_data"])
+                sync_after_write(conn, entity, meta_updates=candidate_meta(item["after_data"]))
                 item["applied_entity_id"] = entity["id"]
                 conn.execute(
                     "UPDATE changeset_items SET applied_entity_id=?,applied_version=? WHERE id=?",
@@ -439,3 +487,145 @@ def apply(ident: str, *, submit: bool) -> dict:
             ("partially_applied" if pending else "applied", db.now(), ident),
         )
     return {"id": ident, "entity_ids": entity_ids, "submitted": submit}
+
+
+def ensure_org_root(conn: db.Connection) -> dict:
+    """Synchronize only this authenticated institution's directory-owned root."""
+    from backend.security import store
+
+    ident = require_context().tenant_id
+    row = conn.execute("SELECT * FROM entities WHERE id=? AND kind='organization'", (ident,)).fetchone()
+    if row:
+        return db.entity_json(row)
+    directory = next(
+        (item for item in store.list_tenants() if item["id"] == ident and item["status"] == "active"), None
+    )
+    if not directory:
+        raise ApiError("TENANT_DISABLED")
+    stamp = db.now()
+    conn.execute(
+        "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,"
+        "created_at,updated_at,version) "
+        "VALUES(?,'organization',?,'机构目录同步','机构管理',?,'published','directory','{}',?,?,1)",
+        (ident, directory["name"], ident, stamp, stamp),
+    )
+    entity = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (ident,)).fetchone())
+    sync_meta(conn, entity)
+    db.log(conn, ident, "同步机构目录", "为制度适用范围补齐本机构单位要素")
+    return entity
+
+
+def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str) -> dict:
+    """Only copy explicit source facts; missing publication fields stay missing."""
+    result = dict(candidate)
+    if not result.get("definition"):
+        result["definition"] = candidate.get("summary") or candidate.get("content", "").split("。", 1)[0]
+    patterns = {
+        "scope": r"(?:适用范围[：:]|本(?:制度|办法)适用于)([^。\n；]+)",
+        "exceptions": r"(?:例外[：:]|例外情形[：:])([^。\n；]+)",
+        "valid_from": r"(?:生效日期[：:]|自)(\d{4}[-年]\d{1,2}[-月]\d{1,2}日?)(?:起生效|起施行)?",
+    }
+    for name, pattern in patterns.items():
+        if not result.get(name):
+            match = re.search(pattern, source_text)
+            if match:
+                value = match.group(1).strip()
+                if name == "valid_from":
+                    parts = re.findall(r"\d+", value)
+                    value = f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+                result[name] = value
+    if not result.get("conditions"):
+        match = re.search(r"适用条件[：:]([^。\n；]+)", source_text)
+        if match:
+            result["conditions"] = [match.group(1).strip()]
+    if candidate["kind"] == "rule":
+        root = conn.execute(
+            "SELECT id,title FROM entities WHERE id=? AND kind='organization'", (require_context().tenant_id,)
+        ).fetchone()
+        # Prefer a specifically named local department/object when it exists.
+        matches = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT id,title FROM entities WHERE kind IN ('organization','position','party','object_type') "
+                "ORDER BY CHAR_LENGTH(title) DESC,id"
+            )
+            if row["title"] and row["title"] in (candidate.get("content", "") + " " + result.get("scope", ""))
+        ]
+        target = matches[0] if matches else root
+        if target:
+            result.update(applies_to_id=target["id"], applies_to_title=target["title"])
+    return result
+
+
+def candidate_meta(candidate: dict) -> dict:
+    return {key: candidate.get(key) or None for key in ("valid_from", "valid_to")}
+
+
+def candidate_payload(candidate: dict, evidence: list[dict]) -> dict:
+    keys = ("content", "definition", "scope", "conditions", "exceptions", "unit", "grain", "boundary", "judgement")
+    return {**{key: candidate[key] for key in keys if key in candidate}, "source_refs": evidence}
+
+
+def suggested_relation(conn: db.Connection, entity: dict, candidate: dict) -> dict | None:
+    if entity["kind"] != "rule":
+        return None
+    target = conn.execute("SELECT id,title,kind FROM entities WHERE id=?", (candidate.get("applies_to_id"),)).fetchone()
+    if not target or target["kind"] not in {"organization", "position", "party", "person", "object_type"}:
+        return None
+    return {
+        "source": entity["id"],
+        "target": target["id"],
+        "type": "applies_to",
+        "label": "适用于",
+        "status": "confirmed",
+        "target_kind": target["kind"],
+        "payload": {"recipe_applicability": True},
+    }
+
+
+def confirm_applicability(conn: db.Connection, entity: dict, candidate: dict) -> None:
+    relation = suggested_relation(conn, entity, candidate)
+    if entity["kind"] != "rule":
+        return
+    if not relation:
+        raise ApiError("VALIDATION_FAILED", "请选择本机构中已有的适用主体或业务对象。")
+    existing = conn.execute(
+        "SELECT id,target,status,payload FROM relations WHERE source=? AND type='applies_to'", (entity["id"],)
+    ).fetchall()
+    for row in existing:
+        if json.loads(row["payload"] or "{}").get("recipe_applicability"):
+            if row["target"] == relation["target"] and row["status"] == "confirmed":
+                return
+            # Keep the previous human confirmation trace when applicability changes.
+            conn.execute("UPDATE relations SET status='rejected' WHERE id=?", (row["id"],))
+    payload = {"recipe_applicability": True, "confirmed_by": require_context().user_id, "confirmed_at": db.now()}
+    conn.execute(
+        "INSERT INTO relations(id,source,target,type,label,status,payload) "
+        "VALUES(?,?,?,'applies_to','适用于','confirmed',?)",
+        ("rel-" + uuid.uuid4().hex, entity["id"], relation["target"], materials.dump(payload)),
+    )
+    db.log(conn, entity["id"], "确认适用关系", "核对条目时一并确认适用主体或对象")
+
+
+def preview_item(conn: db.Connection, item: dict) -> dict:
+    if item["applied_entity_id"]:
+        row = conn.execute("SELECT * FROM entities WHERE id=?", (item["applied_entity_id"],)).fetchone()
+        if row:
+            return gates.check_entity(conn, db.entity_json(row))
+    candidate = item["after_data"]
+    entity = {
+        "id": item["id"],
+        "title": candidate["title"],
+        "kind": candidate["kind"],
+        "version": 1,
+        "status": "draft",
+        "payload": candidate_payload(candidate, item["evidence"]),
+    }
+    relation = suggested_relation(conn, entity, candidate)
+    return gates.check_entity(
+        conn,
+        entity,
+        meta_updates=candidate_meta(candidate),
+        proposed_relations=[relation] if relation else [],
+        preview=True,
+    )

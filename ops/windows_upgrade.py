@@ -18,8 +18,8 @@ import tempfile
 from backend import platform_io as io
 from backend.version import APP_VERSION
 
-FROM_VERSIONS = ("0.5.0", "0.6.0", "0.7.0", "1.0.0", "1.1.0")
-TO_VERSION = "1.2.0"
+FROM_VERSIONS = ("0.5.0", "0.6.0", "0.7.0", "1.0.0", "1.1.0", "1.2.0")
+TO_VERSION = "1.3.0"
 _EPHEMERAL = {
     "runtime-state.json",
     "service.lock",

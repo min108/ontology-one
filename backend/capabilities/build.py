@@ -32,6 +32,17 @@ class CandidatePatch(StrictModel):
     title: str = Field(min_length=1, max_length=250)
     content: str = Field(min_length=1, max_length=16000)
     kind: Literal["rule", "data", "knowledge", "skill"]
+    definition: str = Field(default="", max_length=4000)
+    scope: str = Field(default="", max_length=4000)
+    conditions: list[str] = Field(default_factory=list, max_length=50)
+    exceptions: str = Field(default="", max_length=4000)
+    valid_from: str = Field(default="", max_length=40)
+    valid_to: str = Field(default="", max_length=40)
+    unit: str = Field(default="", max_length=100)
+    grain: str = Field(default="", max_length=1000)
+    boundary: str = Field(default="", max_length=4000)
+    judgement: dict[str, JsonValue] | None = None
+    applies_to_id: str = Field(default="", max_length=191)
 
 
 class DecideItems(ChangesetGet):
@@ -81,7 +92,10 @@ def changeset_get(ctx: CapabilityContext, body: ChangesetGet) -> BuildResult:
 def decide_items(ctx: CapabilityContext, body: DecideItems) -> BuildResult:
     return BuildResult(
         data=build.decide(
-            body.changeset_id, body.item_ids, body.decision, body.edit.model_dump() if body.edit else None
+            body.changeset_id,
+            body.item_ids,
+            body.decision,
+            body.edit.model_dump(exclude_unset=True) if body.edit else None,
         )
     )
 

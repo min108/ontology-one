@@ -11,12 +11,17 @@ from backend.capabilities.context import CapabilityContext
 from backend.capabilities.element_models import ElementDetailResult, ElementListResult
 from backend.capabilities.read import read_capability
 from backend.core.errors import ApiError, StrictModel
+from backend.kernel import gates
 from backend.kernel.cards import build_card
+from backend.kernel.kinds import KINDS
+from backend.kernel.metadata import get_meta
 
 
 class ElementList(StrictModel):
     q: str = Field(default="", max_length=300)
-    kind: Literal["", "data", "rule", "skill", "knowledge"] = ""
+    kind: Literal["", "data", "rule", "skill", "knowledge", "term", "object_type", "link_type", "metric", "process"] = (
+        ""
+    )
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=25, ge=1, le=100)
 
@@ -89,7 +94,7 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
         history = []
     else:
         entity = core.detail(body.entity_id)
-        if entity["kind"] not in federation.ASSETS or entity["payload"].get("active_asset") in (0, False):
+        if entity["kind"] not in KINDS or entity["payload"].get("active_asset") in (0, False):
             raise ApiError("NOT_FOUND")
         private = "draft.read" in ctx.permissions
         if not private and entity["status"] != "published":
@@ -118,11 +123,27 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
                 ]
             entity["activities"] = []
             entity.pop("relation_counts", None)
+        with closing(db.connect()) as conn:
+            # The same authorized entity drives the card and fresh gate checks.
+            entity["_meta"] = get_meta(conn, body.entity_id) or {}
+            gate_result = gates.check_entity(conn, entity)
+            for relation in entity["relations"]["incoming"]:
+                if relation.get("source_kind") == "rule" and relation.get("type") in {"governs", "applies_to"}:
+                    rule = conn.execute(
+                        "SELECT payload,status FROM entities WHERE id=? AND status='published'", (relation["source"],)
+                    ).fetchone()
+                    if rule:
+                        relation["source_status"] = rule["status"]
+                        relation["source_payload"] = rule["payload"]
+    if ctx.principal.readonly:
+        # Cross-institution views never resolve source IDs in the current tenant.
+        gate_result = {"passed": True, "checks": [], "blockers": []}
     return ElementDetailResult(
         data={
             "entity": entity,
             "card": build_card(entity),
             "versions": history,
             "can_edit": "build.edit" in ctx.permissions and not ctx.principal.readonly,
+            "gates": gate_result,
         }
     )
