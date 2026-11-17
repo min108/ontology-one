@@ -4,7 +4,7 @@
 
 R3（1.2.0）界面基础与主线精修：范围与裁决见 `docs/blueprint/rounds/R3-PLAN.md`，界面上位依据见 `docs/design/UI-BASELINE.md` 与 `docs/design/benchmarks/`，执行按 `docs/blueprint/EXECUTION-RULES.md` v3（质量第一；交付前独立对抗审查；动作清单逐条断言结果；真实模型经界面连续 3 次），经验与反面案例见 `docs/blueprint/LESSONS.md`。所有人默认简洁视图。R2 已于 2026-11-17 经 R2.1 修复后验收通过（`R2-ACCEPTANCE.md`）。环境模型仅在 `ONTOLOGY_MODEL_FROM_ENV=1` 时覆盖机构配置，只限演示或单机构部署；环境变量不能把模拟结果提升为真实。数字核验按段落及表格行的实际引用，计数精确匹配，仅金额允许 0.5% 舍入差；裸数字、序号、年份和日期不核验；规则不放宽。
 
-知元（英文名 Ontology One）是集团本体管理平台。R3（1.2.0）实现已集成，真实主线与独立审查已完成，最终验收提交与CI以R3报告为准，Claude独立验收待执行。R2（1.1.0）已验收，交接见 `docs/blueprint/rounds/R2-REPORT.md`；完整层CI以交付提交的Actions结果为准。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
+知元（英文名 Ontology One）是集团本体管理平台。R3（1.2.0）实现已集成，真实主线与独立审查已完成，最终验收提交与CI以R3报告为准，Claude独立验收待执行。R2（1.1.0）已验收，交接见 `docs/blueprint/rounds/R2-REPORT.md`；CI结论按报告列出的各实际受验提交分别核对；R3两次完整层均失败，修复后按执行守则D1定向补验，不称完整层全绿。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
 ## 2 硬规则摘要
 
@@ -25,6 +25,8 @@ R3（1.2.0）界面基础与主线精修：范围与裁决见 `docs/blueprint/ro
 ## 3 代码地图
 
 - R2：`domains/build.py`复用原材料分段/提炼/采纳；`domains/reviews.py`保护新提案的独立审核；`domains/artifacts`从已完成会话生成私有版本化报告。`kernel/cards.py`生成确定性业务卡，`capabilities/elements.py`复用本地与联邦检索；`features/ontology`提供本体目录与统一要素页。`features/build`与`features/artifacts`为新主线页面，旧页继续保留。`DEEPSEEK_API_KEY`仅运行环境读取，设置与测试操作不得将环境密钥写入文件。
+
+- R3 集成应用使用 `features/admin/integrations` 展示适配器提供共享骨架，仍复用旧业务体及原请求/授权/一次性令牌清理；旧路由和文件未退役。只在专业技术详情显示内部标识，普通视图按业务名称展示。
 
 - `backend/main.py`：薄 API 装配；原内联路由已原样移到 api/v1/core.py。v2 入口在 api/v2，业务能力在 capabilities，配置/错误/编号/日志在 core。
 - `backend/security/`：store、policy、middleware、context、applications、directory、preferences，承载身份、目录治理、会话、审计、应用授权和用户偏好。duties随会话读取并参与捕获身份/提交复核，仅存储不开放授予。
