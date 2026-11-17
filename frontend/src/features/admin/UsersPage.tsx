@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, App, Button, Input, Tabs, Tag } from 'antd';
+import { Alert, App, Button, Dropdown, Input, Segmented } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useSessionStore } from '../../state/session';
 import { useUiStore } from '../../state/ui';
 import { useAddressState } from '../../app/addressState';
 import { terms } from '../../i18n/zh-CN';
+import { PageLayout } from '../../ui/PageLayout';
 import { PageHeader } from '../../ui/PageHeader';
 import { DataTable } from '../../ui/DataTable';
 import { FilterBar } from '../../ui/FilterBar';
@@ -35,6 +36,7 @@ import {
   type UserManageInput,
 } from '../identity/contracts';
 import styles from '../identity/Identity.module.css';
+import { AdminStatus } from './AdminStatus';
 
 const roles = ['admin', 'modeler', 'reviewer'] as const;
 type UserMode = 'create' | 'edit' | 'password' | 'status';
@@ -45,6 +47,9 @@ export default function UsersPage() {
   const { params, update } = useAddressState();
   const allowed = !!session?.permissions.manage_users && permission_keys.includes('admin.users');
   const grants = !!session?.user.is_superadmin && session.permissions.manage_grants;
+  const narrow = useNarrowEditor();
+  const [editing, setEditing] = useState<UserEdit | null>(null);
+  const [grantEditing, setGrantEditing] = useState<Grant | 'new' | null>(null);
   const tab = params.get('tab') === 'grants' && grants ? 'grants' : 'users';
   const users = useIdentityQuery<List<User>>('identity-users', '/v2/users', allowed);
   const orgs = useIdentityQuery<List<Org>>('identity-orgs', '/v2/orgs', allowed);
@@ -55,46 +60,85 @@ export default function UsersPage() {
   );
   if (!allowed)
     return (
-      <section aria-label={copy.identity_users}>
+      <PageLayout header={<PageHeader title={copy.identity_users} />} variant="list">
         <Forbidden />
-      </section>
+      </PageLayout>
     );
   return (
-    <section
+    <PageLayout
       aria-label={copy.identity_users}
       aria-busy={users.isPending || orgs.isPending || (tab === 'grants' && grantRows.isPending)}
-      className={styles.page}
+      variant="list"
+      header={
+        <PageHeader
+          title={copy.identity_users}
+          lead={tab === 'grants' ? copy.identity_grant_help : copy.r3_admin_users_lead}
+          secondaryAction={{
+            label: action.identity_refresh,
+            onClick: () => {
+              void users.refetch();
+              void orgs.refetch();
+              if (tab === 'grants') void grantRows.refetch();
+            },
+          }}
+          primaryAction={{
+            label: tab === 'grants' ? action.identity_create_grant : action.identity_create_user,
+            disabled:
+              narrow ||
+              orgs.isPending ||
+              orgs.isError ||
+              (tab === 'grants' && (users.isPending || users.isError)),
+            onClick: () => (tab === 'grants' ? setGrantEditing('new') : setEditing({ mode: 'create' })),
+          }}
+        />
+      }
     >
-      <PageHeader title={copy.identity_users} />
-      <Tabs
-        activeKey={tab}
-        onChange={(key) => update({ tab: key, q: null })}
-        items={[
-          {
-            key: 'users',
-            label: copy.identity_accounts_tab,
-            children: <Accounts users={users} orgs={orgs} />,
-          },
-          ...(grants
-            ? [
-                {
-                  key: 'grants',
-                  label: copy.identity_grants_tab,
-                  children: <Grants users={users} orgs={orgs} grants={grantRows} />,
-                },
-              ]
-            : []),
-        ]}
-      />
-    </section>
+      <FilterBar
+        value={params.get('q') || ''}
+        onChange={(value) => update({ q: value, 'identity-users.page': null, 'identity-grants.page': null })}
+        onReset={() => update({ q: null })}
+      >
+        {grants && (
+          <Segmented
+            aria-label={copy.identity_users}
+            value={tab}
+            onChange={(key) => update({ tab: key, q: null })}
+            options={[
+              { value: 'users', label: copy.identity_accounts_tab },
+              { value: 'grants', label: copy.identity_grants_tab },
+            ]}
+          />
+        )}
+      </FilterBar>
+      {tab === 'users' ? (
+        <Accounts users={users} orgs={orgs} editing={editing} setEditing={setEditing} />
+      ) : (
+        <Grants
+          users={users}
+          orgs={orgs}
+          grants={grantRows}
+          editing={grantEditing}
+          setEditing={setGrantEditing}
+        />
+      )}
+    </PageLayout>
   );
 }
-function Accounts({ users, orgs }: { users: IdentityQuery<User>; orgs: IdentityQuery<Org> }) {
+function Accounts({
+  users,
+  orgs,
+  editing,
+  setEditing,
+}: {
+  users: IdentityQuery<User>;
+  orgs: IdentityQuery<Org>;
+  editing: UserEdit | null;
+  setEditing: (edit: UserEdit | null) => void;
+}) {
   const { session } = useSessionStore();
   const viewMode = useUiStore((state) => state.viewMode);
   const narrow = useNarrowEditor();
-  const { params, update } = useAddressState();
-  const [editing, setEditing] = useState<UserEdit | null>(null);
+  const { params } = useAddressState();
   const q = params.get('q') || '';
   const shown = (users.data?.items || []).filter((user) =>
     (user.username + ' ' + user.display_name + ' ' + user.tenant_name)
@@ -126,7 +170,12 @@ function Accounts({ users, orgs }: { users: IdentityQuery<User>; orgs: IdentityQ
     {
       key: 'status',
       title: copy.identity_status,
-      render: (_, row) => <Tag>{row.is_active ? copy.identity_enabled : copy.identity_disabled}</Tag>,
+      render: (_, row) => (
+        <AdminStatus
+          status={row.is_active ? 'active' : 'disabled'}
+          label={row.is_active ? copy.identity_enabled : copy.identity_disabled}
+        />
+      ),
     },
     {
       key: 'actions',
@@ -134,27 +183,38 @@ function Accounts({ users, orgs }: { users: IdentityQuery<User>; orgs: IdentityQ
       render: (_, row) => (
         <div className={styles.actions}>
           <Button
+            type="text"
+            size="small"
             autoInsertSpace={false}
             disabled={narrow}
             onClick={() => setEditing({ mode: 'edit', target: row })}
           >
             {action.identity_edit_user}
           </Button>
-          <Button
-            autoInsertSpace={false}
-            disabled={narrow}
-            onClick={() => setEditing({ mode: 'password', target: row })}
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                {
+                  key: 'password',
+                  label: action.identity_reset_password,
+                  disabled: narrow,
+                  onClick: () => setEditing({ mode: 'password', target: row }),
+                },
+                {
+                  key: 'status',
+                  label: row.is_active ? action.identity_disable : action.identity_enable,
+                  disabled: narrow || row.id === session!.user.id,
+                  title: row.id === session!.user.id ? copy.identity_self_disable : undefined,
+                  onClick: () => setEditing({ mode: 'status', target: row }),
+                },
+              ],
+            }}
           >
-            {action.identity_reset_password}
-          </Button>
-          <Button
-            autoInsertSpace={false}
-            disabled={narrow || row.id === session!.user.id}
-            title={row.id === session!.user.id ? copy.identity_self_disable : undefined}
-            onClick={() => setEditing({ mode: 'status', target: row })}
-          >
-            {row.is_active ? action.identity_disable : action.identity_enable}
-          </Button>
+            <Button type="text" size="small" autoInsertSpace={false} aria-haspopup="menu">
+              {action.r3_admin_more}
+            </Button>
+          </Dropdown>
         </div>
       ),
     },
@@ -165,32 +225,7 @@ function Accounts({ users, orgs }: { users: IdentityQuery<User>; orgs: IdentityQ
       aria-label={copy.identity_accounts_tab}
       aria-busy={users.isPending || orgs.isPending}
     >
-      <p className={styles.help}>{copy.identity_user_list_help}</p>
       {narrow && <Alert title={copy.identity_narrow} type="info" />}
-      <div className={styles.actions}>
-        <Button
-          autoInsertSpace={false}
-          type="primary"
-          disabled={narrow || orgs.isPending || orgs.isError}
-          onClick={() => setEditing({ mode: 'create' })}
-        >
-          {action.identity_create_user}
-        </Button>
-        <Button
-          autoInsertSpace={false}
-          onClick={() => {
-            void users.refetch();
-            void orgs.refetch();
-          }}
-        >
-          {action.identity_refresh}
-        </Button>
-      </div>
-      <FilterBar
-        value={q}
-        onChange={(value) => update({ q: value, 'identity-users.page': null })}
-        onReset={() => update({ q: null })}
-      />
       <QueryState query={users}>
         <DataTable<User>
           key={q}
@@ -437,15 +472,18 @@ function Grants({
   grants,
   users,
   orgs,
+  editing,
+  setEditing,
 }: {
+  editing: Grant | 'new' | null;
+  setEditing: (edit: Grant | 'new' | null) => void;
   grants: IdentityQuery<Grant>;
   users: IdentityQuery<User>;
   orgs: IdentityQuery<Org>;
 }) {
   const viewMode = useUiStore((state) => state.viewMode),
     narrow = useNarrowEditor();
-  const [editing, setEditing] = useState<Grant | 'new' | null>(null);
-  const { params, update } = useAddressState();
+  const { params } = useAddressState();
   const q = (params.get('q') || '').toLowerCase();
   const shown = (grants.data?.items || []).filter((grant) =>
     (grant.username + ' ' + grant.tenant_name).toLowerCase().includes(q),
@@ -463,7 +501,13 @@ function Grants({
       key: 'actions',
       title: copy.identity_actions,
       render: (_, row) => (
-        <Button autoInsertSpace={false} disabled={narrow} onClick={() => setEditing(row)}>
+        <Button
+          type="text"
+          size="small"
+          autoInsertSpace={false}
+          disabled={narrow}
+          onClick={() => setEditing(row)}
+        >
           {action.identity_revoke_grant}
         </Button>
       ),
@@ -476,15 +520,6 @@ function Grants({
       aria-label={copy.identity_grants_tab}
       aria-busy={grants.isPending || users.isPending || orgs.isPending}
     >
-      <Alert type="info" title={copy.identity_grant_help} />
-      <Button autoInsertSpace={false} type="primary" disabled={unavailable} onClick={() => setEditing('new')}>
-        {action.identity_create_grant}
-      </Button>
-      <FilterBar
-        value={params.get('q') || ''}
-        onChange={(value) => update({ q: value, 'identity-grants.page': null })}
-        onReset={() => update({ q: null, 'identity-grants.page': null })}
-      />
       <QueryState query={grants}>
         <DataTable
           key={q}

@@ -1,4 +1,7 @@
+import { PageLayout } from '../../../ui/PageLayout';
 import { PageHeader } from '../../../ui/PageHeader';
+import { FoldRow } from '../../../ui/FoldRow';
+import { TechnicalDetails } from '../../../ui/TechnicalDetails';
 import {
   copy,
   modelLabel,
@@ -14,8 +17,11 @@ export default function SystemPage() {
   const health = useResource<unknown>('/health');
   const model = useResource<ModelStatus>('/v2/system/model');
   return (
-    <div className={styles.page} data-admin-ready={Boolean(metadata.data && health.data && model.data)}>
-      <PageHeader title={copy.admin_system_title} />
+    <PageLayout
+      variant="archive"
+      data-admin-ready={Boolean(metadata.data && health.data && model.data)}
+      header={<PageHeader title={copy.admin_system_title} lead={copy.r3_admin_system_lead} />}
+    >
       <section className={styles.section}>
         {metadata.data ? (
           <>
@@ -23,21 +29,23 @@ export default function SystemPage() {
               {metadata.data.product_name} {metadata.data.version}
             </h2>
             <p className={styles.english}>{metadata.data.product_name_en}</p>
-            <dl className={styles.details}>
-              <dt>{copy.admin_run_mode}</dt>
-              <dd>
-                {metadata.data.runtime_mode === 'windows' ? copy.admin_windows_mode : copy.admin_server}
-              </dd>
-              <dt>{copy.admin_control_version}</dt>
-              <dd>{metadata.data.control.current}</dd>
-              <dt>{copy.admin_workspace_version}</dt>
-              <dd>{metadata.data.workspace.current}</dd>
-              <dt>{copy.admin_pending}</dt>
-              <dd>
-                {[...metadata.data.control.pending, ...metadata.data.workspace.pending].join('、') ||
-                  copy.admin_no_pending}
-              </dd>
-            </dl>
+            <TechnicalDetails>
+              <dl className={styles.details}>
+                <dt>{copy.admin_run_mode}</dt>
+                <dd>
+                  {metadata.data.runtime_mode === 'windows' ? copy.admin_windows_mode : copy.admin_server}
+                </dd>
+                <dt>{copy.admin_control_version}</dt>
+                <dd>{metadata.data.control.current}</dd>
+                <dt>{copy.admin_workspace_version}</dt>
+                <dd>{metadata.data.workspace.current}</dd>
+                <dt>{copy.admin_pending}</dt>
+                <dd>
+                  {[...metadata.data.control.pending, ...metadata.data.workspace.pending].join('、') ||
+                    copy.admin_no_pending}
+                </dd>
+              </dl>
+            </TechnicalDetails>
           </>
         ) : (
           <ResourceState error={metadata.error} reload={metadata.reload} />
@@ -57,8 +65,7 @@ export default function SystemPage() {
           <ResourceState error={model.error} reload={model.reload} />
         )}
       </section>
-      <section className={styles.section}>
-        <h2>{copy.admin_run_mode}</h2>
+      <FoldRow title={copy.admin_run_mode} summary={copy.admin_identity_label}>
         <dl className={styles.details}>
           <dt>{copy.admin_identity_label}</dt>
           <dd>{copy.admin_identity_copy}</dd>
@@ -69,7 +76,7 @@ export default function SystemPage() {
           <dt>{copy.admin_audit_label}</dt>
           <dd>{copy.admin_audit_copy}</dd>
         </dl>
-      </section>
-    </div>
+      </FoldRow>
+    </PageLayout>
   );
 }

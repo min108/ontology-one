@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import postcss from 'postcss';
 import prefixSelector from 'postcss-prefix-selector';
 
@@ -23,6 +24,29 @@ export function assertScopedLegacyCss(css) {
   return count;
 }
 
+
+const bridge = readFileSync(new URL('../src/design/legacy-bridge.css', import.meta.url), 'utf8');
+const secondary = /(?:badge|caption|eyebrow|kicker|(?:^|[.\s>])small|(?:^|[.\s>])time|timestamp|(?:^|[.\s>])tag)(?:[.\s>:[-]|$)/i;
+function fontToken(size, selector) {
+  const value = Number(size);
+  const tier = value <= 13 && secondary.test(selector) ? 'caption' : value <= 15 ? 'body' : value <= 18 ? 'title' : value < 32 ? 'heading' : 'display';
+  return `var(--zy-font-${tier})`;
+}
+function normalizeLegacy(root) {
+  root.walkDecls((decl) => {
+    const selector = decl.parent.selector || '';
+    if (decl.prop === 'font-size') decl.value = decl.value.replace(/^(\d*\.?\d+)(px|em|rem)$/, (_, size, unit) => fontToken(Number(size) * (unit === 'em' ? 14 : unit === 'rem' ? 16 : 1), selector));
+    if (decl.prop === 'font') decl.value = decl.value.replace(/(\d+(?:\.\d+)?)px(?=[\s/])/, (_, size) => fontToken(size, selector));
+    if (decl.prop === 'font-family' && /(?:serif|Georgia|Songti|SimSun)/i.test(decl.value) && !/sans-serif/i.test(decl.value)) decl.value = 'var(--zy-font-family)';
+    if (/^background(?:-image|-color)?$/.test(decl.prop) && /(?:gradient\(|rgba\(|#[\da-f]{8}\b|#[\da-f]{4}\b)/i.test(decl.value)) {
+      decl.value = /(?:backdrop|mask|overlay)/.test(selector) ? 'var(--zy-overlay)' : 'var(--zy-color-surface)';
+      if (decl.prop === 'background-image') decl.prop = 'background';
+    }
+    if (decl.prop === 'backdrop-filter' || decl.prop === '-webkit-backdrop-filter') decl.value = 'none';
+    if (decl.prop === 'box-shadow') decl.value = 'var(--zy-shadow-none)';
+  });
+}
+
 export function legacyCssPlugin() {
   const plugin = prefixSelector({
     prefix: '.legacy-root',
@@ -42,7 +66,12 @@ export function legacyCssPlugin() {
   const prepare = plugin.prepare;
   plugin.prepare = (result) => {
     const visitors = prepare(result);
-    return visitors ? { ...visitors, OnceExit: assertScopedLegacyCss } : undefined;
+    return visitors ? { ...visitors, OnceExit(root) {
+      normalizeLegacy(root);
+      // The shared stylesheet is loaded with every legacy surface; append the isolated bridge last.
+      if (/[/\\]src[/\\]legacy[/\\]styles\.css$/.test(result.opts.from || '')) root.append(postcss.parse(bridge).nodes);
+      assertScopedLegacyCss(root);
+    } } : undefined;
   };
   return plugin;
 }

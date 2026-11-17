@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesignProvider } from '../../design/DesignProvider';
+import { useUiStore } from '../../state/ui';
 import { useSessionStore } from '../../state/session';
 import { readWorkspaceGuards } from '../../state/workspace-guard';
 import { terms } from '../../i18n/zh-CN';
@@ -48,6 +49,7 @@ function wrapper(children: React.ReactNode) {
   );
 }
 beforeEach(() => {
+  useUiStore.setState({ viewMode: 'simple' });
   request.mockReset();
   login.mockReset();
   reload.mockReset();
@@ -73,7 +75,7 @@ describe('new identity pages', () => {
       </>,
     );
     const values = [...container.querySelectorAll('time')];
-    expect(values.map((node) => node.textContent)).toEqual(['2026/01/02 09:04:05', '2026/11/16 23:14:25']);
+    expect(values.map((node) => node.textContent)).toEqual(['2026-01-02 09:04', '2026-11-16 23:14']);
     expect(values.every((node) => node.dataset.visualDynamic === 'timestamp')).toBe(true);
     expect(values[0]).toHaveAttribute('datetime', '2026-01-02T01:04:05Z');
   });
@@ -178,6 +180,30 @@ describe('new identity pages', () => {
     await waitFor(() => expect(acceptSession).toHaveBeenCalled());
     expect(readWorkspaceGuards().dirtyCount).toBe(0);
     expect(screen.getByLabelText(terms.labels.identity_new_password)).toHaveValue('');
+  });
+  it('summarizes devices in simple view and preserves raw details only for professional view', async () => {
+    const agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/141.0 Safari/537.36';
+    request.mockResolvedValue({
+      items: [
+        {
+          id: '0123456789abcdef0123456789abcdef',
+          current: false,
+          created_at: '2026-01-01T00:00:00Z',
+          last_seen_at: '2026-01-02T00:00:00Z',
+          expires_at: '2026-02-01T00:00:00Z',
+          user_agent: agent,
+          ip_hint: '127.*',
+          tenant_id: 'hq',
+        },
+      ],
+    });
+    wrapper(<AccountSecurity />);
+    expect(await screen.findByText(/Chrome · Windows/)).toHaveTextContent('2026-01-02 08:00');
+    expect(screen.queryByText(agent, { exact: false })).not.toBeInTheDocument();
+    useUiStore.setState({ viewMode: 'professional' });
+    fireEvent.click(await screen.findByText(terms.labels.r3_admin_technical));
+    expect(await screen.findByText(agent, { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('127.*')).toBeInTheDocument();
   });
   it('cancels session revocation without a request and reloads after current-session revocation', async () => {
     request.mockResolvedValue({

@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useUiStore } from '../../state/ui';
 import { terms } from '../../i18n/zh-CN';
 import { brand } from '../../i18n/brand';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -34,8 +36,18 @@ const status = {
   model: 'test-model',
   base_url: 'https://model.test/anthropic',
 };
-const renderPage = (node: React.ReactNode) => render(<MemoryRouter>{node}</MemoryRouter>);
+const renderPage = (node: React.ReactNode) =>
+  render(node, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+      >
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    ),
+  });
 beforeEach(() => {
+  useUiStore.setState({ viewMode: 'simple' });
   mocks.role = 'admin';
   mocks.tenant = 'dept-01';
   mocks.home = 'dept-01';
@@ -137,7 +149,10 @@ it('shows unavailable runtime despite a previous successful connection', async (
   });
   renderPage(<ModelPage />);
   expect(await screen.findByText(terms.labels.admin_runtime_unavailable)).toBeInTheDocument();
-  expect(screen.getByText('runtime-unavailable')).toBeInTheDocument();
+  expect(screen.queryByText('runtime-unavailable')).not.toBeInTheDocument();
+  useUiStore.setState({ viewMode: 'professional' });
+  fireEvent.click(await screen.findByText(terms.labels.r3_admin_technical));
+  expect(await screen.findByText('runtime-unavailable')).toBeInTheDocument();
   expect(screen.getByText(/0.2.1rc2/)).toBeInTheDocument();
 });
 it('verification success refreshes the global model status', async () => {
@@ -163,10 +178,6 @@ it('never renders previous institution data under a changed identity', async () 
   expect(await screen.findByLabelText(terms.labels.admin_model_name)).toHaveValue('test-model');
   mocks.tenant = 'other';
   mocks.api.mockReturnValue(new Promise(() => undefined));
-  view.rerender(
-    <MemoryRouter>
-      <ModelPage />
-    </MemoryRouter>,
-  );
+  view.rerender(<ModelPage />);
   expect(screen.queryByDisplayValue('test-model')).not.toBeInTheDocument();
 });

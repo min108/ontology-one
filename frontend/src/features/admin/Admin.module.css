@@ -1,11 +1,3 @@
-.page {
-  display: grid;
-  gap: var(--zy-space-6);
-  padding: var(--zy-space-6);
-  font-size: var(--zy-font-body);
-  line-height: var(--zy-line-body);
-}
-
 .section {
   padding: var(--zy-space-5);
   border: var(--zy-border-width) solid var(--zy-gray-200);
@@ -56,4 +48,37 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: var(--zy-font-dense);
+}
+
+.audit-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--zy-space-2);
+}
+
+.audit-filters > label {
+  flex: 1 1 var(--zy-col-tag);
+  min-width: var(--zy-content-min);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: var(--zy-border-width);
+  height: var(--zy-border-width);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--zy-space-1);
+  font-size: var(--zy-font-caption);
+}
+
+.status-tag svg {
+  width: var(--zy-font-body);
+  height: var(--zy-font-body);
 }

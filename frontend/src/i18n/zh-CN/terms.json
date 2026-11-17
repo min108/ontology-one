@@ -462,7 +462,8 @@
     "r3_ui_assistant_open": "打开应用助手",
     "r3_ui_evidence": "查看依据",
     "r3_ui_more": "更多",
-    "r3_ui_close": "关闭"
+    "r3_ui_close": "关闭",
+    "r3_admin_more": "更多"
   },
   "labels": {
     "search": "查找内容或输入操作",
@@ -1128,7 +1129,28 @@
     "r3_main_conditions_summary": "查看适用范围、条件与约束",
     "r3_main_metric_help": "查看统计口径",
     "r3_main_no_source": "尚未找到可以定位的原文，请补充出处。",
-    "r3_main_source_missing": "原文暂时无法读取，已有引文仍保留。"
+    "r3_main_source_missing": "原文暂时无法读取，已有引文仍保留。",
+    "r3_admin_actor": "操作人",
+    "r3_admin_organization": "所属机构",
+    "r3_admin_action": "操作类型",
+    "r3_admin_outcome": "操作结果",
+    "r3_admin_all": "全部",
+    "r3_admin_technical": "技术详情",
+    "r3_admin_audit_lead": "按操作人、机构和日期查找记录。",
+    "r3_admin_browser_unknown": "未知浏览器",
+    "r3_admin_os_unknown": "未知系统",
+    "r3_admin_audit_detail": "操作记录",
+    "r3_admin_audit_detail_hint": "切换到专业视图，可查看这次操作的技术详情。",
+    "r3_admin_users_lead": "管理本机构账号与跨机构授权。",
+    "r3_admin_unknown_outcome": "未记录结果",
+    "r3_admin_system_lead": "查看平台运行情况与当前版本。",
+    "r3_admin_security_lead": "管理密码，检查最近登录的设备。",
+    "r3_admin_landing_title": "工作区",
+    "r3_admin_device_raw": "原始浏览器标识",
+    "r3_admin_model_diagnostics": "检查模型与运行环境是否就绪。",
+    "r3_admin_backup_lead": "导出完整备份，查看升级与恢复指引。",
+    "r3_admin_restore_summary": "离线恢复的步骤与注意事项",
+    "r3_admin_windows_summary": "Windows 发行包与源代码下载"
   },
   "states": {
     "loading": {

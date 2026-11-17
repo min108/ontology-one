@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Alert, App, Button, Card, Input, InputNumber, Tree, Tag } from 'antd';
+import { Alert, App, Button, Card, Input, InputNumber, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useSessionStore } from '../../state/session';
 import { useAddressState } from '../../app/addressState';
+import { PageLayout } from '../../ui/PageLayout';
+import { TechnicalDetails } from '../../ui/TechnicalDetails';
 import { PageHeader } from '../../ui/PageHeader';
 import { FilterBar } from '../../ui/FilterBar';
 import { StateBlock } from '../../ui/StateBlock';
@@ -19,6 +21,7 @@ import {
 import { excludedParents, validReason } from '../identity/validation';
 import { manageOrg, type Org, type OrgManageInput, type List } from '../identity/contracts';
 import styles from '../identity/Identity.module.css';
+import { AdminStatus } from './AdminStatus';
 const categories: Org['category'][] = ['headquarters', 'resident', 'headquarters_department', 'subsidiary'];
 const categoryLabel = (category: Org['category']) =>
   ({
@@ -40,9 +43,13 @@ export default function OrganizationsPage() {
   const { session, permission_keys } = useSessionStore();
   if (!session?.user.is_superadmin || !permission_keys.includes('admin.org'))
     return (
-      <section aria-label={copy.identity_orgs}>
+      <PageLayout
+        header={<PageHeader title={copy.identity_orgs} />}
+        variant="archive"
+        aria-label={copy.identity_orgs}
+      >
         <Forbidden headquarters />
-      </section>
+      </PageLayout>
     );
   return <OrganizationDirectory />;
 }
@@ -85,24 +92,30 @@ function OrganizationDirectory() {
         title: (
           <span aria-label={org.name}>
             {org.name}
-            {org.status !== 'active' && <Tag>{statusLabel(org.status)}</Tag>}
-            {org.is_demo && <Tag>{copy.identity_demo_org}</Tag>}
+            {org.status !== 'active' && <AdminStatus status={org.status} label={statusLabel(org.status)} />}
+            {org.is_demo && <AdminStatus status="demo" label={copy.identity_demo_org} />}
           </span>
         ),
         children: nodes(org.id, new Set([...visited, org.id])),
       }));
   }
   return (
-    <section aria-label={copy.identity_orgs} aria-busy={query.isPending} className={styles.page}>
-      <PageHeader
-        title={copy.identity_orgs}
-        primaryAction={{
-          label: action.identity_create_org,
-          onClick: () => setEditing({ action: 'create' }),
-          disabled: narrow || query.isPending || query.isError,
-        }}
-      />
-      <p className={styles.help}>{copy.identity_org_no_inheritance}</p>
+    <PageLayout
+      variant="archive"
+      aria-label={copy.identity_orgs}
+      aria-busy={query.isPending}
+      header={
+        <PageHeader
+          title={copy.identity_orgs}
+          lead={copy.identity_org_no_inheritance}
+          primaryAction={{
+            label: action.identity_create_org,
+            onClick: () => setEditing({ action: 'create' }),
+            disabled: narrow || query.isPending || query.isError,
+          }}
+        />
+      }
+    >
       {narrow && <Alert title={copy.identity_narrow} type="info" />}
       <FilterBar
         value={params.get('q') || ''}
@@ -130,7 +143,6 @@ function OrganizationDirectory() {
                 <div className={styles.stack}>
                   <dl className={styles.facts}>
                     {[
-                      [copy.identity_org_id, selected.id],
                       [copy.identity_org_category, categoryLabel(selected.category)],
                       [
                         copy.identity_org_parent,
@@ -147,6 +159,11 @@ function OrganizationDirectory() {
                       </div>
                     ))}
                   </dl>
+                  <TechnicalDetails>
+                    <p>
+                      {copy.identity_org_id}: <code>{selected.id}</code>
+                    </p>
+                  </TechnicalDetails>
                   {!['active', 'disabled'].includes(selected.status) && (
                     <Alert type="warning" title={copy.identity_org_offline_check} />
                   )}
@@ -207,7 +224,7 @@ function OrganizationDirectory() {
           onSaved={() => void query.refetch()}
         />
       )}
-    </section>
+    </PageLayout>
   );
 }
 function OrganizationDialog({

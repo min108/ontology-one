@@ -1,40 +1,49 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, Button, Card, Input, Table, Tag } from 'antd';
+import { Alert, Button, Table } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { terms } from '../../i18n/zh-CN';
 import { useSessionStore } from '../../state/session';
 import { useUiStore } from '../../state/ui';
 import { addressPage, useAddressState } from '../../app/addressState';
 import { PageHeader } from '../../ui/PageHeader';
+import { PageLayout } from '../../ui/PageLayout';
+import { BusinessDatePicker } from '../../ui/BusinessDatePicker';
+import { EvidenceDrawer } from '../../ui/EvidenceDrawer';
+import { TechnicalDetails } from '../../ui/TechnicalDetails';
 import { StateBlock } from '../../ui/StateBlock';
 import { copy, action, Forbidden, QueryState, Timestamp, useIdentityQuery } from '../identity/common';
-import type { AuditOutput } from '../identity/contracts';
+import type { AuditOutput, User, Org, List } from '../identity/contracts';
 import styles from '../identity/Identity.module.css';
-type Row = {
-  id: string;
-  created_at: string;
-  actor_username: string;
-  actor_id: string;
-  action: string;
-  resource: string;
-  tenant_id: string;
-  outcome: string;
-  request_id: string;
-  details: unknown;
-};
+import adminStyles from './Admin.module.css';
+import { AdminStatus } from './AdminStatus';
+type Row = NonNullable<AuditOutput['items']>[number];
 const filterKeys = ['actor_id', 'tenant_id', 'action', 'outcome', 'since', 'until'] as const;
-function iso(value: string): string | null {
+type Filters = Record<(typeof filterKeys)[number], string>;
+const actionLabel = (value: string) =>
+  Object.hasOwn(terms.identity_audit_actions, value)
+    ? terms.identity_audit_actions[value as keyof typeof terms.identity_audit_actions]
+    : copy.identity_audit_other;
+const outcomeLabel = (value: string) =>
+  Object.hasOwn(terms.identity_audit_outcomes, value)
+    ? terms.identity_audit_outcomes[value as keyof typeof terms.identity_audit_outcomes]
+    : copy.r3_admin_unknown_outcome;
+/** Date-only filters cover the complete Beijing calendar day; old minute URLs remain valid. */
+export function auditBoundary(value: string, end = false): string | null {
   if (!value) return '';
-  const date = new Date(value + '+08:00');
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/.test(value)) return null;
+  const local = value.length === 10 ? value + (end ? 'T23:59:59.999' : 'T00:00:00') : value;
+  const date = new Date(local + '+08:00');
+  if (Number.isNaN(date.getTime())) return null;
+  const calendar = new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return calendar === value.slice(0, 10) ? date.toISOString() : null;
 }
 export default function AuditPage() {
   const { session, permission_keys } = useSessionStore();
   if (!session?.user.is_superadmin || !permission_keys.includes('audit.read'))
     return (
-      <section aria-label={copy.identity_audit}>
+      <PageLayout variant="list" header={<PageHeader title={copy.identity_audit} />}>
         <Forbidden headquarters />
-      </section>
+      </PageLayout>
     );
   return <AuditRecords />;
 }
@@ -42,112 +51,60 @@ function AuditRecords() {
   const { params, update } = useAddressState();
   const viewMode = useUiStore((state) => state.viewMode);
   const [form, setForm] = useState(
-      () =>
-        Object.fromEntries(filterKeys.map((key) => [key, params.get(key) || ''])) as Record<
-          (typeof filterKeys)[number],
-          string
-        >,
-    ),
-    [error, setError] = useState('');
+    () => Object.fromEntries(filterKeys.map((key) => [key, params.get(key) || ''])) as Filters,
+  );
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState<Row | null>(null);
   const signature = filterKeys.map((key) => params.get(key) || '').join('|');
   useEffect(() => {
-    setForm(Object.fromEntries(filterKeys.map((key) => [key, params.get(key) || ''])) as typeof form);
+    setForm(Object.fromEntries(filterKeys.map((key) => [key, params.get(key) || ''])) as Filters);
   }, [signature]);
-  const page = addressPage(params.get('page')),
-    queryParams = new URLSearchParams({ page: String(page), page_size: '30' });
-  let valid = true;
+  const users = useIdentityQuery<List<User>>('identity-users', '/v2/users');
+  const orgs = useIdentityQuery<List<Org>>('identity-orgs', '/v2/orgs');
+  const page = addressPage(params.get('page'));
+  const queryParams = new URLSearchParams({ page: String(page), page_size: '30' });
+  const since = auditBoundary(params.get('since') || ''),
+    until = auditBoundary(params.get('until') || '', true);
+  const valid = since !== null && until !== null && !(since && until && since > until);
   for (const key of filterKeys) {
-    const value = params.get(key) || '';
-    if (!value) continue;
-    const normalized = key === 'since' || key === 'until' ? iso(value) : value;
-    if (normalized === null) valid = false;
-    else queryParams.set(key, normalized);
+    const value = key === 'since' ? since : key === 'until' ? until : params.get(key);
+    if (value) queryParams.set(key, value);
   }
   const query = useIdentityQuery<AuditOutput>('identity-audit', '/v2/audit?' + queryParams, valid);
-  const rows: Row[] = (query.data?.items || []).map((item) => ({
-    id: String(item.id || ''),
-    created_at: String(item.created_at || ''),
-    actor_username: String(item.actor_username || ''),
-    actor_id: String(item.actor_id || ''),
-    action: String(item.action || ''),
-    resource: String(item.resource || ''),
-    tenant_id: String(item.tenant_id || ''),
-    outcome: String(item.outcome || ''),
-    request_id: String(item.request_id || ''),
-    details: item.details,
-  }));
+  const rows = query.data?.items || [];
   const columns: TableColumnsType<Row> = [
     {
       key: 'time',
       title: copy.identity_audit_time,
-      render: (_, row) => <Timestamp value={row.created_at} />,
+      render: (_, row) => <Timestamp value={String(row.created_at || '')} />,
     },
     {
       key: 'actor',
       title: copy.identity_audit_actor,
-      dataIndex: 'actor_username',
-      render: (value) => value || copy.identity_audit_anonymous,
+      render: (_, row) => String(row.actor_username || copy.identity_audit_anonymous),
     },
     {
       key: 'action',
       title: copy.identity_audit_action,
-      dataIndex: 'action',
-      render: (value: string) =>
-        Object.hasOwn(terms.identity_audit_actions, value)
-          ? terms.identity_audit_actions[value as keyof typeof terms.identity_audit_actions]
-          : copy.identity_audit_other,
-    },
-    {
-      key: 'resource',
-      title: copy.identity_audit_resource,
       render: (_, row) => (
-        <>
-          {row.resource || '—'}
-          <div>{row.tenant_id || '—'}</div>
-        </>
+        <Button type="text" size="small" autoInsertSpace={false} onClick={() => setSelected(row)}>
+          {actionLabel(String(row.action || ''))}
+        </Button>
       ),
     },
     {
       key: 'outcome',
       title: copy.identity_audit_outcome,
-      render: (_, row) => (
-        <Tag>
-          {Object.hasOwn(terms.identity_audit_outcomes, row.outcome)
-            ? terms.identity_audit_outcomes[row.outcome as keyof typeof terms.identity_audit_outcomes]
-            : row.outcome}
-        </Tag>
-      ),
-    },
-    {
-      key: 'details',
-      title: copy.identity_audit_details,
-      render: (_, row) => (
-        <details>
-          <summary>{action.identity_details}</summary>
-          <p>
-            {copy.identity_audit_raw_action}: <code>{row.action}</code>
-          </p>
-          <p>
-            {copy.identity_audit_raw_outcome}: <code>{row.outcome}</code>
-          </p>
-          <p>
-            {copy.identity_audit_actor_id}: <code>{row.actor_id || '—'}</code>
-          </p>
-          <p>
-            {copy.identity_audit_tenant_id}: <code>{row.tenant_id || '—'}</code>
-          </p>
-          <pre className={styles.detail}>{JSON.stringify(row.details, null, 2)}</pre>
-          <p>
-            {copy.identity_request_id}: <code data-visual-dynamic="request-id">{row.request_id}</code>
-          </p>
-        </details>
-      ),
+      render: (_, row) => {
+        const value = String(row.outcome || '');
+        return <AdminStatus status={value} label={outcomeLabel(value)} />;
+      },
     },
   ];
   function filter(event: FormEvent) {
     event.preventDefault();
-    const since = iso(form.since),
-      until = iso(form.until);
+    const since = auditBoundary(form.since),
+      until = auditBoundary(form.until, true);
     if (since === null || until === null || (since && until && since > until)) {
       setError(copy.identity_audit_time_invalid);
       return;
@@ -155,50 +112,101 @@ function AuditRecords() {
     setError('');
     update({ ...Object.fromEntries(filterKeys.map((key) => [key, form[key].trim() || null])), page: null });
   }
-  const reset = () => {
+  function reset() {
     setError('');
     setForm({ actor_id: '', tenant_id: '', action: '', outcome: '', since: '', until: '' });
     update({ ...Object.fromEntries(filterKeys.map((key) => [key, null])), page: null });
-  };
+  }
+  const selectors = [
+    {
+      key: 'actor_id' as const,
+      label: copy.r3_admin_actor,
+      items: (users.data?.items || []).map((item) => ({
+        value: item.id,
+        label: `${item.display_name}（${item.username}）`,
+      })),
+    },
+    {
+      key: 'tenant_id' as const,
+      label: copy.r3_admin_organization,
+      items: (orgs.data?.items || []).map((item) => ({ value: item.id, label: item.name })),
+    },
+    {
+      key: 'action' as const,
+      label: copy.r3_admin_action,
+      items: Object.entries(terms.identity_audit_actions).map(([value, label]) => ({ value, label })),
+    },
+    {
+      key: 'outcome' as const,
+      label: copy.r3_admin_outcome,
+      items: Object.entries(terms.identity_audit_outcomes).map(([value, label]) => ({ value, label })),
+    },
+  ];
   return (
-    <section aria-label={copy.identity_audit} aria-busy={query.isPending && valid} className={styles.page}>
-      <PageHeader title={copy.identity_audit} />
-      <p className={styles.help}>{copy.identity_audit_exact}</p>
-      <Card>
-        <form className={styles.filters} onSubmit={filter}>
-          {filterKeys.map((key) => (
-            <label className={styles.field} htmlFor={'identity-audit-' + key} key={key}>
-              {
-                {
-                  actor_id: copy.identity_audit_actor_id,
-                  tenant_id: copy.identity_audit_tenant_id,
-                  action: copy.identity_audit_raw_action,
-                  outcome: copy.identity_audit_raw_outcome,
-                  since: copy.identity_audit_since,
-                  until: copy.identity_audit_until,
-                }[key]
-              }
-              <Input
-                id={'identity-audit-' + key}
-                type={key === 'since' || key === 'until' ? 'datetime-local' : 'text'}
-                value={form[key]}
-                maxLength={100}
-                onChange={(event) => setForm({ ...form, [key]: event.target.value })}
-              />
-            </label>
-          ))}
-          <Button autoInsertSpace={false} type="primary" htmlType="submit">
-            {action.identity_filter}
-          </Button>
-          <Button autoInsertSpace={false} onClick={reset}>
-            {action.identity_reset}
-          </Button>
-          <Button autoInsertSpace={false} onClick={() => void query.refetch()}>
-            {action.identity_refresh}
-          </Button>
-        </form>
-        {error && <Alert title={error} type="error" />}
-      </Card>
+    <PageLayout
+      variant="list"
+      aria-label={copy.identity_audit}
+      aria-busy={query.isPending && valid}
+      header={
+        <PageHeader
+          title={copy.identity_audit}
+          secondaryAction={{ label: action.identity_refresh, onClick: () => void query.refetch() }}
+        />
+      }
+    >
+      <form className={adminStyles['audit-filters']} onSubmit={filter}>
+        {selectors.map((field) => (
+          <label className={styles.field} key={field.key} htmlFor={'identity-audit-' + field.key}>
+            <span className={adminStyles['visually-hidden']}>{field.label}</span>
+            <select
+              id={'identity-audit-' + field.key}
+              className={styles.control}
+              value={form[field.key]}
+              onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}
+            >
+              <option value="">
+                {field.label} · {copy.r3_admin_all}
+              </option>
+              {field.items.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        {(['since', 'until'] as const).map((key) => (
+          <BusinessDatePicker
+            key={key}
+            aria-label={key === 'since' ? copy.identity_audit_since : copy.identity_audit_until}
+            value={form[key].slice(0, 10)}
+            onChange={(value) => setForm({ ...form, [key]: value })}
+          />
+        ))}
+        <Button autoInsertSpace={false} htmlType="submit">
+          {action.identity_filter}
+        </Button>
+        <Button type="text" autoInsertSpace={false} onClick={reset}>
+          {action.identity_reset}
+        </Button>
+      </form>
+      {error && <Alert title={error} type="error" />}
+      {(users.isError || orgs.isError) && (
+        <Alert
+          type="warning"
+          title={copy.identity_error_preserved}
+          action={
+            <Button
+              onClick={() => {
+                void users.refetch();
+                void orgs.refetch();
+              }}
+            >
+              {action.identity_retry}
+            </Button>
+          }
+        />
+      )}
       {!valid ? (
         <StateBlock
           state="error"
@@ -207,32 +215,71 @@ function AuditRecords() {
         />
       ) : (
         <QueryState query={query}>
-          <div className={styles.table}>
-            <Table<Row>
-              columns={columns}
-              rowKey="id"
-              dataSource={rows}
-              size={viewMode === 'professional' ? 'middle' : 'large'}
-              pagination={{
-                current: page,
-                pageSize: 30,
-                total: query.data?.total || 0,
-                showSizeChanger: false,
-                onChange: (next) => update({ page: next }),
-              }}
-              locale={{
-                emptyText: (
-                  <StateBlock
-                    state="empty"
-                    description={copy.identity_no_audit}
-                    action={{ label: action.identity_reset, onClick: reset }}
-                  />
-                ),
-              }}
+          {rows.length ? (
+            <div className={styles.table}>
+              <Table<Row>
+                columns={columns}
+                rowKey={(row) => String(row.id)}
+                dataSource={rows}
+                size={viewMode === 'professional' ? 'middle' : 'large'}
+                onRow={(row) => ({ onDoubleClick: () => setSelected(row) })}
+                pagination={{
+                  current: page,
+                  pageSize: 30,
+                  total: query.data?.total || 0,
+                  showSizeChanger: false,
+                  onChange: (next) => update({ page: next }),
+                }}
+              />
+            </div>
+          ) : (
+            <StateBlock
+              state="empty"
+              description={copy.identity_no_audit}
+              action={{ label: action.identity_reset, onClick: reset }}
             />
-          </div>
+          )}
         </QueryState>
       )}
-    </section>
+      <EvidenceDrawer
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title={copy.r3_admin_audit_detail}
+        wide
+      >
+        {selected && (
+          <div className={styles.stack}>
+            <p>
+              <Timestamp value={String(selected.created_at || '')} /> ·{' '}
+              {String(selected.actor_username || copy.identity_audit_anonymous)}
+            </p>
+            <p>
+              {actionLabel(String(selected.action || ''))} · {outcomeLabel(String(selected.outcome || ''))}
+            </p>
+            {viewMode === 'simple' && <p>{copy.r3_admin_audit_detail_hint}</p>}
+            <TechnicalDetails>
+              <dl className={styles.facts}>
+                {[
+                  [copy.identity_audit_raw_action, selected.action],
+                  [copy.identity_audit_raw_outcome, selected.outcome],
+                  [copy.identity_audit_actor_id, selected.actor_id],
+                  [copy.identity_audit_tenant_id, selected.tenant_id],
+                  [copy.identity_audit_resource, selected.resource],
+                  [copy.identity_request_id, selected.request_id],
+                ].map(([label, value]) => (
+                  <div key={String(label)}>
+                    <dt>{String(label)}</dt>
+                    <dd>
+                      <code>{String(value || '—')}</code>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <pre className={styles.detail}>{JSON.stringify(selected.details, null, 2)}</pre>
+            </TechnicalDetails>
+          </div>
+        )}
+      </EvidenceDrawer>
+    </PageLayout>
   );
 }

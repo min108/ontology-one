@@ -3,12 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesignProvider } from '../../design/DesignProvider';
+import { useUiStore } from '../../state/ui';
 import { useSessionStore } from '../../state/session';
 import { readWorkspaceGuards } from '../../state/workspace-guard';
 import { terms } from '../../i18n/zh-CN';
 import UsersPage from './UsersPage';
 import OrganizationsPage from './OrganizationsPage';
-import AuditPage from './AuditPage';
+import AuditPage, { auditBoundary } from './AuditPage';
 import type { AuthSession } from '../../api/session.types';
 const { request, invoke } = vi.hoisted(() => ({ request: vi.fn(), invoke: vi.fn() }));
 vi.mock('../../api/client', async (importOriginal) => ({
@@ -74,6 +75,7 @@ function wrapper(node: React.ReactNode, path = '/admin/users') {
   );
 }
 beforeEach(() => {
+  useUiStore.setState({ viewMode: 'simple' });
   request.mockReset();
   invoke.mockReset();
   reload.mockReset();
@@ -160,7 +162,12 @@ describe('identity administration pages', () => {
     wrapper(<UsersPage />);
     await screen.findByText('Other');
     const row = screen.getByRole('row', { name: /Admin.*admin/ });
-    expect(within(row).getByRole('button', { name: terms.actions.identity_disable })).toBeDisabled();
+    expect(within(row).getAllByRole('button')).toHaveLength(2);
+    fireEvent.click(within(row).getByRole('button', { name: terms.actions.r3_admin_more }));
+    expect(await screen.findByRole('menuitem', { name: terms.actions.identity_disable })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     fireEvent.click(within(row).getByRole('button', { name: terms.actions.identity_edit_user }));
     expect(screen.getByLabelText(terms.labels.identity_role)).toBeDisabled();
     fireEvent.change(screen.getByLabelText(terms.labels.identity_name), { target: { value: 'Renamed' } });
@@ -175,12 +182,57 @@ describe('identity administration pages', () => {
     await screen.findByText('Other');
     fireEvent.click(
       within(screen.getByRole('row', { name: /Other/ })).getByRole('button', {
-        name: terms.actions.identity_disable,
+        name: terms.actions.r3_admin_more,
       }),
     );
+    fireEvent.click(await screen.findByRole('menuitem', { name: terms.actions.identity_disable }));
     fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_review }));
     fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_cancel }));
     expect(invoke).not.toHaveBeenCalled();
+  });
+  it('resets a password through More and sends only the intended account change', async () => {
+    wrapper(<UsersPage />);
+    await screen.findByText('Other');
+    const row = screen.getByRole('row', { name: /Other/ });
+    expect(within(row).getAllByRole('button')).toHaveLength(2);
+    fireEvent.click(within(row).getByRole('button', { name: terms.actions.r3_admin_more }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: terms.actions.identity_reset_password }));
+    fireEvent.change(screen.getByLabelText(terms.labels.identity_temporary_password), {
+      target: { value: 'TemporaryPassword123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_review }));
+    fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_confirm }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('user.manage', {
+        action: 'update',
+        user_id: 'other',
+        changes: { password: 'TemporaryPassword123' },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByLabelText(terms.labels.identity_temporary_password)).not.toBeInTheDocument(),
+    );
+  });
+  it('disables an account through More after confirming the impact', async () => {
+    wrapper(<UsersPage />);
+    await screen.findByText('Other');
+    fireEvent.click(
+      within(screen.getByRole('row', { name: /Other/ })).getByRole('button', {
+        name: terms.actions.r3_admin_more,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('menuitem', { name: terms.actions.identity_disable }));
+    fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_review }));
+    expect(invoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_confirm }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('user.manage', {
+        action: 'update',
+        user_id: 'other',
+        changes: { is_active: false },
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
   it('preserves edited values and dirty state after a rejected management write', async () => {
     invoke.mockRejectedValueOnce(new Error('offline'));
@@ -232,6 +284,7 @@ describe('identity administration pages', () => {
   });
   it('keeps grant filters clean and confirms a constrained grant with its reason', async () => {
     wrapper(<UsersPage />, '/admin/users?tab=grants');
+    expect(screen.getByRole('radio', { name: terms.labels.identity_grants_tab })).toBeChecked();
     await waitFor(() =>
       expect(screen.getAllByRole('button', { name: terms.actions.identity_create_grant })[0]).toBeEnabled(),
     );
@@ -255,7 +308,7 @@ describe('identity administration pages', () => {
       }),
     );
   });
-  it('shows a separate grant tab only to headquarters administrators', async () => {
+  it('shows the grant category only to headquarters administrators', async () => {
     useSessionStore.setState({
       session: {
         ...session,
@@ -265,7 +318,7 @@ describe('identity administration pages', () => {
       permission_keys: ['admin.users'],
     });
     wrapper(<UsersPage />);
-    expect(screen.queryByRole('tab', { name: terms.labels.identity_grants_tab })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: terms.labels.identity_grants_tab })).not.toBeInTheDocument();
   });
   it('renders a governed organization tree with no delete action and protects headquarters', async () => {
     wrapper(<OrganizationsPage />, '/admin/orgs');
@@ -309,20 +362,36 @@ describe('identity administration pages', () => {
   });
   it('filters audit requests and retains details and the thirty-record page size', async () => {
     wrapper(<AuditPage />, '/admin/audit');
-    await screen.findByText(terms.identity_audit_actions.login);
-    fireEvent.click(screen.getByText(terms.actions.identity_details));
+    await screen.findByRole('button', { name: terms.identity_audit_actions.login });
+    expect(screen.getAllByRole('columnheader')).toHaveLength(4);
+    expect(screen.queryByText('REQ-1')).not.toBeInTheDocument();
+    useUiStore.setState({ viewMode: 'professional' });
+    fireEvent.click(screen.getByRole('button', { name: terms.identity_audit_actions.login }));
+    fireEvent.click(await screen.findByText(terms.labels.r3_admin_technical));
     expect(await screen.findByText('REQ-1')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(terms.labels.identity_audit_actor_id), {
-      target: { value: 'person-1' },
+    fireEvent.click(screen.getByRole('button', { name: /关闭|Close/ }));
+    fireEvent.change(screen.getByLabelText(terms.labels.r3_admin_actor), {
+      target: { value: 'other' },
     });
     fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_filter }));
     await waitFor(() =>
       expect(
         request.mock.calls.some(
-          ([path]) => String(path).includes('actor_id=person-1') && String(path).includes('page_size=30'),
+          ([path]) => String(path).includes('actor_id=other') && String(path).includes('page_size=30'),
         ),
       ).toBe(true),
     );
     expect(readWorkspaceGuards().dirtyCount).toBe(0);
+  });
+});
+
+describe('audit Beijing date boundaries', () => {
+  it('includes both complete selected calendar days', () => {
+    expect(auditBoundary('2026-01-02')).toBe('2026-01-01T16:00:00.000Z');
+    expect(auditBoundary('2026-01-02', true)).toBe('2026-01-02T15:59:59.999Z');
+    expect(auditBoundary('2026-01-02T10:30')).toBe('2026-01-02T02:30:00.000Z');
+  });
+  it.each(['invalid', '2026-02-31', '2026-13-01', '2026-01-02T29:00'])('rejects invalid date %s', (value) => {
+    expect(auditBoundary(value)).toBeNull();
   });
 });

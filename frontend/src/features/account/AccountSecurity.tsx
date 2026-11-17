@@ -5,6 +5,10 @@ import type { AuthSession } from '../../api/session.types';
 import { clearLocalWorkspace, useSessionStore } from '../../state/session';
 import { useWorkspaceGuard } from '../../app/useWorkspaceGuard';
 import { roleLabel } from '../../app/identity';
+import { PageLayout } from '../../ui/PageLayout';
+import { TechnicalDetails } from '../../ui/TechnicalDetails';
+import { AdminStatus } from '../admin/AdminStatus';
+import { browserSummary } from '../admin/browserSummary';
 import { PageHeader } from '../../ui/PageHeader';
 import { StateBlock } from '../../ui/StateBlock';
 import {
@@ -44,8 +48,8 @@ export default function AccountSecurity() {
     [revokeError, setRevokeError] = useState('');
   useWorkspaceGuard(Boolean(current || password || confirm));
   const valid = Boolean(current) && validPassword(password) && password === confirm;
-  async function change(event: FormEvent) {
-    event.preventDefault();
+  async function change(event?: FormEvent) {
+    event?.preventDefault();
     if (!valid || busy || narrow) return;
     setBusy(true);
     setError('');
@@ -91,8 +95,23 @@ export default function AccountSecurity() {
     { label: copy.identity_confirm_password, key: 'confirm', value: confirm, set: setConfirm },
   ];
   return (
-    <section aria-label={copy.identity_security} aria-busy={sessions.isPending} className={styles.page}>
-      <PageHeader title={copy.identity_security} />
+    <PageLayout
+      variant="archive"
+      aria-label={copy.identity_security}
+      aria-busy={sessions.isPending}
+      header={
+        <PageHeader
+          title={copy.identity_security}
+          lead={copy.r3_admin_security_lead}
+          primaryAction={{
+            label: action.identity_password_change,
+            onClick: () => void change(),
+            disabled: !valid || narrow,
+            loading: busy,
+          }}
+        />
+      }
+    >
       {session.password_change_recommended && !success && (
         <Alert type="info" showIcon title={copy.identity_password_recommended} />
       )}
@@ -146,16 +165,6 @@ export default function AccountSecurity() {
               )}{' '}
               {error && <Alert type="error" showIcon title={error} />}{' '}
               {success && <Alert type="success" showIcon title={copy.identity_password_changed} />}
-              <Button
-                autoInsertSpace={false}
-                htmlType="submit"
-                aria-label={action.identity_password_change}
-                type="primary"
-                loading={busy}
-                disabled={!valid || narrow}
-              >
-                {action.identity_password_change}
-              </Button>
             </form>
           </Card>
         </div>
@@ -174,33 +183,40 @@ export default function AccountSecurity() {
                 <section className={styles.session} key={row.id}>
                   <strong>
                     {row.current ? copy.identity_current_device : copy.identity_other_device}{' '}
-                    {row.current && <Tag>{copy.identity_current_session}</Tag>}
+                    {row.current && <AdminStatus status="current" label={copy.identity_current_session} />}
                   </strong>
-                  <p>{row.user_agent || copy.identity_not_recorded}</p>
-                  <dl className={styles.facts}>
-                    <div>
-                      <dt>{copy.identity_last_seen}</dt>
-                      <dd>
-                        <Timestamp value={row.last_seen_at} />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{copy.identity_created_at}</dt>
-                      <dd>
-                        <Timestamp value={row.created_at} />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{copy.identity_source}</dt>
-                      <dd>{row.ip_hint || '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>{copy.identity_expires_at}</dt>
-                      <dd>
-                        <Timestamp value={row.expires_at} />
-                      </dd>
-                    </div>
-                  </dl>
+                  <p>
+                    {browserSummary(row.user_agent)} · <Timestamp value={row.last_seen_at} />
+                  </p>
+                  <TechnicalDetails>
+                    <p>
+                      {copy.r3_admin_device_raw}: {row.user_agent || copy.identity_not_recorded}
+                    </p>
+                    <dl className={styles.facts}>
+                      <div>
+                        <dt>{copy.identity_last_seen}</dt>
+                        <dd>
+                          <Timestamp value={row.last_seen_at} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{copy.identity_created_at}</dt>
+                        <dd>
+                          <Timestamp value={row.created_at} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{copy.identity_source}</dt>
+                        <dd>{row.ip_hint || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>{copy.identity_expires_at}</dt>
+                        <dd>
+                          <Timestamp value={row.expires_at} />
+                        </dd>
+                      </div>
+                    </dl>
+                  </TechnicalDetails>
                   <Button
                     autoInsertSpace={false}
                     disabled={narrow}
@@ -236,7 +252,6 @@ export default function AccountSecurity() {
               </Button>
               <Button
                 autoInsertSpace={false}
-                danger
                 aria-label={action.identity_confirm_revoke}
                 type="primary"
                 loading={revoking}
@@ -252,6 +267,6 @@ export default function AccountSecurity() {
           {revokeError && <Alert type="error" title={revokeError} />}
         </Modal>
       )}
-    </section>
+    </PageLayout>
   );
 }

@@ -3,7 +3,10 @@ import { Button, Checkbox, Input } from 'antd';
 import { Link } from 'react-router-dom';
 import { api, invokeCapability } from '../../../api/client';
 import { useWorkspaceGuard } from '../../../app/useWorkspaceGuard';
+import { PageLayout } from '../../../ui/PageLayout';
 import { PageHeader } from '../../../ui/PageHeader';
+import { FoldRow } from '../../../ui/FoldRow';
+import { TechnicalDetails } from '../../../ui/TechnicalDetails';
 import { StateBlock } from '../../../ui/StateBlock';
 import {
   copy,
@@ -18,17 +21,15 @@ import styles from '../Admin.module.css';
 export default function ModelPage() {
   const status = useResource<ModelStatus>('/v2/system/model');
   const { session } = useManagementSession();
-  return (
-    <div className={styles.page} data-admin-ready={Boolean(status.data)}>
-      <PageHeader title={copy.admin_model_title} />
-      {status.data ? (
-        <ModelForm key={`${session?.user.id}:${session?.workspace.tenant_id}`} initial={status.data} />
-      ) : (
-        <ResourceState error={status.error} reload={status.reload} />
-      )}
-    </div>
+  return status.data ? (
+    <ModelForm key={`${session?.user.id}:${session?.workspace.tenant_id}`} initial={status.data} />
+  ) : (
+    <PageLayout variant="archive" header={<PageHeader title={copy.admin_model_title} />}>
+      <ResourceState error={status.error} reload={status.reload} />
+    </PageLayout>
   );
 }
+
 export function ModelForm({ initial }: { initial: ModelStatus }) {
   const { session, canManage } = useManagementSession();
   const canVerify = canManage && session?.workspace.tenant_id === session?.user.home_tenant_id;
@@ -43,6 +44,7 @@ export function ModelForm({ initial }: { initial: ModelStatus }) {
     [message, setMessage] = useState('');
   const [lastAction, setLastAction] = useState<'save' | 'verify'>('save');
   const lifecycle = useRef<AbortController | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   useWorkspaceGuard(Boolean(key || clearKey || base !== baseline.base || model !== baseline.model));
   useEffect(() => {
     const controller = new AbortController();
@@ -121,24 +123,43 @@ export function ModelForm({ initial }: { initial: ModelStatus }) {
     return () => controller.abort();
   }, [diagnosticRevision]);
   return (
-    <>
+    <PageLayout
+      variant="archive"
+      data-admin-ready
+      header={
+        <PageHeader
+          title={copy.admin_model_title}
+          lead={modelLabel(status)}
+          primaryAction={
+            canManage
+              ? {
+                  label: busy ? copy.admin_busy : copy.admin_save,
+                  disabled: busy || !base.trim() || !model.trim(),
+                  onClick: () => formRef.current?.requestSubmit(),
+                }
+              : undefined
+          }
+        />
+      }
+    >
       <section className={styles.section}>
-        <h2>{modelLabel(status)}</h2>
-        <p>
-          {status.model} · {copy.admin_runtime_version} {status.version}
-        </p>
-        {!status.available && status.reason && <p role="status">{status.reason}</p>}
+        <TechnicalDetails>
+          <p>
+            {status.model} · {copy.admin_runtime_version} {status.version}
+          </p>
+          {!status.available && status.reason && <p>{status.reason}</p>}
+        </TechnicalDetails>
         {status.configuration_notice && <p>{status.configuration_notice}</p>}
         <p>{copy.admin_model_intro}</p>
         <form
+          ref={formRef}
           className={styles.form}
           onSubmit={(event) => {
             event.preventDefault();
             void run('save');
           }}
         >
-          <details>
-            <summary>{copy.admin_connection}</summary>
+          <FoldRow title={copy.admin_connection} summary={copy.admin_model_name}>
             <label className={styles.field}>
               {copy.admin_address}
               <Input
@@ -161,7 +182,7 @@ export function ModelForm({ initial }: { initial: ModelStatus }) {
                 onChange={(event) => setModel(event.target.value)}
               />
             </label>
-          </details>
+          </FoldRow>
           <label className={styles.field}>
             {copy.admin_key}
             <Input.Password
@@ -189,9 +210,6 @@ export function ModelForm({ initial }: { initial: ModelStatus }) {
           )}
           {canManage ? (
             <div className={styles.actions}>
-              <Button type="primary" htmlType="submit" disabled={busy || !base.trim() || !model.trim()}>
-                {busy ? copy.admin_busy : copy.admin_save}
-              </Button>
               <Button disabled={busy || !canVerify || !status.configured} onClick={() => void run('verify')}>
                 {copy.admin_verify}
               </Button>
@@ -221,8 +239,7 @@ export function ModelForm({ initial }: { initial: ModelStatus }) {
           />
         )}
       </section>
-      <section className={styles.section}>
-        <h2>{copy.admin_diagnostics}</h2>
+      <FoldRow title={copy.admin_diagnostics} summary={copy.r3_admin_model_diagnostics}>
         {diagnostics ? (
           <>
             <p>{diagnostics.message}</p>
@@ -236,7 +253,7 @@ export function ModelForm({ initial }: { initial: ModelStatus }) {
           <ResourceState error={diagnosticError} reload={() => setDiagnosticRevision((value) => value + 1)} />
         )}
         <Link to="/admin/system">{copy.admin_system_title}</Link>
-      </section>
-    </>
+      </FoldRow>
+    </PageLayout>
   );
 }

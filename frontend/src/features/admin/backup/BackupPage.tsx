@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from 'antd';
 import { apiBlob, invokeCapability } from '../../../api/client';
+import { PageLayout } from '../../../ui/PageLayout';
 import { PageHeader } from '../../../ui/PageHeader';
+import { FoldRow } from '../../../ui/FoldRow';
+import { TechnicalDetails } from '../../../ui/TechnicalDetails';
 import { StateBlock } from '../../../ui/StateBlock';
 import { Timestamp } from '../../identity/common';
 import { copy, ResourceState, useManagementSession, useResource } from '../shared';
@@ -66,14 +69,24 @@ export default function BackupPage() {
     }
   }
   return (
-    <div className={styles.page} data-admin-ready={!canManage || Boolean(backups.data)}>
-      <PageHeader title={copy.admin_backup_title} />
+    <PageLayout
+      variant="archive"
+      data-admin-ready={!canManage || Boolean(backups.data)}
+      header={
+        <PageHeader
+          title={copy.admin_backup_title}
+          lead={copy.r3_admin_backup_lead}
+          primaryAction={{
+            label: busy ? copy.admin_busy : copy.admin_export,
+            disabled: !canManage || busy,
+            onClick: () => void download('backup'),
+          }}
+        />
+      }
+    >
       <section className={styles.section}>
         <h2>{copy.admin_export}</h2>
         <p>{copy.admin_backup_intro}</p>
-        <Button type="primary" disabled={!canManage || busy} onClick={() => void download('backup')}>
-          {busy ? copy.admin_busy : copy.admin_export}
-        </Button>
         {!canManage && <p>{copy.admin_backup_readonly}</p>}
         {message && <p role="status">{message}</p>}
         {error && (
@@ -88,16 +101,17 @@ export default function BackupPage() {
           />
         )}
       </section>
-      <section className={styles.section}>
-        <h2>{copy.admin_restore_title}</h2>
+      <FoldRow title={copy.admin_restore_title} summary={copy.r3_admin_restore_summary}>
         <p>{copy.admin_restore}</p>
-        <p>{copy.admin_restore_command}</p>
-        <code className={styles.command}>
-          python scripts/restore_backup.py backup.zip --tenant-id {session?.workspace.tenant_id} --maintenance
-          --reason "{copy.admin_restore_reason}"
-        </code>
+        <TechnicalDetails>
+          <p>{copy.admin_restore_command}</p>
+          <code className={styles.command}>
+            python scripts/restore_backup.py backup.zip --tenant-id {session?.workspace.tenant_id}{' '}
+            --maintenance --reason "{copy.admin_restore_reason}"
+          </code>
+        </TechnicalDetails>
         <p>{copy.admin_restore_upgrade}</p>
-      </section>
+      </FoldRow>
       {canManage && (
         <section className={styles.section}>
           <h2>{copy.admin_upgrade_list}</h2>
@@ -121,8 +135,7 @@ export default function BackupPage() {
           )}
         </section>
       )}
-      <section className={styles.section}>
-        <h2>{copy.admin_windows_title}</h2>
+      <FoldRow title={copy.admin_windows_title} summary={copy.r3_admin_windows_summary}>
         <p>{copy.admin_windows}</p>
         <a href="https://github.com/min108/ontology-one/releases" target="_blank" rel="noopener noreferrer">
           {copy.admin_release_link}
@@ -136,7 +149,7 @@ export default function BackupPage() {
             </Button>
           </>
         )}
-      </section>
-    </div>
+      </FoldRow>
+    </PageLayout>
   );
 }
