@@ -1,5 +1,6 @@
 """Public dependencies must fail in source and compiled output."""
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -71,3 +72,56 @@ class OfflineTests(unittest.TestCase):
     def test_missing_build_is_not_a_success(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             self.assertTrue(scan_tree(Path(directory), require_dist=True))
+
+    def test_reviewed_schema_identifiers_are_metadata_only(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        for name in ("position", "party", "term", "object_type", "link_type", "metric", "process"):
+            path = f"backend/kernel/schemas/{name}.json"
+            with self.subTest(path=path):
+                text = (root / path).read_text()
+                self.assertEqual(json.loads(text)["$schema"], "https://json-schema.org/draft/2020-12/schema")
+                self.assertEqual(scan_text(text, path), [])
+
+    def test_schema_identifier_exception_rejects_references_and_requests(self) -> None:
+        url = "https://json-schema.org/draft/2020-12/schema"
+        path = "backend/kernel/schemas/metric.json"
+        for field in ("$ref", "$dynamicRef", "$id", "url", "description"):
+            with self.subTest(field=field):
+                text = json.dumps({"$schema": url, field: url})
+                self.assertEqual(len(scan_text(text, path)), 1)
+        for request in (f'fetch("{url}")', f'import("{url}")', f'new WebSocket("{url}")'):
+            for location in (path, "frontend/src/a.ts", "frontend/dist/a.js"):
+                with self.subTest(request=request, location=location):
+                    self.assertTrue(scan_text(request, location))
+        text = json.dumps({"$schema": url, "code": f'fetch("{url}")'})
+        self.assertEqual(len(scan_text(text, path)), 1)
+
+    def test_schema_identifier_exception_requires_literal_root_and_registered_file(self) -> None:
+        url = "https://json-schema.org/draft/2020-12/schema"
+        path = "backend/kernel/schemas/metric.json"
+        for text in (
+            json.dumps({"properties": {"$schema": url}}),
+            json.dumps([{"$schema": url}]),
+            json.dumps({"$schema": url + "/other"}),
+            json.dumps({"$schema": url}).replace("https", r"\u0068ttps"),
+            '{"$schema": "' + url + '", invalid}',
+            '{"$schema": "' + url + '", "$schema": "' + url + '"}',
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(scan_text(text, path))
+        for location in (
+            "backend/kernel/schemas/unreviewed.json",
+            "backend/other/metric.json",
+            "frontend/dist/metric.json",
+        ):
+            with self.subTest(location=location):
+                self.assertTrue(scan_text(json.dumps({"$schema": url}), location))
+
+    def test_schema_metadata_mask_preserves_violation_line_numbers(self) -> None:
+        text = (
+            '{\n  "$schema": "https://json-schema.org/draft/2020-12/schema",\n  "$ref": "https://public.example/a"\n}'
+        )
+        self.assertEqual(
+            scan_text(text, "backend/kernel/schemas/term.json"),
+            ["backend/kernel/schemas/term.json:3: public URL https://public.example/a"],
+        )

@@ -28,6 +28,16 @@ NAMESPACES = {
     "http://www.w3.org/1999/xlink",
     "http://www.w3.org/XML/1998/namespace",
 }
+SCHEMA_IDENTIFIER = "https://json-schema.org/draft/2020-12/schema"
+SCHEMA_PATHS = {
+    "backend/kernel/schemas/position.json",
+    "backend/kernel/schemas/party.json",
+    "backend/kernel/schemas/term.json",
+    "backend/kernel/schemas/object_type.json",
+    "backend/kernel/schemas/link_type.json",
+    "backend/kernel/schemas/metric.json",
+    "backend/kernel/schemas/process.json",
+}
 SUFFIXES = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".css", ".html", ".svg", ".json"}
 
 
@@ -111,7 +121,30 @@ def permitted(text: str, start: int, url: str, path: str) -> bool:
     return False
 
 
+def schema_metadata(text: str, path: str) -> str:
+    """Mask only the reviewed root-first dialect identifier, preserving offsets.
+
+    The seven local schemas declare their dialect as the first root member.
+    This is metadata, not a remote reference; every other URL stays scanned.
+    Validate before URL escape normalization so only the literal is exempt.
+    """
+    if path not in SCHEMA_PATHS:
+        return text
+    match = re.match(r'\s*\{\s*"\$schema"\s*:\s*"(' + re.escape(SCHEMA_IDENTIFIER) + r')"', text)
+    if not match:
+        return text
+    try:
+        document = json.loads(text)
+    except ValueError:
+        return text
+    if document.get("$schema") != SCHEMA_IDENTIFIER:
+        return text
+    start, end = match.span(1)
+    return text[:start] + " " * (end - start) + text[end:]
+
+
 def scan_text(text: str, path: str) -> list[str]:
+    text = schema_metadata(text, path)
     if path.endswith(".py"):
         text = runtime_python(text)
     text = text.replace(r"/\//g", "/__escaped_slash__/g")

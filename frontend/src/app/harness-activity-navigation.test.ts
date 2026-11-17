@@ -37,8 +37,8 @@ describe('owned recipe task destinations', () => {
     '/build/changesets/%2e%2e/admin',
     '/build/changesets/' + changeset + '%2fadmin',
     '/build-lookalike/intake?run=' + run,
-    'https://example.invalid/build/intake?run=' + run,
-    '//example.invalid/build/intake?run=' + run,
+    'https://external.test/build/intake?run=' + run,
+    '//external.test/build/intake?run=' + run,
     '/build\\intake?run=' + run,
     '/build/intake?run=' + run + '\u007f',
   ])('rejects unsupported, mismatched or unsafe destination %s', (href) => {
