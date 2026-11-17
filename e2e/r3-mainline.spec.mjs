@@ -61,6 +61,8 @@ for (
     mkdirSync(output, { recursive: true });
     const times = [],
       reportChecks = [],
+      reportReads = [],
+      reportResponses = [],
       started = Date.now();
     let checkpoint = started,
       firstNumericBlocked = false,
@@ -77,6 +79,39 @@ for (
     const builder = await login(browser, "modeler"),
       reviewer = await login(browser, "reviewer");
     const page = builder.page;
+    page.on("request", (request) => {
+      if (
+        /\/api\/agent\/sessions\/[^/]+\/turns$/.test(
+          new URL(request.url()).pathname,
+        ) &&
+        request.method() === "POST" &&
+        request.postDataJSON()?.revision_of
+      )
+        revisionUsed = true;
+    });
+    page.on("response", (response) => {
+      if (
+        !/\/api\/agent\/sessions\/[^/]+\/runs\/[^/]+\/report$/.test(
+          new URL(response.url()).pathname,
+        ) ||
+        response.request().method() !== "POST"
+      )
+        return;
+      reportResponses.push(response);
+      if (response.status() === 422)
+        reportReads.push(
+          (async () => {
+            const error = await response.json(),
+              detail = error.error?.details || error.detail || {};
+            reportChecks.push({
+              code: detail.code,
+              ...(!live ? { issues: detail.issues } : {}),
+            });
+            if (reportResponses[0] === response)
+              firstNumericBlocked = detail.code === "NUMERIC_UNVERIFIED";
+          })(),
+        );
+    });
     try {
       await selectSavedViewMode(page, "simple");
       await expect(
@@ -106,9 +141,10 @@ for (
       await expect(page).toHaveURL(/\/build\/intake/);
       await page.locator(".harness-activity summary").click();
       await button(page, "刷新后台任务").click();
-      const trayItem = page.locator(
-        `.harness-activity-item[href*="${recipe.id}"]`,
-      );
+      const trayItem = page
+        .locator(".harness-activity-item")
+        .filter({ hasText: "制度整理" })
+        .first();
       await expect(trayItem).toBeVisible();
       await expect(trayItem).toContainText(/整理|提炼|完成|排队|处理/);
       await page.locator(".harness-activity summary").click();
@@ -251,7 +287,7 @@ for (
         new RegExp("/ontology/elements/" + editedId),
       );
       await expect(page.locator("[data-page-header]")).toContainText("草稿");
-      await expect(page.locator(".legacy-root")).toHaveCount(0);
+      await expect(page.locator("[data-legacy-page]")).toHaveCount(0);
       await checkStructure(page, `draft-${iteration}`);
       await page.goto(changesetUrl);
       await expect(page.locator("button[data-item-id]").first()).toBeVisible();
@@ -436,34 +472,16 @@ for (
           .first(),
       ).toBeVisible();
       await sourcePage.close();
+      await assertNoLeaks(page, "A10 application answer and citations");
       record("A10 提问、回答出处可打开要素");
-      const reportResponses = [];
-      const collect = (r) => {
-        if (
-          /\/api\/agent\/sessions\/[^/]+\/runs\/[^/]+\/report$/.test(
-            new URL(r.url()).pathname,
-          ) &&
-          r.request().method() === "POST"
-        )
-          reportResponses.push(r);
-      };
-      page.on("response", collect);
       await button(page, "生成报告").last().click();
       // R3's automatic correction must navigate with no second user click.
       await expect(page).toHaveURL(/\/apply\/artifacts\//, {
         timeout: 180_000,
       });
-      page.off("response", collect);
+      await Promise.all(reportReads);
       expect(reportResponses.length).toBeGreaterThanOrEqual(1);
       expect(reportResponses.length).toBeLessThanOrEqual(2);
-      for (const result of reportResponses)
-        if (result.status() === 422) {
-          const error = await result.json(),
-            detail = error.error?.details || error.detail || {};
-          reportChecks.push({ code: detail.code, issues: detail.issues });
-        }
-      firstNumericBlocked = reportChecks[0]?.code === "NUMERIC_UNVERIFIED";
-      revisionUsed = reportResponses.length === 2;
       if (!live && process.env.E2E_R3_LIVE !== undefined) {
         expect(firstNumericBlocked).toBe(true);
         expect(revisionUsed).toBe(true);
@@ -481,6 +499,22 @@ for (
         await expect(
           page.getByText("已按核对结果修订 1 次", { exact: true }),
         ).toBeVisible();
+      if (revisionUsed) {
+        const compare = page.locator("details").filter({
+          has: page.locator("summary").filter({ hasText: "查看修订前后" }),
+        });
+        await compare.locator("summary").click();
+        await expect(compare).toHaveAttribute("open", "");
+        await expect(compare).toContainText("修订前");
+        await expect(compare).toContainText("修订后");
+        if (!live && process.env.E2E_R3_LIVE !== undefined) {
+          await expect(compare).toContainText("31日");
+          await expect(compare).toContainText("30日");
+        }
+        expect(artifact.spec.revision.before.length).toBeGreaterThan(0);
+        expect(artifact.spec.revision.after.length).toBeGreaterThan(0);
+        await compare.locator("summary").click();
+      }
       await checkStructure(page, `report-${iteration}`);
       const superscript = page.locator("sup button,sup a").first();
       await expect(superscript).toBeVisible();
@@ -533,6 +567,7 @@ for (
         await download.delete();
       }
       const again = postResponse(page, "/artifacts/" + artifact.id + ":render");
+      await page.locator("summary").filter({ hasText: "版本记录" }).click();
       await button(page, "再次生成").click();
       expect((await (await again).json()).data.current_version).toBe(2);
       await page
@@ -542,9 +577,31 @@ for (
         page.getByRole("heading", { name: "我的报告", exact: true }),
       ).toBeVisible();
       await checkStructure(page, `reports-${iteration}`);
+      await page.locator(`a[href="/apply/artifacts/${artifact.id}"]`).click();
+      await expect(page).toHaveURL(
+        new RegExp("/apply/artifacts/" + artifact.id),
+      );
+      const reopened = page.waitForEvent("download");
+      await button(page, "下载 Word").first().click();
+      const reopenedFile = await reopened;
+      expect(await reopenedFile.failure()).toBeNull();
+      const reopenedParts = [];
+      for await (const part of await reopenedFile.createReadStream())
+        reopenedParts.push(part);
+      const reopenedInspection = spawnSync(
+        process.env.E2E_PYTHON || "python",
+        [
+          "-c",
+          "import sys,io;from docx import Document;d=Document(io.BytesIO(sys.stdin.buffer.read()));assert d.paragraphs[0].text.strip();assert any('30' in c.text for t in d.tables for r in t.rows for c in r.cells)",
+        ],
+        { input: Buffer.concat(reopenedParts) },
+      );
+      expect(reopenedInspection.status).toBe(0);
+      await reopenedFile.delete();
       record("A11 自动修订、Word内容、离线网页、版本再生成");
       success = true;
     } finally {
+      await Promise.allSettled(reportReads);
       writeFileSync(
         resolve(output, `mainline-${iteration}.json`),
         JSON.stringify(
@@ -552,7 +609,7 @@ for (
             provider: live ? "real_deepseek" : "synthetic_messages_real_sdk",
             channel: "browser_ui",
             iteration,
-            success,
+            success: success && test.info().errors.length === 0,
             steps: times,
             first_numeric_blocked: firstNumericBlocked,
             automatic_revision: revisionUsed,

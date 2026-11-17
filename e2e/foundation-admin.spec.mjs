@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import { test, expect } from "./runtime.mjs";
 import { authDirectory, roles } from "./fixture.mjs";
 
@@ -106,7 +107,10 @@ for (const role of roles) {
       await expect(integrations).toHaveCount(role === "admin" ? 1 : 0);
       await ready(page, "/admin/system", "系统信息");
       await expect(
-        page.getByRole("heading", { name: "知元 1.1.0", exact: true }),
+        page.getByRole("heading", {
+          name: "知元 " + readFileSync(resolve("VERSION"), "utf8").trim(),
+          exact: true,
+        }),
       ).toBeVisible();
       await expect(page.getByText("运行中", { exact: true })).toBeVisible();
       await expect(page.getByText("已启用", { exact: true })).toHaveCount(0);
@@ -319,6 +323,7 @@ test.describe("headquarters superadministrator", () => {
     expect((await invoke(page, "/auth/session")).body.workspace.tenant_id).toBe(
       "hq",
     );
+    await page.getByRole("button", { name: "机构与身份", exact: true }).click();
     await page.getByRole("combobox", { name: "机构", exact: true }).click();
     await page.getByRole("option", { name: "办公厅", exact: true }).click();
     await expect(page).toHaveURL((url) => url.pathname === "/");

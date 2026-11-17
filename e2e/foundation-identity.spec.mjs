@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { accounts, authDirectory, roles } from "./fixture.mjs";
+import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
 
 const terms = JSON.parse(
   readFileSync(
@@ -18,6 +19,10 @@ const changedPassword = "IdentityChanged456!";
 const exact = (name) => ({ name, exact: true });
 const button = (scope, name) => scope.getByRole("button", exact(name));
 const dialog = (page) => page.getByRole("dialog");
+async function accountAction(page, username, name) {
+  await button(userRow(page, username), a.r3_admin_more).click();
+  await page.getByRole("menuitem", exact(name)).click();
+}
 async function confirm(page) {
   await button(dialog(page), a.identity_review).click();
   await button(dialog(page), a.identity_confirm).click();
@@ -227,7 +232,7 @@ for (const role of roles)
           page.getByRole("heading", exact(c.identity_users)),
         ).toBeVisible();
         await expect(
-          page.getByRole("tab", exact(c.identity_grants_tab)),
+          page.getByRole("radio", exact(c.identity_grants_tab)),
         ).toHaveCount(0);
       } else
         await expect(
@@ -266,7 +271,7 @@ test.describe("headquarters: isolated identity mutations", () => {
       .selectOption("reviewer");
     await confirm(page);
     await expect(userRow(page, username)).toContainText(terms.roles.reviewer);
-    await button(userRow(page, username), a.identity_reset_password).click();
+    await accountAction(page, username, a.identity_reset_password);
     await dialog(page)
       .getByLabel(c.identity_temporary_password, { exact: true })
       .fill("weak");
@@ -275,16 +280,18 @@ test.describe("headquarters: isolated identity mutations", () => {
       .getByLabel(c.identity_temporary_password, { exact: true })
       .fill(changedPassword);
     await confirm(page);
-    await button(userRow(page, username), a.identity_disable).click();
+    await accountAction(page, username, a.identity_disable);
     await button(dialog(page), a.identity_review).click();
     await button(dialog(page), a.identity_cancel).click();
+    await button(userRow(page, username), a.r3_admin_more).click();
     await expect(
-      button(userRow(page, username), a.identity_disable),
+      page.getByRole("menuitem", exact(a.identity_disable)),
     ).toBeVisible();
-    await button(userRow(page, username), a.identity_disable).click();
+    await page.keyboard.press("Escape");
+    await accountAction(page, username, a.identity_disable);
     await confirm(page);
     await expect(userRow(page, username)).toContainText(c.identity_disabled);
-    await button(userRow(page, username), a.identity_enable).click();
+    await accountAction(page, username, a.identity_enable);
     await confirm(page);
     await expect(userRow(page, username)).toContainText(c.identity_enabled);
   });
@@ -322,14 +329,18 @@ test.describe("headquarters: isolated identity mutations", () => {
       "/admin/audit?action=user_update&outcome=success",
       c.identity_audit,
     );
-    const auditRow = page
-      .getByRole("row")
-      .filter({
-        has: page.getByRole("cell", { name: `${target.id} hq`, exact: true }),
-      });
+    await selectSavedViewMode(page, "pro");
+    const auditRow = page.locator(`tr[data-row-key="${recorded.id}"]`);
     await expect(auditRow).toHaveCount(1);
-    await auditRow.getByText(a.identity_details, { exact: true }).click();
-    await expect(auditRow.locator("pre")).toContainText(reason);
+    await auditRow.getByRole("button").click();
+    await dialog(page)
+      .locator("summary")
+      .filter({ hasText: "技术详情" })
+      .click();
+    await expect(dialog(page).locator("pre")).toContainText(reason);
+    await dialog(page)
+      .getByRole("button", { name: /关闭|Close/ })
+      .click();
     const own = await browser.newContext({
       baseURL,
       storageState: { cookies: [], origins: [] },
@@ -339,9 +350,11 @@ test.describe("headquarters: isolated identity mutations", () => {
       await login(person, username, initialPassword);
       await load(person, "/admin/users", c.identity_users);
       await person.getByLabel(c.filter, { exact: true }).fill(username);
+      await button(userRow(person, username), a.r3_admin_more).click();
       await expect(
-        button(userRow(person, username), a.identity_disable),
-      ).toBeDisabled();
+        person.getByRole("menuitem", exact(a.identity_disable)),
+      ).toHaveAttribute("aria-disabled", "true");
+      await person.keyboard.press("Escape");
       await button(userRow(person, username), a.identity_edit_user).click();
       await expect(
         dialog(person).getByLabel(c.identity_role, { exact: true }),
@@ -463,7 +476,7 @@ test.describe("headquarters: isolated identity mutations", () => {
     await createUser(page, username, { role: "admin" });
     const users = await read(page, "/api/v2/users");
     const user = users.items.find((user) => user.username === username);
-    await page.getByRole("tab", exact(c.identity_grants_tab)).click();
+    await page.getByRole("radio", exact(c.identity_grants_tab)).click();
     for (const access of ["read_published", "read_private", "write"]) {
       await button(page, a.identity_create_grant).first().click();
       await dialog(page)
@@ -606,8 +619,8 @@ test.describe("headquarters: isolated identity mutations", () => {
     ).toHaveAttribute("aria-busy", "false");
     await capture(page, "identity-audit");
     await page
-      .getByLabel(c.identity_audit_raw_action, { exact: true })
-      .fill("login");
+      .getByRole("combobox", { name: c.r3_admin_action, exact: true })
+      .selectOption("login");
     await button(page, a.identity_filter).click();
     await expect(page).toHaveURL(
       (url) => url.searchParams.get("action") === "login",
@@ -619,14 +632,18 @@ test.describe("headquarters: isolated identity mutations", () => {
     expect(response.page_size).toBe(30);
     expect(response.items.every((row) => row.action === "login")).toBe(true);
     await expect(page.locator("tbody tr")).toHaveCount(response.items.length);
-    await page
+    await selectSavedViewMode(page, "pro");
+    await page.locator("tbody tr").first().getByRole("button").click();
+    await dialog(page)
       .locator("summary")
-      .filter({ hasText: a.identity_details })
-      .first()
+      .filter({ hasText: "技术详情" })
       .click();
     await expect(
-      page.getByText(c.identity_request_id + ":", { exact: false }).first(),
+      dialog(page).getByText(c.identity_request_id, { exact: true }),
     ).toBeVisible();
+    await dialog(page)
+      .getByRole("button", { name: /关闭|Close/ })
+      .click();
     await button(page, a.identity_reset).click();
     await expect(page).toHaveURL((url) => !url.searchParams.has("action"));
     // The preceding real management operations make this serial acceptance scope exceed one page.

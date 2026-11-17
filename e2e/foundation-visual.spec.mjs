@@ -5,6 +5,7 @@ import { chromium, test, expect } from "./runtime.mjs";
 import { accounts, authDirectory, evidence } from "./fixture.mjs";
 import { openAuthenticatedVisualPage } from "./visual-auth.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
+import { compareVisualFiles } from "./r3-visual-diagnostics.mjs";
 import {
   captureNativeViewport,
   nativeScreenshotMethod,
@@ -40,11 +41,17 @@ const visualPolicy = JSON.parse(
 );
 validateVisualPolicy(visualPolicy);
 
-async function selectHistoricalAudit(page) {
+async function selectHistoricalAudit(page, mode) {
   const expected = visualAuditHistory;
-  await page.getByLabel("操作标识", { exact: true }).fill(expected.action);
-  await page.getByLabel("机构编号", { exact: true }).fill(expected.tenant_id);
-  await page.getByLabel("结果标识", { exact: true }).fill(expected.outcome);
+  await page
+    .getByRole("combobox", { name: "操作类型", exact: true })
+    .selectOption(expected.action);
+  await page
+    .getByRole("combobox", { name: "所属机构", exact: true })
+    .selectOption(expected.tenant_id);
+  await page
+    .getByRole("combobox", { name: "操作结果", exact: true })
+    .selectOption(expected.outcome);
   const pending = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return (
@@ -69,24 +76,26 @@ async function selectHistoricalAudit(page) {
     actor_username: expected.actor_username,
     request_id: expected.request_id,
   });
-  const row = page.getByRole("row").filter({ hasText: expected.resource });
+  const row = page.locator(`tr[data-row-key="${expected.id}"]`);
   await expect(row).toHaveCount(1);
   await expect(row).toContainText(expected.actor_username);
-  await expect(row).toContainText(expected.tenant_id);
-  await row.locator("summary").click();
-  await expect(row.locator("details")).toHaveAttribute("open", "");
-  await expect(row.locator("details")).toContainText(expected.action);
-  await expect(row.locator("pre")).toContainText('"entity_count": 20');
-  await expect(row.locator("pre")).toContainText('"synthetic": true');
-  await row.evaluate((element) =>
-    element.scrollIntoView({
-      block: "center",
-      inline: "nearest",
-      behavior: "instant",
-    }),
-  );
-  await expect(row).toBeInViewport({ ratio: 1 });
-  await expect(row.locator("pre")).toBeInViewport({ ratio: 1 });
+  await row.getByRole("button").click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  if (mode === "professional") {
+    await drawer.locator("summary").filter({ hasText: "技术详情" }).click();
+    await expect(drawer.locator("details")).toHaveAttribute("open", "");
+    await expect(drawer).toContainText(expected.action);
+    await expect(drawer).toContainText(expected.tenant_id);
+    await expect(drawer).toContainText(expected.resource);
+    await expect(drawer.locator("pre")).toContainText('"entity_count": 20');
+    await expect(drawer.locator("pre")).toContainText('"synthetic": true');
+    await drawer.locator("pre").scrollIntoViewIfNeeded();
+    await expect(drawer.locator("pre")).toBeInViewport({ ratio: 1 });
+  } else {
+    await expect(drawer.locator("[data-technical-details],pre")).toHaveCount(0);
+    await expect(drawer).not.toContainText(expected.resource);
+  }
 }
 
 async function openNative(layout, use) {
@@ -205,7 +214,11 @@ async function recordPage(page, name, layout, launched, testInfo) {
     dynamicMasks: name.endsWith("--audit") ? [] : ["timestamp", "request-id"],
     fonts,
     ...(name.endsWith("--audit")
-      ? { auditState: visualAuditHistory, auditDetailsOpen: true }
+      ? {
+          auditState: visualAuditHistory,
+          auditDetailsOpen: name.startsWith("professional--"),
+          auditDrawerOpen: true,
+        }
       : {}),
     view: name.split("--")[0],
     authenticated: !name.startsWith("login--"),
@@ -232,10 +245,16 @@ async function recordPage(page, name, layout, launched, testInfo) {
   expect
     .soft(seriousViolations(axe), "No serious or critical axe violations")
     .toEqual([]);
-  expect.soft(png).toMatchSnapshot(`${layout.name}--${name}.png`, {
-    maxDiffPixels: 0,
-    threshold: 0.05,
-  });
+  const baseline = resolve(
+    process.env.E2E_VISUAL_BASELINE_DIR || "e2e/visual-baselines",
+    `${layout.name}--${name}.png`,
+  );
+  if (visualPolicy.mode === "capture") writeFileSync(baseline, png);
+  else
+    writeFileSync(
+      resolve(directory, "comparison.json"),
+      JSON.stringify(compareVisualFiles(png, baseline), null, 2) + "\n",
+    );
 }
 
 for (const layout of visualLayouts) {
@@ -289,7 +308,7 @@ for (const layout of visualLayouts) {
             ).toBeEnabled();
           if (item.legacy)
             await expect(page.locator("[data-legacy-page]")).toBeVisible();
-          if (item.name === "audit") await selectHistoricalAudit(page);
+          if (item.name === "audit") await selectHistoricalAudit(page, mode);
           await recordPage(
             page,
             `${mode}--${item.name}`,

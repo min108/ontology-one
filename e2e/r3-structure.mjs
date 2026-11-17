@@ -24,6 +24,11 @@ const SMALL_OK = [
   "time",
   "small",
   ".ant-tag",
+  ".legacy-root .badge",
+  ".legacy-root .stat > span",
+  ".legacy-root .guidance-note",
+  ".legacy-root .small",
+  ".legacy-root .page-head .biz-text-link",
   ".ant-avatar",
   "[data-page-header] nav",
   "[class*='caption']",
@@ -39,6 +44,7 @@ const SMALL_OK = [
   "[data-primary-link]",
   "nav[aria-label='工作区内导航']",
 ].join(",");
+const live = (process.env.E2E_R3_LIVE || process.env.E2E_R2_LIVE) === "1";
 const budgets = { workbench: 400, archive: 500, split: 650, list: 800 };
 const leakPatterns = [
   ["object number", /\b[A-Z]{2,}-\d+[\w-]*\b/g],
@@ -95,10 +101,10 @@ export async function checkStructure(
         const layout = document.querySelector("[data-page-template]");
         const content =
           layout?.querySelector("[data-page-content]") ||
-          document.querySelector(".legacy-root");
+          document.querySelector("[data-legacy-page] .page");
         const title =
           layout?.querySelector("[data-page-title]") ||
-          document.querySelector(".legacy-root h1");
+          document.querySelector("[data-legacy-page] h1");
         const nav =
           document.querySelector("nav[aria-label='工作区导航']") ||
           document.querySelector("[data-primary-link]")?.closest("nav");
@@ -134,6 +140,8 @@ export async function checkStructure(
             size,
             secondary: !!el.closest(SMALL_OK),
             text: text.slice(0, 30),
+            className: el.className,
+            parentClass: el.parentElement?.className,
           });
           if (content?.contains(el) && !el.closest(".ant-drawer")) {
             const range = document.createRange();
@@ -196,9 +204,10 @@ export async function checkStructure(
             ...t.querySelectorAll("tbody tr:not(.ant-table-placeholder)"),
           ])
           .find(shown);
-        const pad = layout
-          ? parseFloat(getComputedStyle(layout).paddingLeft)
-          : 0;
+        const pad =
+          layout || content
+            ? parseFloat(getComputedStyle(layout || content).paddingLeft)
+            : 0;
         const round = (value) =>
           value === undefined ? null : Math.round(value);
         const titleX = round(title?.getBoundingClientRect().left);
@@ -262,14 +271,31 @@ export async function checkStructure(
       },
       { SMALL_OK, legacy },
     );
+    const { visibleText, smallBad, ...measurements } = r;
     appendFileSync(
       resolve(process.env.E2E_EVIDENCE_DIR, "structure.jsonl"),
-      JSON.stringify({ label, width, height, ...r }) + "\n",
+      JSON.stringify({
+        label,
+        width,
+        height,
+        ...measurements,
+        smallBad: live
+          ? smallBad.map(({ size, secondary }) => ({ size, secondary }))
+          : smallBad,
+        ...(!live ? { visibleText } : {}),
+      }) + "\n",
     );
     const name = `${label} ${width}×${height}`;
     expect.soft(r.minSize, `${name} A1`).toBeGreaterThanOrEqual(12);
-    expect.soft(r.smallBad, `${name} A2`).toEqual([]);
+    expect
+      .soft(
+        r.smallBad.map(({ size, secondary }) => ({ size, secondary })),
+        `${name} A2`,
+      )
+      .toEqual([]);
     expect.soft(r.overflow, `${name} C1`).toBeFalsy();
+    expect.soft(r.titleX, `${name} B1 title`).toBe(r.expectedX);
+    expect.soft(r.blockX, `${name} B1 content`).toBe(r.titleX);
     if (!legacy) {
       expect
         .soft(r.sizes.length, `${name} A3 size count`)
@@ -280,8 +306,7 @@ export async function checkStructure(
           `${name} A3 scale`,
         )
         .toEqual([]);
-      expect.soft(r.titleX, `${name} B1 title`).toBe(r.expectedX);
-      expect.soft(r.blockX, `${name} B1 content`).toBe(r.titleX);
+
       expect.soft(r.headers, `${name} B2 one title area`).toBe(1);
       expect
         .soft(r.extraHorizontalBars, `${name} B2 no additional bars`)
@@ -312,7 +337,7 @@ export async function checkStructure(
         expect.soft(r.primaries, `${name} G4 one start action`).toBe(1);
       }
     }
-    if (width === 1366 && process.env.E2E_R3_LIVE !== "1")
+    if (width === 1366 && !live)
       await page.screenshot({
         path: resolve(
           process.env.E2E_EVIDENCE_DIR,

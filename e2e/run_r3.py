@@ -32,6 +32,7 @@ def main() -> int:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--repetitions", type=int, help="UI mainline repetitions (live default: 3; early rehearsal: 1)")
     parser.add_argument("--mainline-only", action="store_true")
+    parser.add_argument("--grep", help="Run only matching UI cases while diagnosing a failed action")
     parser.add_argument("--skip-build", action="store_true", help="Use a build from this exact worktree")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--api-port", type=int, default=8895)
@@ -50,6 +51,55 @@ def main() -> int:
     clean_env = {key: value for key, value in os.environ.items() if not key.upper().startswith("DEEPSEEK_")}
     if not args.skip_build:
         run_command(["npm", "--prefix", "frontend", "run", "build"], ROOT, clean_env, output / "build.log")
+    if repetitions > 1:
+        # Each complete rehearsal starts from the same original fixture in a new
+        # namespace. Otherwise earlier runs intentionally trigger duplicate checks
+        # and no longer exercise the same acceptance path. Never retry a failure.
+        runs = []
+        for index in range(1, repetitions + 1):
+            destination = output / f"run-{index}"
+            command = [
+                sys.executable,
+                "e2e/run_r3.py",
+                "--repetitions",
+                "1",
+                "--skip-build",
+                "--output",
+                str(destination),
+                "--api-port",
+                str(args.api_port),
+                "--agent-port",
+                str(args.agent_port),
+                *(["--live"] if args.live else []),
+                *(["--mainline-only"] if args.mainline_only else []),
+                *(["--grep", args.grep] if args.grep else []),
+            ]
+            completed = subprocess.run(command, cwd=ROOT, env=dict(os.environ), check=False)
+            receipt = json.loads((destination / "runner.json").read_text())
+            mainline = destination / "mainline-1.json"
+            if mainline.exists():
+                details = json.loads(mainline.read_text())
+                receipt.update({key: details[key] for key in ("first_numeric_blocked", "automatic_revision", "steps")})
+            runs.append(receipt)
+            if completed.returncode or receipt["status"] != "passed":
+                break
+        summary = {
+            "provider": "real_deepseek" if args.live else "synthetic_messages_real_sdk",
+            "channel": "browser_ui",
+            "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip(),
+            "status": "passed"
+            if len(runs) == repetitions and all(row["status"] == "passed" for row in runs)
+            else "failed",
+            "repetitions": repetitions,
+            "attempted": len(runs),
+            "consecutive": True,
+            "runs": runs,
+            "services_stopped": all(row["services_stopped"] for row in runs),
+            "databases_removed": all(row["databases_removed"] for row in runs),
+        }
+        (output / "runner.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+        print(json.dumps(summary, ensure_ascii=False))
+        return 0 if summary["status"] == "passed" else 1
     namespace = new_namespace()
     manifest = json.loads((ROOT / "tests/fixtures/v070/manifest.json").read_text())
     control = json.loads((ROOT / "tests/fixtures/v070/control.json").read_text())
@@ -66,6 +116,7 @@ def main() -> int:
         "provider": "real_deepseek" if args.live else "synthetic_messages_real_sdk",
         "status": "failed",
         "channel": "browser_ui",
+        "selection": args.grep or ("mainline" if args.mainline_only or args.live else "all_actions"),
         "repetitions": repetitions,
         "consecutive": True,
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip(),
@@ -133,6 +184,7 @@ def main() -> int:
                             "test",
                             "--config",
                             "e2e/r3.config.mjs",
+                            *(["--grep", args.grep] if args.grep else []),
                         ],
                         ROOT,
                         bootstrap,

@@ -57,7 +57,16 @@ def packages(root: Path) -> dict[str, Path]:
                     "preferences": {}
                     if zoom == 1
                     else {"partition": {"default_zoom_level": {"x": math.log(zoom) / math.log(1.2)}}},
-                    **({"auditState": AUDIT, "auditDetailsOpen": True, "dynamicMasks": []} if page == "audit" else {}),
+                    **(
+                        {
+                            "auditState": AUDIT,
+                            "auditDetailsOpen": state.startswith("professional--"),
+                            "auditDrawerOpen": True,
+                            "dynamicMasks": [],
+                        }
+                        if page == "audit"
+                        else {}
+                    ),
                 }
             )
         )

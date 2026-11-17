@@ -134,11 +134,13 @@ def validate_state(directory: Path, stem: str, commit: str, mode: str) -> dict:
         raise ValueError(f"{stem}: missing native profile preference")
     if stem.endswith("--audit") and (
         metadata.get("auditState") != AUDIT
-        or metadata.get("auditDetailsOpen") is not True
+        or metadata.get("auditDetailsOpen") is not ("--professional--" in stem)
+        or metadata.get("auditDrawerOpen") is not True
         or metadata.get("dynamicMasks") != []
     ):
         raise ValueError(
-            f"{stem}: audit must show the exact real historical fixture with details, without masking its content"
+            f"{stem}: audit must show the exact fixture in its drawer, "
+            "technical details only in professional view, without masking"
         )
     return metadata
 

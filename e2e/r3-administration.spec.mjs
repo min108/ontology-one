@@ -30,7 +30,14 @@ async function more(page, row, name) {
 async function switchOrganization(page, name) {
   await button(page, c.r3_ui_org_switch || "切换机构与范围").click();
   await page.getByRole("combobox", { name: "机构", exact: true }).click();
-  await page.getByRole("option", { name, exact: true }).click();
+  await Promise.all([
+    page.waitForEvent("domcontentloaded"),
+    page.getByRole("option", { name, exact: true }).click(),
+  ]);
+  await expect(page.locator("[data-home-workbench]")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   await expect(page).toHaveURL((url) => url.pathname === "/");
 }
 
@@ -66,9 +73,7 @@ test("R3 A1 A14 A15: new user, empty workbench, account actions and business aud
       user = await createUser(page, username, { org: org.id });
     await loginCredentials(person, username, initialPassword);
     await expect(person).toHaveURL((url) => url.pathname === "/");
-    await expect(
-      person.getByRole("heading", { name: "从这里开始", exact: true }),
-    ).toBeVisible();
+    await expect(person.getByText("从这里开始", { exact: true })).toBeVisible();
     await openViewModeMenu(person);
     await expect(
       person.getByRole("radio", { name: "简洁视图", exact: true }),
@@ -123,14 +128,16 @@ test("R3 A1 A14 A15: new user, empty workbench, account actions and business aud
     await checkStructure(page, "users");
 
     await page.goto("/admin/audit");
-    await page.getByLabel(c.r3_admin_actor, { exact: true }).selectOption({
-      label: `${accounts.superadmin.display_name || (await read(page, "/api/auth/session")).user.display_name}（${accounts.superadmin.username}）`,
-    });
     await page
-      .getByLabel(c.r3_admin_action, { exact: true })
+      .getByRole("combobox", { name: c.r3_admin_actor, exact: true })
+      .selectOption({
+        label: `${accounts.superadmin.display_name || (await read(page, "/api/auth/session")).user.display_name}（${accounts.superadmin.username}）`,
+      });
+    await page
+      .getByRole("combobox", { name: c.r3_admin_action, exact: true })
       .selectOption("user_update");
     await page
-      .getByLabel(c.r3_admin_outcome, { exact: true })
+      .getByRole("combobox", { name: c.r3_admin_outcome, exact: true })
       .selectOption("success");
     const today = new Intl.DateTimeFormat("sv-SE", {
       timeZone: "Asia/Shanghai",
@@ -139,6 +146,17 @@ test("R3 A1 A14 A15: new user, empty workbench, account actions and business aud
       await page.getByLabel(name, { exact: true }).fill(today);
       await page.getByLabel(name, { exact: true }).press("Enter");
     }
+    const actorId = (await read(page, "/api/auth/session")).user.id;
+    const filteredResponse = page.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return (
+        url.pathname === "/api/v2/audit" &&
+        url.searchParams.get("actor_id") === actorId &&
+        url.searchParams.get("action") === "user_update" &&
+        url.searchParams.has("since") &&
+        url.searchParams.has("until")
+      );
+    });
     await button(page, a.identity_filter).click();
     await expect(page).toHaveURL(
       (url) =>
@@ -146,12 +164,31 @@ test("R3 A1 A14 A15: new user, empty workbench, account actions and business aud
         url.searchParams.get("since") === today &&
         url.searchParams.get("until") === today,
     );
-    const response = await read(
-      page,
-      "/api/v2/audit?action=user_update&outcome=success",
-    );
+    const actualFilter = await filteredResponse;
+    expect(actualFilter.status()).toBe(200);
+    const response = await actualFilter.json();
     expect(response.items.some((item) => item.resource === user.id)).toBe(true);
-    await expect(page.locator("tbody tr")).not.toHaveCount(0);
+    expect(response.items.length).toBeGreaterThan(0);
+    const lower = Date.parse(today + "T00:00:00+08:00"),
+      upper = Date.parse(today + "T23:59:59+08:00");
+    for (const item of response.items) {
+      expect(item.actor_id).toBe(actorId);
+      expect(item.action).toBe("user_update");
+      expect(item.outcome).toBe("success");
+      const timestamp = Date.parse(item.created_at);
+      expect(timestamp).toBeGreaterThanOrEqual(lower);
+      expect(timestamp).toBeLessThanOrEqual(upper);
+    }
+    await expect(page.locator("tbody tr[data-row-key]")).toHaveCount(
+      response.items.length,
+    );
+    expect(
+      (
+        await page
+          .locator("tbody tr[data-row-key]")
+          .evaluateAll((rows) => rows.map((row) => row.dataset.rowKey))
+      ).sort(),
+    ).toEqual(response.items.map((item) => String(item.id)).sort());
     await assertNoLeaks(page, "audit closed");
     await checkStructure(page, "audit");
     await page.locator("tbody tr").first().getByRole("button").click();
@@ -229,7 +266,10 @@ test("R3 new administration and landing pages: structural baseline and leakage",
       "/admin",
     ]) {
       await admin.page.goto(path);
-      await expect(admin.page.locator("[data-page-title]")).toBeVisible();
+      await expect
+        .soft(admin.page.locator("[data-page-title]"), path + " page skeleton")
+        .toBeVisible();
+      if (!(await admin.page.locator("[data-page-title]").count())) continue;
       await admin.page.waitForLoadState("networkidle");
       await checkStructure(admin.page, "new" + path.replaceAll("/", "-"));
     }
@@ -294,7 +334,7 @@ test("R3 A17: expanded rail and all 25 retained routes with legacy bridge", asyn
       }
       await expect(page.locator("main")).toBeVisible();
       await page.waitForLoadState("networkidle");
-      await expect(page.locator(".legacy-root")).toBeVisible();
+      await expect(page.locator("[data-legacy-page]")).toBeVisible();
       await checkStructure(page, `legacy-${name}`, { legacy: true });
       rows.push({ name, path, rail: list, reachable: true });
     }

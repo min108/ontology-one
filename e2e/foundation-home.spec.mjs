@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 import { test, expect } from "./runtime.mjs";
 import { accounts, authDirectory, evidence, fixture } from "./fixture.mjs";
+import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
 
 test.describe("R1-6 workbench and intake", () => {
   test.use({ storageState: resolve(authDirectory, "modeler.json") });
@@ -130,7 +131,7 @@ async function settledHome(page) {
   await expect(
     page.getByRole("region", { name: "工作台", exact: true }),
   ).toHaveAttribute("aria-busy", "false");
-  await expect(page.getByTestId("home-metric")).toHaveCount(4);
+  await expect(page.locator("[data-page-template=workbench]")).toBeVisible();
 }
 async function homeCapture(page, testInfo, name) {
   await page.evaluate(() => document.fonts.ready);
@@ -172,6 +173,7 @@ test.describe("R1-6 Overview A.2 operational parity", () => {
     // This case intentionally covers all four metrics plus five commands and four retained destinations.
     test.setTimeout(120_000);
     await page.goto("/?probe=home-a2#overview");
+    await selectSavedViewMode(page, "pro");
     await settledHome(page);
     const receipt = await readWorkspace(page),
       overview = receipt.data;
@@ -405,6 +407,7 @@ test.describe("R1-6 empty institution next step", () => {
     expect((await readWorkspace(page)).tenant).toBe("hq");
     // Earlier Shell/Home cases create real drafts in HQ/dept-01. The original
     // sub-01 fixture has only its organization root and zero business assets.
+    await page.getByRole("button", { name: "机构与身份", exact: true }).click();
     await page.getByRole("combobox", { name: "机构", exact: true }).click();
     await Promise.all([
       page.waitForEvent("domcontentloaded"),
@@ -418,16 +421,16 @@ test.describe("R1-6 empty institution next step", () => {
     expect(receipt.tenant).toBe("sub-01");
     expect(receipt.manageUsers).toBe(true);
     expect(receipt.data.assets).toBe(0);
-    await expect(
-      page.getByTestId("home-metric").first().locator("strong"),
-    ).toHaveText("0");
-    await expect(
-      page.getByText("本机构还没有业务成果，可先查看演示资料。", {
-        exact: true,
-      }),
-    ).toBeVisible();
+    await expect(page.getByTestId("home-metric")).toHaveCount(0);
+    await expect(page.getByText("从这里开始", { exact: true })).toBeVisible();
     await homeCapture(page, testInfo, "workbench-empty-admin");
-    await page.getByRole("link", { name: "管理演示资料", exact: true }).click();
+    const adminLink = page.locator('[data-primary-link][href="/admin"]');
+    await adminLink.focus();
+    await adminLink.press("ArrowRight");
+    await page
+      .getByRole("navigation", { name: "工作区内导航", exact: true })
+      .getByRole("link", { name: "演示资料", exact: true })
+      .click();
     await expect(page).toHaveURL((url) => url.pathname === "/admin/demo");
     await expect(page.locator(".demo-workspace")).toBeVisible();
     await expect(
@@ -439,8 +442,7 @@ test.describe("R1-6 empty institution next step", () => {
     expect(returned.tenant).toBe("sub-01");
     expect(returned.manageUsers).toBe(true);
     expect(returned.data.assets).toBe(0);
-    await expect(
-      page.getByRole("link", { name: "管理演示资料", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText("从这里开始", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("home-metric")).toHaveCount(0);
   });
 });
