@@ -91,7 +91,6 @@ class DecisionTables(unittest.TestCase):
             patch.object(reviews.db, "entity_json", return_value=entity),
             patch.object(reviews, "review_info", return_value={"can_decide": True}),
             patch.object(reviews, "get", return_value={}),
-            patch.object(reviews.provenance, "normalize_source_ref"),
             patch("backend.api.v1.core.entity_action_in_transaction") as action,
         ):
             reviews.decide("rule", "approve_publish", 7, "")
@@ -350,7 +349,19 @@ class RefinementsMySQL(unittest.TestCase):
                 self.assertEqual(created.status_code, 200, created.text)
                 ident = created.json()["id"]
                 submitted = builder.post(f"/api/entities/{ident}/action", json={"action": "submit"})
-                self.assertEqual(submitted.status_code, 200, submitted.text)
+                # R4 blocks new malformed submissions; existing pre-R4 review rows
+                # must still satisfy the legacy read contract below.
+                self.assertEqual(submitted.status_code, 409, submitted.text)
+                self.assertFalse(submitted.json()["detail"]["gates"]["passed"])
+                person = store.authenticate_session(builder.cookies.get("ontology_session"), "r4-legacy")[0]
+                saved = created.json()["payload"]
+                saved["r2_review"].update(submitted_by=person.user_id, submitted_name=person.username)
+                with use_context(person), closing(db.connect()) as conn, conn:
+                    conn.execute(
+                        "UPDATE entities SET status='review',version=2,payload=? WHERE id=?",
+                        (materials.dump(saved), ident),
+                    )
+                    db.log(conn, ident, "提交审核", "R4前的历史审核记录", person.username)
                 detail = reviewer.get("/api/v2/reviews/" + ident)
                 self.assertEqual(detail.status_code, 200, detail.text)
                 shown = detail.json()["data"]["entity"]["payload"]
@@ -368,8 +379,8 @@ class RefinementsMySQL(unittest.TestCase):
                     blocked = reviewer.post(
                         f"/api/v2/reviews/{ident}:decide", json={"decision": "approve_publish", "version": 2}
                     )
-                    self.assertEqual(blocked.status_code, 422, blocked.text)
-                    self.assertEqual(blocked.json()["error"]["code"], "EVIDENCE_NOT_FOUND")
+                    self.assertEqual(blocked.status_code, 409, blocked.text)
+                    self.assertEqual(blocked.json()["error"]["code"], "GATE_NOT_PASSED")
                     self.assertEqual(
                         reviewer.get("/api/v2/reviews/" + ident).json()["data"]["entity"]["status"], "review"
                     )
