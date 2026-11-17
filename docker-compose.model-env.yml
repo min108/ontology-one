@@ -1,0 +1,13 @@
+# Opt-in demo/single-tenant mode. start_r2_demo.py selects this file only when
+# ONTOLOGY_MODEL_FROM_ENV=1. This file contains references, never credentials.
+services:
+  api:
+    environment: &model_environment
+      ONTOLOGY_MODEL_FROM_ENV: ${ONTOLOGY_MODEL_FROM_ENV:?Set ONTOLOGY_MODEL_FROM_ENV=1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?Set DEEPSEEK_API_KEY in the process environment}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/anthropic}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+  agent:
+    environment: *model_environment
+  worker:
+    environment: *model_environment

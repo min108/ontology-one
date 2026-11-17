@@ -202,6 +202,8 @@ def _config_lock():
 
 
 def _public_status(current):
+    from .skill_harness import _environment_configuration
+
     legacy = not current["api_key"] and scoped_path("data/runtime/ai.json", allowed=("data/runtime",)).exists()
     return {
         "configured": bool(current["api_key"]),
@@ -210,7 +212,9 @@ def _public_status(current):
         "online_verified": current["online_verified"],
         "mode": "online_available" if current["api_key"] else "retrieval_only",
         "migration_required": legacy,
-        "configuration_notice": "检测到旧版在线 AI 配置，请在统一 Harness 设置中重新配置并测试 Messages 模型服务。"
+        "configuration_notice": "由运行环境统一配置，所有机构共用。"
+        if _environment_configuration() is not None
+        else "检测到旧版在线 AI 配置，请在统一 Harness 设置中重新配置并测试 Messages 模型服务。"
         if legacy
         else "",
     }

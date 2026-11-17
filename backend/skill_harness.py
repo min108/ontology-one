@@ -12,6 +12,7 @@ import ctypes
 from functools import lru_cache
 import hashlib
 import importlib.metadata
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -195,6 +196,8 @@ _ENV_VERIFIED: set[str] = set()
 
 
 def _environment_configuration():
+    if os.getenv("ONTOLOGY_MODEL_FROM_ENV") != "1":
+        return None
     key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not key:
         return None
@@ -216,6 +219,27 @@ def _environment_configuration():
         "revision": revision,
         "verified": revision in _ENV_VERIFIED,
     }
+
+
+def model_source_kind(config):
+    """Label the actual endpoint/model; deployment overrides can only downgrade."""
+    if os.getenv("ONTOLOGY_MODEL_SOURCE") == "mock":
+        return "mock"
+    endpoint, model = config.get("base_url", ""), config.get("model", "")
+    host = (urlsplit(endpoint).hostname or "").lower().rstrip(".")
+    if not host or not model:
+        return "mock"
+    if re.search(r"(?:^|[./:_-])(mock|synthetic|fake|dummy|test)(?:$|[./:_-])", (endpoint + "/" + model).lower()):
+        return "mock"
+    try:
+        if not ipaddress.ip_address(host).is_global:
+            return "mock"
+    except ValueError:
+        if "." not in host or host.endswith((".localhost", ".local", ".internal", ".test", ".invalid")):
+            return "mock"
+        if any(host == name or host.endswith("." + name) for name in ("example.com", "example.net", "example.org")):
+            return "mock"
+    return "analyst"
 
 
 def _configuration():
@@ -369,7 +393,9 @@ def harness_status():
         "configured": configured,
         "verified": config["verified"],
         "migration_required": migration_required,
-        "configuration_notice": "原有在线AI配置使用不同协议，请在统一Harness配置中重新确认Messages地址和密钥。"
+        "configuration_notice": "由运行环境统一配置，所有机构共用。"
+        if _environment_configuration() is not None
+        else "原有在线AI配置使用不同协议，请在统一Harness配置中重新确认Messages地址和密钥。"
         if migration_required
         else "",
         "version": SDK_VERSION,

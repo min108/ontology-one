@@ -64,6 +64,12 @@ def _loads(raw):
     return json.loads(raw, parse_constant=invalid)
 
 
+def tool_environment(environment=None):
+    """Copy child settings without provider configuration; never mutate the host."""
+    source = os.environ if environment is None else environment
+    return {name: value for name, value in source.items() if not name.upper().startswith("DEEPSEEK_")}
+
+
 class ProcessExecutor:
     """No waiting queue; a slot belongs to a call until every child is reaped."""
 
@@ -79,12 +85,13 @@ class ProcessExecutor:
         self.closing = False
 
     async def _spawn(self):
-        environment = dict(os.environ)
+        environment = tool_environment()
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         environment["PYTHONUNBUFFERED"] = "1"
         return await self._spawn_command([sys.executable, "-X", "utf8", "-m", "backend.mcp_worker"], environment)
 
     async def _spawn_command(self, command, environment=None):
+        environment = tool_environment(environment)
         if os.name == "nt":
             from .windows_async_process import async_spawn
             from .windows_process import ProcessLimits
@@ -93,7 +100,7 @@ class ProcessExecutor:
             return await async_spawn(
                 command,
                 cwd=str(_ROOT),
-                env=environment or dict(os.environ),
+                env=environment,
                 limits=ProcessLimits(memory_bytes=memory_mb * 1024 * 1024, active_processes=4, cpu_time_seconds=15),
                 max_stdout=MAX_RESULT_BYTES + 2048,
                 max_stderr=MAX_STDERR_BYTES,

@@ -68,7 +68,11 @@ async def execute_controlled(
                 or config["api_key"] in text
             ):
                 raise harness._error("HARNESS_INCOMPLETE")
-            result = {"text": text, "usage": harness._safe_usage(result.get("usage"))}
+            result = {
+                "text": text,
+                "usage": harness._safe_usage(result.get("usage")),
+                "source_kind": harness.model_source_kind(config),
+            }
             await asyncio.to_thread(
                 append_audit,
                 principal,

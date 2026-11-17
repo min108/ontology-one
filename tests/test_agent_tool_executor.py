@@ -196,12 +196,22 @@ class AgentToolProcessTests(unittest.IsolatedAsyncioTestCase):
     async def test_model_environment_credentials_are_not_inherited_by_source_worker(self):
         executor = AgentToolExecutor(1)
         with (
-            patch.dict(os.environ, {"DEEPSEEK_API_KEY": "synthetic-secret", "MYSQL_PASSWORD": "synthetic-db"}),
+            patch.dict(
+                os.environ,
+                {
+                    "DEEPSEEK_API_KEY": "synthetic-secret",
+                    "DEEPSEEK_MODEL": "synthetic-model",
+                    "DEEPSEEK_CUSTOM": "synthetic-setting",
+                    "MYSQL_PASSWORD": "synthetic-db",
+                },
+            ),
             patch.object(executor, "_spawn_command", new_callable=AsyncMock) as spawn,
         ):
             await executor._spawn()
+            self.assertEqual(os.environ["DEEPSEEK_API_KEY"], "synthetic-secret")
         command, environment = spawn.call_args.args
         self.assertNotIn("DEEPSEEK_API_KEY", environment)
+        self.assertFalse(any(name.startswith("DEEPSEEK_") for name in environment))
         self.assertEqual(environment["MYSQL_PASSWORD"], "synthetic-db")
         self.assertEqual(command[-1], "backend.agent_tool_worker")
 

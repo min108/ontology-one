@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict, replace
-import os
 import sys
 import uuid
 
 from .mcp_contracts import Receipt, ToolFailure
-from .mcp_server import ProcessExecutor, _json
+from .mcp_server import ProcessExecutor, _json, tool_environment
 
 
 class AgentToolExecutor(ProcessExecutor):
     async def _spawn(self):
-        environment = dict(os.environ)
+        environment = tool_environment()
         # The trusted source worker needs DB and source configuration, never the
         # model credential. Neither bearer/session cookies nor keys are in IPC.
         for name in ("DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"):

@@ -56,8 +56,6 @@ def main():
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONUNBUFFERED": "1",
     }
-    os.environ.clear()
-    os.environ.update(environment)
     try:
         process = subprocess.Popen(
             [sys.executable, "-I", "-B", "-u", str(root / entry)],

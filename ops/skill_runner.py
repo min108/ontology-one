@@ -174,7 +174,7 @@ class DockerRunner:
         self.gate = threading.BoundedSemaphore(2)
         self.children, self.lock = set(), threading.Lock()
         self.pending_cleanup = set()
-        self.environment = dict(os.environ)
+        self.environment = {key: value for key, value in os.environ.items() if not key.upper().startswith("DEEPSEEK_")}
         for key in ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"):
             self.environment.pop(key, None)
         try:
