@@ -96,6 +96,16 @@ export async function assertNoLeaks(
     { professional },
   );
   const leaks = leakedText(text);
+  if (live && leaks.length && process.env.E2E_EVIDENCE_DIR) {
+    const counts = {};
+    for (const { kind } of leaks) counts[kind] = (counts[kind] || 0) + 1;
+    // Only static check labels and enumerated kinds survive the live run.
+    // Never retain the matching value or its surrounding model text.
+    appendFileSync(
+      resolve(process.env.E2E_EVIDENCE_DIR, "leak-categories.jsonl"),
+      JSON.stringify({ label, counts }) + "\n",
+    );
+  }
   expect
     .soft(
       live ? leaks.map(({ kind }) => ({ kind })) : leaks,
