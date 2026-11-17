@@ -24,6 +24,9 @@ const ModelPage = lazy(() => import('../features/admin/model/ModelPage'));
 const BackupPage = lazy(() => import('../features/admin/backup/BackupPage'));
 const SystemPage = lazy(() => import('../features/admin/system/SystemPage'));
 const DemoPage = lazy(() => import('../features/admin/demo/DemoPage'));
+const IntegrationApplicationsPage = lazy(
+  () => import('../features/admin/integrations/IntegrationApplicationsPage'),
+);
 const ReportsPage = lazy(() => import('../features/artifacts/ReportsPage'));
 const retained = [
   { path: '/group', component: lazy(() => import('@legacy/pages/Group')) },
@@ -53,10 +56,6 @@ const retained = [
   { path: '/graph', component: lazy(() => import('@legacy/pages/Graph')) },
   { path: '/applications', component: lazy(() => import('@legacy/pages/Applications')) },
   { path: '/maintenance', component: lazy(() => import('@legacy/pages/Maintenance')) },
-  {
-    path: '/integration-applications',
-    component: lazy(() => import('@legacy/pages/IntegrationApplications')),
-  },
   { path: '/skill-development', component: lazy(() => import('@legacy/pages/SkillDevelopment')) },
   { path: '/skill-development/:id', component: lazy(() => import('@legacy/pages/SkillDevelopment')) },
 ];
@@ -128,6 +127,7 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
         <Route path="/admin/backup" element={<BackupPage />} />
         <Route path="/admin/system" element={<SystemPage />} />
         <Route path="/admin/demo" element={<DemoPage />} />
+        <Route path="/integration-applications" element={<IntegrationApplicationsPage />} />
         <Route path="/admin/orgs" element={<Organizations />} />
         <Route path="/admin/audit" element={<Audit />} />
         <Route

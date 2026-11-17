@@ -1,0 +1,30 @@
+.content {
+  --ia-ink: var(--zy-color-text);
+  --ia-muted: var(--zy-color-text-secondary);
+  --ia-border: var(--zy-color-border);
+}
+
+.content[class~='legacy-root'] [class~='ia-app-card'] {
+  padding: var(--zy-space-4);
+  border-radius: var(--zy-radius-card);
+  border: var(--zy-border-width) solid var(--zy-color-border);
+  background: var(--zy-color-surface);
+}
+
+.content[class~='legacy-root'] [class~='ia-section-head'] {
+  align-items: flex-start;
+}
+
+.content[class~='legacy-root'] [class~='toolbar'] {
+  margin: var(--zy-none);
+}
+
+.content[class~='legacy-root'] [class~='ia-guide'] {
+  margin: var(--zy-none);
+  padding: var(--zy-none);
+  border: var(--zy-none);
+}
+
+.content[class~='legacy-root'] [class~='ia-identity'] span {
+  display: block;
+}

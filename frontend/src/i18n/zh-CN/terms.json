@@ -470,7 +470,8 @@
     "r3_report_source": "查看引用依据",
     "r3_report_open_material": "在素材页打开",
     "r3_gallery_open_source": "打开来源抽屉",
-    "r3_gallery_edit": "编辑内容"
+    "r3_gallery_edit": "编辑内容",
+    "r3_integration_register": "登记集成应用"
   },
   "labels": {
     "search": "查找内容或输入操作",
@@ -1187,7 +1188,34 @@
     "r3_gallery_source_list": "核对条款",
     "r3_gallery_source_aside": "出处与口径",
     "r3_main_review_self_detail": "提交人与最后编辑人需要交由其他审核人员审核。",
-    "r3_ui_table_total": "第 {start} 至 {end} 项，共 {total} 项"
+    "r3_ui_table_total": "第 {start} 至 {end} 项，共 {total} 项",
+    "r3_integration_title": "集成应用",
+    "r3_integration_lead": "登记调用方，按委托账号和明确范围管理应用接入。",
+    "r3_integration_information": "接入与授权说明",
+    "r3_integration_information_summary": "查看机构归属、调用边界和相关维护入口",
+    "r3_integration_credentials": "凭据管理",
+    "r3_integration_credentials_summary": "查看有效期、轮换或撤销令牌",
+    "r3_integration_credential": "凭据",
+    "r3_integration_unavailable_tool": "当前不可用工具",
+    "r3_integration_unavailable_mapping": "当前不可用映射",
+    "r3_integration_name": "应用名称",
+    "r3_integration_delegate": "本机构委托账号",
+    "r3_integration_description": "应用说明",
+    "r3_integration_confirm": "已确认委托账号、业务用途及最小工具与映射授权范围。",
+    "r3_integration_create": "创建应用并签发令牌",
+    "r3_integration_token": "一次性应用令牌",
+    "r3_integration_token_close": "关闭并清除页面令牌",
+    "r3_integration_token_title": "应用令牌仅显示本次",
+    "r3_integration_edit": "编辑范围",
+    "r3_integration_save": "保存授权范围",
+    "r3_integration_disable": "停用应用",
+    "r3_integration_enable": "启用应用",
+    "r3_integration_rotate": "轮换令牌",
+    "r3_integration_revoke": "撤销全部令牌",
+    "r3_integration_reason": "操作原因",
+    "r3_integration_rotate_confirm": "确认轮换并签发",
+    "r3_integration_revoke_confirm": "确认撤销全部令牌",
+    "r3_integration_forbidden": "当前账号没有应用接入管理权限"
   },
   "states": {
     "loading": {
