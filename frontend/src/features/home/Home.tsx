@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { activityHref } from '@legacy/components/HarnessActivity';
 import { api } from '../../api/client';
+import type { ProposalResult } from '../../api/generated/types';
 import { workspaceQueryKey } from '../../api/query';
 import { useSessionStore } from '../../state/session';
 import { useScopeStore } from '../../state/scope';
@@ -11,7 +12,17 @@ import { useAddressState } from '../../app/addressState';
 import { StateBlock, PageLayout, PageHeader, NextStepBar, HelpTip } from '../../ui';
 import { useUiStore } from '../../state/ui';
 import { terms } from '../../i18n/zh-CN';
-import { parseOverview, parseRuns, parseTotal, taskCounts, todoEntries } from './model';
+import {
+  parseOverview,
+  parseRuns,
+  parseRunHistory,
+  parseTotal,
+  taskCounts,
+  todoEntries,
+  recipeChangesetId,
+  proposalTodo,
+  recipeProgressHref,
+} from './model';
 import { readRecent } from './recent';
 import { sentence } from '../build/model';
 import styles from './Home.module.css';
@@ -73,7 +84,7 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
   });
   const foreign = session.workspace.readonly && tenantId !== session.user.home_tenant_id;
   const runs = useQuery({
-    queryKey: workspaceQueryKey(tenantId, scopeKey, 'home-runs'),
+    queryKey: workspaceQueryKey(tenantId, scopeKey, 'home-runs', canEdit),
     queryFn: async ({ signal }) => {
       const responses = await Promise.allSettled([
         api('/harness/runs?limit=20', { signal }),
@@ -83,21 +94,44 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
         (response): response is PromiseFulfilledResult<unknown> => response.status === 'fulfilled',
       );
       if (!good.length) throw new Error(terms.labels.home_unavailable);
+      const recipeIds =
+        canEdit && responses[0].status === 'fulfilled'
+          ? [
+              ...new Set(
+                parseRunHistory([responses[0].value])
+                  .map(recipeChangesetId)
+                  .filter((id): id is string => !!id),
+              ),
+            ]
+          : [];
+      const proposals = await Promise.allSettled(
+        recipeIds.map(async (id) => {
+          const response = await api<ProposalResult>('/v2/changesets/' + encodeURIComponent(id), { signal });
+          return proposalTodo(response.data);
+        }),
+      );
       return {
         items: parseRuns(good.map((response) => response.value)),
-        partial: good.length !== responses.length,
+        proposals: proposals.flatMap((response) =>
+          response.status === 'fulfilled' && response.value ? [response.value] : [],
+        ),
+        partial:
+          good.length !== responses.length || proposals.some((response) => response.status === 'rejected'),
       };
     },
     enabled: !foreign,
     refetchInterval: 15000,
   });
-  const rows = todoEntries(
-    { canEdit, canReview },
-    tasks.data ?? null,
-    review.data ?? null,
-    returned.data ?? null,
-    relations.data ?? null,
-  );
+  const rows = [
+    ...(canEdit ? runs.data?.proposals || [] : []),
+    ...todoEntries(
+      { canEdit, canReview },
+      tasks.data ?? null,
+      review.data ?? null,
+      returned.data ?? null,
+      relations.data ?? null,
+    ),
+  ];
   const pendingQueries = [tasks, ...(canReview ? [review, relations] : []), ...(canEdit ? [returned] : [])];
   const retryPending = () => {
     for (const query of pendingQueries) void query.refetch();
@@ -131,8 +165,18 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
   const positive = rows.filter((row) => row.count > 0);
   const pendingCount = positive.reduce((total, row) => total + row.count, 0);
   const focus = positive.find((row) => row.step) || positive[0];
+  const proposalFocus = focus && 'proposal' in focus ? focus.proposal : undefined;
+  const activeRecipe = runs.data?.items.find((run) => recipeProgressHref(run));
+  const progressHref = activeRecipe && recipeProgressHref(activeRecipe);
   const isEmpty =
-    data && !data.assets && !data.relations && !data.rows && !positive.length && !runs.data?.items.length;
+    data &&
+    !data.assets &&
+    !data.relations &&
+    !data.rows &&
+    !positive.length &&
+    !runs.data?.items.length &&
+    (foreign || (!runs.isFetching && !runs.isError && !runs.data?.partial));
+  const currentStep = focus ? focus.step || 0 : progressHref || isEmpty ? 1 : 0;
   const pending = pendingQueries.some((query) => query.isPending);
   const intakeAction = {
     label: terms.labels.home_choose_files,
@@ -145,7 +189,11 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
       data-home-workbench
       role="region"
       aria-label={terms.labels.home_workbench}
-      aria-busy={overview.isPending || pending || (!foreign && runs.isPending)}
+      aria-busy={
+        overview.isFetching ||
+        pendingQueries.some((query) => query.isFetching) ||
+        (!foreign && runs.isFetching)
+      }
       header={
         <PageHeader
           title={terms.labels.home_workbench}
@@ -153,31 +201,48 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
             <span data-testid="home-focus">
               {isEmpty
                 ? terms.labels.r3_main_start
-                : positive.length
-                  ? sentence(terms.labels.r3_main_focus, { count: pendingCount })
-                  : terms.labels.r3_main_ready}
+                : focus
+                  ? sentence(
+                      proposalFocus === 'submit'
+                        ? terms.labels.r31_home_submit_count
+                        : proposalFocus
+                          ? terms.labels.r31_home_check_count
+                          : terms.labels.r3_main_focus,
+                      {
+                        count: focus.count,
+                      },
+                    )
+                  : progressHref
+                    ? terms.labels.r3_main_intake_running
+                    : terms.labels.r3_main_ready}
             </span>
           }
           lead={isEmpty ? terms.labels.r3_main_start_lead : undefined}
           primaryAction={
             focus
               ? {
-                  label: terms.labels.r31_home_process,
+                  label: proposalFocus ? terms.labels.r3_main_intake_view : terms.labels.r31_home_process,
                   onClick: () => navigate(focus.href),
                 }
-              : intakeAction
+              : progressHref
+                ? { label: terms.labels.r31_home_progress, onClick: () => navigate(progressHref) }
+                : intakeAction
           }
-          secondaryAction={focus ? intakeAction : undefined}
+          secondaryAction={focus || progressHref ? intakeAction : undefined}
           note={!canEdit ? terms.labels.home_readonly_files : undefined}
         />
       }
     >
       <NextStepBar
-        current={isEmpty ? 1 : focus?.step || 0}
+        current={currentStep}
         full
         description={
-          <span data-testid="home-workflow" data-current-step={isEmpty ? 1 : focus?.step || 0}>
-            {isEmpty ? terms.labels.r3_main_start_lead : focus ? focus.label : terms.labels.r31_home_workflow}
+          <span data-testid="home-workflow" data-current-step={currentStep}>
+            {isEmpty
+              ? terms.labels.r3_main_start_lead
+              : focus
+                ? focus.label
+                : activeRecipe?.title || terms.labels.r31_home_workflow}
           </span>
         }
       />
@@ -222,7 +287,7 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
             )}
           </section>
         )}
-        {!foreign && (runs.isPending || runs.isError || !!runs.data?.items.length) && (
+        {!foreign && (runs.isPending || runs.isError || runs.data?.partial || !!runs.data?.items.length) && (
           <section className={styles.card} data-home-count={runs.data?.items.length || undefined}>
             <h2>
               {terms.labels.home_running}
@@ -241,7 +306,7 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
                 {runs.data?.partial && <Alert type="warning" title={terms.labels.home_partial} />}
                 <ul className={styles.links}>
                   {runs.data?.items.slice(0, 2).map((item) => {
-                    const href = activityHref(item);
+                    const href = recipeProgressHref(item) || activityHref(item);
                     return (
                       <li key={item.kind + ':' + item.id}>
                         {href ? <Link to={href}>{item.title}</Link> : <span>{item.title}</span>}

@@ -6,6 +6,8 @@ import Home from './Home';
 import { sentence } from '../build/model';
 import { terms } from '../../i18n/zh-CN';
 import { useUiStore } from '../../state/ui';
+import type { Proposal } from '../../api/generated/types';
+import { workspaceQueryKey } from '../../api/query';
 let queryClient: QueryClient;
 import { api } from '../../api/client';
 import { useSessionStore } from '../../state/session';
@@ -240,4 +242,144 @@ it('does not invent completed mainline steps for a generic active task', async (
   expect(workflow.querySelector('[aria-current="step"]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r31_home_process }));
   expect(screen.getByTestId('location')).toHaveTextContent('/work?status=active');
+});
+
+function recipeProposal(): Proposal {
+  return {
+    id: 'CS-ready',
+    title: 'Payment policy',
+    status: 'open',
+    summary: '',
+    can_submit: false,
+    source_text: '',
+    source_material_id: 'material-1',
+    items: [1, 2].map((id) => ({
+      id: String(id),
+      tier: 'check',
+      decision: 'pending',
+      one_liner: 'Check payment',
+      rationale: '',
+      content_origin: 'model',
+      evidence: [],
+      validation: { level: 'ok', issues: [] },
+      after_data: { id: 'candidate-' + id, title: 'Payment', kind: 'rule', content: 'Check payment' },
+    })),
+  };
+}
+function recipeHome(value: Proposal, status = 'completed', taskCount = 0) {
+  useUiStore.setState({ viewMode: 'simple' });
+  vi.mocked(api).mockImplementation(async (path) => {
+    if (path === '/overview')
+      return { assets: 0, relations: 0, counts: {}, data_rows: 0, relation_statuses: {} };
+    if (path === '/work/catalog')
+      return { tasks: Array.from({ length: taskCount }, () => ({ status: 'active' })) };
+    if (path === '/harness/runs?limit=20')
+      return {
+        items: [
+          {
+            id: 'recipe-1',
+            kind: 'recipe_run',
+            status,
+            title: 'Payment policy',
+            href: status === 'completed' ? '/build/changesets/CS-ready' : '/build/intake?run=recipe-1',
+          },
+        ],
+      };
+    if (path === '/v2/changesets/CS-ready') return { data: value };
+    return { items: [], total: 0 };
+  });
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <Home />
+        <Location />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
+it.each([0, 5])(
+  'returns to a verified ready proposal with its exact remaining count alongside %s other tasks',
+  async (tasks) => {
+    recipeHome(recipeProposal(), 'completed', tasks);
+    await waitFor(() =>
+      expect(screen.getByTestId('home-focus')).toHaveTextContent(
+        sentence(terms.labels.r31_home_check_count, { count: 2 }),
+      ),
+    );
+    expect(screen.queryByText(terms.labels.r3_main_start)).not.toBeInTheDocument();
+    expect(screen.getByTestId('home-workflow')).toHaveAttribute('data-current-step', '2');
+    expect(api).toHaveBeenCalledWith('/v2/changesets/CS-ready', expect.anything());
+    expect(screen.getByRole('button', { name: terms.labels.home_choose_files })).not.toHaveClass(
+      'ant-btn-primary',
+    );
+    fireEvent.click(screen.getByRole('button', { name: terms.labels.r3_main_intake_view }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/build/changesets/CS-ready');
+  },
+);
+it.each(['applied', 'submitted'])(
+  'excludes a completed recipe whose proposal is already %s',
+  async (status) => {
+    const proposal = recipeProposal();
+    proposal.status = status;
+    proposal.items.forEach((item) => {
+      item.decision = 'accepted';
+      item.applied_entity_id = 'published-' + item.id;
+    });
+    recipeHome(proposal);
+    expect(await screen.findByText(terms.labels.r3_main_start)).toBeVisible();
+    expect(api).toHaveBeenCalledWith('/v2/changesets/CS-ready', expect.anything());
+    expect(screen.queryByRole('button', { name: terms.labels.r3_main_intake_view })).not.toBeInTheDocument();
+    expect(screen.getByTestId('home-workflow')).toHaveAttribute('data-current-step', '1');
+  },
+);
+it('shows an active recipe at intake and opens its actual progress instead of a finished proposal', async () => {
+  recipeHome(recipeProposal(), 'running');
+  expect(await screen.findByText(terms.labels.r3_main_intake_running)).toBeVisible();
+  expect(screen.getByTestId('home-workflow')).toHaveAttribute('data-current-step', '1');
+  expect(vi.mocked(api).mock.calls.some(([path]) => path.startsWith('/v2/changesets/'))).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r31_home_progress }));
+  expect(screen.getByTestId('location')).toHaveTextContent('/build/intake?run=recipe-1');
+});
+it.each(['open', 'applied'])(
+  'keeps a fully handled %s proposal actionable until the server marks it submitted',
+  async (status) => {
+    const proposal = recipeProposal();
+    proposal.status = status;
+    proposal.can_submit = true;
+    proposal.items.forEach((item, index) => {
+      item.decision = index ? 'edited' : 'accepted';
+      if (status === 'applied') item.applied_entity_id = 'draft-' + item.id;
+    });
+    recipeHome(proposal);
+    await waitFor(() =>
+      expect(screen.getByTestId('home-focus')).toHaveTextContent(
+        sentence(terms.labels.r31_home_submit_count, { count: 2 }),
+      ),
+    );
+    expect(screen.getByTestId('home-workflow')).toHaveAttribute('data-current-step', '2');
+    fireEvent.click(screen.getByRole('button', { name: terms.labels.r3_main_intake_view }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/build/changesets/CS-ready');
+  },
+);
+it('does not count rejected or externally handled items as work still waiting for the user', async () => {
+  const proposal = recipeProposal();
+  proposal.items[0].decision = 'rejected';
+  proposal.items[1].processed_elsewhere = true;
+  recipeHome(proposal);
+  expect(await screen.findByText(terms.labels.r3_main_start)).toBeVisible();
+  expect(screen.queryByRole('button', { name: terms.labels.r3_main_intake_view })).not.toBeInTheDocument();
+});
+it('refreshes a cached empty Home before declaring the returned proposal ready', async () => {
+  queryClient.setQueryData(workspaceQueryKey('a', useScopeStore.getState().scopeKey, 'home-runs', true), {
+    items: [],
+    proposals: [],
+    partial: false,
+  });
+  recipeHome(recipeProposal());
+  const home = screen.getByRole('region', { name: terms.labels.home_workbench });
+  expect(home).toHaveAttribute('aria-busy', 'true');
+  await waitFor(() => expect(home).toHaveAttribute('aria-busy', 'false'));
+  expect(screen.getByTestId('home-focus')).toHaveTextContent(
+    sentence(terms.labels.r31_home_check_count, { count: 2 }),
+  );
 });

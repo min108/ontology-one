@@ -1059,6 +1059,9 @@
     "r3_main_start_lead": "先交一份制度，整理成可以核对和使用的本体内容。",
     "r3_main_focus": "{count} 项待办等你处理",
     "r31_home_process": "去处理待办",
+    "r31_home_check_count": "{count} 条内容等你核对",
+    "r31_home_submit_count": "{count} 条内容等你提交",
+    "r31_home_progress": "查看整理进度",
     "r31_home_workflow": "交入制度后，按实际进度继续。",
     "r31_submitted_count": "已提交 {count} 条已采纳的内容。",
     "r31_other_sources": "其余出处",
@@ -1267,7 +1270,7 @@
     "markdown": "一种带简单格式的纯文本，可以直接粘贴到多数知识库、协作工具和邮件中。",
     "view_mode": "简洁视图突出下一步，专业视图显示更多细节。",
     "scope": "当前查看和操作的机构与内容范围。",
-    "home_pending": "以下为本机构全部待办，不按个人分配。"
+    "home_pending": "汇总本机构待办，以及本人最近任务中待核对的制度内容。"
   },
   "blacklist": [
     "Harness",

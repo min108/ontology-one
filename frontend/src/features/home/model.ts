@@ -1,4 +1,6 @@
 import { terms } from '../../i18n/zh-CN';
+import type { Proposal } from '../../api/generated/types';
+import { isHandledElsewhere } from '../build/model';
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error(terms.labels.home_unavailable);
@@ -82,7 +84,7 @@ export type HomeRun = {
   entity_id?: string;
   session_id?: string;
 };
-export function parseRuns(responses: unknown[]): HomeRun[] {
+export function parseRunHistory(responses: unknown[]): HomeRun[] {
   const all = responses.flatMap((response) => {
     const items = object(response).items;
     if (!Array.isArray(items)) throw new Error(terms.labels.home_unavailable);
@@ -101,11 +103,44 @@ export function parseRuns(responses: unknown[]): HomeRun[] {
       return row;
     });
   });
-  return [
-    ...new Map(
-      all
-        .filter((item) => ['queued', 'running', 'retry', 'cancelling'].includes(item.status))
-        .map((item) => [item.kind + ':' + item.id, item]),
-    ).values(),
-  ];
+  return [...new Map(all.map((item) => [item.kind + ':' + item.id, item])).values()];
+}
+export function parseRuns(responses: unknown[]): HomeRun[] {
+  return parseRunHistory(responses).filter((item) =>
+    ['queued', 'running', 'retry', 'cancelling'].includes(item.status),
+  );
+}
+export function recipeChangesetId(run: HomeRun): string | undefined {
+  return run.kind === 'recipe_run' && run.status === 'completed'
+    ? /^\/build\/changesets\/([a-zA-Z0-9_-]+)$/.exec(run.href || '')?.[1]
+    : undefined;
+}
+export function proposalTodo(proposal: Proposal) {
+  if (['submitted', 'archived'].includes(proposal.status)) return undefined;
+  const pending = proposal.items.filter(
+    (item) => item.decision === 'pending' && !item.applied_entity_id && !isHandledElsewhere(item),
+  ).length;
+  const accepted = proposal.can_submit
+    ? proposal.items.filter(
+        (item) => ['accepted', 'edited'].includes(item.decision) && !isHandledElsewhere(item),
+      ).length
+    : 0;
+  const count = pending || accepted;
+  if (proposal.status === 'applied' && !proposal.can_submit) return undefined;
+  return count
+    ? {
+        label: proposal.title,
+        count,
+        href: '/build/changesets/' + encodeURIComponent(proposal.id),
+        step: 2,
+        proposal: pending ? 'check' : 'submit',
+      }
+    : undefined;
+}
+export function recipeProgressHref(run: HomeRun): string | undefined {
+  return run.kind === 'recipe_run' &&
+    ['queued', 'running', 'retry', 'cancelling'].includes(run.status) &&
+    /^\/build\/intake\?run=[a-zA-Z0-9_-]+$/.test(run.href || '')
+    ? run.href
+    : undefined;
 }
