@@ -113,7 +113,9 @@ def reply(body: dict) -> dict:
             quote = chunk["content"].strip()
             candidates.append(
                 {
-                    "kind": "rule",
+                    # Deliberately misclassify one normative clause so the UI
+                    # acceptance path must review it before adopting a draft.
+                    "kind": "skill" if "经办人员应保存验收记录" in quote else "rule",
                     # Different source clauses must not fabricate the same title
                     # with different definitions under the real QG2 check.
                     "title": "付款申请时限" if "30日" in quote else quote[:24],
