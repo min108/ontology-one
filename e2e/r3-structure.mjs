@@ -35,6 +35,7 @@ const SMALL_OK = [
   ".legacy-root .page-head .biz-text-link",
   ".ant-avatar",
   "[data-page-header] nav",
+  "[data-object-return]",
   "[class*='caption']",
   "[class*='Caption']",
   "[class*='meta']",
