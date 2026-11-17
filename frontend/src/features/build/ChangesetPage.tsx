@@ -573,6 +573,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         <label className={styles.field}>
           {draft.kind === 'rule' ? copy.r4_rule_definition : copy.r2_card_field_definition}
           <Input.TextArea
+            aria-label={draft.kind === 'rule' ? copy.r4_rule_definition : copy.r2_card_field_definition}
             value={draft.definition || ''}
             rows={2}
             maxLength={4000}
@@ -584,6 +585,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             <label className={styles.field} key={field}>
               {field === 'unit' ? copy.r2_card_field_unit : copy.r4_rule_grain}
               <Input
+                aria-label={field === 'unit' ? copy.r2_card_field_unit : copy.r4_rule_grain}
                 value={draft[field] || ''}
                 onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
               />
@@ -593,6 +595,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           <label className={styles.field}>
             {copy.r2_card_field_boundary}
             <Input.TextArea
+              aria-label={copy.r2_card_field_boundary}
               value={draft.boundary || ''}
               rows={2}
               onChange={(event) => setDraft({ ...draft, boundary: event.target.value })}
@@ -605,6 +608,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               <label className={styles.field} key={field}>
                 {copy[`r4_rule_${field}`]}
                 <Input.TextArea
+                  aria-label={copy[`r4_rule_${field}`]}
                   value={draft[field] || ''}
                   rows={2}
                   maxLength={4000}
@@ -615,6 +619,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             <label className={styles.field}>
               {copy.r4_rule_conditions}
               <Input.TextArea
+                aria-label={copy.r4_rule_conditions}
                 value={(draft.conditions || []).join('\n')}
                 rows={3}
                 placeholder={copy.r4_rule_conditions_hint}
@@ -625,6 +630,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               <label className={styles.field}>
                 {copy.r4_rule_valid_from}
                 <DatePicker
+                  aria-label={copy.r4_rule_valid_from}
                   value={draft.valid_from ? dayjs(draft.valid_from) : null}
                   placeholder={copy.r4_rule_date_hint}
                   onChange={(value) => setDraft({ ...draft, valid_from: value?.format('YYYY-MM-DD') || '' })}
@@ -640,6 +646,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               {copy.r4_rule_judgement}
               <Input.TextArea
                 rows={10}
+                aria-label={copy.r4_rule_judgement}
                 value={judgementText}
                 maxLength={64000}
                 onChange={(event) => {

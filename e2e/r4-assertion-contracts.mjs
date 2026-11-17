@@ -55,3 +55,26 @@ export function assertSubmissionBlocked(snapshot) {
     "a placeholder is not a check result",
   );
 }
+
+export function assertSavedSemanticGroup(entities) {
+  assert.equal(entities.length, 7);
+  assert.equal(
+    new Set(entities.map((entity) => entity.id)).size,
+    7,
+    "seven distinct drafts must persist",
+  );
+  assert.deepEqual(entities.map((entity) => entity.kind).sort(), [
+    "data",
+    "link_type",
+    "metric",
+    "object_type",
+    "process",
+    "rule",
+    "term",
+  ]);
+  for (const entity of entities) {
+    assert.equal(entity.status, "draft");
+    assert.ok(entity.version >= 1);
+    assert.ok(entity.payload.definition?.trim());
+  }
+}

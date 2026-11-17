@@ -19,6 +19,7 @@ import {
   assertRuleCaseResults,
   assertWaiverActivity,
   assertSubmissionBlocked,
+  assertSavedSemanticGroup,
 } from "./r4-assertion-contracts.mjs";
 
 async function write(page, path, body) {
@@ -63,6 +64,142 @@ async function projection(page, gates) {
   );
 }
 
+test("R4 AA3 capabilities create seven kinds, persist drafts and expose derived relations in business language", async ({
+  browser,
+}) => {
+  const owner = await login(browser, "modeler"),
+    page = owner.page;
+  try {
+    const create = (kind, title, payload) =>
+      invoke(page, "element.create_draft", {
+        kind,
+        title: unique(title),
+        payload,
+      });
+    const data = await create("data", "付款金额", {
+      definition: "本次申请支付的人民币金额",
+      unit: "元",
+      grain: "每笔付款",
+    });
+    const object = await create("object_type", "付款申请", {
+      schema: "object_type/1",
+      definition: "待办理的付款请求",
+      identity: { properties: ["amount"] },
+      properties: [
+        {
+          key: "amount",
+          name: "付款金额",
+          datatype: "decimal",
+          data_id: data.entity.id,
+        },
+      ],
+    });
+    const link = await create("link_type", "关联付款", {
+      schema: "link_type/1",
+      definition: "同一事项的前后付款关联",
+      source_type: object.entity.id,
+      target_type: object.entity.id,
+      verb: "关联",
+      cardinality: "many_to_many",
+    });
+    const metric = await create("metric", "申请付款口径", {
+      schema: "metric/1",
+      definition: "按每笔付款申请记录金额",
+      object_type: object.entity.id,
+      unit: "元",
+      grain: "每笔付款",
+      formula: { oxl: "amount" },
+      test_cases: [
+        { name: "普通付款", input: { amount: 20 }, expected: 20 },
+        { name: "零额记录", input: { amount: 0 }, expected: 0 },
+      ],
+    });
+    const term = await create("term", "申请款项", {
+      schema: "term/1",
+      definition: "申请办理的付款事项",
+      refers_to: [object.entity.id],
+    });
+    const rule = await create("rule", "付款申请检查", {
+      definition: "付款金额不得为负",
+      scope: "付款请求",
+      conditions: ["有申请记录"],
+      exceptions: "无",
+      judgement: {
+        applies_to: { object_type: object.entity.id },
+        condition: { oxl: "true" },
+        requirement: { oxl: "amount >= 0" },
+        exceptions: [],
+        severity: "must",
+        test_cases: [
+          { name: "正额通过", input: { amount: 20 }, expected: "pass" },
+          { name: "负额不通过", input: { amount: -1 }, expected: "fail" },
+        ],
+      },
+    });
+    const process = await create("process", "付款办理", {
+      schema: "process/1",
+      definition: "提交申请后核验并保存付款记录",
+      trigger: "收到付款申请",
+      end_result: "形成核验记录",
+      steps: [
+        {
+          key: "check",
+          name: "核验申请",
+          actors: [{ org_id: "dept-01" }],
+          basis: [{ rule_id: rule.entity.id }],
+          inputs: [{ data_id: data.entity.id }],
+          outputs: [{ object_type: object.entity.id }],
+          next: ["save"],
+          confirmed: true,
+        },
+        {
+          key: "save",
+          name: "保存记录",
+          actors: [{ org_id: "dept-01" }],
+          basis: [{ rule_id: rule.entity.id }],
+          outputs: [{ object_type: object.entity.id }],
+          next: [],
+          confirmed: true,
+        },
+      ],
+    });
+    const created = [data, object, link, metric, term, rule, process];
+    const persisted = [];
+    for (const item of created)
+      persisted.push(
+        (await read(page, "/api/v2/elements/" + item.entity.id)).data.entity,
+      );
+    assertSavedSemanticGroup(persisted);
+    for (const item of [object, link, metric, term, rule, process]) {
+      const detail = (await read(page, "/api/v2/elements/" + item.entity.id))
+        .data;
+      expect(detail.card.relations.length, item.entity.kind).toBeGreaterThan(0);
+    }
+    await page.goto("/ontology/elements/" + process.entity.id);
+    await selectSavedViewMode(page, "simple");
+    await page.getByText(c.r2_card_relations, { exact: true }).click();
+    const relations = page.getByRole("region", {
+      name: c.r2_card_relations,
+      exact: true,
+    });
+    await expect(relations).toContainText(rule.entity.title);
+    await expect(relations).toContainText(data.entity.title);
+    await expect(relations).toContainText(object.entity.title);
+    await assertNoLeaks(page, "AA3 derived relations");
+    await page.goto("/ontology/elements/" + rule.entity.id);
+    const detail = (await read(page, "/api/v2/elements/" + rule.entity.id))
+      .data;
+    expect(detail.entity.payload.judgement.requirement.sentence).toMatch(
+      /[\u4e00-\u9fff]/,
+    );
+    await expect(
+      page.getByRole("article", { name: rule.entity.title }),
+    ).toContainText(detail.entity.payload.judgement.requirement.sentence);
+  } finally {
+    await owner.context.close();
+  }
+});
+
 test("R4 AA4 rule: save two cases in professional view, run and show actual condition gate", async ({
   browser,
 }) => {
@@ -76,8 +213,18 @@ test("R4 AA4 rule: save two cases in professional view, run and show actual cond
         schema: "object_type/1",
         definition: "每笔付款请求",
         properties: [
-          { key: "amount", name: "付款金额", datatype: "decimal" },
-          { key: "approved", name: "审批通过", datatype: "boolean" },
+          {
+            key: "amount",
+            name: "付款金额",
+            datatype: "decimal",
+            note: "付款申请的人民币金额",
+          },
+          {
+            key: "approved",
+            name: "审批通过",
+            datatype: "boolean",
+            note: "审批记录是否通过",
+          },
         ],
       },
     });
@@ -223,6 +370,10 @@ test("R4 AA5-AA6 recipe: missing prerequisites block submit, repair applied cand
     );
     await button(page.locator("[data-selected-item-id]"), "改一改").click();
     const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.screenshot({
+      path: resolve(process.env.E2E_EVIDENCE_DIR, "r4-repair-dialog.png"),
+    });
     await dialog
       .getByLabel(c.r4_rule_definition, { exact: true })
       .fill("付款申请的时间要求");

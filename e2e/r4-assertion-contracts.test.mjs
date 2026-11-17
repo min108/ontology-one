@@ -83,3 +83,30 @@ test("submission assertion rejects enabled submission and blank placeholder reas
     assertSubmissionBlocked({ disabled: true, reason: "待审核确认" }),
   );
 });
+
+test("semantic group assertion rejects missing kinds and repeated drafts", async () => {
+  const { assertSavedSemanticGroup } =
+    await import("./r4-assertion-contracts.mjs");
+  const entities = [
+    "data",
+    "link_type",
+    "metric",
+    "object_type",
+    "process",
+    "rule",
+    "term",
+  ].map((kind, i) => ({
+    id: String(i),
+    kind,
+    status: "draft",
+    version: 1,
+    payload: { definition: "业务定义" },
+  }));
+  assertSavedSemanticGroup(entities);
+  assert.throws(() => assertSavedSemanticGroup(entities.slice(1)));
+  assert.throws(() =>
+    assertSavedSemanticGroup(
+      entities.map((entity) => ({ ...entity, id: "same" })),
+    ),
+  );
+});

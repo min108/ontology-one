@@ -49,6 +49,7 @@ export function RuleEditor({
       <label className={styles.field}>
         {field === 'formula' ? copy.r4_rule_formula : copy.r4_rule_judgement}
         <Input.TextArea
+          aria-label={field === 'formula' ? copy.r4_rule_formula : copy.r4_rule_judgement}
           value={value}
           disabled={disabled || busy}
           rows={12}
