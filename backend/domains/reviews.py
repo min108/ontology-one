@@ -9,7 +9,7 @@ from backend.kernel import gates
 from backend.security.context import Principal, require_context
 
 ASSETS = tuple(sorted(gates.ASSETS))
-WORKFLOW_ACTIONS = ("提交审核", "审核通过", "发布成果", "退回补充", "发起修订", "归档停用")
+WORKFLOW_ACTIONS = ("提交审核", "审核通过", "发布成果", "退回补充", "发起修订", "归档停用", "发布检查豁免")
 
 
 def mark_draft(conn: db.Connection, entity: dict, editor_id: str, changeset_id: str) -> None:

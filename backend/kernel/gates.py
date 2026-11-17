@@ -91,7 +91,11 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
         evidence = evidence and facts.get("regulation_evidence", False)
     if kind == "process":
         evidence = evidence and facts.get("step_evidence", False)
-    meaning = bool(plain(payload.get("definition"))) and not facts.get("duplicate", False)
+    meaning = (
+        isinstance(payload.get("definition"), str)
+        and bool(payload["definition"].strip())
+        and not facts.get("duplicate", False)
+    )
     if kind in {"metric", "data"}:
         meaning = meaning and bool(plain(payload.get("unit"))) and bool(plain(payload.get("grain")))
     if kind == "object_type":
@@ -387,6 +391,8 @@ def waive(conn: db.Connection, entity: dict, reasons: dict[str, str]) -> dict:
     person = require_context()
     if person.readonly or person.role not in {"admin", "reviewer"}:
         raise ApiError("PERMISSION_DENIED")
+    if not reasons:
+        raise ApiError("VALIDATION_FAILED", "请选择需豁免的项目并写明理由。")
     if set(reasons) - {"QG1", "QG3"}:
         raise ApiError("VALIDATION_FAILED", "口径、关系和版本三项不能豁免。")
     if any(not isinstance(reason, str) or not reason.strip() or len(reason) > 500 for reason in reasons.values()):
@@ -394,6 +400,22 @@ def waive(conn: db.Connection, entity: dict, reasons: dict[str, str]) -> dict:
     identity = entity["payload"].get("r2_review", {})
     if person.user_id in {identity.get("last_editor_id"), identity.get("submitted_by")}:
         raise ApiError("SEPARATION_OF_DUTIES")
+    if not identity:
+        from backend.domains.reviews import WORKFLOW_ACTIONS, is_same_person
+
+        actors = conn.execute(
+            "SELECT action,actor FROM activities WHERE entity_id=? ORDER BY id DESC", (entity["id"],)
+        ).fetchall()
+        editor = next((row["actor"] for row in actors if row["action"] not in WORKFLOW_ACTIONS), None)
+        submitter = next((row["actor"] for row in actors if row["action"] == "提交审核"), None)
+        if is_same_person(person, editor) or is_same_person(person, submitter):
+            raise ApiError("SEPARATION_OF_DUTIES")
+    if entity["payload"].get("managed_skill"):
+        document = conn.execute(
+            "SELECT last_editor_id,submitted_by FROM skill_documents WHERE entity_id=?", (entity["id"],)
+        ).fetchone()
+        if document and person.user_id in {document["last_editor_id"], document["submitted_by"]}:
+            raise ApiError("SEPARATION_OF_DUTIES")
     meta = get_meta(conn, entity["id"]) or sync_meta(conn, entity)
     stored = _object(meta.get("gates"))
     waivers = stored.setdefault("waivers", {})

@@ -136,8 +136,13 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
                         relation["source_status"] = rule["status"]
                         relation["source_payload"] = rule["payload"]
     if ctx.principal.readonly:
-        # Cross-institution views never resolve source IDs in the current tenant.
-        gate_result = {"passed": True, "checks": [], "blockers": []}
+        # Federation authorized this published item. Check its original tenant
+        # data, returning only the business gate result, never private payloads.
+        with db.tenant_connection(ctx.principal.tenant_id, readonly=True) as conn:
+            original = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (body.entity_id,)).fetchone())
+            if not original:
+                raise ApiError("NOT_FOUND")
+            gate_result = gates.check_entity(conn, original)
     return ElementDetailResult(
         data={
             "entity": entity,

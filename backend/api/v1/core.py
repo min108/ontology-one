@@ -70,7 +70,11 @@ def entities(
     if history != "all":
         where.append("COALESCE(json_extract(payload,'$.active_asset'),1)!=0")
     if asset_only:
-        where.append("kind IN ('data','rule','skill','knowledge')")
+        from ...kernel.kinds import KINDS
+
+        asset_kinds = [kind for kind, spec in KINDS.items() if spec.pillar == "asset"]
+        where.append(f"kind IN ({','.join('?' for _ in asset_kinds)})")
+        args.extend(asset_kinds)
     for k, v in [
         ("kind", kind),
         ("domain", domain),
@@ -545,7 +549,10 @@ def relations(node: str = "", status: str = "", q: str = "", page: int = 1, page
 
 def relation_work_entry(c, row):
     """Operational membership is reviewed in its own versioned workflow."""
-    if json.loads(row["payload"] or "{}").get("derived"):
+    relation_meta = json.loads(row["payload"] or "{}")
+    if relation_meta.get("derived") and not (
+        relation_meta.get("skill_managed") or relation_meta.get("authority_managed")
+    ):
         return {
             "href": "/assets/" + row["source"],
             "label": "修改要素内容",

@@ -23,7 +23,7 @@ from .security.context import require_context
 from .security import store
 
 router = APIRouter(prefix="/federation", tags=["federation"])
-ASSETS = ("data", "rule", "skill", "knowledge")
+ASSETS = ("data", "rule", "skill", "knowledge", "term", "object_type", "link_type", "metric", "process")
 MAX_WORKERS = 8
 _EXECUTOR = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="federation")
 

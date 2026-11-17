@@ -1484,6 +1484,11 @@ async def online_candidates(material_id: str, group: list[dict], context: dict) 
             raise ValueError("AI候选的引用片段缺少对应引文")
         if any(not isinstance(entry.get(field, []), list) for field in ("conditions", "questions")):
             raise ValueError("AI候选条件或待核问题格式不正确")
+        if any(
+            entry.get(field) is not None and not isinstance(entry.get(field), str)
+            for field in ("definition", "scope", "exceptions", "valid_from", "valid_to", "unit", "grain", "boundary")
+        ):
+            raise ValueError("AI候选发布条件须为业务文字，缺失内容应留空")
         title = str(entry.get("title") or "").strip()
         content = str(entry.get("content") or "").strip()
         if not title or not content:
@@ -1495,8 +1500,19 @@ async def online_candidates(material_id: str, group: list[dict], context: dict) 
                 "title": title[:250],
                 "summary": str(entry.get("summary") or ""),
                 "content": content,
-                **{field: str(entry.get(field) or "")[:4000] for field in
-                   ("definition", "scope", "exceptions", "valid_from", "valid_to", "unit", "grain", "boundary")},
+                **{
+                    field: str(entry.get(field) or "")[:4000]
+                    for field in (
+                        "definition",
+                        "scope",
+                        "exceptions",
+                        "valid_from",
+                        "valid_to",
+                        "unit",
+                        "grain",
+                        "boundary",
+                    )
+                },
                 "source_chunk_ids": list(dict.fromkeys(sources)),
                 "source_quotes": quotes,
                 "conditions": [str(v) for v in entry.get("conditions", [])],
@@ -1848,12 +1864,27 @@ def adopt_candidate_in_transaction(conn, material_id: str, candidate_id: str):
     }
     from .kernel.elements import create_draft
 
-    payload.update({key: candidate[key] for key in
-                    ("definition", "scope", "exceptions", "unit", "grain", "boundary", "judgement") if key in candidate})
-    create_draft(conn, {"id": asset_id, "kind": candidate["kind"], "title": candidate["title"],
-                       "summary": candidate.get("summary", ""), "domain": item["domain"], "org_id": item["org_id"],
-                       "source_kind": item["source_kind"], "payload": payload,
-                       "meta": {key: candidate.get(key) or None for key in ("valid_from", "valid_to")}})
+    payload.update(
+        {
+            key: candidate[key]
+            for key in ("definition", "scope", "exceptions", "unit", "grain", "boundary", "judgement")
+            if key in candidate
+        }
+    )
+    create_draft(
+        conn,
+        {
+            "id": asset_id,
+            "kind": candidate["kind"],
+            "title": candidate["title"],
+            "summary": candidate.get("summary", ""),
+            "domain": item["domain"],
+            "org_id": item["org_id"],
+            "source_kind": item["source_kind"],
+            "payload": payload,
+            "meta": {key: candidate.get(key) or None for key in ("valid_from", "valid_to")},
+        },
+    )
     conn.execute(
         "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
         (

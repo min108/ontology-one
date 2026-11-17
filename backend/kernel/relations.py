@@ -153,7 +153,13 @@ def sync_derived(conn: db.Connection, entity: dict) -> list[dict]:
             raise HTTPException(422, "关联对象的种类与该字段不符。")
         _validate_structure(conn, entity, edge, target)
     existing = [dict(row) for row in conn.execute("SELECT * FROM relations WHERE source=?", (entity["id"],))]
-    owned = [row for row in existing if _payload(row["payload"]).get("derived") is True]
+    owned = [
+        row
+        for row in existing
+        if _payload(row["payload"]).get("derived") is True
+        and not _payload(row["payload"]).get("skill_managed")
+        and not _payload(row["payload"]).get("authority_managed")
+    ]
     wanted = {_key(edge) for edge in desired}
     kept = {}
     for row in owned:
