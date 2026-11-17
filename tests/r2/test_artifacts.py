@@ -400,7 +400,13 @@ class ArtifactMySQL(unittest.TestCase):
             session["runs"][run_id]["revision_of"] = original_id
         report = self.invoke(builder, "artifact.create", body)
         self.assertEqual(
-            report["spec"]["revision"], {"count": 1, "before": "原回答含未核验的99日。", "after": referenced_answer}
+            report["spec"]["revision"],
+            {
+                "count": 1,
+                "before": "原回答含未核验的99日。",
+                "after": referenced_answer,
+                "before_configuration_changed": False,
+            },
         )
         self.assertIn("已按核对结果修订 1 次", report["spec"]["source_label"])
         from fastapi.testclient import TestClient

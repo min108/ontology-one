@@ -98,6 +98,26 @@ it('keeps server-owned before and after answers visibly distinguished', async ()
   expect(screen.getAllByText(terms.labels.r3_report_revised).length).toBeGreaterThan(0);
 });
 
+it.each([false, true])(
+  'labels an original answer only when its model configuration differs (%s)',
+  async (changed) => {
+    vi.mocked(api).mockResolvedValue({
+      data: {
+        ...report,
+        spec: {
+          ...report.spec,
+          revision: { ...report.spec.revision, before_configuration_changed: changed },
+        },
+      },
+    });
+    open();
+    fireEvent.click(await screen.findByText(terms.actions.r3_report_compare));
+    const label = screen.queryByText(terms.labels.r4_report_before_configuration_changed);
+    if (changed) expect(label).toBeVisible();
+    else expect(label).not.toBeInTheDocument();
+  },
+);
+
 it('previews an evidenced paragraph when the model begins with an uncited introduction', async () => {
   vi.mocked(api).mockResolvedValue({
     data: {

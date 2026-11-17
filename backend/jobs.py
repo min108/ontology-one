@@ -170,6 +170,7 @@ def harness_queue_summaries(principal, limit=20):
         stamp = lambda value: value.replace(tzinfo=timezone.utc).isoformat() if value else ""
         recipe = None
         if row["kind"] == "recipe_run":
+            from .db import connect
             from .domains.build import status as recipe_status
 
             from .core.errors import ApiError
@@ -179,12 +180,27 @@ def harness_queue_summaries(principal, limit=20):
             except ApiError as exc:
                 if exc.code != "NOT_FOUND":
                     raise
-                recipe = {
-                    "changeset_id": None,
-                    "stage": "failed",
-                    "stage_message": "整理记录已不可用，原材料仍保留，请在素材页继续。",
-                }
-                status = "failed"
+                # The control queue commits before the tenant recipe transaction.
+                # A live queue entry is still starting, not a failed recipe.
+                with closing(connect()) as conn:
+                    committed = conn.execute("SELECT id FROM jobs WHERE id=?", (row["job_id"],)).fetchone()
+                if committed:
+                    # The transaction may have committed between the two reads.
+                    try:
+                        recipe = recipe_status(row["job_id"])
+                    except ApiError as retry_exc:
+                        if retry_exc.code != "NOT_FOUND":
+                            raise
+                if recipe is None:
+                    starting = row["status"] in ACTIVE and not committed
+                    recipe = {
+                        "changeset_id": None,
+                        "stage": "queued" if starting else "failed",
+                        "stage_message": "已收到材料，正在等待整理"
+                        if starting
+                        else "整理记录已不可用，原材料仍保留，请在素材页继续。",
+                    }
+                    status = "queued" if starting else "failed"
             href = (
                 "/build/changesets/" + recipe["changeset_id"]
                 if recipe["changeset_id"]

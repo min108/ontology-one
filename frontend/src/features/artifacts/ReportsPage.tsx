@@ -214,6 +214,9 @@ function Reports({ id, identity }: { id?: string; identity: string }) {
             {report.spec.revision && (
               <FoldRow title={actions.r3_report_compare} summary={copy.r3_report_revised}>
                 <h3>{copy.r3_report_before}</h3>
+                {report.spec.revision.before_configuration_changed && (
+                  <p>{copy.r4_report_before_configuration_changed}</p>
+                )}
                 <p className={styles.paragraph}>
                   {businessText(report.spec.revision.before, report.spec.citations)}
                 </p>

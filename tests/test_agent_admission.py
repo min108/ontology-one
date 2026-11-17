@@ -109,3 +109,28 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
             model.assert_not_called()
             self.assertEqual(session["messages"], [])
             await store.close()
+
+    async def test_report_revision_cannot_be_revised_again(self):
+        principal = SimpleNamespace(user_id="user", session_id="login", tenant_id="tenant")
+        store = SessionStore()
+        with (
+            patch("backend.agent_runtime.current", return_value=principal),
+            patch.object(store, "validate", new=AsyncMock()),
+            patch.object(store, "_execute", new=AsyncMock()) as model,
+        ):
+            session = store.create(principal)
+            scope = {"skill_ids": [], "mapping_ids": [], "entity_ids": ["rule"]}
+            session["last_scope"] = scope
+            session["runs"]["revised"] = {
+                "status": "completed",
+                "answer": "revised answer",
+                "revision_of": "original",
+                "_report_scope": scope,
+            }
+            with self.assertRaises(HTTPException) as error:
+                await store.start(principal, session, "revise again", [], [], [], revision_of="revised")
+            self.assertEqual(error.exception.status_code, 409)
+            model.assert_not_called()
+            self.assertEqual(session["messages"], [])
+            self.assertEqual(set(session["runs"]), {"revised"})
+            await store.close()

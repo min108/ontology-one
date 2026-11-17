@@ -173,7 +173,13 @@ def create(session_id: str, run_id: str, title: str = "") -> dict:
             original = session["runs"].get(original_id)
             if not original or not original.get("answer") or original.get("status") != "completed":
                 raise HTTPException(409, "修订前的回答已不可用，请重新提问后生成报告。")
-            spec["revision"] = {"count": 1, "before": original["answer"], "after": run["answer"]}
+            spec["revision"] = {
+                "count": 1,
+                "before": original["answer"],
+                "after": run["answer"],
+                "before_configuration_changed": original.get("_report_configuration_signature")
+                != run.get("_report_configuration_signature"),
+            }
             spec["source_label"] += " · 已按核对结果修订 1 次"
         try:
             render.verify(spec)

@@ -31,6 +31,7 @@ class ArtifactRevision(ReadModel):
     count: Literal[1] = 1
     before: str
     after: str
+    before_configuration_changed: bool = False
 
 
 class ArtifactSpec(ReadModel):
