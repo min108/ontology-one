@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import sourceLocations from '../../../test-fixtures/source-locations.json';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { api, ApiError, invokeCapability } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
+import { useUiStore } from '../../state/ui';
 import { sentence } from './model';
 import { testQuery, testSession } from './testQuery';
 import ChangesetPage from './ChangesetPage';
@@ -50,6 +52,7 @@ const seed = () => ({
 let proposal = seed();
 beforeEach(() => {
   testSession();
+  useUiStore.setState({ viewMode: 'simple' });
   vi.clearAllMocks();
   proposal = seed();
   vi.mocked(api).mockImplementation(async () => ({ data: structuredClone(proposal) }) as never);
@@ -110,6 +113,56 @@ it('disables submission when the server reports no remaining draft to submit', a
   proposal.items[0].applied_entity_id = 'rule-1';
   open();
   expect(await screen.findByRole('button', { name: terms.labels.r3_main_submitted })).toBeDisabled();
+  expect(screen.getByText(sentence(terms.labels.r31_submitted_count, { count: 1 }))).toBeVisible();
+  expect(
+    screen.queryByText(sentence(terms.labels.r3_main_submit_count, { count: 1 })),
+  ).not.toBeInTheDocument();
+});
+
+it('expires the undo notice together with its action', async () => {
+  const timers: (() => void)[] = [];
+  const original = globalThis.setTimeout;
+  const timeout = vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...args) => {
+    if (delay === 8000 && typeof callback === 'function') timers.push(callback as () => void);
+    return original(callback, delay, ...args);
+  });
+  try {
+    vi.mocked(invokeCapability).mockImplementation(async () => {
+      proposal.items[0].decision = 'rejected';
+      return {} as never;
+    });
+    open();
+    fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_2 }));
+    expect(await screen.findByText(terms.labels.r3_main_undo_saved)).toBeVisible();
+    expect(screen.getByRole('button', { name: terms.labels.r3_main_undo })).toBeVisible();
+    expect(timers).toHaveLength(1);
+    act(() => timers[0]());
+    expect(screen.queryByText(terms.labels.r3_main_undo_saved)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: terms.labels.r3_main_undo })).not.toBeInTheDocument();
+  } finally {
+    timeout.mockRestore();
+  }
+});
+
+it('keeps source positions out of simple view and inside the professional technical fold', async () => {
+  proposal.items[0].evidence = [
+    {
+      material_id: 'M-1',
+      anchor_id: 'A-1',
+      source_version: 'V-1',
+      quote: 'Original',
+      start: 0,
+      end: 8,
+      locator: sourceLocations.characterRange,
+    },
+  ] as never;
+  const { container } = open();
+  expect((await screen.findAllByText('Policy'))[0]).toBeVisible();
+  expect(container).not.toHaveTextContent(/原文第|阅读版/);
+  act(() => useUiStore.setState({ viewMode: 'professional' }));
+  const technical = container.querySelector('[data-technical-details]')!;
+  expect(technical).toHaveTextContent(sourceLocations.characterRange);
+  expect(within(technical as HTMLElement).getByText(sourceLocations.characterRange)).not.toBeVisible();
 });
 
 it('requires all items handled before one L2 submit confirmation and then submits once', async () => {
@@ -135,6 +188,9 @@ it('requires all items handled before one L2 submit confirmation and then submit
   );
   fireEvent.click(submit);
   const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveStyle({
+    width: getComputedStyle(document.documentElement).getPropertyValue('--zy-dialog-width'),
+  });
   await waitFor(() =>
     expect(within(dialog).getByText(sentence(terms.labels.r3_main_submit_count, { count: 1 }))).toBeVisible(),
   );

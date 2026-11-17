@@ -46,7 +46,7 @@ export function todoEntries(
   returned: number | null,
   relations: number | null,
 ) {
-  const entries: { label: string; count: number; href: string }[] = [];
+  const entries: { label: string; count: number; href: string; step?: number }[] = [];
   if (tasks)
     entries.push({ label: terms.labels.home_tasks, count: tasks.active, href: '/work?status=active' });
   if (access.canEdit && returned !== null)
@@ -54,18 +54,21 @@ export function todoEntries(
       label: terms.labels.home_returned,
       count: returned,
       href: '/maintenance?tab=review&review_status=returned',
+      step: 2,
     });
   if (access.canReview && review !== null)
     entries.push({
       label: terms.labels.home_review,
       count: review,
       href: '/maintenance?tab=review&review_status=review',
+      step: 3,
     });
   if (access.canReview && relations !== null)
     entries.push({
       label: terms.labels.home_relations_review,
       count: relations,
       href: '/maintenance?tab=relations&relation_status=candidate',
+      step: 3,
     });
   return entries;
 }

@@ -47,10 +47,9 @@ import type { ElementDetail, ElementDetailResult } from '../../api/generated/typ
 export function BusinessCard({ detail }: { detail: ElementDetail }) {
   const [source, setSource] = useState<Evidence>();
   const sources = Array.isArray(detail.entity.payload.source_refs)
-    ? (detail.entity.payload.source_refs.filter((value) => value && typeof value === 'object') as Record<
-        string,
-        unknown
-      >[])
+    ? detail.entity.payload.source_refs.filter(
+        (value) => sourceDescription(value) || isAnchoredEvidence(value),
+      )
     : [];
   return (
     <article className={styles.card} aria-label={detail.entity.title}>
@@ -79,26 +78,25 @@ export function BusinessCard({ detail }: { detail: ElementDetail }) {
           <p>{sourceDescription(ref) || copy.r3_main_no_source}</p>
           {isAnchoredEvidence(ref) && (
             <Button type="text" autoInsertSpace={false} onClick={() => setSource(ref)}>
-              {businessText(ref.locator) || copy.r3_main_view_original}
+              {copy.r3_main_view_original}
             </Button>
           )}
         </blockquote>
       ))}
       {sources.length > 1 && (
         <FoldRow
-          title={copy.r3_main_source}
-          summary={sentence(copy.r3_main_count, { count: sources.length })}
+          title={copy.r31_other_sources}
+          summary={sentence(copy.r3_main_count, { count: sources.length - 1 })}
         >
           {sources.slice(1).map((ref, i) => (
-            <p key={i}>
-              {isAnchoredEvidence(ref) ? (
+            <blockquote className={styles.quote} key={i}>
+              <p>{sourceDescription(ref) || copy.r3_main_no_source}</p>
+              {isAnchoredEvidence(ref) && (
                 <Button type="text" onClick={() => setSource(ref)}>
-                  {businessText(ref.locator) || copy.r3_main_view_original}
+                  {copy.r3_main_view_original}
                 </Button>
-              ) : (
-                <span>{sourceDescription(ref) || copy.r3_main_no_source}</span>
               )}
-            </p>
+            </blockquote>
           ))}
         </FoldRow>
       )}
@@ -175,37 +173,36 @@ function Element({ id }: { id: string }) {
         <div className={styles.stack}>
           <BusinessCard detail={detail} />
           <div className={styles.folds}>
-            <FoldRow title={copy.r3_main_conditions} summary={copy.r3_main_conditions_summary}>
-              <div role="region" aria-label={copy.r3_main_conditions}>
-                {conditions.length ? (
+            {conditions.length > 0 && (
+              <FoldRow
+                title={copy.r3_main_conditions}
+                summary={sentence(copy.r3_main_count, { count: conditions.length })}
+              >
+                <div role="region" aria-label={copy.r3_main_conditions}>
                   <Descriptions column={1} items={conditions} />
-                ) : (
-                  <p>{copy.r2_card_empty}</p>
-                )}
-              </div>
-            </FoldRow>
-            <FoldRow
-              title={copy.r2_card_relations}
-              summary={sentence(copy.r3_main_relation_summary, { count: detail.card.relations.length })}
-            >
-              <div role="region" aria-label={copy.r2_card_relations}>
-                {detail.card.relations.length ? (
+                </div>
+              </FoldRow>
+            )}
+            {detail.card.relations.length > 0 && (
+              <FoldRow
+                title={copy.r2_card_relations}
+                summary={sentence(copy.r3_main_relation_summary, { count: detail.card.relations.length })}
+              >
+                <div role="region" aria-label={copy.r2_card_relations}>
                   <ul>
                     {detail.card.relations.map((relation, i) => (
                       <li key={i}>{relation}</li>
                     ))}
                   </ul>
-                ) : (
-                  <p>{copy.r2_card_empty}</p>
-                )}
-              </div>
-            </FoldRow>
-            <FoldRow
-              title={copy.r2_card_versions}
-              summary={sentence(copy.r3_main_version_summary, { count: detail.versions.length })}
-            >
-              <div role="region" aria-label={copy.r2_card_versions}>
-                {detail.versions.length ? (
+                </div>
+              </FoldRow>
+            )}
+            {detail.versions.length > 0 && (
+              <FoldRow
+                title={copy.r2_card_versions}
+                summary={sentence(copy.r3_main_version_summary, { count: detail.versions.length })}
+              >
+                <div role="region" aria-label={copy.r2_card_versions}>
                   <ul>
                     {detail.versions.map((version) => (
                       <li key={version.id}>
@@ -214,40 +211,39 @@ function Element({ id }: { id: string }) {
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p>{copy.r2_card_empty}</p>
-                )}
-              </div>
-            </FoldRow>
-            <FoldRow
-              title={copy.r2_card_activity}
-              summary={sentence(copy.r3_main_activity_summary, { count: activities.length })}
-            >
-              <div role="region" aria-label={copy.r2_card_activity}>
-                {activities.length ? (
+                </div>
+              </FoldRow>
+            )}
+            {activities.length > 0 && (
+              <FoldRow
+                title={copy.r2_card_activity}
+                summary={sentence(copy.r3_main_activity_summary, { count: activities.length })}
+              >
+                <div role="region" aria-label={copy.r2_card_activity}>
                   <ul>
                     {activities.map((event) => (
                       <li key={event.id}>
-                        {event.label} · {event.detail} · {formatDateTime(event.created_at)}
+                        {event.label}
+                        {event.detail ? ` · ${event.detail}` : ''} · {formatDateTime(event.created_at)}
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p>{copy.r2_card_empty}</p>
-                )}
-              </div>
-            </FoldRow>
+                </div>
+              </FoldRow>
+            )}
             {professional && (
               <>
-                <FoldRow
-                  title={copy.r2_card_structure}
-                  summary={sentence(copy.r3_main_count, { count: fields.length })}
-                  defaultOpen
-                >
-                  <div role="region" aria-label={copy.r2_card_structure}>
-                    {fields.length ? <Descriptions column={1} items={fields} /> : <p>{copy.r2_card_empty}</p>}
-                  </div>
-                </FoldRow>
+                {fields.length > 0 && (
+                  <FoldRow
+                    title={copy.r2_card_structure}
+                    summary={sentence(copy.r3_main_count, { count: fields.length })}
+                    defaultOpen
+                  >
+                    <div role="region" aria-label={copy.r2_card_structure}>
+                      <Descriptions column={1} items={fields} />
+                    </div>
+                  </FoldRow>
+                )}
                 <FoldRow
                   title={copy.r3_main_five_checks}
                   summary={copy.r3_main_pro_checks_summary}
@@ -287,8 +283,12 @@ function Element({ id }: { id: string }) {
         <aside className={`${styles.card} ${styles.stack}`}>
           <h2>{copy.r2_card_usage}</h2>
           <p>{detail.card.usage}</p>
-          <h2>{copy.r3_main_next}</h2>
-          <p>{entity.status === 'published' ? copy.r3_main_next_ask : copy.r3_main_draft_note}</p>
+          {!fromChangeset && (
+            <>
+              <h2>{copy.r3_main_next}</h2>
+              <p>{entity.status === 'published' ? copy.r31_element_next_ask : copy.r3_main_draft_note}</p>
+            </>
+          )}
           {detail.can_edit && entity.status === 'published' && (
             <Link to={'/assets/' + encodeURIComponent(id)}>{terms.actions.r2_card_edit}</Link>
           )}

@@ -1051,7 +1051,13 @@
     "r3_ui_nav_collapse": "收起导航",
     "r3_main_start": "从这里开始",
     "r3_main_start_lead": "先交一份制度，整理成可以核对和使用的本体内容。",
-    "r3_main_focus": "先处理需要你看一眼的内容",
+    "r3_main_focus": "{count} 项待办等你处理",
+    "r31_home_process": "去处理待办",
+    "r31_home_workflow": "交入制度后，按实际进度继续。",
+    "r31_submitted_count": "已提交 {count} 条已采纳的内容。",
+    "r31_other_sources": "其余出处",
+    "r31_element_next_ask": "围绕已发布的内容问一个问题。",
+    "r31_review_changed": "这项内容已不在待审核列表中，请取消后重新选择。",
     "r3_main_ready": "本机构的内容已经就绪",
     "r3_main_common": "常用入口",
     "r3_main_pending": "还有 {count} 条没处理",
@@ -1254,7 +1260,8 @@
     "granularity": "每条记录代表的业务对象或时间范围。",
     "markdown": "一种带简单格式的纯文本，可以直接粘贴到多数知识库、协作工具和邮件中。",
     "view_mode": "简洁视图突出下一步，专业视图显示更多细节。",
-    "scope": "当前查看和操作的机构与内容范围。"
+    "scope": "当前查看和操作的机构与内容范围。",
+    "home_pending": "以下为本机构全部待办，不按个人分配。"
   },
   "families": {
     "data": "数据标准",

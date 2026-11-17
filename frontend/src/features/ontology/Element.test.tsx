@@ -1,8 +1,10 @@
+import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
+import { sentence } from '../build/model';
 import { useUiStore } from '../../state/ui';
 import { testQuery, testSession } from '../build/testQuery';
 import ElementPage, { type ElementDetail } from './ElementPage';
@@ -173,7 +175,7 @@ it('formats versions and activity in Beijing time and translates action identifi
   expect(activity).not.toHaveTextContent('internal-action-secret');
 });
 
-it('shows an empty state when payload contains only metadata or unsupported nested data', async () => {
+it('hides empty folds when payload contains only metadata or unsupported nested data', async () => {
   const value = detail();
   value.entity.payload = {
     candidate_id: 'secret',
@@ -182,11 +184,10 @@ it('shows an empty state when payload contains only metadata or unsupported nest
   };
   useUiStore.setState({ viewMode: 'professional' });
   await openElement(value);
-  expect(
-    within(screen.getByRole('region', { name: terms.labels.r2_card_structure })).getByText(
-      terms.labels.r2_card_empty,
-    ),
-  ).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: terms.labels.r2_card_structure })).not.toBeInTheDocument();
+  expect(screen.queryByText(terms.labels.r3_main_conditions)).not.toBeInTheDocument();
+  expect(screen.queryByText(terms.labels.r2_card_relations)).not.toBeInTheDocument();
+  expect(screen.getByText(/unknown_internal/)).not.toBeVisible();
 });
 
 it('renders a draft in the new archive page without a published question action', async () => {
@@ -211,6 +212,44 @@ it('returns a mainline draft to its construction proposal and offers completed-s
   );
   const steps = screen.getByRole('navigation', { name: terms.labels.r3_ui_next });
   expect(within(steps).getByRole('button', { name: terms.actions.r3_ui_step1 })).toBeEnabled();
+  expect(screen.queryByRole('heading', { name: terms.labels.r3_main_next })).not.toBeInTheDocument();
+});
+
+it('shows each source once, counts conditions, and keeps positions inside technical details', async () => {
+  const value = detail();
+  value.entity.payload.source_refs = [
+    {
+      material_id: 'm',
+      anchor_id: 'a',
+      source_version: 'v',
+      start: 0,
+      end: 6,
+      title: 'Payment policy',
+      quote: 'Review payment',
+      locator: sourceLocations.characterRange,
+    },
+    { excerpt: 'Historical policy excerpt' },
+  ];
+  value.versions = [];
+  value.entity.activities = [];
+  const { container } = await openElement(value);
+  expect(screen.getAllByText('Payment policy · Review payment')).toHaveLength(1);
+  expect(screen.getByRole('button', { name: terms.labels.r3_main_view_original })).toBeVisible();
+  expect(screen.getByText(terms.labels.r3_main_conditions).closest('summary')).toHaveTextContent(
+    sentence(terms.labels.r3_main_count, { count: 3 }),
+  );
+  expect(screen.getByText(terms.labels.r31_other_sources).closest('summary')).toHaveTextContent(
+    sentence(terms.labels.r3_main_count, { count: 1 }),
+  );
+  expect(screen.queryByText(terms.labels.r2_card_versions)).not.toBeInTheDocument();
+  expect(screen.queryByText(terms.labels.r2_card_activity)).not.toBeInTheDocument();
+  expect(container).not.toHaveTextContent(/原文第|阅读版/);
+  fireEvent.click(screen.getByText(terms.labels.r31_other_sources));
+  expect(screen.getByText('Historical policy excerpt')).toBeVisible();
+  act(() => useUiStore.setState({ viewMode: 'professional' }));
+  expect(container.querySelector('[data-technical-details]')).toHaveTextContent(
+    sourceLocations.characterRange,
+  );
 });
 it('uses the catalog return for a direct archive visit and ignores arbitrary from destinations', async () => {
   await openElement(detail(), '/ontology/elements/rule_private_id?from=https%3A%2F%2Fexample.invalid');

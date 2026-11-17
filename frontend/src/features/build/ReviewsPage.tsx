@@ -1,5 +1,5 @@
 import { Alert, Button, Input, Modal, Select } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import type { ReviewBody, ReviewListResult, ReviewResult } from '../../api/generated/types';
@@ -38,7 +38,12 @@ function Inbox() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const [reason, setReason] = useState(''),
-    [confirmation, setConfirmation] = useState<ReviewBody['decision']>();
+    [confirmation, setConfirmation] = useState<{
+      id: string;
+      version: number;
+      title: string;
+      decision: ReviewBody['decision'];
+    }>();
   const [result, setResult] = useState<{
     id: string;
     title: string;
@@ -49,8 +54,14 @@ function Inbox() {
   const lifetime = useLifetime(),
     navigate = useNavigate();
   const rows = list.data?.data.items;
-  const current = rows?.find((row) => row.entity.id === selected) || rows?.[0];
+  const current = rows?.find((row) => row.entity.id === selected);
+  useEffect(() => {
+    if (!confirmation && rows && !rows.some((row) => row.entity.id === selected))
+      setSelected(rows[0]?.entity.id || '');
+  }, [rows, selected, confirmation]);
   const blocked = busy || !!list.refreshing || !!list.error || !current?.can_decide;
+  const confirmedRow = rows?.find((row) => row.entity.id === confirmation?.id);
+  const confirmationBlocked = busy || !!list.refreshing || !!list.error || !confirmedRow?.can_decide;
   const sources = current?.source_refs || [];
   const conditionValue: unknown = current?.entity.payload.conditions;
   const conditions = (Array.isArray(conditionValue) ? conditionValue : [conditionValue])
@@ -67,34 +78,44 @@ function Inbox() {
   const revisit = (step: number) =>
     navigate(step === 1 ? '/build/intake' : step === 2 ? sourceChangeset : '/govern/reviews');
   const blockedReason = current?.blocked_reason || (!current?.can_decide ? copy.r3_main_review_other : '');
+  function confirm(decision: ReviewBody['decision']) {
+    if (!current || blocked) return;
+    setConfirmation({
+      id: current.entity.id,
+      version: current.entity.version,
+      title: current.entity.title,
+      decision,
+    });
+    setReason('');
+    setError('');
+  }
   async function decide() {
     const signal = lifetime.current?.signal;
     if (
-      !current?.can_decide ||
-      blocked ||
+      confirmationBlocked ||
       !confirmation ||
-      (confirmation === 'return' && !reason.trim()) ||
+      (confirmation.decision === 'return' && !reason.trim()) ||
       signal?.aborted
     )
       return;
     setBusy(true);
     setError('');
     const body: ReviewBody = {
-      decision: confirmation,
-      version: current.entity.version,
+      decision: confirmation.decision,
+      version: confirmation.version,
       reason: reason.trim(),
     };
     try {
-      await api<ReviewResult>('/v2/reviews/' + encodeURIComponent(current.entity.id) + ':decide', {
+      await api<ReviewResult>('/v2/reviews/' + encodeURIComponent(confirmation.id) + ':decide', {
         method: 'POST',
         signal,
         body: JSON.stringify(body),
       });
       if (signal?.aborted) return;
       setResult({
-        id: current.entity.id,
-        title: current.entity.title,
-        decision: confirmation,
+        id: confirmation.id,
+        title: confirmation.title,
+        decision: confirmation.decision,
         reason: reason.trim(),
       });
       setReason('');
@@ -124,10 +145,7 @@ function Inbox() {
               ? {
                   label: actions.catalog_2_5,
                   disabled: blocked || !!confirmation,
-                  onClick: () => {
-                    setConfirmation('approve_publish');
-                    setError('');
-                  },
+                  onClick: () => confirm('approve_publish'),
                 }
               : undefined
           }
@@ -224,6 +242,7 @@ function Inbox() {
                   <button
                     type="button"
                     key={row.entity.id}
+                    data-review-item-id={row.entity.id}
                     className={styles.pick}
                     aria-current={row.entity.id === current?.entity.id ? 'true' : undefined}
                     onClick={() => {
@@ -270,17 +289,6 @@ function Inbox() {
                   <dt>{copy.r3_main_catalog_updated}</dt>
                   <dd>{formatDateTime(current.submitted_at)}</dd>
                 </dl>
-                {blockedReason && (
-                  <Alert
-                    type="warning"
-                    title={
-                      /提交人|最后编辑人|自己的/.test(blockedReason)
-                        ? copy.r3_main_review_self
-                        : copy.r3_main_review_other
-                    }
-                    description={blockedReason}
-                  />
-                )}
                 {conditions.length > 0 && (
                   <FoldRow
                     title={copy.r3_main_scope}
@@ -355,17 +363,9 @@ function Inbox() {
                 </TechnicalDetails>
               </div>
               <div className={styles['pane-actions']}>
-                <Button
-                  autoInsertSpace={false}
-                  disabled={blocked}
-                  onClick={() => {
-                    setConfirmation('return');
-                    setError('');
-                  }}
-                >
+                <Button autoInsertSpace={false} disabled={blocked} onClick={() => confirm('return')}>
                   {actions.catalog_2_6}
                 </Button>
-                {!current.can_decide && <span className={styles.muted}>{copy.r3_main_review_other}</span>}
               </div>
             </article>
           )}
@@ -373,23 +373,31 @@ function Inbox() {
       )}
       <SourceEvidence source={focus} onClose={() => setFocus(undefined)} />
       <Modal
+        width="var(--zy-dialog-width)"
         open={!!confirmation}
-        title={confirmation === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}
-        okText={confirmation === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}
+        title={confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}
+        okText={confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}
         cancelText={actions.r2_cancel}
         onCancel={() => !busy && setConfirmation(undefined)}
         onOk={() => void decide()}
         confirmLoading={busy}
         okButtonProps={{
           autoInsertSpace: false,
-          'aria-label': confirmation === 'return' ? actions.catalog_2_6 : actions.catalog_2_5,
-          disabled: blocked || (confirmation === 'return' && !reason.trim()),
+          'aria-label': confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5,
+          disabled: confirmationBlocked || (confirmation?.decision === 'return' && !reason.trim()),
         }}
       >
         {error && <Alert type="error" title={error} role="alert" />}
-        <p>{current?.entity.title}</p>
-        <p>{confirmation === 'return' ? copy.r3_main_return_impact : copy.r3_main_approve_impact}</p>
-        {confirmation === 'return' && (
+        {confirmation && !list.refreshing && !confirmedRow?.can_decide && (
+          <Alert type="warning" title={confirmedRow?.blocked_reason || copy.r31_review_changed} />
+        )}
+        <p data-testid="review-confirmation-object" data-review-id={confirmation?.id}>
+          {confirmation?.title}
+        </p>
+        <p>
+          {confirmation?.decision === 'return' ? copy.r3_main_return_impact : copy.r3_main_approve_impact}
+        </p>
+        {confirmation?.decision === 'return' && (
           <label className={styles.field}>
             {copy.r3_main_return_reason}
             <Input.TextArea

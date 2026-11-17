@@ -23,15 +23,27 @@ export function businessText(value: unknown): string {
 }
 
 export function sourceDescription(value: unknown): string {
+  if (typeof value === 'string') return sourceLocator(value);
   if (!value || typeof value !== 'object') return '';
   const source = value as Record<string, unknown>;
   return [
     ...new Set(
       [
         businessText(source.title),
-        businessText(source.locator),
+        sourceLocator(source.locator),
         businessText(source.quote) || businessText(source.excerpt),
       ].filter(Boolean),
     ),
   ].join(' · ');
+}
+
+// Character offsets and reading-version counters describe storage, not the cited policy.
+// Preserve real clause/column labels, including those in older unanchored sources.
+export function sourceLocator(value: unknown): string {
+  return businessText(value)
+    .split(/[·；]/)
+    .filter((part) => !/原文第\s*\d+\s*[–—-]\s*\d+\s*字|阅读版\s*\d+/.test(part))
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' · ');
 }

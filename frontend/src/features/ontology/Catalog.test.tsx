@@ -58,7 +58,8 @@ it('presents the four kinds and a literal, anchored business card', async () => 
     focus: { start: 0, end: 19 },
     source_version: 'V-1',
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Article 1' }));
+  expect(screen.getAllByText('Article 1 · Pay within 30 days.')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r3_main_view_original }));
   const drawer = await screen.findByRole('dialog');
   expect(within(drawer).getByRole('link', { name: terms.labels.r3_main_source_page })).toHaveAttribute(
     'href',

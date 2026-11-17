@@ -1,9 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import sourceLocations from '../../../test-fixtures/source-locations.json';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
+import { useUiStore } from '../../state/ui';
 import type { Review } from '../../api/generated/types';
 import { testQuery, testSession } from './testQuery';
 import ReviewsPage from './ReviewsPage';
@@ -43,6 +46,8 @@ let current: Review;
 let available: boolean;
 beforeEach(() => {
   testSession();
+  useUiStore.setState({ viewMode: 'simple' });
+  focusManager.setFocused(undefined);
   vi.clearAllMocks();
   current = row();
   available = true;
@@ -79,10 +84,55 @@ it('shows a clear self-review reason and blocks both decision paths', async () =
   current.can_decide = false;
   current.blocked_reason = terms.labels.r3_main_review_self_detail;
   open();
-  expect(await screen.findByText(terms.labels.r3_main_review_self)).toBeVisible();
+  expect((await screen.findAllByText(terms.labels.r3_main_review_self_detail))[0]).toBeVisible();
   expect(screen.getByRole('button', { name: terms.actions.catalog_2_5 })).toBeDisabled();
   expect(screen.getByRole('button', { name: terms.actions.catalog_2_6 })).toBeDisabled();
   expect(vi.mocked(api).mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true);
+});
+
+it('shows the actual server denial without mislabelling it as self-review', async () => {
+  current.can_decide = false;
+  current.blocked_reason = 'This institution is read-only; review in the owning institution.';
+  open();
+  expect((await screen.findAllByText(current.blocked_reason))[0]).toBeVisible();
+  expect(screen.queryByText(terms.labels.r3_main_review_self)).not.toBeInTheDocument();
+  expect(screen.queryByText(terms.labels.r3_main_review_other)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_2_5 })).toBeDisabled();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_2_6 })).toBeDisabled();
+});
+
+it('keeps readable policy sources and hides character positions until professional technical details', async () => {
+  current.source_refs = [
+    {
+      ...current.source_refs![0],
+      title: 'Payment policy',
+      locator: sourceLocations.characterRange,
+    },
+    { excerpt: 'Historical policy source' },
+  ];
+  const { container } = open();
+  expect(await screen.findByText('Payment policy · Review before payment')).toBeVisible();
+  expect(screen.getByText('Historical policy source')).toBeVisible();
+  expect(container).not.toHaveTextContent(/原文第|阅读版/);
+  act(() => useUiStore.setState({ viewMode: 'professional' }));
+  const technical = container.querySelector('[data-technical-details]')!;
+  expect(technical).toHaveTextContent(sourceLocations.characterRange);
+  expect(within(technical as HTMLElement).getByText(/原文第/)).not.toBeVisible();
+});
+
+it('rechecks review permission on refocus without changing the locked target', async () => {
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_2_5 }));
+  const dialog = screen.getByRole('dialog');
+  current = { ...current, can_decide: false, blocked_reason: 'Review permission changed' };
+  await act(async () => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  await waitFor(() => expect(api).toHaveBeenCalledTimes(2));
+  expect(within(dialog).getByRole('button', { name: terms.actions.catalog_2_5 })).toBeDisabled();
+  fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.catalog_2_5 }));
+  expect(vi.mocked(api).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
 });
 it('requires a reason inside one return confirmation and preserves the returned reason in the result', async () => {
   open();
@@ -117,6 +167,9 @@ it('publishes only after L2 confirmation and asks with the published reference s
   open();
   fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_2_5 }));
   expect(current.entity.status).toBe('review');
+  expect(screen.getByRole('dialog')).toHaveStyle({
+    width: getComputedStyle(document.documentElement).getPropertyValue('--zy-dialog-width'),
+  });
   fireEvent.click(
     within(screen.getByRole('dialog')).getByRole('button', { name: terms.actions.catalog_2_5 }),
   );
@@ -174,3 +227,54 @@ it('keeps local-rule origin visible while the business content awaits review', a
   expect(await screen.findByText(terms.labels.r3_ui_local)).toBeVisible();
   expect(screen.queryByText('local')).not.toBeInTheDocument();
 });
+
+it.each(['approve_publish', 'return'] as const)(
+  'locks the default review identity, version, title and %s decision across a refocus reorder',
+  async (decision) => {
+    const first = row();
+    const second = row();
+    second.entity = { ...second.entity, id: 'rule-2', title: 'Other policy', version: 8 };
+    let rows = [first, second];
+    vi.mocked(api).mockImplementation(async (_path, init) => {
+      if (init?.method === 'POST') return { data: first } as never;
+      return { data: { items: structuredClone(rows), total: rows.length } } as never;
+    });
+    open();
+    const action = decision === 'return' ? terms.actions.catalog_2_6 : terms.actions.catalog_2_5;
+    fireEvent.click(await screen.findByRole('button', { name: action }));
+    const dialog = screen.getByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText(first.entity.title)).toBeVisible());
+    if (decision === 'return') {
+      fireEvent.change(within(dialog).getByLabelText(terms.labels.r3_main_return_reason), {
+        target: { value: 'Clarify the policy scope' },
+      });
+    }
+    rows = [second, { ...first, entity: { ...first.entity, title: 'Changed title', version: 4 } }];
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(api).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: action })).toBeEnabled());
+    expect(within(dialog).getByText('Payment control')).toBeVisible();
+    expect(within(dialog).queryByText('Other policy')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-review-item-id="rule-1"]')).toHaveAttribute('aria-current', 'true');
+    expect(document.querySelector('[data-review-item-id="rule-2"]')).not.toHaveAttribute('aria-current');
+    fireEvent.click(within(dialog).getByRole('button', { name: action }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/v2/reviews/rule-1:decide',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            decision,
+            version: 3,
+            reason: decision === 'return' ? 'Clarify the policy scope' : '',
+          }),
+        }),
+      ),
+    );
+    expect(vi.mocked(api).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    focusManager.setFocused(undefined);
+  },
+);

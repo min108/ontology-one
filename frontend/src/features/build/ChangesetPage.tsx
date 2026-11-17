@@ -30,6 +30,7 @@ import {
   BuildForbidden,
 } from './shared';
 import { changesetGate, groupItems, isHandledElsewhere, sentence } from './model';
+import { sourceLocator } from './businessText';
 import styles from './Build.module.css';
 
 export default function ChangesetPage() {
@@ -58,7 +59,10 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
   const proposal = resource.data?.data;
   useEffect(() => {
     if (!undo) return;
-    const timer = setTimeout(() => setUndo(undefined), 8000);
+    const timer = setTimeout(() => {
+      setUndo(undefined);
+      setMessage((value) => (value === copy.r3_main_undo_saved ? '' : value));
+    }, 8000);
     return () => clearTimeout(timer);
   }, [undo]);
   async function perform(operation: () => Promise<unknown>, success: string) {
@@ -248,11 +252,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           <div className={`${styles.stack} ${styles['evidence-pane']}`}>
             <h2>{copy.r3_main_source}</h2>
             <p>{proposal.title}</p>
-            {chosen && (
-              <>
-                <p>{chosen.locator}</p>
-              </>
-            )}
+            {chosen && sourceLocator(chosen.locator) && <p>{sourceLocator(chosen.locator)}</p>}
             <h2>{copy.r3_main_checks}</h2>
             <ul className={styles.checks}>
               <li>
@@ -298,7 +298,11 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               {!gate.pending && (
                 <div className={styles.completed}>
                   <h2>{copy.r3_main_submit_content}</h2>
-                  <p>{sentence(copy.r3_main_submit_count, { count: gate.accepted })}</p>
+                  <p>
+                    {sentence(submitted ? copy.r31_submitted_count : copy.r3_main_submit_count, {
+                      count: gate.accepted,
+                    })}
+                  </p>
                   <h3>{copy.r3_main_after_submit}</h3>
                   <p>{copy.r3_main_submit_impact}</p>
                 </div>
@@ -357,6 +361,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               )}
               <TechnicalDetails>
                 <p>{current.id}</p>
+                <p>{chosen?.locator}</p>
                 <p>{chosen?.source_version}</p>
                 {chosen && (
                   <p>
@@ -437,6 +442,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         </TechnicalDetails>
       </EvidenceDrawer>
       <Modal
+        width="var(--zy-dialog-width)"
         title={actions.catalog_1_6}
         open={confirm}
         onCancel={() => !busy && setConfirm(false)}

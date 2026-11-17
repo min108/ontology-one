@@ -1,6 +1,6 @@
-import { Alert, Button, Drawer, Tooltip } from 'antd';
+import { Alert, Drawer } from 'antd';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { activityHref } from '@legacy/components/HarnessActivity';
 import { api } from '../../api/client';
@@ -8,11 +8,12 @@ import { workspaceQueryKey } from '../../api/query';
 import { useSessionStore } from '../../state/session';
 import { useScopeStore } from '../../state/scope';
 import { useAddressState } from '../../app/addressState';
-import { StateBlock, PageLayout, PageHeader, NextStepBar } from '../../ui';
+import { StateBlock, PageLayout, PageHeader, NextStepBar, HelpTip } from '../../ui';
 import { useUiStore } from '../../state/ui';
 import { terms } from '../../i18n/zh-CN';
 import { parseOverview, parseRuns, parseTotal, taskCounts, todoEntries } from './model';
 import { readRecent } from './recent';
+import { sentence } from '../build/model';
 import styles from './Home.module.css';
 
 export default function Home() {
@@ -28,6 +29,7 @@ export default function Home() {
   );
 }
 function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string }) {
+  const navigate = useNavigate();
   const session = useSessionStore((state) => state.session)!;
   const { params, update } = useAddressState();
   const detail = params.get('detail') ?? '';
@@ -127,9 +129,16 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
   const selected = metrics.find((metric) => metric.id === detail);
   const retry = terms.labels.home_retry;
   const positive = rows.filter((row) => row.count > 0);
+  const pendingCount = positive.reduce((total, row) => total + row.count, 0);
+  const focus = positive.find((row) => row.step) || positive[0];
   const isEmpty =
     data && !data.assets && !data.relations && !data.rows && !positive.length && !runs.data?.items.length;
   const pending = pendingQueries.some((query) => query.isPending);
+  const intakeAction = {
+    label: terms.labels.home_choose_files,
+    disabled: !canEdit,
+    onClick: () => window.dispatchEvent(new Event('ontology:choose-files')),
+  };
   return (
     <PageLayout
       variant="workbench"
@@ -141,26 +150,36 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
         <PageHeader
           title={terms.labels.home_workbench}
           display={
-            isEmpty
-              ? terms.labels.r3_main_start
-              : positive.length
-                ? terms.labels.r3_main_focus
-                : terms.labels.r3_main_ready
+            <span data-testid="home-focus">
+              {isEmpty
+                ? terms.labels.r3_main_start
+                : positive.length
+                  ? sentence(terms.labels.r3_main_focus, { count: pendingCount })
+                  : terms.labels.r3_main_ready}
+            </span>
           }
           lead={isEmpty ? terms.labels.r3_main_start_lead : undefined}
-          primaryAction={{
-            label: terms.labels.home_choose_files,
-            disabled: !canEdit,
-            onClick: () => window.dispatchEvent(new Event('ontology:choose-files')),
-          }}
+          primaryAction={
+            focus
+              ? {
+                  label: terms.labels.r31_home_process,
+                  onClick: () => navigate(focus.href),
+                }
+              : intakeAction
+          }
+          secondaryAction={focus ? intakeAction : undefined}
           note={!canEdit ? terms.labels.home_readonly_files : undefined}
         />
       }
     >
       <NextStepBar
-        current={1}
+        current={isEmpty ? 1 : focus?.step || 0}
         full
-        description={isEmpty ? terms.labels.r3_main_start_lead : terms.labels.r3_main_next_check}
+        description={
+          <span data-testid="home-workflow" data-current-step={isEmpty ? 1 : focus?.step || 0}>
+            {isEmpty ? terms.labels.r3_main_start_lead : focus ? focus.label : terms.labels.r31_home_workflow}
+          </span>
+        }
       />
       {overview.isError && (
         <StateBlock
@@ -181,21 +200,18 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
       )}
       <div className={styles.columns}>
         {(positive.length > 0 || pending) && (
-          <section className={styles.card}>
+          <section className={styles.card} data-home-count={pendingCount || undefined}>
             <h2>
-              {terms.labels.home_pending} · {positive.reduce((total, row) => total + row.count, 0)}
+              {terms.labels.home_pending}
+              {pendingCount > 0 ? ` · ${pendingCount}` : ''}
+              <HelpTip term="home_pending" />
             </h2>
-            <Tooltip title={terms.labels.home_pending_scope}>
-              <Button type="text" aria-label={terms.labels.r3_main_metric_help}>
-                ?
-              </Button>
-            </Tooltip>
             {pending ? (
               <StateBlock state="loading" action={{ label: retry, onClick: retryPending }} />
             ) : (
               <ul className={styles.links}>
                 {positive.slice(0, 2).map((row) => (
-                  <li key={row.href}>
+                  <li key={row.href} data-home-count={row.count}>
                     <Link to={row.href}>
                       {row.label}
                       <strong>{row.count.toLocaleString()}</strong>
@@ -207,7 +223,7 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
           </section>
         )}
         {!foreign && (runs.isPending || runs.isError || !!runs.data?.items.length) && (
-          <section className={styles.card}>
+          <section className={styles.card} data-home-count={runs.data?.items.length || undefined}>
             <h2>
               {terms.labels.home_running}
               {runs.data?.items.length ? ` · ${runs.data.items.length}` : ''}
@@ -238,7 +254,7 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
           </section>
         )}
         {recent.length > 0 && (
-          <section className={styles.card}>
+          <section className={styles.card} data-home-count={recent.length}>
             <h2>
               {terms.labels.home_recent} · {recent.length}
             </h2>
@@ -271,6 +287,7 @@ function Workbench({ tenantId, scopeKey }: { tenantId: string; scopeKey: string 
                 <button
                   key={metric.id}
                   data-testid="home-metric"
+                  data-home-count={metric.value}
                   onClick={() => update({ detail: metric.id })}
                 >
                   <span>{metric.label}</span>

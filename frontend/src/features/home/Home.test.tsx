@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Home from './Home';
+import { sentence } from '../build/model';
 import { terms } from '../../i18n/zh-CN';
 import { useUiStore } from '../../state/ui';
 let queryClient: QueryClient;
@@ -50,6 +51,10 @@ beforeEach(() => {
   });
 });
 afterEach(() => queryClient.clear());
+function Location() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname + location.search}</output>;
+}
 it('renders actual institution counts and no more than four metric cards', async () => {
   render(
     <MemoryRouter>
@@ -165,4 +170,74 @@ it('shows one starting action and hides every zero summary in an empty simple wo
   expect(screen.queryByText('0')).not.toBeInTheDocument();
   expect(container.querySelectorAll('.ant-btn-primary')).toHaveLength(1);
   expect(screen.getByRole('button', { name: terms.labels.home_choose_files })).toBeEnabled();
+  expect(screen.getByTestId('home-workflow')).toHaveAttribute('data-current-step', '1');
+  expect(container.querySelectorAll('[data-home-count]')).toHaveLength(0);
+});
+
+it.each([
+  ['returned', 2, '/maintenance?tab=review&review_status=returned'],
+  ['review', 3, '/maintenance?tab=review&review_status=review'],
+] as const)('matches the count, main action and actual %s progress', async (status, step, href) => {
+  useUiStore.setState({ viewMode: 'simple' });
+  const session = useSessionStore.getState().session!;
+  useSessionStore.setState({
+    session: { ...session, permissions: { ...session.permissions, can_review: true } },
+  });
+  vi.mocked(api).mockImplementation(async (path) => {
+    if (path === '/overview')
+      return { assets: 4, relations: 0, counts: {}, data_rows: 0, relation_statuses: {} };
+    if (path === '/work/catalog') return { tasks: [] };
+    if (path.includes('runs')) return { items: [] };
+    return { total: path.includes(`status=${status}&`) ? 4 : 0 };
+  });
+  const { container } = render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <Home />
+        <Location />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('home-focus')).toHaveTextContent(
+      sentence(terms.labels.r3_main_focus, { count: 4 }),
+    ),
+  );
+  expect(screen.getByTestId('home-workflow')).toHaveAttribute('data-current-step', String(step));
+  const primary = screen.getByRole('button', { name: terms.labels.r31_home_process });
+  expect(primary).toHaveClass('ant-btn-primary');
+  expect(screen.getByRole('button', { name: terms.labels.home_choose_files })).not.toHaveClass(
+    'ant-btn-primary',
+  );
+  expect(container.querySelectorAll('[data-home-count="4"]').length).toBeGreaterThan(0);
+  expect(container.querySelector('[data-home-count="0"]')).toBeNull();
+  const help = screen.getByRole('button', { name: terms.labels.help });
+  expect(help.querySelector('svg')).not.toBeNull();
+  fireEvent.click(primary);
+  expect(screen.getByTestId('location')).toHaveTextContent(href);
+});
+
+it('does not invent completed mainline steps for a generic active task', async () => {
+  const original = vi.mocked(api).getMockImplementation()!;
+  vi.mocked(api).mockImplementation((path, init) =>
+    path.includes('status=returned') ? Promise.resolve({ total: 0 }) : original(path, init),
+  );
+  render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <Home />
+        <Location />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('home-focus')).toHaveTextContent(
+      sentence(terms.labels.r3_main_focus, { count: 1 }),
+    ),
+  );
+  expect(screen.getByTestId('home-workflow')).toHaveAttribute('data-current-step', '0');
+  const workflow = screen.getByRole('navigation', { name: terms.labels.r3_ui_next });
+  expect(workflow.querySelector('[aria-current="step"]')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r31_home_process }));
+  expect(screen.getByTestId('location')).toHaveTextContent('/work?status=active');
 });
