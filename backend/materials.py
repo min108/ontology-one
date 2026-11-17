@@ -1551,12 +1551,13 @@ _EXTRACTION_VALIDATION_CODES = {
 
 
 def _extraction_failure_code(error: Exception) -> str:
-    from .ai import AIError
+    from .ai import AIError, _ERROR_MESSAGES
 
     if isinstance(error, json.JSONDecodeError):
         return "JSON_PARSE_INVALID"
     if isinstance(error, AIError):
-        return "MODEL_CALL_FAILED"
+        code = getattr(error, "code", None)
+        return "MODEL_" + code if isinstance(code, str) and code in _ERROR_MESSAGES else "MODEL_CALL_FAILED"
     if isinstance(error, ValueError):
         return _EXTRACTION_VALIDATION_CODES.get(str(error), "VALIDATION_UNKNOWN")
     return "EXTRACTION_UNEXPECTED"

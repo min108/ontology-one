@@ -88,11 +88,18 @@ class ExtractionSafeDiagnostics(unittest.IsolatedAsyncioTestCase):
         secret = "synthetic-sensitive-token-not-for-logs"
         provider = AIError("AI_PROVIDER_REJECTED")
         provider.args = (secret,)
+        tampered = AIError("AI_RESPONSE_INVALID")
+        tampered.code = secret
+        tampered.args = (secret,)
         failures = [
             (ValueError("AI候选发布条件须为业务文字，缺失内容应留空"), "CANDIDATE_SCALAR_FIELD_INVALID"),
             (ValueError("AI候选的原文引用未通过逐字校验"), "SOURCE_QUOTE_INVALID"),
             (json.JSONDecodeError(secret, secret, 0), "JSON_PARSE_INVALID"),
-            (provider, "MODEL_CALL_FAILED"),
+            (provider, "MODEL_AI_PROVIDER_REJECTED"),
+            (AIError("AI_OUTPUT_INCOMPLETE"), "MODEL_AI_OUTPUT_INCOMPLETE"),
+            (AIError("AI_RESPONSE_INVALID"), "MODEL_AI_RESPONSE_INVALID"),
+            (AIError("AI_RATE_LIMIT"), "MODEL_AI_RATE_LIMIT"),
+            (tampered, "MODEL_CALL_FAILED"),
             (ValueError(secret), "VALIDATION_UNKNOWN"),
             (RuntimeError(secret), "EXTRACTION_UNEXPECTED"),
         ]
