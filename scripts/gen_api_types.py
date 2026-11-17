@@ -10,6 +10,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+def merge_schema_components(destination: dict, incoming: dict) -> None:
+    """Share typed contracts without broadening the exported API surface."""
+    for name, definition in incoming.items():
+        if name in destination and destination[name] != definition:
+            raise ValueError("Conflicting OpenAPI component: " + name)
+        destination[name] = definition
+
+
 def openapi_schema() -> dict:
     from fastapi import FastAPI
 
@@ -23,11 +31,13 @@ def openapi_schema() -> dict:
     from backend.agent_service import Report
     from backend.agent_service import router as agent_router
 
-    app.include_router(agent_router)
+    agent = FastAPI()
+    agent.include_router(agent_router)
     schema = app.openapi()
+    merge_schema_components(schema["components"]["schemas"], agent.openapi()["components"]["schemas"])
     # The agent intentionally parses a bounded, duplicate-rejecting byte stream,
     # so document that input model without FastAPI pre-buffering the body.
-    schema["components"]["schemas"]["Report"] = Report.model_json_schema()
+    merge_schema_components(schema["components"]["schemas"], {"Report": Report.model_json_schema()})
     return schema
 
 

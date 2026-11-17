@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from scripts.gen_api_types import artifacts, openapi_schema
+from scripts.gen_api_types import artifacts, merge_schema_components, openapi_schema
 
 
 class OpenApiTests(unittest.TestCase):
@@ -20,3 +20,29 @@ class OpenApiTests(unittest.TestCase):
         self.assertIn("SearchInput", schema["components"]["schemas"])
         self.assertIn("ErrorResponse", schema["components"]["schemas"])
         self.assertIn("SearchOutput", schema["components"]["schemas"])
+
+    def test_report_components_are_complete_without_exporting_agent_paths(self) -> None:
+        from fastapi.encoders import jsonable_encoder
+
+        from backend.agent_service import Report
+        from backend.capabilities.artifact_models import AgentReportRun
+
+        definitions = openapi_schema()["components"]["schemas"]
+        self.assertEqual(definitions["Report"], Report.model_json_schema())
+        self.assertEqual(
+            definitions["AgentReportRun"], jsonable_encoder(AgentReportRun.model_json_schema(), exclude_none=True)
+        )
+        self.assertFalse(definitions["Report"]["additionalProperties"])
+        for name in ("ArtifactResult", "ArtifactDetail", "ArtifactSpec", "ArtifactSource", "ArtifactRevision"):
+            self.assertIn(name, definitions)
+        generated = artifacts()["types.ts"]
+        for name in ("Report", "AgentReportRun", "ArtifactResult", "ArtifactRevision"):
+            self.assertIn("export type " + name + " =", generated)
+
+    def test_conflicting_shared_components_are_rejected(self) -> None:
+        definitions = {"Shared": {"type": "string"}}
+        merge_schema_components(definitions, {"Shared": {"type": "string"}, "Other": {"type": "integer"}})
+        self.assertEqual(definitions["Other"], {"type": "integer"})
+        with self.assertRaisesRegex(ValueError, "Conflicting OpenAPI component: Shared"):
+            merge_schema_components(definitions, {"Shared": {"type": "integer"}})
+        self.assertEqual(definitions["Shared"], {"type": "string"})
