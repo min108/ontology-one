@@ -122,6 +122,16 @@ for (const [decision, action, status] of [
       await expect(
         reviewer.page.locator('[aria-label="选择一项待审内容"] button').first(),
       ).toContainText(newer.title);
+      await expect(
+        modal.locator("[data-testid=review-confirmation-object]"),
+      ).toHaveAttribute("data-review-id", original.id);
+      await reviewer.page.screenshot({
+        path: resolve(
+          process.env.E2E_EVIDENCE_DIR,
+          `r31-review-confirmation-${decision}-1366.png`,
+        ),
+        animations: "disabled",
+      });
       const saved = reviewer.page.waitForResponse(
         (response) =>
           /\/api\/v2\/reviews\/[^/]+:decide$/.test(
@@ -269,6 +279,13 @@ test("R3.1 Authority navigation: cancel retains edits and leaving confirms only 
     expect(confirmations).toBe(1);
     expect(page.url()).toBe(originalUrl);
     await expect(title).toHaveValue("取消离开后必须保留的内容");
+    await page.screenshot({
+      path: resolve(
+        process.env.E2E_EVIDENCE_DIR,
+        "r31-authority-draft-1366.png",
+      ),
+      animations: "disabled",
+    });
     accept = true;
     confirmations = 0;
     await destination.click();
