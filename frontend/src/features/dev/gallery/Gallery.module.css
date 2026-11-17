@@ -1,16 +1,3 @@
-.gallery {
-  display: flex;
-  flex-direction: column;
-  gap: var(--zy-space-6);
-  max-width: var(--zy-reading-width);
-  margin: auto;
-}
-
-.gallery > p {
-  margin: var(--zy-none);
-  color: var(--zy-gray-600);
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -25,4 +12,15 @@
   .grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.pane {
+  padding: var(--zy-space-4);
+  min-width: var(--zy-content-min);
+}
+
+.pane h2 {
+  margin-top: var(--zy-none);
+  font-size: var(--zy-font-title);
+  line-height: var(--zy-line-title);
 }

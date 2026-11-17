@@ -473,7 +473,9 @@
     "r3_report_retry_revision": "重试修订",
     "r3_report_compare": "查看修订前后",
     "r3_report_source": "查看引用依据",
-    "r3_report_open_material": "在素材页打开"
+    "r3_report_open_material": "在素材页打开",
+    "r3_gallery_open_source": "打开来源抽屉",
+    "r3_gallery_edit": "编辑内容"
   },
   "labels": {
     "search": "查找内容或输入操作",
@@ -1173,7 +1175,22 @@
     "r3_report_citation": "引用",
     "r3_report_body": "报告正文",
     "r3_report_body_summary": "完整段落、表格与引用",
-    "r3_report_origin": "内容来源"
+    "r3_report_origin": "内容来源",
+    "r3_gallery_foundation": "页面与依据组件",
+    "r3_gallery_foundation_summary": "分栏、折叠、来源和下一步",
+    "r3_gallery_source_title": "采购制度原文",
+    "r3_gallery_source_text": "采购申请应记录预算、用途和责任人。采购申请须按金额分级审核。审核通过后方可执行。",
+    "r3_gallery_quote": "采购申请须按金额分级审核。",
+    "r3_gallery_source_time": "2026-11-17 09:58",
+    "r3_gallery_source_caliber": "本机构已人工核对的采购规则",
+    "r3_gallery_source_version": "第 2 版",
+    "r3_gallery_complete_number": "来源资料完整的数字",
+    "r3_gallery_incomplete_number": "来源资料待补全的数字",
+    "r3_gallery_next": "下一步：查看原文并核对条款。",
+    "r3_gallery_date": "示例日期",
+    "r3_gallery_selected_date": "已选择日期",
+    "r3_gallery_source_list": "核对条款",
+    "r3_gallery_source_aside": "出处与口径"
   },
   "states": {
     "loading": {

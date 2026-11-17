@@ -7,7 +7,7 @@
 .grid {
   display: grid;
   align-items: start;
-  grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
+  grid-template-columns: minmax(var(--zy-form-pane-min), var(--zy-form-pane-max)) minmax(0, 1fr);
   gap: var(--zy-space-6);
 }
 
@@ -49,7 +49,7 @@
 
 .facts > div {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
+  grid-template-columns: var(--zy-field-label-width) minmax(0, 1fr);
   gap: var(--zy-space-3);
 }
 
@@ -79,7 +79,10 @@
   min-height: 100dvh;
   display: grid;
   place-content: center;
-  grid-template-columns: minmax(280px, 460px) minmax(320px, 440px);
+  grid-template-columns: minmax(var(--zy-form-pane-min), var(--zy-login-brand-max)) minmax(
+      var(--zy-login-form-min),
+      var(--zy-login-form-max)
+    );
   gap: var(--zy-space-10);
   padding: var(--zy-space-8);
   background: var(--zy-gray-50);
@@ -92,13 +95,14 @@
 }
 
 .brand img {
-  width: 64px;
-  height: 64px;
+  width: var(--zy-brand-mark-size);
+  height: var(--zy-brand-mark-size);
 }
 
 .brand h2 {
-  font-size: var(--zy-font-h1);
-  line-height: var(--zy-line-h1);
+  font-size: var(--zy-font-heading);
+  font-weight: var(--zy-weight-heading);
+  line-height: var(--zy-line-heading);
   margin: 0;
 }
 
@@ -145,7 +149,7 @@
 }
 
 .filters > label {
-  flex: 1 1 160px;
+  flex: 1 1 var(--zy-filter-field-min);
 }
 
 .tree {
@@ -164,7 +168,7 @@
   }
 
   .brand {
-    max-width: 440px;
+    max-width: var(--zy-login-form-max);
   }
 }
 
