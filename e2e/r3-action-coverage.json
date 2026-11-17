@@ -89,6 +89,7 @@
     "B1": "all captured pages grouped by viewport and navigation state share one titleX; offset peer-page counterexample",
     "leakage": "retains all existing patterns; source character offsets and reading version counterexamples",
     "review_confirmation": "real server fixtures, open implicit-first confirmation, newer item submitted, focus/visibility refetch reorders, UI confirms original only; return and publish",
-    "authority_navigation": "real UI draft cancel preserves unsaved text; accepted navigation asks once and persisted title is unchanged"
+    "authority_navigation": "real UI draft cancel preserves unsaved text; accepted navigation asks once and persisted title is unchanged",
+    "dataset_cards": "fresh authenticated page visits /datasets before any /data-sources visit; computed grid/flex, two card bounds and text containment; missing-style DOM counterexample; 1366x768 screenshot"
   }
 }

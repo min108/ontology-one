@@ -91,3 +91,28 @@ export function assertOneTitleLine(rows) {
       `B1 all pages must share one title line at ${key}`,
     );
 }
+
+export function assertDatasetCardsLayout(snapshot) {
+  assert.equal(
+    snapshot.display,
+    "grid",
+    "dataset entry choices must use their grid styles",
+  );
+  assert.equal(snapshot.cards.length, 2);
+  for (const card of snapshot.cards) {
+    assert.equal(
+      card.display,
+      "flex",
+      "dataset entry card must use its flex styles",
+    );
+    assert.ok(
+      card.width > 0 && card.height > 0,
+      "dataset entry card must have visible dimensions",
+    );
+    assert.equal(
+      card.overflow,
+      false,
+      "dataset entry card text must fit inside its card",
+    );
+  }
+}

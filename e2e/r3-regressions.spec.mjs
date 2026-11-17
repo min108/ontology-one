@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { fixture } from "./fixture.mjs";
 import {
@@ -9,6 +10,7 @@ import {
   unique,
 } from "./r3-support.mjs";
 import {
+  assertDatasetCardsLayout,
   assertNoZeroHomeMetrics,
   assertRestrictionLabels,
   homeMetricSnapshot,
@@ -276,5 +278,70 @@ test("R3.1 Authority navigation: cancel retains edits and leaving confirms only 
     expect((await read(page, "/api/entities/" + id)).title).toBe(savedTitle);
   } finally {
     await admin.context.close();
+  }
+});
+
+test("R3.1 dataset entry cards: fresh direct visit loads grid and flex styles", async ({
+  browser,
+}) => {
+  const member = await login(browser, "modeler");
+  try {
+    const page = member.page;
+    // This fresh context never visits /data-sources, whose lazy CSS used to mask the defect.
+    await page.goto("/datasets");
+    await expect(
+      page.locator(".src-mode-options .src-mode-option"),
+    ).toHaveCount(2);
+    await page.waitForLoadState("networkidle");
+    const snapshot = () =>
+      page.locator(".src-mode-options").evaluate((container) => ({
+        display: getComputedStyle(container).display,
+        cards: [...container.querySelectorAll(".src-mode-option")].map(
+          (card) => {
+            const box = card.getBoundingClientRect();
+            const bounds = [...card.querySelectorAll("strong,span")].flatMap(
+              (text) => {
+                const range = document.createRange();
+                range.selectNodeContents(text);
+                return [...range.getClientRects()];
+              },
+            );
+            return {
+              display: getComputedStyle(card).display,
+              width: box.width,
+              height: box.height,
+              overflow:
+                card.scrollWidth > card.clientWidth + 1 ||
+                card.scrollHeight > card.clientHeight + 1 ||
+                bounds.some(
+                  (text) =>
+                    text.left < box.left - 1 ||
+                    text.right > box.right + 1 ||
+                    text.top < box.top - 1 ||
+                    text.bottom > box.bottom + 1,
+                ),
+            };
+          },
+        ),
+      }));
+    assertDatasetCardsLayout(await snapshot());
+    await page.locator(".src-mode-options").evaluate((node) => {
+      node.style.display = "block";
+    });
+    const missingStyle = await snapshot();
+    expect(() => assertDatasetCardsLayout(missingStyle)).toThrow(/grid/);
+    await page.locator(".src-mode-options").evaluate((node) => {
+      node.style.display = "";
+    });
+    assertDatasetCardsLayout(await snapshot());
+    await page.screenshot({
+      path: resolve(
+        process.env.E2E_EVIDENCE_DIR,
+        "r31-datasets-direct-1366.png",
+      ),
+      animations: "disabled",
+    });
+  } finally {
+    await member.context.close();
   }
 });

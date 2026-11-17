@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assertDatasetCardsLayout,
   assertRecipeTrayStage,
   assertReturnedReason,
   assertNoZeroHomeMetrics,
@@ -57,6 +58,31 @@ test("B1 counterexample: individually aligned pages with different padding still
   assertOneTitleLine([row, { ...row }]);
   assertOneTitleLine([row, { ...row, navCollapsed: "true", titleX: 96 }]);
   assert.throws(() => assertOneTitleLine([row, { ...row, titleX: 304 }]), /B1/);
+});
+test("dataset direct-entry counterexamples reject missing layout and escaping text", () => {
+  const card = { display: "flex", width: 400, height: 80, overflow: false };
+  const snapshot = { display: "grid", cards: [card, card] };
+  assertDatasetCardsLayout(snapshot);
+  assert.throws(
+    () => assertDatasetCardsLayout({ ...snapshot, display: "block" }),
+    /grid/,
+  );
+  assert.throws(
+    () =>
+      assertDatasetCardsLayout({
+        ...snapshot,
+        cards: [card, { ...card, display: "inline" }],
+      }),
+    /flex/,
+  );
+  assert.throws(
+    () =>
+      assertDatasetCardsLayout({
+        ...snapshot,
+        cards: [card, { ...card, overflow: true }],
+      }),
+    /text/,
+  );
 });
 for (const [kind, text] of [
   ["object number", "RCP-12345"],
