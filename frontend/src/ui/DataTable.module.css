@@ -17,3 +17,7 @@
 .table td {
   overflow-wrap: anywhere;
 }
+
+.table :global(.ant-pagination-total-text) {
+  margin-inline-end: auto;
+}

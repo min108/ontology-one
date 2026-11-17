@@ -148,6 +148,30 @@ for (const role of roles) {
   });
 }
 
+test.describe("admin: collapsed pointer navigation", () => {
+  test.use({ storageState: resolve(authDirectory, "admin.json") });
+  test("pointer crosses from the collapsed item into its secondary menu", async ({
+    page,
+  }) => {
+    await page.goto("/materials");
+    await page.getByRole("button", { name: "收起导航", exact: true }).click();
+    const item = primary(page).locator('a[data-primary-link][href="/build"]');
+    await item.hover();
+    const menu = secondary(page);
+    await expect(menu).toBeVisible();
+    const itemBox = await item.boundingBox();
+    const menuBox = await menu.boundingBox();
+    expect(menuBox.x).toBeLessThanOrEqual(itemBox.x + itemBox.width);
+    await page.mouse.move(itemBox.x + itemBox.width - 2, itemBox.y + 20);
+    await page.mouse.move(menuBox.x + 12, itemBox.y + 20, { steps: 16 });
+    await expect(menu).toBeVisible();
+    await menu.locator('a[href="/materials"]').click();
+    await expect(
+      page.getByRole("heading", { name: "素材整理", exact: true }),
+    ).toBeVisible();
+  });
+});
+
 test.describe("admin: compatibility redirects", () => {
   test.use({ storageState: resolve(authDirectory, "admin.json") });
   for (const [from, to, heading] of redirects) {

@@ -74,6 +74,22 @@ export function DataTable<T extends object>({
   const shown = columns
     .filter((_column, index) => settings.columns.includes(available[index]))
     .map((column) => ({ ...column, width: column.width ?? columnWidths[String(column.key)] }));
+  const pageSettings =
+    pagination === false
+      ? false
+      : {
+          showTotal: (total: number, range: [number, number]) =>
+            terms.labels.r3_ui_table_total
+              .replace('{start}', String(range[0]))
+              .replace('{end}', String(range[1]))
+              .replace('{total}', String(total)),
+          ...(pagination ?? {
+            current: settings.page,
+            pageSize: 10,
+            hideOnSinglePage: true,
+            onChange: (page: number) => update({ ...settings, page }),
+          }),
+        };
   if (!dataSource.length && !tableProps?.loading) return <StateBlock state="empty" action={emptyAction} />;
   return (
     <div className={styles.table}>
@@ -115,14 +131,7 @@ export function DataTable<T extends object>({
         dataSource={dataSource}
         rowKey={rowKey}
         size={viewMode === 'professional' && settings.compact ? 'small' : 'middle'}
-        pagination={
-          pagination ?? {
-            current: settings.page,
-            pageSize: 10,
-            hideOnSinglePage: true,
-            onChange: (page) => update({ ...settings, page }),
-          }
-        }
+        pagination={pageSettings}
         locale={{ emptyText: <StateBlock state="empty" action={emptyAction} /> }}
       />
     </div>
