@@ -30,6 +30,7 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
     page = owner.page;
   const results = [];
   let savedScreenshot = false;
+  let passed = false;
   let cardCounterexample = false,
     sourceCounterexample = false;
   try {
@@ -147,6 +148,9 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
     expect(
       results.filter((item) => item.source_highlight === "passed"),
     ).toHaveLength(fixture.sourced_synthetic_count);
+    expect(cardCounterexample).toBe(true);
+    expect(sourceCounterexample).toBe(true);
+    passed = true;
   } finally {
     writeFileSync(
       resolve(folder, "r4-legacy-browser.json"),
@@ -160,7 +164,7 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
           completed: results.length,
           card_sentence_counterexample_rejected: cardCounterexample,
           source_highlight_counterexample_rejected: sourceCounterexample,
-          status: results.length === 200 ? "passed" : "failed",
+          status: passed ? "passed" : "failed",
           results,
         },
         null,
