@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { activityHref, type HarnessActivityItem } from '@legacy/components/HarnessActivity';
+import { terms } from '../i18n/zh-CN';
 
 const run = 'RCP-' + 'a'.repeat(24);
 const changeset = 'CS-' + 'b'.repeat(24);
@@ -7,7 +8,7 @@ const queued: HarnessActivityItem = {
   id: run,
   run_id: run,
   kind: 'recipe_run',
-  title: '制度整理',
+  title: terms.labels.r2_intake_nav,
   status: 'queued',
   href: '/build/intake?run=' + run,
 };
