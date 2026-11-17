@@ -34,12 +34,15 @@ const icons = {
 export function WorkspaceShell() {
   const { session, permission_keys, notice, setNotice } = useSessionStore();
   const { collapsed, setCollapsed } = useUiStore();
-  const { pathname } = useLocation();
+  const { key, pathname, search } = useLocation();
   const navigate = useNavigate();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [narrowSplit, setNarrowSplit] = useState(() => window.matchMedia('(max-width: 1439px)').matches);
+  useEffect(() => {
+    if (new URLSearchParams(search).get('harness_run')?.trim()) setAssistantOpen(true);
+  }, [key, pathname, search]);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 1439px)');
     const update = () => setNarrowSplit(media.matches);

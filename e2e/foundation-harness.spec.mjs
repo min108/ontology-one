@@ -143,6 +143,28 @@ test("real SDK task survives closing its global view and is stopped through the 
         zoom: layout.zoom,
       });
     }
+    const taskUrl = page.url();
+    await page.keyboard.press("Escape");
+    await expect(conversation).toBeHidden();
+    expect((await read()).status).toBe("running");
+    await expect(page).toHaveURL(taskUrl);
+    record.states.push("escape_closed_while_running");
+    await openRun();
+    await expect(page).toHaveURL(taskUrl);
+    await expect(conversation).toBeVisible();
+    await expect(
+      conversation.getByRole("button", { name: "停止本轮处理", exact: true }),
+    ).toBeVisible();
+    expect((await read()).status).toBe("running");
+    record.states.push("same_url_reopened_while_running");
+    await page.reload();
+    await expect(page).toHaveURL(taskUrl);
+    await expect(conversation).toBeVisible();
+    await expect(
+      conversation.getByRole("button", { name: "停止本轮处理", exact: true }),
+    ).toBeVisible();
+    expect((await read()).status).toBe("running");
+    record.states.push("deep_link_reloaded_while_running");
     await conversation
       .getByRole("button", { name: "收起智能处理对话", exact: true })
       .click();
