@@ -8,10 +8,14 @@
 # 密钥只输入到当前进程环境；输入不回显，不写入文件或命令历史。
 read -rsp 'DeepSeek API key: ' DEEPSEEK_API_KEY; export DEEPSEEK_API_KEY; echo
 export ONTOLOGY_MODEL_FROM_ENV=1
+export DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
+export DEEPSEEK_MODEL=deepseek-chat
 python3 scripts/start_r2_demo.py
 ```
 
 R3 **沿用 `start_r2_demo.py` 名称以兼容已有演示环境**，本轮未新增同名 R3 启动脚本。Compose 项目仍为 `ontology-r2-demo`，使用独立卷，不复用原部署数据。脚本询问演示账号密码，完成启动、迁移、三个身份初始化和演示资料装载。数据库凭据保存在本机 `work/r2-demo/database.env`，保留该文件与原卷的对应关系；后续重启仍先在终端设置模型密钥，再执行同一命令。环境模型覆盖仅适用于演示或单机构部署，默认关闭，迁移服务不接收模型密钥。
+
+以上模型与地址对应本轮实际界面演练；若机构已采用其他模型，管理员先测试连接，再按相同五步重新预演。原模型默认值未在本轮更改。
 
 打开 `http://localhost:8765`。`demo.admin`、`demo.builder`、`demo.reviewer` 使用刚输入的演示密码。管理员先在“管理 › 模型与运行”点“测试连接”，确认模型可用；环境配置模式不在网页输入或保存密钥。“管理 › 演示资料”可查看模拟核对说明、合同与付款台账；需要时按页面状态加载或恢复。
 
@@ -36,6 +40,7 @@ R3 **沿用 `start_r2_demo.py` 名称以兼容已有演示环境**，本轮未�
 ```text
 第一条 办理付款前应核对合同约定与验收资料；验收通过后30日内完成付款申请。
 第二条 累计付款不得超过合同金额；有异议的款项应记录原因并暂停支付。
+第三条 经办人员应保存验收记录，审核人员复核付款依据。
 ```
 
 ## 补充走查
