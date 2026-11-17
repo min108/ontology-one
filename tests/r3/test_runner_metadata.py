@@ -36,6 +36,11 @@ class RunnerMetadataTests(unittest.TestCase):
             with self.subTest(endpoint=endpoint):
                 self.assertIsNone(model_metadata({"DEEPSEEK_BASE_URL": endpoint})["base_url"])
         self.assertIsNone(model_metadata({"DEEPSEEK_MODEL": "model\ncredential"})["model_name"])
+        self.assertIsNone(
+            model_metadata({"DEEPSEEK_BASE_URL": "https://example.test/%73ecret", "DEEPSEEK_API_KEY": " secret "})[
+                "base_url"
+            ]
+        )
 
     def test_ipv6_endpoint_retains_safe_address(self) -> None:
         self.assertEqual(
