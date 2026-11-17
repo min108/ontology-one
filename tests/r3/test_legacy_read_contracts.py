@@ -1,5 +1,6 @@
 """R3.1 legacy values remain readable without weakening writes or evidence checks."""
 
+import json
 import os
 import secrets
 import tempfile
@@ -15,8 +16,12 @@ from backend import db, main
 from backend.capabilities.build import CandidatePatch
 from backend.capabilities.build_models import Evidence
 from backend.capabilities.reviews import ReviewDecision
+from backend.domains.build import confirm_applicability
 from backend.infra import migrations
+from backend.security import store
+from backend.security.context import use_context
 from tests.fixtures.v070.load import load_fixture
+from tests.r2 import test_build as construction
 
 TEXT_SOURCE = "历史付款制度：付款前核对合同。"
 DICT_SOURCE = {"title": "旧台账", "excerpt": "核对付款附件", "legacy_note": "保留扩展字段"}
@@ -80,25 +85,61 @@ class LegacyReadMySQL(unittest.TestCase):
         )
         return client
 
+    invoke = construction.BuildMySQL.invoke
+
     def legacy_entity(self, sources: object = MIXED_SOURCES) -> tuple[TestClient, TestClient, dict]:
         builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")
+        proposal = construction.BuildMySQL.proposal(self, builder)
+        item = proposal["items"][0]
+        candidate = item["after_data"]
         created = builder.post(
             "/api/entities",
             json={
                 "kind": "rule",
                 "title": "旧数据付款规则",
                 "summary": None,
-                "payload": {"content": "付款前核对合同。", "source_refs": sources},
+                "payload": {
+                    "content": "付款前核对合同。",
+                    "definition": "付款前核对合同。",
+                    "scope": "本机构付款",
+                    "conditions": ["付款前"],
+                    "exceptions": "无例外",
+                    "valid_from": "2026-11-17",
+                    "source_refs": item["evidence"],
+                },
             },
         )
         self.assertEqual(created.status_code, 200, created.text)
         ident = created.json()["id"]
-        # These are legal v1 writes, including the null reason stored in activities.
+        person = store.authenticate_session(builder.cookies.get("ontology_session"), "r31-legacy-test")[0]
+        with use_context(person), closing(db.connect()) as conn, conn:
+            confirm_applicability(conn, created.json(), candidate)
+        # Submit genuinely valid content through the current workflow first.
+        # The compatibility endpoint still accepts a null edit reason; the current
+        # kernel supplies its default text, so the stored legacy null is seeded below.
         edited = builder.patch(f"/api/entities/{ident}", json={"reason": None})
         self.assertEqual(edited.status_code, 200, edited.text)
         submitted = builder.post(f"/api/entities/{ident}/action", json={"action": "submit", "reason": None})
         self.assertEqual(submitted.status_code, 200, submitted.text)
         entity = submitted.json()
+        # Explicit historical-storage fixture: restore old source representation and
+        # null activity/version reasons after submit. No state transition is bypassed.
+        entity["payload"]["source_refs"] = sources
+        revision = next(event for event in entity["activities"] if event["action"] == "修订")
+        revision["detail"] = None
+        with use_context(person), closing(db.connect()) as conn, conn:
+            conn.execute(
+                "UPDATE entities SET payload=? WHERE id=?",
+                (json.dumps(entity["payload"], ensure_ascii=False), ident),
+            )
+            conn.execute("UPDATE activities SET detail=NULL WHERE entity_id=? AND action='修订'", (ident,))
+            conn.execute(
+                "UPDATE versions SET reason=NULL WHERE entity_id=? AND version=?",
+                (ident, edited.json()["version"]),
+            )
+        persisted = builder.get("/api/entities/" + ident)
+        self.assertEqual(persisted.status_code, 200, persisted.text)
+        self.assertEqual(persisted.json(), entity)
         self.assertIsNone(entity["summary"])
         self.assertEqual(entity["payload"]["source_refs"], sources)
         self.assertIsNone(next(event for event in entity["activities"] if event["action"] == "修订")["detail"])
@@ -176,18 +217,26 @@ class LegacyReadMySQL(unittest.TestCase):
     def test_unverified_legacy_sources_and_invalid_decisions_still_cannot_publish(self) -> None:
         builder, reviewer, entity = self.legacy_entity()
         path = f"/api/v2/reviews/{entity['id']}:decide"
-        for body, code in (
-            ({"decision": "approve_publish", "version": entity["version"]}, "EVIDENCE_NOT_FOUND"),
-            ({"decision": "return", "version": entity["version"], "reason": None}, "VALIDATION_FAILED"),
-            ({"decision": "return", "version": entity["version"], "reason": "  "}, "VALIDATION_FAILED"),
+        review = reviewer.get("/api/v2/reviews/" + entity["id"])
+        self.assertEqual(review.status_code, 200, review.text)
+        gates = review.json()["data"]["gates"]
+        self.assertFalse(gates["passed"])
+        self.assertEqual([check["code"] for check in gates["checks"] if check["status"] == "fail"], ["QG1"])
+        # R4 D2 replaces the evidence-only 422 with the shared gate conflict.
+        # The legacy source must still be rejected, with every stored value intact.
+        for body, status, code in (
+            ({"decision": "approve_publish", "version": entity["version"]}, 409, "GATE_NOT_PASSED"),
+            ({"decision": "return", "version": entity["version"], "reason": None}, 422, "VALIDATION_FAILED"),
+            ({"decision": "return", "version": entity["version"], "reason": "  "}, 422, "VALIDATION_FAILED"),
             (
                 {"decision": "return", "version": entity["version"], "reason": "补充", "source_refs": MIXED_SOURCES},
+                422,
                 "VALIDATION_FAILED",
             ),
         ):
             with self.subTest(body=body):
                 response = reviewer.post(path, json=body)
-                self.assertEqual(response.status_code, 422, response.text)
+                self.assertEqual(response.status_code, status, response.text)
                 self.assertEqual(response.json()["error"]["code"], code)
                 stored = builder.get("/api/entities/" + entity["id"])
                 self.assertEqual(stored.status_code, 200, stored.text)
