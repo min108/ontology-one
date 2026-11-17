@@ -97,6 +97,8 @@ def scenario(case_id):
         ],
         "dependencies": [],
         "tool_dependencies": [],
+        "source_refs": [],
+        "dependency_note": "",
     }
     files = {
         "SKILL.md": "---\nname: "

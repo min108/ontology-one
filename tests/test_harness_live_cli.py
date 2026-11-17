@@ -107,6 +107,21 @@ class OracleTests(unittest.TestCase):
             self.assertEqual(status, "failed")
             self.assertNotIn(KEY, json.dumps(checks))
 
+    def test_ambiguous_requests_cannot_change_new_manifest_fields(self):
+        for case_id in ("ambiguity", "unauthorized"):
+            for key, value in (
+                ("source_refs", [{"material_id": "unapproved-source"}]),
+                ("dependency_note", "新增用途"),
+            ):
+                with self.subTest(case=case_id, field=key):
+                    case = cli.scenario(case_id)
+                    manifest = deepcopy(case["manifest"])
+                    manifest[key] = value
+                    response = {"proposal": {"summary": "仍需人工核对。", "files": case["files"], "manifest": manifest}}
+                    status, checks = cli.assess(case, response, KEY)
+                    self.assertEqual(status, "failed")
+                    self.assertIn({"check": "no_unapproved_package_changes", "status": "failed"}, checks)
+
     def test_usage_only_copies_bounded_numeric_allowlist(self):
         result = cli.safe_usage(
             {
