@@ -84,6 +84,9 @@ describe('new identity pages', () => {
     await screen.findByText(terms.labels.identity_no_sessions);
     expect(screen.getByText(terms.roles.admin, { exact: true })).toBeInTheDocument();
     expect(screen.getByText('admin', { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByText(terms.labels.identity_superadmin).closest('.ant-tag')?.querySelector('svg'),
+    ).not.toBeNull();
     expect(screen.getByText('HQ', { exact: true })).toBeInTheDocument();
   });
   it('labels the active workspace separately from the account home organization', async () => {

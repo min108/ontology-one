@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Alert, Button, Card, Input, Modal, Tag } from 'antd';
+import { Alert, Button, Card, Input, Modal } from 'antd';
 import { api } from '../../api/client';
 import type { AuthSession } from '../../api/session.types';
 import { clearLocalWorkspace, useSessionStore } from '../../state/session';
@@ -139,7 +139,9 @@ export default function AccountSecurity() {
                 </div>
               ))}
             </dl>
-            {session.user.is_superadmin && <Tag>{copy.identity_superadmin}</Tag>}
+            {session.user.is_superadmin && (
+              <AdminStatus status="administrator" label={copy.identity_superadmin} />
+            )}
           </Card>
           <Card title={copy.identity_password_title}>
             <form className={styles.form} onSubmit={change}>
