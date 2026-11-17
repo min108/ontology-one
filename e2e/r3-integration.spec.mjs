@@ -78,6 +78,8 @@ test("R3 integration applications: governed operations, one-time credentials and
       .locator("summary")
       .filter({ hasText: c.r3_integration_credentials })
       .click();
+    await expect(card.getByRole("table")).toBeVisible();
+    await expect(card.getByRole("row")).toHaveCount(2);
     await button(card, c.r3_integration_rotate).click();
     await page
       .getByRole("dialog")
@@ -121,9 +123,22 @@ test("R3 integration applications: governed operations, one-time credentials and
     await expect(card.locator("[data-technical-details]")).toContainText(
       application.id,
     );
+    await card
+      .locator("summary")
+      .filter({ hasText: c.r3_integration_credentials })
+      .click();
+    await expect(card.getByRole("table")).toBeVisible();
+    await expect(card.getByRole("row")).toHaveCount(3);
+    await expect(card.getByRole("table")).toContainText(
+      /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/,
+    );
     await assertNoLeaks(page, "integration professional view", {
       professional: true,
     });
+    await card
+      .locator("summary")
+      .filter({ hasText: c.r3_integration_credentials })
+      .click();
     await selectSavedViewMode(page, "simple");
     await expect(page.locator("[data-technical-details]")).toHaveCount(0);
     await checkStructure(page, "integration-final");
