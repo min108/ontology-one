@@ -281,8 +281,14 @@ class Report(Strict):
     title: str = Field(default="", max_length=255)
 
 
-@router.post("/sessions/{ident}/runs/{run_id}/report", response_model=ArtifactResult)
-async def report(ident: str, run_id: str, request: Request, contract: Report):
+@router.post(
+    "/sessions/{ident}/runs/{run_id}/report",
+    response_model=ArtifactResult,
+    openapi_extra={
+        "requestBody": {"required": True, "content": {"application/json": {"schema": Report.model_json_schema()}}}
+    },
+)
+async def report(ident: str, run_id: str, request: Request):
     from .capabilities.artifacts import ArtifactCreate
     from .api.v2.build import call
 

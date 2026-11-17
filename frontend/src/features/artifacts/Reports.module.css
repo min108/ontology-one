@@ -1,0 +1,28 @@
+.card {
+  padding: var(--zy-space-5);
+  border: var(--zy-border-width) solid var(--zy-gray-200);
+  border-radius: var(--zy-radius-card);
+  background: var(--zy-gray-0);
+  overflow-wrap: anywhere;
+}
+
+.paragraph {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: var(--zy-line-body);
+}
+
+.caption {
+  color: var(--zy-gray-600);
+  font-size: var(--zy-font-caption);
+}
+
+.citation {
+  border: none;
+  border-bottom: var(--zy-border-width) dotted currentcolor;
+  background: transparent;
+  color: var(--zy-gray-900);
+  font: inherit;
+  font-size: var(--zy-font-caption);
+  cursor: pointer;
+}

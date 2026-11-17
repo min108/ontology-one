@@ -3209,7 +3209,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Report"
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "default": "",
+                    "maxLength": 255,
+                    "title": "Title",
+                    "type": "string"
+                  }
+                },
+                "title": "Report",
+                "type": "object"
               }
             }
           },

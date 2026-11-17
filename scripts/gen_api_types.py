@@ -20,10 +20,15 @@ def openapi_schema() -> dict:
     app = FastAPI(title=f"{BRAND['product_name_en']} REST v2", version=APP_VERSION)
     app.include_router(router)
     # The report UI shares the authenticated agent transport and its strict contracts.
+    from backend.agent_service import Report
     from backend.agent_service import router as agent_router
 
     app.include_router(agent_router)
-    return app.openapi()
+    schema = app.openapi()
+    # The agent intentionally parses a bounded, duplicate-rejecting byte stream,
+    # so document that input model without FastAPI pre-buffering the body.
+    schema["components"]["schemas"]["Report"] = Report.model_json_schema()
+    return schema
 
 
 def ts_type(schema: dict) -> str:

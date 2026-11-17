@@ -469,7 +469,11 @@
     "r3_ui_evidence": "查看依据",
     "r3_ui_more": "更多",
     "r3_ui_close": "关闭",
-    "r3_admin_more": "更多"
+    "r3_admin_more": "更多",
+    "r3_report_retry_revision": "重试修订",
+    "r3_report_compare": "查看修订前后",
+    "r3_report_source": "查看引用依据",
+    "r3_report_open_material": "在素材页打开"
   },
   "labels": {
     "search": "查找内容或输入操作",
@@ -1156,7 +1160,20 @@
     "r3_admin_model_diagnostics": "检查模型与运行环境是否就绪。",
     "r3_admin_backup_lead": "导出完整备份，查看升级与恢复指引。",
     "r3_admin_restore_summary": "离线恢复的步骤与注意事项",
-    "r3_admin_windows_summary": "Windows 发行包与源代码下载"
+    "r3_admin_windows_summary": "Windows 发行包与源代码下载",
+    "r3_report_revising": "正在按核对结果修订回答",
+    "r3_report_revised": "已按核对结果修订 1 次",
+    "r3_report_before": "修订前的回答",
+    "r3_report_after": "修订后的回答",
+    "r3_report_manual": "已完成一次自动修订。请按下列问题核对回答，也可在助手中继续提问后重新生成报告。",
+    "r3_report_retry_help": "原回答与核对问题仍保留。可以重试修订，或在助手中手动核对后生成。",
+    "r3_report_sources_summary": "引用的依据与原文",
+    "r3_report_versions_summary": "已保存的版本与下载",
+    "r3_report_complete": "报告已保存，可下载后用于汇报。",
+    "r3_report_citation": "引用",
+    "r3_report_body": "报告正文",
+    "r3_report_body_summary": "完整段落、表格与引用",
+    "r3_report_origin": "内容来源"
   },
   "states": {
     "loading": {

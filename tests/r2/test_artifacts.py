@@ -416,6 +416,11 @@ class ArtifactMySQL(unittest.TestCase):
             path, content='{"title":"one","title":"two"}', headers={"Content-Type": "application/json"}
         )
         self.assertEqual(duplicate.status_code, 422, duplicate.text)
+        self.assertIsInstance(duplicate.json()["detail"], str)
+        for malformed, expected_status in (({"extra": "forged"}, 422), ({"title": "x" * 70000}, 413)):
+            invalid = agent_client.post(path, json=malformed)
+            self.assertEqual(invalid.status_code, expected_status)
+            self.assertIsInstance(invalid.json()["detail"], str)
         response = agent_client.post(path, json={})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["data"]["spec"]["revision"], report["spec"]["revision"])
