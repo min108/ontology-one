@@ -1091,6 +1091,10 @@ def gate_payload(entity, document):
 
 def skill_gate_facts(conn, entity):
     """Fresh proof and pinned dependencies, retaining the package's own review boundary."""
+    # Historic authorized entities can survive without the auxiliary package row.
+    # They remain readable, but missing governance data is never release proof.
+    if not conn.execute("SELECT 1 FROM skill_documents WHERE entity_id=?", (entity["id"],)).fetchone():
+        return {"payload": entity["payload"], "tests": False, "relations": False}
     _, document = _document(conn, entity["id"])
     payload = gate_payload(entity, document)
     tests = False

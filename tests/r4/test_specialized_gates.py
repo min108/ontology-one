@@ -113,6 +113,35 @@ class SpecializedGatesMySQL(unittest.TestCase):
             },
         )
 
+    def test_authorized_incomplete_skill_still_has_card_with_failed_package_gates(self) -> None:
+        builder = self.login("fixture.builder")
+        detail = self.skill(builder)
+        ident = detail["entity"]["id"]
+        person = store.authenticate_session(builder.cookies.get("ontology_session"), "r2-test")[0]
+        with use_context(person), closing(db.connect()) as conn, conn:
+            conn.execute("DELETE FROM skill_documents WHERE entity_id=?", (ident,))
+            original = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (ident,)).fetchone())
+            facts = skills.skill_gate_facts(conn, original)
+            self.assertEqual(facts["payload"], original["payload"])
+            self.assertIs(facts["tests"], False)
+            self.assertIs(facts["relations"], False)
+        response = builder.post("/api/v2/capabilities/element.get:invoke", json={"entity_id": ident})
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()["data"]
+        self.assertEqual(result["entity"]["id"], ident)
+        self.assertTrue(result["card"]["one_liner"])
+        outcomes = {item["code"]: item["status"] for item in result["gates"]["checks"]}
+        self.assertEqual({code: outcomes[code] for code in ("QG3", "QG4")}, {"QG3": "fail", "QG4": "fail"})
+        with self.assertRaises(AssertionError):
+            self.assertEqual(outcomes["QG3"], "pass")
+        # Specialized mutation and cross-tenant read guards keep their old behavior.
+        response = self.action(builder, detail, "submit")
+        self.assertEqual(response.status_code, 404, response.text)
+        other = self.login("r2.other")
+        response = other.post("/api/v2/capabilities/element.get:invoke", json={"entity_id": ident})
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertEqual(builder.get("/api/entities/" + ident).json()["status"], "draft")
+
     def test_skill_valid_facts_publish_and_independent_review_remains(self) -> None:
         builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")
         detail = self.skill(builder)
