@@ -110,6 +110,10 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         <ResourceState error={resource.error} reload={resource.reload} />
       </PageLayout>
     );
+  const intakeHref =
+    typeof proposal.origin_ref === 'string'
+      ? '/build/intake?' + new URLSearchParams({ run: proposal.origin_ref })
+      : '/build/intake';
   const gate = changesetGate(proposal, canEdit);
   const groups = groupItems(proposal.items);
   const current =
@@ -138,8 +142,8 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
     ? proposal.title
     : sentence(copy.r3_main_done, {
         count: proposal.items.length,
-        accepted: gate.accepted,
-        rejected: gate.rejected,
+        a: gate.accepted,
+        r: gate.rejected,
       });
   return (
     <PageLayout
@@ -147,7 +151,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       header={
         <PageHeader
           title={copy.r2_changeset_title}
-          back={{ label: copy.r2_intake_title, href: '/build/intake' }}
+          back={{ label: copy.r2_intake_title, href: intakeHref }}
           lead={lead}
           note={note}
           status={<StatusTag domain="proposal" status={proposal.status} />}
@@ -276,6 +280,9 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         footer={
           <NextStepBar
             current={submitted ? 3 : 2}
+            onStep={(step) =>
+              navigate(step === 1 ? intakeHref : '/build/changesets/' + encodeURIComponent(id))
+            }
             description={submitted ? copy.r3_main_wait_review : copy.r3_main_next_submit}
             action={
               submitted
@@ -300,7 +307,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                 <KindTag kind={current.after_data.kind} />
                 <StatusTag
                   domain="decision"
-                  status={current.decision === 'processed_elsewhere' ? 'rejected' : current.decision}
+                  status={isHandledElsewhere(current) ? 'processed_elsewhere' : current.decision}
                 />
               </div>
               <h2>{current.after_data.title}</h2>
@@ -360,7 +367,14 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             </div>
             <div className={styles['pane-actions']}>
               {current.applied_entity_id ? (
-                <Link to={'/ontology/elements/' + encodeURIComponent(current.applied_entity_id)}>
+                <Link
+                  to={
+                    '/ontology/elements/' +
+                    encodeURIComponent(current.applied_entity_id) +
+                    '?' +
+                    new URLSearchParams({ from: '/build/changesets/' + encodeURIComponent(id) })
+                  }
+                >
                   {copy.r2_view_draft}
                 </Link>
               ) : (

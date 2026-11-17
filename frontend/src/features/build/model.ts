@@ -1,4 +1,4 @@
-import type { Item, Proposal } from './shared';
+import type { Evidence, Item, Proposal } from './shared';
 import { terms } from '../../i18n/zh-CN';
 export const mainCopy = terms.labels;
 export function sentence(template: string, values: Record<string, string | number>) {
@@ -31,3 +31,12 @@ export function changesetGate(proposal: Proposal, canEdit: boolean) {
   };
 }
 export const askHref = (id: string) => '/applications?' + new URLSearchParams({ element: id });
+
+/** Legacy sources can describe datasets or imported excerpts without a material anchor. */
+export function isAnchoredEvidence(value: unknown): value is Evidence {
+  if (!value || typeof value !== 'object') return false;
+  const fields = value as Record<string, unknown>;
+  return ['material_id', 'anchor_id', 'source_version', 'quote'].every(
+    (key) => typeof fields[key] === 'string' && fields[key].trim().length > 0,
+  );
+}

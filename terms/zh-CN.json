@@ -61,7 +61,8 @@
       "rejected": "不要",
       "deferred": "稍后",
       "stale": "已过期",
-      "waiting_dependency": "等待依赖"
+      "waiting_dependency": "等待依赖",
+      "processed_elsewhere": "已在别处处理"
     },
     "confidence": {
       "sure": "高把握",
@@ -1059,7 +1060,7 @@
     "r3_main_ready": "本机构的内容已经就绪",
     "r3_main_common": "常用入口",
     "r3_main_pending": "还有 {count} 条没处理",
-    "r3_main_done": "{count} 条都处理完了：采纳 {accepted} 条，不要 {rejected} 条。",
+    "r3_main_done": "已处理 {count} 条：采纳 {a}、不要 {r}。",
     "r3_main_intake_done": "整理出 {count} 条，{check} 条需要你看一眼",
     "r3_main_intake_running": "正在整理制度，完成的内容会保留。",
     "r3_main_intake_view": "核对建设方案",
@@ -1190,7 +1191,8 @@
     "r3_gallery_date": "示例日期",
     "r3_gallery_selected_date": "已选择日期",
     "r3_gallery_source_list": "核对条款",
-    "r3_gallery_source_aside": "出处与口径"
+    "r3_gallery_source_aside": "出处与口径",
+    "r3_main_review_self_detail": "提交人与最后编辑人需要交由其他审核人员审核。"
   },
   "states": {
     "loading": {

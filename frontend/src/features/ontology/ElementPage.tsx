@@ -1,6 +1,6 @@
 import { Button, Descriptions } from 'antd';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { terms } from '../../i18n/zh-CN';
 import { useUiStore } from '../../state/ui';
 import {
@@ -11,35 +11,16 @@ import {
   KindTag,
   StatusTag,
   formatDateTime,
+  NextStepBar,
 } from '../../ui';
+import { businessText, fieldLabels, sourceDescription } from '../build/businessText';
 import { SourceEvidence } from '../build/SourceEvidence';
-import { askHref, sentence } from '../build/model';
+import { askHref, sentence, isAnchoredEvidence } from '../build/model';
 import { ResourceState, useResource } from '../admin/shared';
 import { type Evidence, useBuildIdentity } from '../build/shared';
 import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
-// Only the business fields represented in the vocabulary belong in this view.
-const fieldLabels = Object.fromEntries(
-  Object.entries(copy)
-    .filter(([key]) => key.startsWith('r2_card_field_'))
-    .map(([key, label]) => [key.slice('r2_card_field_'.length), label]),
-);
-const textFields = new Set(['name', 'label', 'title', 'value', 'text', 'description']);
-function businessText(value: unknown): string {
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  if (Array.isArray(value)) return value.map(businessText).filter(Boolean).join('；');
-  if (!value || typeof value !== 'object') return '';
-  return Object.entries(value)
-    .flatMap(([key, child]) => {
-      const label = Object.hasOwn(fieldLabels, key) ? fieldLabels[key] : undefined;
-      if (!label && !textFields.has(key)) return [];
-      const text = businessText(child);
-      return text ? [label ? `${label}：${text}` : text] : [];
-    })
-    .join('；');
-}
 const activityLabels: Record<string, string> = {
   create: terms.actions.catalog_2_0,
   update: terms.actions.catalog_1_1,
@@ -65,7 +46,10 @@ import type { ElementDetail, ElementDetailResult } from '../../api/generated/typ
 export function BusinessCard({ detail }: { detail: ElementDetail }) {
   const [source, setSource] = useState<Evidence>();
   const sources = Array.isArray(detail.entity.payload.source_refs)
-    ? (detail.entity.payload.source_refs as Evidence[])
+    ? (detail.entity.payload.source_refs.filter((value) => value && typeof value === 'object') as Record<
+        string,
+        unknown
+      >[])
     : [];
   return (
     <article className={styles.card} aria-label={detail.entity.title}>
@@ -84,10 +68,12 @@ export function BusinessCard({ detail }: { detail: ElementDetail }) {
       {!sources.length && <p>{copy.r2_card_empty}</p>}
       {sources.slice(0, 1).map((ref, i) => (
         <blockquote className={styles.quote} key={i}>
-          <p>{ref.quote}</p>
-          <Button type="text" autoInsertSpace={false} onClick={() => setSource(ref)}>
-            {ref.locator || copy.r3_main_view_original}
-          </Button>
+          <p>{sourceDescription(ref) || copy.r3_main_no_source}</p>
+          {isAnchoredEvidence(ref) && (
+            <Button type="text" autoInsertSpace={false} onClick={() => setSource(ref)}>
+              {businessText(ref.locator) || copy.r3_main_view_original}
+            </Button>
+          )}
         </blockquote>
       ))}
       {sources.length > 1 && (
@@ -97,9 +83,13 @@ export function BusinessCard({ detail }: { detail: ElementDetail }) {
         >
           {sources.slice(1).map((ref, i) => (
             <p key={i}>
-              <Button type="text" onClick={() => setSource(ref)}>
-                {ref.locator || copy.r3_main_view_original}
-              </Button>
+              {isAnchoredEvidence(ref) ? (
+                <Button type="text" onClick={() => setSource(ref)}>
+                  {businessText(ref.locator) || copy.r3_main_view_original}
+                </Button>
+              ) : (
+                <span>{sourceDescription(ref) || copy.r3_main_no_source}</span>
+              )}
             </p>
           ))}
         </FoldRow>
@@ -116,6 +106,12 @@ export default function ElementPage() {
 function Element({ id }: { id: string }) {
   const viewMode = useUiStore((state) => state.viewMode);
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const from = params.get('from') || '';
+  const fromChangeset = /^\/build\/changesets\/[^/?#]+$/.test(from);
+  const back = fromChangeset
+    ? { label: copy.r2_changeset_title, href: from }
+    : { label: terms.actions.r2_card_back, href: '/ontology/catalog' };
   const query = useResource<ElementDetailResult>('/v2/elements/' + encodeURIComponent(id));
   if (!query.data)
     return (
@@ -142,7 +138,7 @@ function Element({ id }: { id: string }) {
       header={
         <PageHeader
           title={entity.title}
-          back={{ label: terms.actions.r2_card_back, href: '/ontology/catalog' }}
+          back={back}
           status={
             <>
               <KindTag kind={entity.kind} />
@@ -252,7 +248,9 @@ function Element({ id }: { id: string }) {
                   <ul className={styles.checks}>
                     <li>
                       {copy.r3_main_source_check} ·{' '}
-                      {sources.length ? copy.r3_main_check_pass : copy.r3_main_check_pending}
+                      {sources.some(isAnchoredEvidence)
+                        ? copy.r3_main_check_pass
+                        : copy.r3_main_check_pending}
                     </li>
                     <li>
                       {copy.r3_main_content_check} · {copy.r3_main_check_unknown}
@@ -288,6 +286,13 @@ function Element({ id }: { id: string }) {
           )}
         </aside>
       </div>
+      {fromChangeset && (
+        <NextStepBar
+          current={entity.status === 'published' ? 4 : 2}
+          description={entity.status === 'published' ? copy.r3_main_next_ask : copy.r3_main_next_submit}
+          onStep={(step) => navigate(step === 1 ? '/build/intake' : step === 2 ? from : '/govern/reviews')}
+        />
+      )}
     </PageLayout>
   );
 }

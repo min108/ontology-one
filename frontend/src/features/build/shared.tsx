@@ -2,14 +2,16 @@ import { useEffect, useRef } from 'react';
 import { useSessionStore } from '../../state/session';
 import { useScopeStore } from '../../state/scope';
 import { terms } from '../../i18n/zh-CN';
-import { StateBlock } from '../../ui/StateBlock';
+import { StateBlock, PageLayout, PageHeader } from '../../ui';
 
-export function BuildForbidden() {
+export function BuildForbidden({ title = terms.labels.r2_changeset_title }: { title?: string }) {
   return (
-    <StateBlock
-      state="forbidden"
-      action={{ label: terms.actions.shell_back_home, onClick: () => window.location.assign('/') }}
-    />
+    <PageLayout variant="list" header={<PageHeader title={title} />}>
+      <StateBlock
+        state="forbidden"
+        action={{ label: terms.actions.shell_back_home, onClick: () => window.location.assign('/') }}
+      />
+    </PageLayout>
   );
 }
 

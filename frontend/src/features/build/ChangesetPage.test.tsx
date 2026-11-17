@@ -4,6 +4,7 @@ import { ConfigProvider } from 'antd';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { api, ApiError, invokeCapability } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
+import { sentence } from './model';
 import { testQuery, testSession } from './testQuery';
 import ChangesetPage from './ChangesetPage';
 
@@ -18,6 +19,7 @@ vi.mock('./shared', async (original) => ({
 }));
 const seed = () => ({
   id: 'CS-1',
+  origin_ref: 'run-1',
   title: 'Policy',
   summary: 'Summary',
   status: 'open',
@@ -115,7 +117,7 @@ it('requires all items handled before one L2 submit confirmation and then submit
   open();
   const submit = await screen.findByRole('button', { name: terms.actions.catalog_1_6 });
   expect(submit).toBeDisabled();
-  expect(screen.getByText('还有 1 条没处理')).toBeVisible();
+  expect(screen.getByText(sentence(terms.labels.r3_main_pending, { count: 1 }))).toBeVisible();
   vi.mocked(invokeCapability).mockImplementation(async (operation) => {
     if (operation === 'changeset.decide_items') {
       proposal.items[0].decision = 'accepted';
@@ -126,13 +128,16 @@ it('requires all items handled before one L2 submit confirmation and then submit
   });
   fireEvent.click(screen.getByRole('button', { name: terms.actions.catalog_1_0 }));
   await waitFor(() => expect(submit).toBeEnabled());
+  expect(screen.getByText(sentence(terms.labels.r3_main_done, { count: 1, a: 1, r: 0 }))).toBeVisible();
   expect(screen.getByRole('link', { name: terms.labels.r2_view_draft })).toHaveAttribute(
     'href',
-    '/ontology/elements/rule-1',
+    '/ontology/elements/rule-1?from=%2Fbuild%2Fchangesets%2FCS-1',
   );
   fireEvent.click(submit);
   const dialog = screen.getByRole('dialog');
-  await waitFor(() => expect(within(dialog).getByText(/将提交 1 条/)).toBeVisible());
+  await waitFor(() =>
+    expect(within(dialog).getByText(sentence(terms.labels.r3_main_submit_count, { count: 1 }))).toBeVisible(),
+  );
   expect(invokeCapability).not.toHaveBeenCalledWith(
     'changeset.apply_and_submit',
     expect.anything(),
@@ -167,4 +172,19 @@ it('shows the original in place with exact highlight and keeps the selected item
   );
   fireEvent.click(within(drawer).getByRole('button', { name: /关闭|Close/ }));
   expect(screen.getByRole('button', { name: 'Original title' })).toHaveAttribute('aria-current', 'true');
+});
+
+it('returns to the exact intake run and treats externally processed candidates as read-only', async () => {
+  proposal.items[0].decision = 'processed_elsewhere';
+  open();
+  expect(await screen.findByRole('link', { name: terms.labels.r2_intake_title })).toHaveAttribute(
+    'href',
+    '/build/intake?run=run-1',
+  );
+  expect(screen.getByRole('button', { name: terms.actions.catalog_1_0 })).toBeDisabled();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_1_1 })).toBeDisabled();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_1_2 })).toBeDisabled();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled();
+  expect(screen.getAllByText(terms.labels.r3_main_elsewhere).length).toBeGreaterThan(0);
+  expect(screen.queryByText('processed_elsewhere')).not.toBeInTheDocument();
 });

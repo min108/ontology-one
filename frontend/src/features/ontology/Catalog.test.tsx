@@ -82,10 +82,10 @@ it('searches the catalog through the server, preserves six simple columns and ad
           items: [
             {
               id: 'rule_internal_secret',
-              title: path.includes('q=') && !path.includes('q=&') ? '检索后的付款规则' : '付款规则',
+              title: path.includes('q=') && !path.includes('q=&') ? 'Filtered payment rule' : 'Payment rule',
               kind: 'rule',
               status: 'published',
-              source_title: '付款制度',
+              source_title: 'Payment policy',
               updated_at: '2026-11-17T01:30:00Z',
               version: 3,
             },
@@ -101,21 +101,21 @@ it('searches the catalog through the server, preserves six simple columns and ad
     </MemoryRouter>,
     { wrapper: testQuery() },
   );
-  expect(await screen.findByRole('link', { name: '付款规则' })).toHaveAttribute(
+  expect(await screen.findByRole('link', { name: 'Payment rule' })).toHaveAttribute(
     'href',
     '/ontology/elements/rule_internal_secret',
   );
   expect(screen.getAllByRole('columnheader')).toHaveLength(6);
-  expect(screen.getByText('付款制度')).toBeVisible();
+  expect(screen.getByText('Payment policy')).toBeVisible();
   expect(screen.getByText('2026-11-17 09:30')).toBeVisible();
   expect(screen.queryByText('rule_internal_secret')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: terms.actions.columns })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText(terms.labels.r2_catalog_search), { target: { value: '付款' } });
+  fireEvent.change(screen.getByLabelText(terms.labels.r2_catalog_search), { target: { value: 'payment' } });
   fireEvent.keyDown(screen.getByLabelText(terms.labels.r2_catalog_search), { key: 'Enter', code: 'Enter' });
   await waitFor(() =>
-    expect(api).toHaveBeenCalledWith(expect.stringContaining('q=%E4%BB%98%E6%AC%BE'), expect.anything()),
+    expect(api).toHaveBeenCalledWith(expect.stringContaining('q=payment'), expect.anything()),
   );
-  expect(await screen.findByRole('link', { name: '检索后的付款规则' })).toBeVisible();
+  expect(await screen.findByRole('link', { name: 'Filtered payment rule' })).toBeVisible();
   act(() => useUiStore.getState().setViewMode('professional'));
   expect(screen.getAllByRole('columnheader')).toHaveLength(7);
   expect(screen.getByText('v3')).toBeVisible();

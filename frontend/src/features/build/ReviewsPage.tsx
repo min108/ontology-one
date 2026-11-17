@@ -21,11 +21,13 @@ import { ResourceState, useResource } from '../admin/shared';
 import { actions, copy, type Evidence, useBuildIdentity, useLifetime, BuildForbidden } from './shared';
 import { askHref, sentence } from './model';
 import { SourceEvidence } from './SourceEvidence';
+import { businessText, sourceDescription } from './businessText';
+import { isAnchoredEvidence } from './model';
 import styles from './Build.module.css';
 
 export default function ReviewsPage() {
   const identity = useBuildIdentity();
-  return identity.canRead ? <Inbox key={identity.key} /> : <BuildForbidden />;
+  return identity.canRead ? <Inbox key={identity.key} /> : <BuildForbidden title={copy.r2_reviews_title} />;
 }
 function Inbox() {
   const [kind, setKind] = useState(''),
@@ -48,6 +50,21 @@ function Inbox() {
   const rows = list.data?.data.items;
   const current = rows?.find((row) => row.entity.id === selected) || rows?.[0];
   const blocked = busy || !!list.refreshing || !!list.error || !current?.can_decide;
+  const sources = current?.source_refs || [];
+  const conditionValue: unknown = current?.entity.payload.conditions;
+  const conditions = (Array.isArray(conditionValue) ? conditionValue : [conditionValue])
+    .map(businessText)
+    .filter(Boolean);
+  const reviewMeta = current?.entity.payload.r2_review;
+  const sourceChangeset =
+    reviewMeta &&
+    typeof reviewMeta === 'object' &&
+    'changeset_id' in reviewMeta &&
+    typeof reviewMeta.changeset_id === 'string'
+      ? '/build/changesets/' + encodeURIComponent(reviewMeta.changeset_id)
+      : '/build/intake';
+  const revisit = (step: number) =>
+    navigate(step === 1 ? '/build/intake' : step === 2 ? sourceChangeset : '/govern/reviews');
   const blockedReason = current?.blocked_reason || (!current?.can_decide ? copy.r3_main_review_other : '');
   async function decide() {
     const signal = lifetime.current?.signal;
@@ -181,6 +198,7 @@ function Inbox() {
           />
           <NextStepBar
             current={result?.decision === 'approve_publish' ? 4 : 3}
+            onStep={revisit}
             complete={result?.decision === 'approve_publish'}
             description={
               result?.decision === 'approve_publish' ? copy.r3_main_next_ask : copy.r3_main_wait_review
@@ -224,7 +242,7 @@ function Inbox() {
               </div>
             </div>
           }
-          footer={<NextStepBar current={3} description={copy.r3_main_next_ask} />}
+          footer={<NextStepBar current={3} onStep={revisit} description={copy.r3_main_next_ask} />}
         >
           {current && (
             <article className={styles.detail} data-review-id={current.entity.id}>
@@ -235,8 +253,8 @@ function Inbox() {
                 </div>
                 <h2>{current.entity.title}</h2>
                 <p className={styles.statement}>
-                  {current.entity.payload.content ||
-                    current.entity.payload.definition ||
+                  {businessText(current.entity.payload.content) ||
+                    businessText(current.entity.payload.definition) ||
                     current.entity.summary}
                 </p>
                 <dl className={styles.metadata}>
@@ -256,31 +274,29 @@ function Inbox() {
                     description={blockedReason}
                   />
                 )}
-                <FoldRow
-                  title={copy.r3_main_scope}
-                  summary={sentence(copy.r3_main_count, {
-                    count: current.entity.payload.conditions?.length || 0,
-                  })}
-                  defaultOpen
-                >
-                  {current.entity.payload.conditions?.length ? (
+                {conditions.length > 0 && (
+                  <FoldRow
+                    title={copy.r3_main_scope}
+                    summary={sentence(copy.r3_main_count, { count: conditions.length })}
+                    defaultOpen
+                  >
                     <ul>
-                      {current.entity.payload.conditions.map((condition) => (
-                        <li key={condition}>{condition}</li>
+                      {conditions.map((condition, index) => (
+                        <li key={index}>{condition}</li>
                       ))}
                     </ul>
-                  ) : (
-                    <p>{copy.r3_main_empty}</p>
-                  )}
-                </FoldRow>
+                  </FoldRow>
+                )}
                 <h3>{copy.r3_main_source}</h3>
-                {current.source_refs.length ? (
-                  current.source_refs.map((source, index) => (
+                {sources.length ? (
+                  sources.map((source, index) => (
                     <blockquote className={styles.quote} key={index}>
-                      <p>{source.quote}</p>
-                      <Button type="text" autoInsertSpace={false} onClick={() => setFocus(source)}>
-                        {copy.r3_main_view_original}
-                      </Button>
+                      <p>{sourceDescription(source) || copy.r3_main_no_source}</p>
+                      {isAnchoredEvidence(source) && (
+                        <Button type="text" autoInsertSpace={false} onClick={() => setFocus(source)}>
+                          {copy.r3_main_view_original}
+                        </Button>
+                      )}
                     </blockquote>
                   ))
                 ) : (
@@ -295,7 +311,9 @@ function Inbox() {
                     <ul className={styles.checks}>
                       <li>
                         {copy.r3_main_source_check} ·{' '}
-                        {current.source_refs.length ? copy.r3_main_check_pass : copy.r3_main_check_pending}
+                        {sources.some(isAnchoredEvidence)
+                          ? copy.r3_main_check_pass
+                          : copy.r3_main_check_pending}
                       </li>
                       <li>
                         {copy.r3_main_content_check} · {copy.r3_main_check_unknown}
@@ -315,6 +333,18 @@ function Inbox() {
                 )}
                 <TechnicalDetails>
                   <p>{current.entity.id}</p>
+                  <pre>
+                    {JSON.stringify(
+                      {
+                        content: current.entity.payload.content,
+                        definition: current.entity.payload.definition,
+                        conditions: current.entity.payload.conditions,
+                        source_refs: current.source_refs,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
                 </TechnicalDetails>
               </div>
               <div className={styles['pane-actions']}>

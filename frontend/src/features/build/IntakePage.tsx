@@ -20,7 +20,11 @@ import styles from './Build.module.css';
 
 export default function IntakePage() {
   const identity = useBuildIdentity();
-  return identity.canRead ? <Intake key={identity.key} canEdit={identity.canEdit} /> : <BuildForbidden />;
+  return identity.canRead ? (
+    <Intake key={identity.key} canEdit={identity.canEdit} />
+  ) : (
+    <BuildForbidden title={copy.r2_intake_title} />
+  );
 }
 function Intake({ canEdit }: { canEdit: boolean }) {
   const [params] = useSearchParams();
@@ -34,7 +38,9 @@ function Intake({ canEdit }: { canEdit: boolean }) {
   const runQuery = useQuery({
     queryKey: workspaceQueryKey(session?.workspace.tenant_id || '', scopeKey, 'intake:' + runId),
     enabled: !!runId,
-    queryFn: ({ signal }) => api<RecipeResult>('/v2/recipes/' + encodeURIComponent(runId), { signal }),
+    queryFn: ({ signal }) => {
+      return api<RecipeResult>('/v2/recipes/' + encodeURIComponent(runId), { signal });
+    },
     refetchInterval: (query) =>
       ['queued', 'running'].includes(query.state.data?.data.status || '') ? 1500 : false,
   });
@@ -105,6 +111,15 @@ function Intake({ canEdit }: { canEdit: boolean }) {
     setAutoStart(false);
     void start();
   }, [autoStart, file, busy, canEdit, start]);
+  const terminal = run && !['queued', 'running', 'waiting_user'].includes(run.status);
+  function resetIntake() {
+    setAutoStart(false);
+    setFile(undefined);
+    setRunId('');
+    setRun(undefined);
+    setError('');
+    navigate('/build/intake', { replace: true });
+  }
   return (
     <PageLayout
       variant="archive"
@@ -115,7 +130,9 @@ function Intake({ canEdit }: { canEdit: boolean }) {
             itemCount !== undefined
               ? sentence(copy.r3_main_intake_done, { count: itemCount, check: checkCount })
               : run
-                ? copy.r3_main_intake_running
+                ? terminal && !run.changeset_id
+                  ? run.stage_message || copy.r2_failure
+                  : copy.r3_main_intake_running
                 : copy.r2_intake_help
           }
           primaryAction={
@@ -124,11 +141,13 @@ function Intake({ canEdit }: { canEdit: boolean }) {
                   label: copy.r3_main_intake_view,
                   onClick: () => navigate('/build/changesets/' + run.changeset_id),
                 }
-              : {
-                  label: busy ? copy.r2_uploading : actions.r2_start,
-                  disabled: !file || !canEdit || busy,
-                  onClick: () => void start(),
-                }
+              : terminal
+                ? { label: copy.r3_main_intake_new, onClick: resetIntake }
+                : {
+                    label: busy ? copy.r2_uploading : actions.r2_start,
+                    disabled: !file || !canEdit || busy,
+                    onClick: () => void start(),
+                  }
           }
         />
       }
@@ -174,18 +193,11 @@ function Intake({ canEdit }: { canEdit: boolean }) {
         <section className={styles.card} aria-live="polite">
           <h2>{copy.r2_progress}</h2>
           <StatusTag domain="recipe" status={run.status} />
-          <p>{run.stage_message}</p>
+          {(!terminal || !!run.changeset_id) && <p>{run.stage_message}</p>}
           <Progress percent={Math.round(((run.progress?.done || 0) / (run.progress?.total || 4)) * 100)} />
           <OriginTag origin={run.used_model ? 'ai' : 'local'} />
           {run.changeset_id && (
-            <Button
-              type="text"
-              onClick={() => {
-                setRunId('');
-                setRun(undefined);
-                navigate('/build/intake', { replace: true });
-              }}
-            >
+            <Button type="text" onClick={resetIntake}>
               {copy.r3_main_intake_new}
             </Button>
           )}

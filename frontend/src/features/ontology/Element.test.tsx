@@ -80,10 +80,10 @@ function detail(): ElementDetail {
     can_edit: false,
   };
 }
-async function openElement(value = detail()) {
+async function openElement(value = detail(), path = '/ontology/elements/rule_private_id') {
   vi.mocked(api).mockResolvedValue({ data: value });
   const rendered = render(
-    <MemoryRouter initialEntries={['/ontology/elements/rule_private_id']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/ontology/elements/:id" element={<ElementPage />} />
       </Routes>
@@ -101,6 +101,7 @@ beforeEach(() => {
 
 it('shows readable nested business information with vocabulary labels and excludes all internal fields', async () => {
   const { container } = await openElement();
+  expect(screen.getByText('Use for payment review.')).toBeVisible();
   expect(screen.queryByRole('region', { name: terms.labels.r2_card_structure })).not.toBeInTheDocument();
   expect(screen.queryByText(/rule_private_id/)).not.toBeInTheDocument();
   act(() => useUiStore.getState().setViewMode('professional'));
@@ -197,4 +198,25 @@ it('renders a draft in the new archive page without a published question action'
   expect(screen.getByRole('button', { name: terms.labels.r3_main_edit_draft })).toBeEnabled();
   expect(screen.queryByRole('button', { name: terms.labels.r3_main_ask })).not.toBeInTheDocument();
   expect(screen.getByText(terms.labels.r3_main_draft_note)).toBeVisible();
+});
+
+it('returns a mainline draft to its construction proposal and offers completed-step navigation', async () => {
+  const value = detail();
+  value.entity.status = 'draft';
+  value.can_edit = true;
+  await openElement(value, '/ontology/elements/rule_private_id?from=%2Fbuild%2Fchangesets%2Fcs-1');
+  expect(screen.getByRole('link', { name: terms.labels.r2_changeset_title })).toHaveAttribute(
+    'href',
+    '/build/changesets/cs-1',
+  );
+  const steps = screen.getByRole('navigation', { name: terms.labels.r3_ui_next });
+  expect(within(steps).getByRole('button', { name: terms.actions.r3_ui_step1 })).toBeEnabled();
+});
+it('uses the catalog return for a direct archive visit and ignores arbitrary from destinations', async () => {
+  await openElement(detail(), '/ontology/elements/rule_private_id?from=https%3A%2F%2Fexample.invalid');
+  expect(screen.getByRole('link', { name: terms.actions.r2_card_back })).toHaveAttribute(
+    'href',
+    '/ontology/catalog',
+  );
+  expect(screen.queryByRole('navigation', { name: terms.labels.r3_ui_next })).not.toBeInTheDocument();
 });
