@@ -265,7 +265,8 @@ async def turn(ident: str, request: Request):
     )
 
 
-@router.get("/sessions/{ident}/runs/{run_id}", response_model=AgentReportRun)
+# Scope/source revocation removes fields; typed defaults must not recreate them.
+@router.get("/sessions/{ident}/runs/{run_id}", response_model=AgentReportRun, response_model_exclude_unset=True)
 async def run(ident: str, run_id: str):
     session = SESSIONS.get(principal(), ident)
     await SESSIONS.validate(session)
