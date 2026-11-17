@@ -8,24 +8,13 @@ import styles from './IntegrationApplications.module.css';
 
 const copy = terms.labels;
 const presentation: IntegrationPresentation = {
-  page: ({
-    content,
-    information,
-    dialogs,
-    organization,
-    search,
-    onSearch,
-    onRefresh,
-    onCreate,
-    createDisabled,
-  }) => (
+  page: ({ content, information, dialogs, search, onSearch, onRefresh, onCreate, createDisabled }) => (
     <PageLayout
       variant="list"
       header={
         <PageHeader
           title={copy.r3_integration_title}
           lead={copy.r3_integration_lead}
-          note={organization}
           primaryAction={
             onCreate
               ? {

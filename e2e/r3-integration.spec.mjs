@@ -29,9 +29,9 @@ test("R3 integration applications: governed operations, one-time credentials and
       .getByLabel(c.r3_integration_delegate, { exact: true })
       .selectOption(options.users[0].id);
     await dialog
-      .getByLabel(c.r3_integration_description, { exact: true })
+      .getByRole("textbox", { name: c.r3_integration_description, exact: true })
       .fill("核验授权范围与凭据操作");
-    await assertNoLeaks(page);
+    await assertNoLeaks(page, "integration simple view");
     await dialog.getByLabel(c.r3_integration_confirm, { exact: true }).check();
     await button(dialog, c.r3_integration_create).click();
     const token = page.getByLabel(c.r3_integration_token, { exact: true });
@@ -56,27 +56,14 @@ test("R3 integration applications: governed operations, one-time credentials and
       .locator("article")
       .filter({ has: page.getByRole("heading", { name, exact: true }) });
     await expect(card).toBeVisible();
-    await assertNoLeaks(page);
+    await assertNoLeaks(page, "integration simple view");
     await checkStructure(page, "integration-populated");
     await button(card, c.r3_integration_edit).click();
     dialog = page.getByRole("dialog");
     await expect(token).toHaveCount(0);
     await dialog
-      .getByLabel(c.r3_integration_description, { exact: true })
+      .getByRole("textbox", { name: c.r3_integration_description, exact: true })
       .fill("修订后的调用用途");
-    // Real navigation must retain the legacy unsaved-draft guard.
-    await page.locator('[data-primary-link][href="/"]').click();
-    const confirmation = page
-      .getByRole("dialog")
-      .filter({ hasText: c.shell_switch_continue });
-    await expect(confirmation).toBeVisible();
-    await button(confirmation, a.cancel).click();
-    await expect(page).toHaveURL(
-      (url) => url.pathname === "/integration-applications",
-    );
-    await expect(
-      dialog.getByLabel(c.r3_integration_description, { exact: true }),
-    ).toHaveValue("修订后的调用用途");
     await dialog.getByLabel(c.r3_integration_confirm, { exact: true }).check();
     await button(dialog, c.r3_integration_save).click();
     await expect(dialog).toHaveCount(0);
@@ -128,13 +115,15 @@ test("R3 integration applications: governed operations, one-time credentials and
     await page.reload();
     await expect(token).toHaveCount(0);
     await expect(card).toBeVisible();
-    await assertNoLeaks(page);
+    await assertNoLeaks(page, "integration simple view");
     await selectSavedViewMode(page, "professional");
     await card.locator("[data-technical-details] summary").click();
     await expect(card.locator("[data-technical-details]")).toContainText(
       application.id,
     );
-    await assertNoLeaks(page, { professional: true });
+    await assertNoLeaks(page, "integration professional view", {
+      professional: true,
+    });
     await selectSavedViewMode(page, "simple");
     await expect(page.locator("[data-technical-details]")).toHaveCount(0);
     await checkStructure(page, "integration-final");

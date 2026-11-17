@@ -28,3 +28,8 @@
 .content[class~='legacy-root'] [class~='ia-identity'] span {
   display: block;
 }
+
+/* Keep folded credential content out of layout as well as the accessibility tree. */
+.content details:not([open]) > div {
+  display: none;
+}
