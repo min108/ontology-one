@@ -1,5 +1,23 @@
 import assert from "node:assert/strict";
 
+export function assertUnwaivedChecks(gates) {
+  assert.equal(gates.passed, true, "publication checks must pass");
+  assert.equal(gates.checks.length, 5, "every publication check must run");
+  assert.deepEqual(gates.checks.map(({ code }) => code).sort(), [
+    "QG1",
+    "QG2",
+    "QG3",
+    "QG4",
+    "QG5",
+  ]);
+  assert.ok(
+    gates.checks.every(({ status }) =>
+      ["pass", "not_applicable"].includes(status),
+    ),
+    "the mainline must pass without a waiver",
+  );
+}
+
 export function assertGateProjection(server, rendered) {
   assert.equal(server.checks.length, 5, "five checks must be present");
   assert.equal(rendered.length, 5, "the UI must show every actual check");

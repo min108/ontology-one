@@ -6,6 +6,7 @@ import {
   assertRuleCaseResults,
   assertWaiverActivity,
   assertSubmissionBlocked,
+  assertUnwaivedChecks,
 } from "./r4-assertion-contracts.mjs";
 const checks = Array.from({ length: 5 }, (_, i) => ({
   code: `QG${i + 1}`,
@@ -13,6 +14,19 @@ const checks = Array.from({ length: 5 }, (_, i) => ({
   reason: "核对通过",
 }));
 const rows = checks.map((row) => ({ ...row, text: row.reason }));
+test("mainline receipt rejects failed, missing, duplicate or waived checks", () => {
+  assertUnwaivedChecks({ passed: true, checks });
+  for (const changed of [
+    { passed: false, checks },
+    { passed: true, checks: checks.slice(1) },
+    { passed: true, checks: [checks[1], ...checks.slice(1)] },
+    {
+      passed: true,
+      checks: [{ ...checks[0], status: "waived" }, ...checks.slice(1)],
+    },
+  ])
+    assert.throws(() => assertUnwaivedChecks(changed));
+});
 const cases = [
   { name: "适用", input: { amount: 30 }, expected: "pass" },
   { name: "不适用", input: { amount: 0 }, expected: "not_applicable" },

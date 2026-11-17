@@ -5,6 +5,7 @@ import { test, expect } from "./runtime.mjs";
 import { c, login, read, postResponse, confirmAction } from "./r3-support.mjs";
 import { checkStructure, assertNoLeaks } from "./r3-structure.mjs";
 import { reportIssueSummary } from "./r3-report-diagnostics.mjs";
+import { assertUnwaivedChecks } from "./r4-assertion-contracts.mjs";
 import {
   assertRecipeTrayStage,
   assertReturnedReason,
@@ -20,9 +21,7 @@ const output = process.env.E2E_EVIDENCE_DIR;
 const live = (process.env.E2E_R3_LIVE || process.env.E2E_R2_LIVE) === "1";
 const documentText =
   "第一条 办理付款前应核对合同约定与验收资料；验收通过后30日内完成付款申请。\n第二条 累计付款不得超过合同金额；有异议的款项应记录原因并暂停支付。\n第三条 经办人员应保存验收记录，审核人员复核付款依据。" +
-  (process.env.E2E_R4 === "1"
-    ? "\n第四条 适用范围：本机构合同付款；适用条件：验收完成；例外：存在争议时暂停付款；生效日期：2026-01-01。"
-    : "");
+  "\n第四条 适用范围：本机构合同付款；适用条件：验收完成；例外：存在争议时暂停付款；生效日期：2026-01-01。";
 function safeFailure(error) {
   const frames = String(error?.stack || "")
     .split("\n")
@@ -79,6 +78,7 @@ for (
   }) => {
     mkdirSync(output, { recursive: true });
     const times = [],
+      publicationChecks = [],
       reportChecks = [],
       reportReads = [],
       reportResponses = [],
@@ -384,6 +384,18 @@ for (
       const applied = await submit(page);
       expect(applied.entity_ids).toHaveLength(proposal.items.length);
       expect(applied.entity_ids).toContain(editedId);
+      for (const id of applied.entity_ids) {
+        const detail = (await read(page, "/api/v2/elements/" + id)).data;
+        assertUnwaivedChecks(detail.gates);
+        publicationChecks.push({
+          stage: "submitted",
+          checks: detail.gates.checks.map(({ code, status }) => ({
+            code,
+            status,
+          })),
+          waived: false,
+        });
+      }
       await expect(button(page, "已提交审核")).toBeDisabled();
       await expect(page.locator("[aria-current=step]")).toContainText("点通过");
       const persisted = await read(page, "/api/entities/" + editedId);
@@ -451,6 +463,17 @@ for (
       expect((await read(page, "/api/entities/" + editedId)).status).toBe(
         "published",
       );
+      const publishedDetail = (await read(page, "/api/v2/elements/" + editedId))
+        .data;
+      assertUnwaivedChecks(publishedDetail.gates);
+      publicationChecks.push({
+        stage: "published",
+        checks: publishedDetail.gates.checks.map(({ code, status }) => ({
+          code,
+          status,
+        })),
+        waived: false,
+      });
       record("A9 独立审核并发布");
       await page.goto("/ontology/catalog");
       await page
@@ -746,6 +769,7 @@ for (
             soft_failures: test.info().errors.map(safeFailure),
             first_numeric_blocked: firstNumericBlocked,
             automatic_revision: revisionUsed,
+            publication_checks: publicationChecks,
             report_checks: reportChecks,
             total_seconds: Math.round((Date.now() - started) / 1000),
           },

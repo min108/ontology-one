@@ -18,7 +18,7 @@ test("R3 A9 cross-role: editor A, submitter B, independent C; both review entrie
     const page = editor.page;
     await selectSavedViewMode(page, "simple");
     const text =
-      "第一条 付款前经办人应核对交叉审核依据；验收通过后30日内提交付款。\n第二条 审核人员独立核对原始材料。";
+      "第一条 付款前经办人应核对交叉审核依据；验收通过后30日内提交付款。\n第二条 审核人员独立核对原始材料。\n第三条 适用范围：本机构付款；适用条件：验收通过；例外：有争议时暂停付款；生效日期：2026-01-01。";
     const dropped = await page.evaluateHandle((text) => {
       const data = new DataTransfer();
       data.items.add(

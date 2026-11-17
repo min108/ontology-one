@@ -48,6 +48,9 @@ async function pendingEntity(page, title, source) {
     status: "draft",
     payload: {
       content: quote,
+      definition: "确认框锁定原项的独立核验知识",
+      conditions: ["需要独立核验时"],
+      boundary: "仅用于确认框重排验收",
       source_refs: [
         {
           material_id: fixture.objects.material,

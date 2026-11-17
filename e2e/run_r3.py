@@ -82,7 +82,18 @@ def main(round_name: str = "r3") -> int:
             mainline = destination / "mainline-1.json"
             if mainline.exists():
                 details = json.loads(mainline.read_text())
-                receipt.update({key: details[key] for key in ("first_numeric_blocked", "automatic_revision", "steps")})
+                receipt.update(
+                    {
+                        key: details[key]
+                        for key in (
+                            "first_numeric_blocked",
+                            "automatic_revision",
+                            "steps",
+                            "total_seconds",
+                            "publication_checks",
+                        )
+                    }
+                )
             runs.append(receipt)
             if completed.returncode or receipt["status"] != "passed":
                 break
@@ -231,6 +242,7 @@ def main(round_name: str = "r3") -> int:
                 finally:
                     terminate_processes(processes)
         except Exception as error:
+            report["status"] = "failed"
             report["error_type"] = type(error).__name__
         finally:
             report.update(
@@ -239,6 +251,8 @@ def main(round_name: str = "r3") -> int:
                 model_requests=provider.requests if provider else None,
                 fixture_accounts=sorted(manifest["browser"]["accounts"]),
             )
+            if not report["services_stopped"] or not report["databases_removed"]:
+                report["status"] = "failed"
             if args.live:
                 shutil.rmtree(output / "test-results", ignore_errors=True)
             (output / "runner.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")

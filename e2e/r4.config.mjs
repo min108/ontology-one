@@ -6,7 +6,7 @@ export default defineConfig({
   testMatch:
     process.env.E2E_R3_MAINLINE_ONLY === "1"
       ? "**/r3-mainline.spec.mjs"
-      : ["**/r4-*.spec.mjs", "**/r3-mainline.spec.mjs"],
+      : ["**/r4-*.spec.mjs", "**/r3-*.spec.mjs"],
   workers: 1,
   retries: 0,
   timeout: 600_000,
