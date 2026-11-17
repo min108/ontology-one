@@ -1,7 +1,7 @@
 name: ontology-one-v020
 
 x-app: &app
-  image: ontology-one:${ONTOLOGY_APP_VERSION:-1.1.0}
+  image: ontology-one:${ONTOLOGY_APP_VERSION:-1.2.0}
   build: .
   restart: unless-stopped
   init: true

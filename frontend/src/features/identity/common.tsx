@@ -10,6 +10,7 @@ import { useWorkspaceDraftGuard } from '../../app/useWorkspaceGuard';
 import { StateBlock } from '../../ui/StateBlock';
 import { terms } from '../../i18n/zh-CN';
 import styles from './Identity.module.css';
+import { formatDateTime } from '../../ui/dateTime';
 export const copy = terms.labels;
 export const action = terms.actions;
 export function errorMessage(error: unknown): string {
@@ -21,19 +22,7 @@ export function requestId(error: unknown): string | undefined {
   const id = body.error?.request_id ?? body.request_id;
   return typeof id === 'string' ? id : undefined;
 }
-export const time = (value: string): string =>
-  value
-    ? new Date(value).toLocaleString('zh-CN', {
-        timeZone: 'Asia/Shanghai',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hourCycle: 'h23',
-      })
-    : '—';
+export const time = formatDateTime;
 export function Timestamp({ value }: { value: string }) {
   return (
     <time className={styles.timestamp} data-visual-dynamic="timestamp" dateTime={value}>

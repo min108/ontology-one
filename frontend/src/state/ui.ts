@@ -8,14 +8,8 @@ export function fromPreferenceViewMode(mode: PreferenceViewMode): ViewMode {
 export function toPreferenceViewMode(mode: ViewMode): PreferenceViewMode {
   return mode === 'professional' ? 'pro' : 'simple';
 }
-export function defaultViewMode(role: string, permissions: readonly string[] = []): ViewMode {
-  if (
-    role === 'viewer' ||
-    role === 'analyst' ||
-    (permissions.length === 1 && permissions[0] === 'source.submit')
-  )
-    return 'simple';
-  return ['admin', 'modeler', 'reviewer'].includes(role) ? 'professional' : 'simple';
+export function defaultViewMode(_role: string, _permissions: readonly string[] = []): ViewMode {
+  return 'simple';
 }
 type UiState = {
   viewMode: ViewMode;

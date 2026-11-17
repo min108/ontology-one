@@ -22,6 +22,7 @@ import {
 } from './index';
 import { terms } from '../i18n/zh-CN';
 import { brand } from '../i18n/brand';
+import { useUiStore } from '../state/ui';
 
 const action = { label: terms.actions.retry, onClick: vi.fn() };
 const items = [
@@ -126,7 +127,11 @@ describe('platform components', () => {
   });
   it('StateBlock collapses request identifier', () => {
     render(<StateBlock state="error" action={action} requestId="request-123" />);
-    expect(screen.getByText(terms.labels.request_number).closest('details')).not.toHaveAttribute('open');
+    expect(screen.queryByText('request-123')).not.toBeInTheDocument();
+    act(() => useUiStore.getState().setViewMode('professional'));
+    expect(screen.getByText(terms.labels.r3_ui_technical).closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('request-123')).toBeInTheDocument();
+    act(() => useUiStore.getState().setViewMode('simple'));
   });
   it('DataTable renders records', () => {
     render(<DataTable columns={columns} dataSource={rows} rowKey="id" emptyAction={action} />);
@@ -134,6 +139,7 @@ describe('platform components', () => {
   });
   it('DataTable has actionable empty state', () => {
     render(<DataTable columns={columns} dataSource={[]} rowKey="id" emptyAction={action} />);
+    expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: action.label })).toBeInTheDocument();
   });
   it('DataTable restores column settings from URL', () => {
@@ -143,7 +149,15 @@ describe('platform components', () => {
     expect(window.location.search).toContain('keep=yes');
   });
   it('DataTable updates columns in URL', async () => {
-    render(<DataTable columns={columns} dataSource={rows} rowKey="id" emptyAction={action} />);
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rows}
+        rowKey="id"
+        emptyAction={action}
+        viewMode="professional"
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: terms.actions.columns }));
     fireEvent.click(await screen.findByRole('checkbox', { name: terms.labels.sample_owner }));
     expect(new URLSearchParams(window.location.search).get('table.columns')).toBe('name');

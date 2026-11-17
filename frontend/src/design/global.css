@@ -32,8 +32,8 @@ body {
   :where(a, button, input, select, textarea, [tabindex]):not(
     :where(.legacy-root, .legacy-root *)
   ):focus-visible {
-  outline: var(--zy-focus-width) solid var(--zy-primary-500);
-  outline-offset: var(--zy-space-1);
+  outline: var(--zy-focus-width) solid var(--zy-color-focus);
+  outline-offset: var(--zy-focus-offset);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -49,4 +49,19 @@ body {
   .zy-root {
     background: var(--zy-gray-0);
   }
+}
+
+.zy-root {
+  font-variant-numeric: tabular-nums;
+}
+.zy-root :where(a):not(:where(.legacy-root, .legacy-root *)) {
+  color: var(--zy-color-link);
+}
+.zy-root :where(h2):not(:where(.legacy-root, .legacy-root *)) {
+  font-size: var(--zy-font-title);
+  line-height: var(--zy-line-title);
+}
+.zy-root :where(h3, h4):not(:where(.legacy-root, .legacy-root *)) {
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
 }

@@ -15,14 +15,8 @@ export function KindTag({ kind }: { kind: Kind | string }) {
           : ['link_type', 'process'].includes(kind)
             ? GitBranch
             : BookOpen;
-  const tokenKind = ['project', 'task', 'matter', 'evidence', 'issue', 'case', 'analysis'].includes(kind)
-    ? 'event'
-    : kind;
   return (
-    <Tag
-      className={`${styles.tag} ${styles[tokenKind.replaceAll('_', '-')] ?? styles.collection}`}
-      icon={<Icon aria-hidden="true" />}
-    >
+    <Tag className={styles.tag} icon={<Icon aria-hidden="true" />}>
       {labels[kind] ?? terms.labels.unknown_kind}
     </Tag>
   );

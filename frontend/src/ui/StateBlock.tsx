@@ -4,14 +4,16 @@ import { CircleAlert, FolderOpen, LockKeyhole, Settings2, CircleCheck } from 'lu
 import { terms, type StateKind } from '../i18n/zh-CN';
 import type { Action } from './types';
 import styles from './StateBlock.module.css';
+import { TechnicalDetails } from './TechnicalDetails';
 export interface StateBlockProps {
   state: StateKind;
   description?: string;
   action: Action;
   requestId?: string;
   phase?: string;
+  title?: string;
 }
-export function StateBlock({ state, description, action, requestId, phase }: StateBlockProps) {
+export function StateBlock({ state, description, action, requestId, phase, title }: StateBlockProps) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (state !== 'loading') return;
@@ -46,20 +48,19 @@ export function StateBlock({ state, description, action, requestId, phase }: Sta
       ) : (
         <Icon className={styles.icon} aria-hidden="true" />
       )}
-      <h3>{copy.title}</h3>
+      <h3>{title ?? copy.title}</h3>
       <p>
         {state === 'loading' && elapsed >= 3000
           ? (phase ?? copy.description)
           : (description ?? copy.description)}
       </p>
-      <Button autoInsertSpace={false} type="primary" onClick={action.onClick} disabled={action.disabled}>
+      <Button autoInsertSpace={false} onClick={action.onClick} disabled={action.disabled}>
         {action.label}
       </Button>
       {requestId && (
-        <details className={styles.request}>
-          <summary>{terms.labels.request_number}</summary>
+        <TechnicalDetails>
           <code>{requestId}</code>
-        </details>
+        </TechnicalDetails>
       )}
     </section>
   );

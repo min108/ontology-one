@@ -4,6 +4,7 @@ export interface Action {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  loading?: boolean;
 }
 export interface NavigationItem {
   key: string;

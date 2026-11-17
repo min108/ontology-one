@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { workspaceQueryKey } from '../../api/query';
+import { useScopeStore } from '../../state/scope';
 import { api } from '../../api/client';
 import { useSessionStore } from '../../state/session';
 import { StateBlock } from '../../ui/StateBlock';
@@ -11,43 +13,34 @@ export function useManagementSession() {
 }
 export function useResource<T>(path: string, enabled = true) {
   const { session } = useManagementSession();
-  const identity = `${session?.user.id}:${session?.workspace.tenant_id}`;
-  const [state, setState] = useState<{
-    identity?: string;
-    path?: string;
-    data?: T;
-    error?: string;
-    refreshing?: boolean;
-  }>({});
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    setState((current) =>
-      current.identity === identity && current.path === path
-        ? { ...current, error: undefined, refreshing: true }
-        : { identity, path, refreshing: true },
-    );
-    if (!enabled) return;
-    const controller = new AbortController();
-    void api<T>(path, { signal: controller.signal }).then(
-      (data) => {
-        if (!controller.signal.aborted) setState({ identity, path, data, refreshing: false });
-      },
-      (error: unknown) => {
-        if (!controller.signal.aborted)
-          setState((current) => ({
-            identity,
-            path,
-            data: current.identity === identity && current.path === path ? current.data : undefined,
-            error: error instanceof Error ? error.message : copy.admin_failure,
-            refreshing: false,
-          }));
-      },
-    );
-    return () => controller.abort();
-  }, [path, enabled, identity, revision]);
+  const scope = useScopeStore((state) => state.scopeKey);
+  const ready = enabled && Boolean(session);
+  const query = useQuery({
+    queryKey: workspaceQueryKey(
+      session?.workspace.tenant_id ?? 'unavailable',
+      scope,
+      'resource',
+      session?.user.id,
+      path,
+    ),
+    queryFn: ({ signal }) => {
+      return api<T>(path, { signal });
+    },
+    enabled: ready,
+    staleTime: 0,
+  });
   return {
-    ...(enabled && state.identity === identity && state.path === path ? state : {}),
-    reload: () => setRevision((value) => value + 1),
+    data: ready ? query.data : undefined,
+    error:
+      ready && query.error
+        ? query.error instanceof Error
+          ? query.error.message
+          : copy.admin_failure
+        : undefined,
+    refreshing: ready && query.isFetching,
+    reload: () => {
+      if (ready) void query.refetch();
+    },
   };
 }
 export function ResourceState({ error, reload }: { error?: string; reload: () => void }) {

@@ -1,0 +1,4 @@
+Noto Sans SC Medium (weight 500)
+Source: https://github.com/notofonts/noto-cjk/blob/main/Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf
+License: SIL Open Font License 1.1; see LICENSE-NOTO.txt.
+Instantiated at wght=500, subset to exactly the Unicode cmap of cn-sans-400.woff2.

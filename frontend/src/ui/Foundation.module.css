@@ -1,0 +1,204 @@
+.fold {
+  background: var(--zy-color-surface);
+  border: var(--zy-border-width) solid var(--zy-color-border);
+  border-radius: var(--zy-radius-card);
+}
+.fold summary {
+  display: flex;
+  align-items: center;
+  gap: var(--zy-gap-tight);
+  min-height: var(--zy-fold-height);
+  padding: var(--zy-none) var(--zy-space-6);
+  cursor: pointer;
+  list-style: none;
+}
+.fold summary::-webkit-details-marker {
+  display: none;
+}
+.fold summary > svg {
+  width: var(--zy-icon-size);
+  height: var(--zy-icon-size);
+  margin-left: auto;
+}
+.fold[open] summary > svg {
+  transform: rotate(180deg);
+}
+.foldBody {
+  padding: var(--zy-none) var(--zy-space-6) var(--zy-space-6);
+}
+.caption {
+  color: var(--zy-color-text-secondary);
+  font-size: var(--zy-font-caption);
+  line-height: var(--zy-line-caption);
+}
+.technical pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--zy-font-mono);
+  font-size: var(--zy-font-body);
+}
+.source blockquote {
+  margin: var(--zy-none);
+  padding: var(--zy-gap);
+  border-left: var(--zy-indicator-width) solid var(--zy-color-border-control);
+  background: var(--zy-color-surface-sunken);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.source mark {
+  background: var(--zy-mark-bg);
+  color: var(--zy-color-text);
+}
+.source p {
+  color: var(--zy-color-text-secondary);
+}
+.origin {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--zy-space-1);
+  padding: var(--zy-space-half) var(--zy-gap-tight);
+  font-size: var(--zy-font-caption);
+  line-height: var(--zy-line-caption);
+  border: var(--zy-border-width) solid var(--zy-color-border-control);
+  border-radius: var(--zy-radius-tag);
+  background: var(--zy-color-surface);
+  color: var(--zy-color-text-secondary);
+}
+.origin svg {
+  width: var(--zy-font-caption);
+  height: var(--zy-font-caption);
+}
+.demonstration {
+  background: var(--zy-warning-50);
+  color: var(--zy-warning-700);
+}
+.splitWrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zy-gap);
+  flex: 1;
+  min-height: var(--zy-none);
+}
+.split {
+  display: grid;
+  grid-template-columns: var(--zy-pane-list) minmax(0, 1fr);
+  gap: var(--zy-gap);
+  min-height: var(--zy-none);
+  flex: 1;
+}
+.three {
+  grid-template-columns: var(--zy-pane-list) minmax(0, 1fr) var(--zy-pane-side);
+}
+.pane {
+  min-height: var(--zy-none);
+  min-width: var(--zy-none);
+  overflow: auto;
+  background: var(--zy-color-surface);
+  border: var(--zy-border-width) solid var(--zy-color-border);
+  border-radius: var(--zy-radius-card);
+}
+.mobileEvidence {
+  display: none;
+}
+.next {
+  display: flex;
+  align-items: center;
+  gap: var(--zy-gap);
+  min-height: var(--zy-nextstep-height);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: var(--zy-gap-tight) var(--zy-space-6);
+  background: var(--zy-color-surface);
+  border: var(--zy-border-width) solid var(--zy-color-border);
+  border-radius: var(--zy-radius-card);
+  position: sticky;
+  bottom: var(--zy-none);
+  z-index: var(--zy-layer-nav);
+}
+.next ol {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--zy-gap);
+  padding: var(--zy-none);
+  margin: var(--zy-none);
+}
+.next li {
+  display: flex;
+  align-items: center;
+  gap: var(--zy-gap-tight);
+  white-space: nowrap;
+  color: var(--zy-color-text-secondary);
+}
+.step,
+.next li button {
+  width: var(--zy-step-size);
+  height: var(--zy-step-size);
+  border-radius: var(--zy-radius-pill);
+  border: var(--zy-border-width) solid var(--zy-color-border-control);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: var(--zy-font-caption);
+  background: var(--zy-color-surface);
+}
+.next svg {
+  width: var(--zy-font-caption);
+  height: var(--zy-font-caption);
+}
+.activeStep .step {
+  background: var(--zy-color-accent);
+  border-color: var(--zy-color-accent);
+  color: var(--zy-color-text-inverse);
+}
+.activeStep {
+  font-weight: var(--zy-weight-heading);
+}
+.doneStep .step,
+.doneStep button {
+  background: var(--zy-color-text);
+  border-color: var(--zy-color-text);
+  color: var(--zy-color-text-inverse);
+}
+.nextDescription {
+  flex: 1;
+}
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.rowActions svg {
+  width: var(--zy-font-caption);
+  height: var(--zy-font-caption);
+}
+.sourced {
+  border: var(--zy-none);
+  border-bottom: var(--zy-border-width) dashed var(--zy-color-border-strong);
+  padding: var(--zy-none);
+  background: var(--zy-transparent);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+@media (width < 1280px) {
+  .three {
+    grid-template-columns: var(--zy-pane-list) minmax(0, 1fr);
+  }
+  .evidence {
+    display: none;
+  }
+  .mobileEvidence {
+    display: block;
+    padding: var(--zy-gap);
+  }
+  .fullSteps ol {
+    flex-wrap: wrap;
+  }
+}
+@media (width < 1024px) {
+  .next {
+    flex-wrap: wrap;
+  }
+}

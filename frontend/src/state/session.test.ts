@@ -247,7 +247,8 @@ it('current unauthorized response clears identity, caches and permissions', asyn
 });
 it('converts preference modes without inventing an endpoint and defaults source submitters to simple', async () => {
   const { defaultViewMode, fromPreferenceViewMode, toPreferenceViewMode } = await import('./ui');
-  expect(defaultViewMode('admin')).toBe('professional');
+  for (const role of ['admin', 'modeler', 'reviewer', 'viewer', 'analyst'])
+    expect(defaultViewMode(role)).toBe('simple');
   expect(defaultViewMode('viewer')).toBe('simple');
   expect(defaultViewMode('modeler', ['source.submit'])).toBe('simple');
   expect(fromPreferenceViewMode('pro')).toBe('professional');

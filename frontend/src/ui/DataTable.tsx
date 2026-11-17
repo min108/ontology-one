@@ -1,5 +1,5 @@
 import { Button, Checkbox, Popover, Segmented, Table } from 'antd';
-import type { TableColumnsType } from 'antd';
+import type { TableColumnsType, TableProps } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import type { Key } from 'react';
 import { terms } from '../i18n/zh-CN';
@@ -13,6 +13,8 @@ export interface DataTableProps<T extends object> {
   viewMode?: ViewMode;
   urlKey?: string;
   emptyAction: Action;
+  pagination?: TableProps<T>['pagination'];
+  tableProps?: Omit<TableProps<T>, 'columns' | 'dataSource' | 'rowKey' | 'pagination'>;
 }
 export function DataTable<T extends object>({
   columns,
@@ -21,9 +23,11 @@ export function DataTable<T extends object>({
   viewMode = 'simple',
   urlKey = 'table',
   emptyAction,
+  pagination,
+  tableProps,
 }: DataTableProps<T>) {
   const available = columns.map((column, index) => String(column.key ?? index));
-  const defaults = available.slice(0, 6);
+  const defaults = viewMode === 'professional' ? available : available.slice(0, 6);
   const read = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
     const saved = params
@@ -31,7 +35,11 @@ export function DataTable<T extends object>({
       ?.split(',')
       .filter((key) => available.includes(key));
     return {
-      columns: saved?.length ? saved : defaults,
+      columns: saved?.length
+        ? viewMode === 'professional'
+          ? saved
+          : saved.filter((key) => defaults.includes(key)).slice(0, 6)
+        : defaults,
       compact: viewMode === 'professional' && params.get(`${urlKey}.density`) === 'compact',
       page: Math.max(1, Number(params.get(`${urlKey}.page`)) || 1),
     };
@@ -53,49 +61,55 @@ export function DataTable<T extends object>({
     setSettings(next);
   }
   const shown = columns.filter((_column, index) => settings.columns.includes(available[index]));
+  if (!dataSource.length && !tableProps?.loading) return <StateBlock state="empty" action={emptyAction} />;
   return (
     <div className={styles.table}>
-      <div className={styles.controls}>
-        <Popover
-          trigger="click"
-          content={
-            <Checkbox.Group
-              value={settings.columns}
-              onChange={(values) => {
-                if (values.length) update({ ...settings, columns: values.map(String) });
-              }}
-              options={columns.map((column, index) => ({
-                label: typeof column.title === 'string' ? column.title : available[index],
-                value: available[index],
-              }))}
+      {viewMode === 'professional' && (
+        <div className={styles.controls}>
+          <Popover
+            trigger="click"
+            content={
+              <Checkbox.Group
+                value={settings.columns}
+                onChange={(values) => {
+                  if (values.length) update({ ...settings, columns: values.map(String) });
+                }}
+                options={columns.map((column, index) => ({
+                  label: typeof column.title === 'string' ? column.title : available[index],
+                  value: available[index],
+                }))}
+              />
+            }
+          >
+            <Button>{terms.actions.columns}</Button>
+          </Popover>
+          {viewMode === 'professional' && (
+            <Segmented
+              aria-label={terms.labels.density}
+              options={[
+                { label: terms.actions.comfortable, value: false },
+                { label: terms.actions.compact, value: true },
+              ]}
+              value={settings.compact}
+              onChange={(compact) => update({ ...settings, compact })}
             />
-          }
-        >
-          <Button>{terms.actions.columns}</Button>
-        </Popover>
-        {viewMode === 'professional' && (
-          <Segmented
-            aria-label={terms.labels.density}
-            options={[
-              { label: terms.actions.comfortable, value: false },
-              { label: terms.actions.compact, value: true },
-            ]}
-            value={settings.compact}
-            onChange={(compact) => update({ ...settings, compact })}
-          />
-        )}
-      </div>
+          )}
+        </div>
+      )}
       <Table<T>
+        {...tableProps}
         columns={shown}
         dataSource={dataSource}
         rowKey={rowKey}
         size={viewMode === 'professional' && settings.compact ? 'small' : 'middle'}
-        pagination={{
-          current: settings.page,
-          pageSize: 10,
-          hideOnSinglePage: true,
-          onChange: (page) => update({ ...settings, page }),
-        }}
+        pagination={
+          pagination ?? {
+            current: settings.page,
+            pageSize: 10,
+            hideOnSinglePage: true,
+            onChange: (page) => update({ ...settings, page }),
+          }
+        }
         locale={{ emptyText: <StateBlock state="empty" action={emptyAction} /> }}
       />
     </div>

@@ -12,11 +12,25 @@ const columns = ['name', 'owner', 'updated', 'type', 'status', 'version', 'depar
 
 describe('navigation and table boundaries', () => {
   it('DataTable shows at most six columns by default', () => {
-    render(<DataTable columns={columns} dataSource={[]} rowKey="id" emptyAction={action} />);
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
+        rowKey="id"
+        emptyAction={action}
+      />,
+    );
     expect(screen.getAllByRole('columnheader')).toHaveLength(6);
   });
   it('DataTable restores browser navigation changes', () => {
-    render(<DataTable columns={columns} dataSource={[]} rowKey="id" emptyAction={action} />);
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
+        rowKey="id"
+        emptyAction={action}
+      />,
+    );
     act(() => {
       window.history.replaceState(null, '', '/?table.columns=name');
       window.dispatchEvent(new PopStateEvent('popstate'));
@@ -27,7 +41,7 @@ describe('navigation and table boundaries', () => {
     render(
       <DataTable
         columns={columns}
-        dataSource={[]}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
         rowKey="id"
         emptyAction={action}
         viewMode="professional"
@@ -38,7 +52,14 @@ describe('navigation and table boundaries', () => {
   });
   it('DataTable cannot restore unknown columns from URL', () => {
     window.history.replaceState(null, '', '/?table.columns=unknown');
-    render(<DataTable columns={columns} dataSource={[]} rowKey="id" emptyAction={action} />);
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
+        rowKey="id"
+        emptyAction={action}
+      />,
+    );
     expect(screen.getAllByRole('columnheader')).toHaveLength(6);
   });
   it('Omnibox ArrowUp wraps to the last result', () => {
@@ -88,7 +109,7 @@ describe('navigation and table boundaries', () => {
     const { rerender, container } = render(
       <DataTable
         columns={columns}
-        dataSource={[]}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
         rowKey="id"
         emptyAction={action}
         viewMode="professional"
@@ -96,18 +117,29 @@ describe('navigation and table boundaries', () => {
     );
     expect(container.querySelector('.ant-table-small')).not.toBeNull();
     rerender(
-      <DataTable columns={columns} dataSource={[]} rowKey="id" emptyAction={action} viewMode="simple" />,
+      <DataTable
+        columns={columns}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
+        rowKey="id"
+        emptyAction={action}
+        viewMode="simple"
+      />,
     );
     expect(container.querySelector('.ant-table-small')).toBeNull();
   });
   it('DataTable replaces stale selected columns after the column contract changes', () => {
     const { rerender } = render(
-      <DataTable columns={columns} dataSource={[]} rowKey="id" emptyAction={action} />,
+      <DataTable
+        columns={columns}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
+        rowKey="id"
+        emptyAction={action}
+      />,
     );
     rerender(
       <DataTable
         columns={[{ key: 'new', title: terms.labels.sample_name }]}
-        dataSource={[]}
+        dataSource={[{ id: 'record', name: terms.labels.sample_name }]}
         rowKey="id"
         emptyAction={action}
       />,
