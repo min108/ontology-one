@@ -18,10 +18,11 @@ export function EvidenceDrawer({
 }) {
   return (
     <Drawer
+      closable={{ 'aria-label': terms.actions.r3_ui_close }}
       title={title}
       open={open}
       onClose={onClose}
-      width={wide ? 'var(--zy-drawer-wide)' : 'var(--zy-drawer-width)'}
+      size={wide ? 'var(--zy-drawer-wide)' : 'var(--zy-drawer-width)'}
       footer={footer}
       destroyOnHidden
       keyboard

@@ -1,43 +1,53 @@
-import { Breadcrumb } from 'antd';
+import { ChevronLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { terms } from '../i18n/zh-CN';
-import { primaryNavigation, routeEntry, workspaceFor } from './navigation';
+import { routeEntry } from './navigation';
 import styles from './WorkspaceBreadcrumbs.module.css';
 
+// New object pages own their return path in PageHeader. Retained object pages
+// keep their source-aware navigation, presented inside their existing title.
 export function WorkspaceBreadcrumbs() {
-  const location = useLocation();
-  const [heading, setHeading] = useState('');
-  const workspace = workspaceFor(location.pathname);
-  const primary = primaryNavigation('admin').find((item) => item.key === workspace);
-  const entry = routeEntry(location.pathname);
+  const { pathname } = useLocation();
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  const [source, setSource] = useState<{ href: string; label: string } | null>(null);
+  const entry = routeEntry(pathname);
   const detail =
     /^\/(?:materials|datasets|data-sources|assets|authority|projects|tasks|skill-development)\/[^/]+$/.test(
-      location.pathname,
-    ) || /^\/knowledge\/collections\/[^/]+$/.test(location.pathname);
+      pathname,
+    ) || /^\/knowledge\/collections\/[^/]+$/.test(pathname);
   useEffect(() => {
-    setHeading('');
+    setTarget(null);
+    setSource(null);
     if (!detail) return;
     const content = document.querySelector('[data-workspace-content]');
     if (!content) return;
-    const refresh = () => setHeading(content.querySelector('h1')?.textContent?.trim() ?? '');
+    const refresh = () => {
+      const heading = content.querySelector<HTMLElement>('[data-legacy-page] h1');
+      const header = heading?.closest<HTMLElement>('header') ?? heading?.parentElement ?? null;
+      setTarget((previous) => (previous === header ? previous : header));
+      const origin = content.querySelector<HTMLAnchorElement>('.context-back');
+      const href = origin?.getAttribute('href');
+      const label = origin?.textContent?.trim();
+      if (href?.startsWith('/') && !href.startsWith('//') && label)
+        setSource((previous) =>
+          previous?.href === href && previous.label === label ? previous : { href, label },
+        );
+    };
     const observer = new MutationObserver(refresh);
     observer.observe(content, { childList: true, subtree: true, characterData: true });
     refresh();
     return () => observer.disconnect();
-  }, [location.pathname, detail]);
-  const items = [{ title: <Link to={primary?.href ?? '/'}>{primary?.label ?? terms.labels.home}</Link> }];
-  if (location.pathname === '/account/security') {
-    items.push({ title: <span>{terms.labels.shell_security}</span> });
-  } else if (location.pathname === '/briefing') {
-    items.push({ title: <span>{terms.labels.shell_briefing}</span> });
-  } else if (entry) {
-    items.push({ title: detail ? <Link to={entry.href}>{entry.label}</Link> : <span>{entry.label}</span> });
-  }
-  if (detail && heading) items.push({ title: <span>{heading}</span> });
-  return (
-    <nav aria-label={terms.labels.shell_breadcrumb} className={styles.breadcrumb}>
-      <Breadcrumb items={items} />
-    </nav>
+  }, [pathname, detail]);
+  if (!detail || !target || !entry) return null;
+  return createPortal(
+    <nav aria-label={terms.labels.shell_breadcrumb} className={styles.breadcrumb} data-object-return>
+      <Link to={source?.href ?? entry.href}>
+        <ChevronLeft aria-hidden="true" />
+        {source?.label ?? entry.label}
+      </Link>
+    </nav>,
+    target,
   );
 }

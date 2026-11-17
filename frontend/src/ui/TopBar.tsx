@@ -25,7 +25,7 @@ export function TopBar({
   onHome,
 }: TopBarProps) {
   return (
-    <header className={styles.bar}>
+    <header className={styles.bar} data-topbar data-collapsed={collapsed}>
       <a
         href="/"
         className={styles.brand}
@@ -50,17 +50,20 @@ export function TopBar({
         <img src="/citic-mark.svg" alt="" />
         <span hidden={collapsed}>{brand.product_name}</span>
       </a>
-      {identity ?? <span className={styles.workspace}>{workspaceName}</span>}
+      <div className={styles.identity}>
+        {identity ?? <span className={styles.workspace}>{workspaceName}</span>}
+      </div>
       <div className={styles.actions}>
         {searchSlot ??
           (onSearch && (
             <Button
               autoInsertSpace={false}
+              className={styles.search}
               icon={<Search />}
               onClick={onSearch}
               aria-label={terms.actions.search}
             >
-              {terms.actions.search}
+              {terms.labels.r3_ui_search}
             </Button>
           ))}
         {actions}

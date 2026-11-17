@@ -6,7 +6,7 @@ import styles from './Foundation.module.css';
 export function RowActions({ actions }: { actions: Action[] }) {
   const visible = actions.length > 2 ? actions.slice(0, 1) : actions;
   return (
-    <span data-row-actions className={styles.rowActions}>
+    <span data-row-actions className={styles['row-actions']}>
       {visible.map((action) => (
         <Button
           key={action.label}

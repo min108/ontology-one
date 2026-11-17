@@ -1,7 +1,7 @@
 import { HomeIntake } from '../features/home/HomeIntake';
 import { RecentRecorder } from '../features/home/RecentRecorder';
-import { Alert } from 'antd';
-import { Blocks, Building2, Hammer, House, Play, ShieldCheck } from 'lucide-react';
+import { Alert, Button } from 'antd';
+import { Blocks, Building2, Hammer, House, Play, ShieldCheck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import LegacyHarnessConversation from '@legacy/components/LegacyHarnessConversation';
@@ -9,18 +9,17 @@ import { terms } from '../i18n/zh-CN';
 import { setWorkspaceConfirmation, useSessionStore } from '../state/session';
 import { useUiStore } from '../state/ui';
 import { AppShell } from '../ui/AppShell';
-import { IdentityBar } from '../ui/IdentityBar';
 import { LegacyBlock } from '../ui/LegacyBlock';
 import { NavRail } from '../ui/NavRail';
 import { AppRoutes, completedAdministration } from './AppRoutes';
 import { GlobalSearch } from './GlobalSearch';
-import { roleLabel } from './identity';
 import { primaryNavigation, secondaryNavigation, workspaceFor } from './navigation';
-import { SecondaryNavigation } from './SecondaryNavigation';
 import { WorkspaceBreadcrumbs } from './WorkspaceBreadcrumbs';
 import { WorkspaceConfirmation } from './WorkspaceConfirmation';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { useDownloadWorkspace } from './useDownloadWorkspace';
+import { requestRouteNavigation } from './guardedNavigation';
+import { Link } from 'react-router-dom';
 import styles from './WorkspaceShell.module.css';
 
 const icons = {
@@ -39,6 +38,24 @@ export function WorkspaceShell() {
   const navigate = useNavigate();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [narrowSplit, setNarrowSplit] = useState(() => window.matchMedia('(max-width: 1439px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1439px)');
+    const update = () => setNarrowSplit(media.matches);
+    media.addEventListener('change', update);
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAssistantOpen(false);
+    };
+    const show = () => setAssistantOpen(true);
+    window.addEventListener('keydown', close);
+    window.addEventListener('ontology:harness-run-started', show);
+    return () => {
+      media.removeEventListener('change', update);
+      window.removeEventListener('keydown', close);
+      window.removeEventListener('ontology:harness-run-started', show);
+    };
+  }, []);
   useDownloadWorkspace(session?.workspace.tenant_id ?? '');
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -63,6 +80,13 @@ export function WorkspaceShell() {
   }, []);
   if (!session) return null;
   const workspace = workspaceFor(pathname);
+  const splitPage = pathname.startsWith('/build/changesets/') || pathname === '/govern/reviews';
+  const navCollapsed = collapsed || (splitPage && narrowSplit);
+  const navPath = pathname.startsWith('/build/changesets/')
+    ? '/build/intake'
+    : pathname.startsWith('/ontology/elements/')
+      ? '/ontology/catalog'
+      : pathname;
   const principal = {
     role: session.user.role,
     superadmin: session.user.is_superadmin,
@@ -70,50 +94,64 @@ export function WorkspaceShell() {
   };
   const items = primaryNavigation(principal.role).map((entry) => {
     const Icon = icons[entry.key];
-    return { ...entry, icon: <Icon /> };
+    return {
+      ...entry,
+      icon: <Icon />,
+      children: secondaryNavigation(entry.key, principal, completedAdministration),
+    };
   });
   return (
     <AppShell
+      collapsed={navCollapsed}
+      assistantOpen={assistantOpen}
+      assistant={
+        <>
+          <header className={styles['assistant-header']}>
+            <h2>{terms.labels.r3_ui_assistant_title}</h2>
+            <Button
+              type="text"
+              aria-label={terms.actions.r3_ui_close}
+              icon={<X aria-hidden="true" />}
+              onClick={() => setAssistantOpen(false)}
+            />
+          </header>
+          <div className={styles['assistant-body']}>
+            <p>{terms.labels.r3_ui_assistant_help}</p>
+            <Link to="/applications" onClick={() => setAssistantOpen(false)}>
+              {terms.actions.r3_ui_assistant_open}
+            </Link>
+          </div>
+          <LegacyBlock variant="contents">
+            <LegacyHarnessConversation />
+          </LegacyBlock>
+        </>
+      }
       navigation={
         <div className={`sidebar ${styles.navigation}`}>
           <NavRail
             items={items}
             permissions={{}}
             currentKey={workspace}
-            onNavigate={navigate}
-            collapsed={collapsed}
+            currentHref={navPath}
+            onNavigate={(href) => void requestRouteNavigation(href, navigate)}
+            collapsed={navCollapsed}
             onCollapsedChange={setCollapsed}
           />
         </div>
       }
       topBar={
         <WorkspaceHeader
+          collapsed={navCollapsed}
+          assistantOpen={assistantOpen}
+          onAssistant={() => setAssistantOpen((value) => !value)}
           onSearch={() => {
             setSearchValue('');
             setSearchOpen(true);
           }}
         />
       }
-      identity={
-        <div className={styles.identity}>
-          <IdentityBar
-            organization={session.workspace.name}
-            role={roleLabel(session.user.role)}
-            scope={terms.labels.shell_scope_local}
-          />
-          <SecondaryNavigation entries={secondaryNavigation(workspace, principal, completedAdministration)} />
-        </div>
-      }
     >
       <WorkspaceConfirmation register={setWorkspaceConfirmation} />
-      {!session.permissions.can_edit && (
-        <Alert
-          className={styles.notice}
-          type="info"
-          showIcon
-          title={session.permissions.can_review ? terms.labels.shell_reviewonly : terms.labels.shell_readonly}
-        />
-      )}
       {notice && (
         <Alert
           className={styles.notice}
@@ -124,9 +162,6 @@ export function WorkspaceShell() {
           onClose={() => setNotice('')}
         />
       )}
-      <LegacyBlock variant="contents">
-        <LegacyHarnessConversation />
-      </LegacyBlock>
       <WorkspaceBreadcrumbs />
       <RecentRecorder />
       <HomeIntake key={session.user.id + ':' + session.workspace.tenant_id} />

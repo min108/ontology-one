@@ -19,7 +19,7 @@ export function FoldRow({
         <span className={styles.caption}>{summary}</span>
         <ChevronDown aria-hidden="true" />
       </summary>
-      <div className={styles.foldBody}>{children}</div>
+      <div className={styles['fold-body']}>{children}</div>
     </details>
   );
 }

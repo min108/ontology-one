@@ -1,8 +1,21 @@
 .breadcrumb {
-  margin-bottom: var(--zy-space-4);
-  overflow-wrap: anywhere;
+  flex-basis: var(--zy-full);
+  grid-column: 1 / -1;
+  order: -1;
+  margin-bottom: var(--zy-space-1);
+  font-size: var(--zy-font-caption);
+  line-height: var(--zy-line-caption);
 }
 
-.breadcrumb ol {
-  flex-wrap: wrap;
+.breadcrumb a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--zy-space-1);
+  color: var(--zy-color-text-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb svg {
+  width: var(--zy-font-caption);
+  height: var(--zy-font-caption);
 }

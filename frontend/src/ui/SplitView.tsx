@@ -17,14 +17,14 @@ export function SplitView({
 }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   return (
-    <div className={styles.splitWrap}>
+    <div className={styles['split-wrap']}>
       <div className={`${styles.split} ${aside ? styles.three : ''}`} data-split-view>
         <aside className={styles.pane} data-split-list>
           {list}
         </aside>
         <div className={styles.pane} data-split-main>
           {aside && (
-            <div className={styles.mobileEvidence}>
+            <div className={styles['mobile-evidence']}>
               <Button onClick={() => setEvidenceOpen(true)}>{terms.actions.r3_ui_evidence}</Button>
             </div>
           )}

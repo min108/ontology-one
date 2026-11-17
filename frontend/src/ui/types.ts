@@ -12,4 +12,5 @@ export interface NavigationItem {
   href: string;
   icon?: ReactNode;
   permission?: string;
+  children?: NavigationItem[];
 }

@@ -48,15 +48,23 @@ it('names the account trigger with its visible person and role and still opens a
   );
 });
 
-it('renders the workspace breadcrumb link with at least 4.5:1 contrast on the shell background', () => {
+it('renders an object return link inside its title with at least 4.5:1 contrast', async () => {
   render(
     <DesignProvider>
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={['/materials/example']}>
+        <div data-workspace-content>
+          <div data-legacy-page>
+            <header>
+              <h1>Example</h1>
+            </header>
+          </div>
+        </div>
         <WorkspaceBreadcrumbs />
       </MemoryRouter>
     </DesignProvider>,
   );
-  const link = screen.getByRole('link', { name: terms.labels.home });
+  const link = await screen.findByRole('link', { name: terms.labels.shell_materials });
+  expect(link.closest('header')).not.toBeNull();
   const foreground = getComputedStyle(link)
     .color.match(/[\d.]+/g)
     ?.map(Number);
@@ -77,4 +85,13 @@ it('renders the workspace breadcrumb link with at least 4.5:1 contrast on the sh
       .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
   const values = [luminance(composite), luminance(background)].sort((a, b) => b - a);
   expect((values[0] + 0.05) / (values[1] + 0.05)).toBeGreaterThanOrEqual(4.5);
+});
+
+it('list and workbench routes have no extra breadcrumb row', () => {
+  const view = render(
+    <MemoryRouter initialEntries={['/']}>
+      <WorkspaceBreadcrumbs />
+    </MemoryRouter>,
+  );
+  expect(view.container).toBeEmptyDOMElement();
 });

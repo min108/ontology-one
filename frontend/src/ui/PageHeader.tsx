@@ -63,6 +63,7 @@ export function PageHeader({
           {secondaryAction && (
             <Button
               autoInsertSpace={false}
+              aria-label={secondaryAction.label}
               onClick={secondaryAction.onClick}
               disabled={secondaryAction.disabled}
               loading={secondaryAction.loading}
@@ -74,6 +75,7 @@ export function PageHeader({
             <Button
               autoInsertSpace={false}
               type="primary"
+              aria-label={primaryAction.label}
               onClick={primaryAction.onClick}
               disabled={primaryAction.disabled}
               loading={primaryAction.loading}

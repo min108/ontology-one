@@ -27,12 +27,17 @@ export function NextStepBar({
     terms.actions.r3_ui_step5,
   ];
   return (
-    <nav className={`${styles.next} ${full ? styles.fullSteps : ''}`} aria-label={terms.labels.r3_ui_next}>
+    <nav
+      className={`${styles.next} ${full ? styles['full-steps'] : ''}`}
+      aria-label={terms.labels.r3_ui_next}
+    >
       <ol>
         {labels.map((label, index) => (
           <li
             key={label}
-            className={index + 1 === current ? styles.activeStep : index + 1 < current ? styles.doneStep : ''}
+            className={
+              index + 1 === current ? styles['active-step'] : index + 1 < current ? styles['done-step'] : ''
+            }
             aria-current={index + 1 === current ? 'step' : undefined}
           >
             {onStep && index + 1 < current ? (
@@ -48,7 +53,7 @@ export function NextStepBar({
           </li>
         ))}
       </ol>
-      {description && <span className={styles.nextDescription}>{description}</span>}
+      {description && <span className={styles['next-description']}>{description}</span>}
       {action && (
         <Button
           type={complete ? 'primary' : 'text'}
