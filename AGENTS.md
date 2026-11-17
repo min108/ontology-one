@@ -2,6 +2,8 @@
 
 ## 1 项目与轮次
 
+R2 经 Claude 独立验收为有条件不通过，问题依据见 `R2-ACCEPTANCE.md`。R2.1 限定修复八项，不扩展范围；真实模型验收必须走浏览器，执行按钮并断言落库结果。环境模型仅在 `ONTOLOGY_MODEL_FROM_ENV=1` 时覆盖机构配置，只限演示或单机构部署；环境变量不能把模拟结果提升为真实。数字核验按段落及表格行的实际引用，计数精确匹配，仅金额允许 0.5% 舍入差；裸数字、序号、年份和日期不核验。
+
 知元（英文名 Ontology One）是集团本体管理平台。R2（1.1.0）S0–S6已实施，当前交接见 `docs/blueprint/rounds/R2-REPORT.md`；完整层CI以交付提交的Actions结果为准。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
 ## 2 硬规则摘要

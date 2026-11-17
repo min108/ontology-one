@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -15,6 +16,7 @@ from pydantic import ValidationError
 from backend import db, main
 from backend.capabilities.build import DecideItems, RecipeStart
 from backend.domains.build import confidence, run_recipe
+from backend.domains.reviews import preserve_review_identity
 from backend.infra import migrations
 from backend.security import store
 from backend.security.context import use_context
@@ -22,6 +24,21 @@ from tests.fixtures.v070.load import load_fixture
 
 
 class BuildContracts(unittest.TestCase):
+    def test_legacy_editor_changes_identity_only_when_business_content_changes(self) -> None:
+        old = {
+            "title": "Rule",
+            "payload": {"content": "30日", "r2_review": {"last_editor_id": "first", "submitted_by": "submitter"}},
+        }
+        with patch("backend.domains.reviews.require_context", return_value=SimpleNamespace(user_id="second")):
+            same = preserve_review_identity(
+                old, {"content": "30日", "r2_review": {"last_editor_id": "forged"}}, {"title": "Rule"}
+            )
+            self.assertEqual(same["r2_review"], old["payload"]["r2_review"])
+            for payload, changes in (({"content": "31日"}, {}), ({"content": "30日"}, {"title": "Changed"})):
+                changed = preserve_review_identity(old, payload, changes)
+                self.assertEqual(changed["r2_review"]["last_editor_id"], "second")
+                self.assertIsNone(changed["r2_review"]["submitted_by"])
+
     def test_confidence_is_deterministic_and_local_or_missing_quotes_are_doubt(self) -> None:
         self.assertEqual(confidence(exact=True, complete=True, unique=True, local=False), (0.9, "sure"))
         self.assertEqual(confidence(exact=True, complete=False, unique=False, local=False), (0.7, "check"))
@@ -210,3 +227,41 @@ class BuildMySQL(unittest.TestCase):
             json={"changeset_id": proposal["id"], "item_ids": [item["id"]], "decision": "accepted"},
         )
         self.assertEqual(failed.status_code, 422)
+
+    def test_content_editor_survives_another_person_accepting_and_submitting(self) -> None:
+        editor, submitter = self.login("fixture.admin"), self.login("fixture.builder")
+        proposal = self.proposal(editor)
+        item = proposal["items"][0]
+        body = {"changeset_id": proposal["id"], "item_ids": [item["id"]]}
+        content = item["after_data"]["content"] + " 请核对原文。"
+        edited = self.invoke(
+            editor,
+            "changeset.decide_items",
+            {
+                **body,
+                "decision": "edited",
+                "edit": {
+                    "title": item["after_data"]["title"],
+                    "kind": item["after_data"]["kind"],
+                    "content": content,
+                },
+            },
+        )
+        edited_item = next(x for x in edited["items"] if x["id"] == item["id"])
+        self.assertEqual(edited_item["after_data"]["content"], content)
+        accepted = self.invoke(submitter, "changeset.decide_items", {**body, "decision": "accepted"})
+        accepted_item = next(x for x in accepted["items"] if x["id"] == item["id"])
+        self.assertEqual(accepted_item["one_liner"], edited_item["one_liner"])
+        self.assertEqual(
+            accepted_item["validation"]["last_content_editor_id"], edited_item["validation"]["last_content_editor_id"]
+        )
+        self.assertTrue(accepted["can_submit"])
+        entity_id = self.invoke(submitter, "changeset.apply_and_submit", {"changeset_id": proposal["id"]})[
+            "entity_ids"
+        ][0]
+        refreshed = self.invoke(submitter, "changeset.get", {"changeset_id": proposal["id"]})
+        self.assertFalse(refreshed["can_submit"])
+        denied = editor.post(f"/api/v2/reviews/{entity_id}:decide", json={"decision": "approve_publish", "version": 2})
+        self.assertEqual(denied.status_code, 403)
+        denied = editor.post(f"/api/entities/{entity_id}/action", json={"action": "approve"})
+        self.assertEqual(denied.status_code, 403)

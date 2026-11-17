@@ -20,10 +20,14 @@ def mark_draft(conn: db.Connection, entity: dict, editor_id: str, changeset_id: 
     )
 
 
-def preserve_review_identity(old: dict, payload: dict) -> dict:
+def preserve_review_identity(old: dict, payload: dict, changes: dict | None = None) -> dict:
     # This metadata is owned by the service, even when the legacy editor replaces a payload.
     meta = dict(old["payload"]["r2_review"])
-    meta.update(last_editor_id=require_context().user_id, submitted_by=None, submitted_at=None)
+    content_changed = {k: v for k, v in payload.items() if k != "r2_review"} != {
+        k: v for k, v in old["payload"].items() if k != "r2_review"
+    } or any((changes or {}).get(key, old.get(key)) != old.get(key) for key in ("title", "summary", "domain", "org_id"))
+    if content_changed:
+        meta.update(last_editor_id=require_context().user_id, submitted_by=None, submitted_at=None)
     return {**payload, "r2_review": meta}
 
 

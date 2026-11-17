@@ -315,7 +315,7 @@ async def edit(eid: str, request: Request):
         if old["payload"].get("r2_review"):
             from ...domains.reviews import preserve_review_identity
 
-            b["payload"] = preserve_review_identity(old, b.get("payload", old["payload"]))
+            b["payload"] = preserve_review_identity(old, b.get("payload", old["payload"]), b)
         allowed = ["title", "summary", "domain", "org_id", "status", "payload"]
         for k in allowed:
             if k in b:
@@ -516,7 +516,7 @@ def _restore_entity(eid, body):
         if old["payload"].get("r2_review"):
             from ...domains.reviews import preserve_review_identity
 
-            payload = preserve_review_identity(old, payload)
+            payload = preserve_review_identity(old, payload, snapshot)
         conn.execute(
             "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
             (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), "还原前快照：" + reason),

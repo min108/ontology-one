@@ -452,7 +452,8 @@
     "r2_report_download_html": "下载网页",
     "r2_report_back": "返回报告列表",
     "r2_card_edit": "前往原编辑页",
-    "r2_card_back": "返回本体目录"
+    "r2_card_back": "返回本体目录",
+    "r21_report_revise": "请助手按核对结果修订后重新生成"
   },
   "labels": {
     "search": "查找内容或输入操作",
@@ -993,7 +994,11 @@
     "r2_card_field_outputs": "输出",
     "r2_card_field_boundary": "使用边界",
     "r2_card_field_content": "内容",
-    "r2_card_more": "另有 {count} 条同类关系"
+    "r2_card_more": "另有 {count} 条同类关系",
+    "r21_revision_busy": "助手正在处理，请稍后再试。",
+    "r21_revision_draft": "请先发送或清空输入框中的草稿，再修订报告。",
+    "r21_revision_failed": "助手未完成修订，请查看本次回答后重试。",
+    "r21_revision_prompt": "请重新读取本次所选来源，按以下核对结果修订上一份回答。不要写出原文没有的计数、数字或量级，不自行统计条目数。保留问题所需说明和表格；每个事实段落、表格每行用 [来源名称](/assets/要素编号) 标注实际依据。修订后将自动尝试生成一次报告。核对结果："
   },
   "states": {
     "loading": {

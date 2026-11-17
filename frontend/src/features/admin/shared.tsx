@@ -12,25 +12,41 @@ export function useManagementSession() {
 export function useResource<T>(path: string, enabled = true) {
   const { session } = useManagementSession();
   const identity = `${session?.user.id}:${session?.workspace.tenant_id}`;
-  const [state, setState] = useState<{ identity?: string; data?: T; error?: string }>({});
+  const [state, setState] = useState<{
+    identity?: string;
+    path?: string;
+    data?: T;
+    error?: string;
+    refreshing?: boolean;
+  }>({});
   const [revision, setRevision] = useState(0);
   useEffect(() => {
-    setState({});
+    setState((current) =>
+      current.identity === identity && current.path === path
+        ? { ...current, error: undefined, refreshing: true }
+        : { identity, path, refreshing: true },
+    );
     if (!enabled) return;
     const controller = new AbortController();
     void api<T>(path, { signal: controller.signal }).then(
       (data) => {
-        if (!controller.signal.aborted) setState({ identity, data });
+        if (!controller.signal.aborted) setState({ identity, path, data, refreshing: false });
       },
       (error: unknown) => {
         if (!controller.signal.aborted)
-          setState({ identity, error: error instanceof Error ? error.message : copy.admin_failure });
+          setState((current) => ({
+            identity,
+            path,
+            data: current.identity === identity && current.path === path ? current.data : undefined,
+            error: error instanceof Error ? error.message : copy.admin_failure,
+            refreshing: false,
+          }));
       },
     );
     return () => controller.abort();
   }, [path, enabled, identity, revision]);
   return {
-    ...(enabled && state.identity === identity ? state : {}),
+    ...(enabled && state.identity === identity && state.path === path ? state : {}),
     reload: () => setRevision((value) => value + 1),
   };
 }

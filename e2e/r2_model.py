@@ -140,9 +140,18 @@ def reply(body: dict) -> dict:
                 "name": "ontology_read",
                 "input": {"entity_id": ident.group(1)},
             }
+    selected = re.search(r'"entity_ids"\s*:\s*\[\s*"([^"\]]+)"', "\n".join(strings(messages))) or re.search(
+        r'"entity_ids"\s*:\s*\[\s*"([^"\]]+)"', text
+    )
+    citation = f"[付款制度](/assets/{selected.group(1)})" if selected else ""
     return {
         "type": "text",
         "text": "根据所选已发布制度，验收通过后30日内完成付款申请，付款前应核对合同约定与验收资料。"
-        "\n\n|事项|要求|\n|---|---|\n|申请时限|30日|\n|付款资料|合同约定与验收资料|"
-        "\n\n依据为本次读取的制度原文。以上是模拟模型演练结果。",
+        + citation
+        + "\n\n|事项|要求|依据|\n|---|---|---|\n|申请时限|30日|"
+        + citation
+        + "|\n|付款资料|合同约定与验收资料|"
+        + citation
+        + "|"
+        + "\n\n以上是模拟模型演练结果。",
     }

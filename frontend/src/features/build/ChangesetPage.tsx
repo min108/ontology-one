@@ -40,7 +40,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
   const lifetime = useLifetime();
   const proposal = resource.data?.data;
   async function perform(operation: () => Promise<unknown>, success: string) {
-    if (!canEdit || busy || lifetime.current?.signal.aborted) return;
+    if (!canEdit || busy || resource.refreshing || resource.error || lifetime.current?.signal.aborted) return;
     const signal = lifetime.current?.signal;
     setBusy(true);
     setError('');
@@ -50,11 +50,13 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       if (signal?.aborted) return;
       setMessage(success);
       setEditing(undefined);
-      resource.reload();
     } catch (failure) {
       if (!signal?.aborted) setError(failure instanceof Error ? failure.message : copy.r2_failure);
     } finally {
-      if (!signal?.aborted) setBusy(false);
+      if (!signal?.aborted) {
+        resource.reload();
+        setBusy(false);
+      }
     }
   }
   function decide(items: Item[], decision: string, edit?: Candidate) {
@@ -63,7 +65,12 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         const options = { signal: lifetime.current?.signal };
         await invokeCapability(
           'changeset.decide_items',
-          { changeset_id: id, item_ids: items.map((item) => item.id), decision, ...(edit ? { edit } : {}) },
+          {
+            changeset_id: id,
+            item_ids: items.map((item) => item.id),
+            decision,
+            ...(edit ? { edit: { title: edit.title, content: edit.content, kind: edit.kind } } : {}),
+          },
           options,
         );
         if (['accepted', 'edited'].includes(decision))
@@ -87,7 +94,14 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       <p>
         {proposal.title} · {proposal.summary}
       </p>
-      {error && <Alert type="error" title={error} role="alert" />}
+      {(error || resource.error) && !editing && (
+        <Alert
+          type="error"
+          title={error || resource.error}
+          role="alert"
+          action={resource.error && <Button onClick={resource.reload}>{copy.admin_retry}</Button>}
+        />
+      )}
       {message && (
         <Alert
           type="success"
@@ -100,7 +114,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       <div className={styles.actions}>
         <Button
           autoInsertSpace={false}
-          disabled={!canEdit || busy || !sure.length}
+          disabled={!canEdit || busy || resource.refreshing || !!resource.error || !sure.length}
           onClick={() => void decide(sure, 'accepted')}
         >
           {actions.catalog_1_4}
@@ -109,9 +123,8 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           autoInsertSpace={false}
           type="primary"
           loading={busy}
-          disabled={
-            !canEdit || !proposal.items.some((item) => ['accepted', 'edited'].includes(item.decision))
-          }
+          aria-label={actions.catalog_1_6}
+          disabled={!canEdit || busy || resource.refreshing || !!resource.error || !proposal.can_submit}
           onClick={() =>
             void perform(
               () =>
@@ -175,24 +188,41 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                         <>
                           <Button
                             autoInsertSpace={false}
-                            disabled={!canEdit || busy || item.validation.level === 'error'}
+                            disabled={
+                              !canEdit ||
+                              busy ||
+                              resource.refreshing ||
+                              !!resource.error ||
+                              item.validation.level === 'error'
+                            }
                             onClick={() => void decide([item], 'accepted')}
                           >
                             {actions.catalog_1_0}
                           </Button>
                           <Button
                             autoInsertSpace={false}
-                            disabled={!canEdit || busy}
+                            disabled={!canEdit || busy || resource.refreshing || !!resource.error}
                             onClick={() => {
                               setEditing(item);
-                              setDraft({ ...item.after_data });
+                              setError('');
+                              setDraft({
+                                title: item.after_data.title,
+                                content: item.after_data.content,
+                                kind: item.after_data.kind,
+                              });
                             }}
                           >
                             {actions.catalog_1_1}
                           </Button>
                           <Button
                             autoInsertSpace={false}
-                            disabled={!canEdit || busy || item.decision === 'rejected'}
+                            disabled={
+                              !canEdit ||
+                              busy ||
+                              resource.refreshing ||
+                              !!resource.error ||
+                              item.decision === 'rejected'
+                            }
                             onClick={() => void decide([item], 'rejected')}
                           >
                             {actions.catalog_1_2}
@@ -231,8 +261,17 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         okText={actions.r2_save}
         cancelText={actions.r2_cancel}
         confirmLoading={busy}
+        okButtonProps={{ disabled: resource.refreshing || !!resource.error, 'aria-label': actions.r2_save }}
         onOk={() => editing && void decide([editing], 'edited', draft)}
       >
+        {(error || resource.error) && (
+          <Alert
+            type="error"
+            title={error || resource.error}
+            role="alert"
+            action={resource.error && <Button onClick={resource.reload}>{copy.admin_retry}</Button>}
+          />
+        )}
         <label className={styles.field}>
           {copy.r2_title}
           <Input

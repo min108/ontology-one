@@ -6,7 +6,7 @@ import json
 import time
 from datetime import datetime, timezone
 from fastapi import FastAPI, APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 from .security.context import require_context
@@ -17,6 +17,7 @@ from . import skill_harness as harness
 from .agent_tools import definitions
 from .db import connect, business_readonly
 from .version import APP_VERSION
+from .core.errors import ApiError
 
 
 @asynccontextmanager
@@ -62,6 +63,13 @@ app.add_middleware(SecurityMiddleware)
 router = APIRouter(prefix="/api/agent")
 
 
+@app.exception_handler(ApiError)
+async def business_error(request: Request, exc: ApiError):
+    return JSONResponse(
+        exc.response(getattr(request.state, "request_id", "")).model_dump(), status_code=exc.status_code
+    )
+
+
 @app.get("/internal/health")
 def health():
     return {"ready": not SESSIONS.closed, "service": "ontology-agent", "version": APP_VERSION}
@@ -81,6 +89,7 @@ class Turn(Strict):
     mapping_ids: list[str] = Field(default_factory=list, max_length=20)
     entity_ids: list[str] = Field(default_factory=list, max_length=50)
     scope_mode: Literal["selected", "auto"] = "selected"
+    revision_of: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 
 async def body(request, model):
@@ -236,7 +245,7 @@ async def turn(ident: str, request: Request):
     if not value.message.strip():
         raise HTTPException(422, "请填写问题。")
     resource_catalog = None
-    if value.scope_mode == "auto":
+    if value.scope_mode == "auto" and value.revision_of is None:
         available = await asyncio.to_thread(_options)
         if len(available["skills"]) > 16 or len(available["mappings"]) > 20:
             raise HTTPException(422, "可用资料较多，请展开参考范围，选用与本次问题相关的技能或数据来源。")
@@ -251,6 +260,7 @@ async def turn(ident: str, request: Request):
         value.mapping_ids,
         value.entity_ids,
         resource_catalog=resource_catalog,
+        **({"revision_of": value.revision_of} if value.revision_of else {}),
     )
 
 

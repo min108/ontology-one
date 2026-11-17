@@ -287,6 +287,18 @@ def get(ident: str) -> dict:
             decode(item)
             for item in conn.execute("SELECT * FROM changeset_items WHERE changeset_id=? ORDER BY seq", (ident,))
         ]
+        result["can_submit"] = any(
+            item["decision"] in {"accepted", "edited"}
+            and (
+                not item["applied_entity_id"]
+                or conn.execute(
+                    "SELECT 1 FROM entities WHERE id=? AND status IN ('draft','returned')",
+                    (item["applied_entity_id"],),
+                ).fetchone()
+            )
+            for item in result["items"]
+        )
+        result["can_submit"] = bool(result["can_submit"])
         ref = result["source_refs"][0]
         source = provenance.get_source_version(conn, ref["material_id"], ref.get("source_version"))
         result["source_text"] = source["text"]
@@ -318,15 +330,23 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict
             if decision in {"accepted", "edited"} and item["validation"]["level"] == "error":
                 raise ApiError("EVIDENCE_NOT_FOUND")
             after = item["after_data"] | (edit or {})
+            validation = item["validation"]
+            if edit and any(after.get(key) != item["after_data"].get(key) for key in ("title", "content", "kind")):
+                validation["last_content_editor_id"] = require_context().user_id
             conn.execute(
-                "UPDATE changeset_items SET decision=?,after_data=?,target_kind=?,one_liner=?,decided_by=?,"
-                "decided_at=? WHERE id=?",
+                "UPDATE changeset_items SET decision=?,after_data=?,target_kind=?,one_liner=?,"
+                "decided_by=?,validation=?,decided_at=? WHERE id=?",
                 (
                     decision,
                     materials.dump(after),
                     after["kind"],
-                    after["title"][:500],
+                    (
+                        after["content"][:500]
+                        if edit and after.get("content") != item["after_data"].get("content")
+                        else item["one_liner"]
+                    ),
                     require_context().user_id,
+                    materials.dump(validation),
                     db.now(),
                     item_id,
                 ),
@@ -366,7 +386,12 @@ def apply(ident: str, *, submit: bool) -> dict:
                 candidate.update(item["after_data"])
                 materials.save_payload(conn, material, material["payload"])
                 entity = materials.adopt_candidate_in_transaction(conn, material_id, candidate["id"])["entity"]
-                mark_draft(conn, entity, item["decided_by"] or person.user_id, ident)
+                mark_draft(
+                    conn,
+                    entity,
+                    item["validation"].get("last_content_editor_id") or item["decided_by"] or person.user_id,
+                    ident,
+                )
                 item["applied_entity_id"] = entity["id"]
                 conn.execute(
                     "UPDATE changeset_items SET applied_entity_id=?,applied_version=? WHERE id=?",

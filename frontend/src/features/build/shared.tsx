@@ -52,6 +52,7 @@ export interface Item {
   applied_entity_id?: string;
 }
 export interface Proposal {
+  can_submit: boolean;
   id: string;
   title: string;
   summary: string;

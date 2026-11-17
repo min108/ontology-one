@@ -41,8 +41,7 @@ def main() -> int:
         raise ValueError("Use a new directory under work/")
     output.mkdir(parents=True)
     check_ports(args.api_port, args.agent_port)
-    clean_env = dict(os.environ)
-    clean_env.pop("DEEPSEEK_API_KEY", None)
+    clean_env = {key: value for key, value in os.environ.items() if not key.upper().startswith("DEEPSEEK_")}
     run_command(["npm", "--prefix", "frontend", "run", "build"], ROOT, clean_env, output / "build.log")
     namespace = new_namespace()
     manifest = json.loads((ROOT / "tests/fixtures/v070/manifest.json").read_text())
@@ -76,6 +75,8 @@ def main() -> int:
             E2E_DEPENDENCY_ROOT=str(ROOT / "frontend"),
             E2E_R2_LIVE="1" if args.live else "0",
             ONTOLOGY_MODEL_SOURCE="analyst" if args.live else "mock",
+            ONTOLOGY_MODEL_FROM_ENV="1",
+            E2E_PYTHON=sys.executable,
         )
         if provider:
             environment.update(
@@ -87,7 +88,7 @@ def main() -> int:
         try:
             with scope:
                 try:
-                    bootstrap = {key: value for key, value in environment.items() if key != "DEEPSEEK_API_KEY"}
+                    bootstrap = {key: value for key, value in environment.items() if not key.startswith("DEEPSEEK_")}
                     run_command(
                         [sys.executable, "tests/fixtures/v070/load.py"], ROOT, bootstrap, output / "fixture.log"
                     )
@@ -114,9 +115,7 @@ def main() -> int:
                             "ready" if name == "agent" else "ok",
                         )
                     run_command(
-                        [sys.executable, "e2e/r2_live.py"]
-                        if args.live
-                        else [
+                        [
                             "node",
                             "frontend/node_modules/@playwright/test/cli.js",
                             "test",
@@ -124,7 +123,7 @@ def main() -> int:
                             "e2e/r2.config.mjs",
                         ],
                         ROOT,
-                        environment,
+                        bootstrap,
                         output / "browser.log",
                     )
                     report["status"] = "passed"

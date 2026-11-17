@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from backend.agent_runtime import SessionStore
@@ -56,3 +56,49 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_during_validation_never_starts_orphaned_model(self):
         await self.exercise(delete=True)
+
+    async def test_report_revision_binds_exact_answer_and_server_scope(self):
+        principal = SimpleNamespace(user_id="user", session_id="login", tenant_id="tenant")
+        store = SessionStore()
+        with (
+            patch("backend.agent_runtime.current", return_value=principal),
+            patch.object(store, "validate", new=AsyncMock()),
+            patch.object(store, "_execute", new=AsyncMock()),
+        ):
+            session = store.create(principal)
+            scope = {"skill_ids": [], "mapping_ids": [], "entity_ids": ["original-rule"]}
+            session["last_scope"] = scope
+            session["runs"]["original"] = {"status": "completed", "answer": "first answer 2项", "_report_scope": scope}
+            session["runs"]["later"] = {"status": "completed", "answer": "later answer"}
+            result = await store.start(
+                principal, session, "correct 2项", [], [], ["forged-rule"], revision_of="original"
+            )
+            message = session["messages"][-1]["content"]
+            self.assertIn("first answer 2项", message)
+            self.assertNotIn("later answer", message)
+            self.assertEqual(session["runs"][result["run_id"]]["_report_scope"], scope)
+            await store.close()
+
+    async def test_report_revision_rejects_missing_answer_or_changed_scope(self):
+        principal = SimpleNamespace(user_id="user", session_id="login", tenant_id="tenant")
+        store = SessionStore()
+        with (
+            patch("backend.agent_runtime.current", return_value=principal),
+            patch.object(store, "validate", new=AsyncMock()),
+            patch.object(store, "_execute", new=AsyncMock()) as model,
+        ):
+            session = store.create(principal)
+            session["last_scope"] = {"skill_ids": [], "mapping_ids": [], "entity_ids": ["current"]}
+            session["runs"]["changed"] = {
+                "status": "completed",
+                "answer": "old answer",
+                "_report_scope": {"skill_ids": [], "mapping_ids": [], "entity_ids": ["old"]},
+            }
+            session["runs"]["cleared"] = {"status": "completed"}
+            for source in ("missing", "changed", "cleared"):
+                with self.subTest(source=source), self.assertRaises(HTTPException) as error:
+                    await store.start(principal, session, "correct", [], [], [], revision_of=source)
+                self.assertEqual(error.exception.status_code, 409)
+            model.assert_not_called()
+            self.assertEqual(session["messages"], [])
+            await store.close()

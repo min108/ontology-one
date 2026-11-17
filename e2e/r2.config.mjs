@@ -11,6 +11,7 @@ export default defineConfig({
   outputDir: resolve(process.env.E2E_EVIDENCE_DIR, "test-results"),
   reporter: [["list"]],
   use: {
+    actionTimeout: 30_000,
     baseURL: process.env.E2E_BASE_URL,
     viewport: { width: 1366, height: 768 },
     locale: "zh-CN",
