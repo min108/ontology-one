@@ -118,7 +118,9 @@ test("R3 A9 cross-role: editor A, submitter B, independent C; both review entrie
       .fill("甲尝试审核自己改写的内容，应由服务端拒绝。");
     const denied = postResponse(page, "/entities/" + entityId + "/action");
     await button(page.getByRole("dialog"), "确认办理").click();
-    expect((await denied).status()).toBe(409);
+    const deniedResponse = await denied;
+    expect(deniedResponse.status()).toBe(403);
+    expect((await deniedResponse.json()).detail).toMatch(/提交人|最后编辑人/);
     expect((await read(page, "/api/entities/" + entityId)).status).toBe(
       "review",
     );

@@ -501,7 +501,7 @@ for (
       expect(artifact.source_kind).toBe(live ? "analyst" : "mock");
       if (revisionUsed)
         await expect(
-          page.getByText("已按核对结果修订 1 次", { exact: true }),
+          page.getByText("已按核对结果修订 1 次", { exact: true }).first(),
         ).toBeVisible();
       if (revisionUsed) {
         const compare = page.locator("details").filter({

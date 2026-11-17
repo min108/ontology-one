@@ -10,7 +10,7 @@
     "A6": "r3-mainline: disabled pending gate, all handled, one confirmation, persisted review status, next step",
     "A7": "r3-mainline: draft link opens new ontology element path with draft status",
     "A8": "r3-mainline: reason required, confirm return, visible reason, persisted returned status, UI resubmit and inbox reappearance",
-    "A9": "r3-mainline and r3-cross-role: independent publish; A edits/applies, B submits, A blocked new UI and real legacy HTTP409; C publishes",
+    "A9": "r3-mainline and r3-cross-role: independent publish; A edits/applies, B submits, A blocked new UI and real legacy HTTP403; C publishes",
     "A10": "r3-mainline: UI select scope, ask, source link opens actual selected entity, simple answer leakage scan",
     "A11": "r3-mainline: automatic correction with no second click; before/after disclosure; python-docx title/table/30; offline HTML; version2; reopen and re-download",
     "A12": "r3-mainline: click superscript; evidence drawer and highlighted original",

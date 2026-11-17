@@ -21,8 +21,12 @@ const SMALL_OK = [
   ".zy-nav__item",
   ".bd-cap",
   "[data-meta]",
+  "[data-origin]",
+  "[data-split-list] h3",
+  "[data-split-list] button > span",
   "time",
   "small",
+  "sup",
   ".ant-tag",
   ".legacy-root .badge",
   ".legacy-root .stat > span",
@@ -222,7 +226,9 @@ export async function checkStructure(
             );
           },
         );
-        const tables = [...document.querySelectorAll("table")].filter(shown);
+        const tables = [...(content?.querySelectorAll("table") || [])].filter(
+          shown,
+        );
         const columns = Math.max(
           0,
           ...tables.flatMap((t) =>
