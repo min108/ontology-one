@@ -65,11 +65,44 @@ class GateReviewTable(unittest.TestCase):
         self.assertTrue(gates.hard_constraint(entity, expression_schema=SCHEMA))
         self.assertTrue(
             gates.hard_constraint(
-                {"kind": "metric", "payload": {"formula": {"oxl": "amount - budget"}}}, expression_schema=SCHEMA
+                {"kind": "metric", "payload": {"formula": {"oxl": "amount - budget", "sentence": "金额之差"}}},
+                expression_schema=SCHEMA,
             )
         )
         self.assertTrue(gates.hard_constraint(structured("unknown <= 10"), expression_schema=SCHEMA))
         self.assertTrue(gates.hard_constraint({"kind": "rule", "payload": {"conditions": ["30日内完成"]}}))
+
+    def test_ordinary_metric_aggregation_is_not_a_rule_threshold(self) -> None:
+        for expression in ("count(records)", "sum(records.quantity)", "1 + 2"):
+            entity = {
+                "kind": "metric",
+                "title": "记录统计",
+                "payload": {
+                    "definition": "记录统计口径",
+                    "unit": "条",
+                    "grain": "每组",
+                    "formula": {"oxl": expression, "sentence": "汇总记录"},
+                },
+            }
+            with self.subTest(expression=expression):
+                self.assertFalse(gates.hard_constraint(entity))
+                result = gates.evaluate_checks(
+                    entity,
+                    {},
+                    {
+                        "evidence": True,
+                        "regulation_evidence": False,
+                        "tests": True,
+                        "relations": True,
+                        "snapshot": True,
+                    },
+                )
+                self.assertEqual(next(c["status"] for c in result["checks"] if c["code"] == "QG1"), "pass")
+                self.assertFalse(result["hard_constraint"])
+        self.assertTrue(gates.hard_constraint(structured("count(payments) <= 5"), expression_schema=SCHEMA))
+        self.assertTrue(gates.hard_constraint(structured("amount <= 100000"), expression_schema=SCHEMA))
+        # Missing declarations must not silently downgrade a rule's requirement.
+        self.assertTrue(gates.hard_constraint(structured("amount <= 100000")))
 
     def test_qg3_accepts_iso_dates_and_timestamps_and_compares_actual_instants(self) -> None:
         for meta in (

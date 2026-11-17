@@ -53,8 +53,9 @@ def hard_constraint(entity: dict, *, expression_schema: dict | None = None) -> b
     exceptions = judgement.get("exceptions") or []
     if isinstance(exceptions, list):
         blocks.extend(exceptions)
-    if payload.get("formula"):
-        blocks.append(payload["formula"])
+    # A metric's arithmetic is not automatically a normative threshold.
+    # Its declared prose still participates in the four hard-constraint classes.
+    prose_blocks = [*blocks, payload.get("formula")]
     text = " ".join(
         [plain(entity.get("title")), plain(entity.get("summary"))]
         + [
@@ -70,10 +71,12 @@ def hard_constraint(entity: dict, *, expression_schema: dict | None = None) -> b
                 "constraints",
             )
         ]
-        + [plain(block) for block in blocks]
+        + [plain(block) for block in prose_blocks]
     )
     if payload.get("authority_spec") or _HARD_WORDS.search(text):
         return True
+    if entity.get("kind") != "rule":
+        return False
     schema = expression_schema or {"properties": (), "relations": {}}
     for block in blocks:
         if not isinstance(block, dict) or not block.get("oxl"):
@@ -435,7 +438,7 @@ def check_entity(
             for step in steps
         )
     try:
-        schema = expression_context(conn, entity) if payload.get("judgement") or payload.get("formula") else None
+        schema = expression_context(conn, entity) if entity["kind"] == "rule" and payload.get("judgement") else None
     except (ValueError, ApiError):
         schema = None
     facts = {
