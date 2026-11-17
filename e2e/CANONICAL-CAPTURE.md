@@ -20,6 +20,11 @@
 诊断任务 `44019289836` 仅压缩原失败构件，不重跑测试。新的完整矩阵仍须满足下列全部门槛。
 汇总构件保留截图、指标、axe、results.json与runner.json，排除重复HTML报告和失败追踪目录。
 
+有效完整矩阵来自 `44020987940`，源码 `0f5d340ce29d518625ea2b109614f8a851dee7ce`；
+GitHub构件摘要 `sha256:3b7924e61f22249bbc1957928949648d7edc31e9780de7d7d12957745f9d7442`。
+63图已按12张拼图（每张6或3格）逐项查看，另打开原生125%审计及1920旧材料原图核对细节。
+下载来源与逐图说明在 `visual-baselines/download.json`、`visual-baselines/review.json`。
+
 CI 的 `Reviewed 63-state canonical visual matrix` 使用固定 Playwright Chromium **159.0.8154.6**，
 不设 `E2E_CHROMIUM`。矩阵仍为 3 个布局（1366×768、1920×1080、1366×768 原生 125%）
 ×（登录 + 简洁/专业各 10 页）= **63 图**。实际 SDK、全部旧路由及管理操作在独立夹具中运行，

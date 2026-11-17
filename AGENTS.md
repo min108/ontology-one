@@ -4,7 +4,7 @@
 
 R3（1.2.0）界面基础与主线精修：范围与裁决见 `docs/blueprint/rounds/R3-PLAN.md`，界面上位依据见 `docs/design/UI-BASELINE.md` 与 `docs/design/benchmarks/`，执行按 `docs/blueprint/EXECUTION-RULES.md` v3（质量第一；交付前独立对抗审查；动作清单逐条断言结果；真实模型经界面连续 3 次），经验与反面案例见 `docs/blueprint/LESSONS.md`。所有人默认简洁视图。R2 已于 2026-11-17 经 R2.1 修复后验收通过（`R2-ACCEPTANCE.md`）。环境模型仅在 `ONTOLOGY_MODEL_FROM_ENV=1` 时覆盖机构配置，只限演示或单机构部署；环境变量不能把模拟结果提升为真实。数字核验按段落及表格行的实际引用，计数精确匹配，仅金额允许 0.5% 舍入差；裸数字、序号、年份和日期不核验；规则不放宽。
 
-知元（英文名 Ontology One）是集团本体管理平台。R2（1.1.0）已验收，交接见 `docs/blueprint/rounds/R2-REPORT.md`；完整层CI以交付提交的Actions结果为准。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
+知元（英文名 Ontology One）是集团本体管理平台。R3（1.2.0）实现已集成，真实主线与独立审查已完成，最终验收提交与CI以R3报告为准，Claude独立验收待执行。R2（1.1.0）已验收，交接见 `docs/blueprint/rounds/R2-REPORT.md`；完整层CI以交付提交的Actions结果为准。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
 ## 2 硬规则摘要
 
@@ -37,7 +37,7 @@ R3（1.2.0）界面基础与主线精修：范围与裁决见 `docs/blueprint/ro
 - `frontend/src/`：design/ui/i18n 已包含令牌、18组件和生成词表；features/dev/gallery 仅开发构建开放。app 包已承载新六工作区外壳、路由、状态与请求层；原82文件整体移入legacy，旧App/main通过90项浏览器对照后退役，R1-8退役Settings、HarnessConfiguration与专属CSS，R1-6退役Overview，R1-7退役Security、Administration、auth.css后剩73；legacy/auth.tsx只留会话兼容桥。旧样式构建期加作用域，门户使用独立legacy-root。
 - `frontend/src/features/{auth,account,admin,identity}`：新登录、账号安全、账号与授权、机构目录与审计；`state/preferences.ts`串行保存本人视图偏好，阻止迟到读取覆盖用户选择。12项真实操作对照后退役旧身份UI，原会话桥及共享CSS保留。
 - `ops/`：Compose 开通、固定运行依赖、Windows 启停升级与技能运行器；`scripts/`：迁移、备份恢复、验收与打包。
-- `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；check_results.py逐项核对最终210次浏览器执行与清理。visual_baselines.py验证33包/63图及逐图审查，流程见e2e/CANONICAL-CAPTURE.md。`ops/offline/`：准备依赖和可迁移镜像，在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
+- `e2e/run.py`：隔离装载真实0.7夹具、迁移、启停双服务及清理；check_results.py保留R1的210次历史汇总规格，R3各runner/results与最终CI逐项记录当前执行数和清理。R3由review_r3_baselines.py校验单汇总构件的63图及逐图审查，visual_baselines.py保留R1历史提取与共享校验；流程见e2e/CANONICAL-CAPTURE.md，像素差仅诊断。`ops/offline/`：准备依赖和可迁移镜像，在断网容器安装/构建/启动；`scripts/build_evidence.py`：显式收集并校验摘要，拒绝认证状态与符号链接。
 - `tests/`：既有 unittest；`.github/scripts/`：独立的 16 个流水线脚本测试。
 - `docs/blueprint/`：蓝图、进度、轮次记录与 ADR；`work/`：不入库的日志、临时数据与证据。
 - e2e 已保留三角色 × 25 条旧路由基线；scripts/gen_api_types.py 从已登记能力生成 OpenAPI/TypeScript。terms/zh-CN.json 是品牌与文案维护源，scripts/gen_terms.py 同步前后端；R1 首页、身份和管理域已集成；最终浏览器、视觉及离线证据按报告所列的精确提交核对，历史包级通过不替代最终组合验收。

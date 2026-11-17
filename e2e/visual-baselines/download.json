@@ -1,0 +1,19 @@
+{
+  "id": 14300698934,
+  "name": "r3-ci-summary-44020987940",
+  "size_in_bytes": 6848577,
+  "url": "https://api.github.com/repos/min108/ontology-one/actions/artifacts/14300698934",
+  "archive_download_url": "https://api.github.com/repos/min108/ontology-one/actions/artifacts/14300698934/zip",
+  "expired": false,
+  "created_at": "2026-11-17T05:04:50Z",
+  "expires_at": "2026-12-17T05:04:47Z",
+  "updated_at": "2026-11-17T05:04:50Z",
+  "digest": "sha256:3b7924e61f22249bbc1957928949648d7edc31e9780de7d7d12957745f9d7442",
+  "workflow_run": {
+    "id": 44020987940,
+    "repository_id": 1451066274,
+    "head_repository_id": 1451066274,
+    "head_branch": "dev/r3-ui-foundation",
+    "head_sha": "0f5d340ce29d518625ea2b109614f8a851dee7ce"
+  }
+}

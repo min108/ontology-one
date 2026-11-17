@@ -1,0 +1,235 @@
+{
+  "source_commit": "0f5d340ce29d518625ea2b109614f8a851dee7ce",
+  "channel": "browser_ui",
+  "provider": "real_deepseek",
+  "model": "deepseek-chat",
+  "environment": {
+    "location": "local Linux",
+    "node": "22.22.2",
+    "python": "3.12.14",
+    "mysql": "8.4",
+    "chromium": "156.0.8078.79",
+    "canonical_browser": false
+  },
+  "status": "passed",
+  "consecutive": true,
+  "repetitions": 3,
+  "runs": [
+    {
+      "iteration": 1,
+      "success": true,
+      "total_seconds": 42,
+      "first_numeric_blocked": false,
+      "automatic_revision": false,
+      "steps": [
+        {
+          "action": "A2 拖入、零必填整理、完成条数",
+          "seconds": 14.8,
+          "passed": true
+        },
+        {
+          "action": "A3 原文逐字高亮、选择与滚动保留",
+          "seconds": 1.6,
+          "passed": true
+        },
+        {
+          "action": "A4 修改正文确已保存、最后编辑人",
+          "seconds": 1.5,
+          "passed": true
+        },
+        {
+          "action": "A7 新要素页查看草稿",
+          "seconds": 0.6,
+          "passed": true
+        },
+        {
+          "action": "A5 不要、单条采纳、全部高把握采纳",
+          "seconds": 0.1,
+          "passed": true
+        },
+        {
+          "action": "A6 所有条目处理、确认提交、待审核",
+          "seconds": 1,
+          "passed": true
+        },
+        {
+          "action": "A8 填理由退回、原方案重提",
+          "seconds": 4.8,
+          "passed": true
+        },
+        {
+          "action": "A9 独立审核并发布",
+          "seconds": 0.4,
+          "passed": true
+        },
+        {
+          "action": "A13 搜索、打开要素、视图差异与刷新保持",
+          "seconds": 4.3,
+          "passed": true
+        },
+        {
+          "action": "A10 就此提问自动选中、手动调整、回答出处可打开要素",
+          "seconds": 9.5,
+          "passed": true
+        },
+        {
+          "action": "A12 报告引用上标原文抽屉",
+          "seconds": 1.7,
+          "passed": true
+        },
+        {
+          "action": "A11 自动修订、Word内容、离线网页、版本再生成",
+          "seconds": 1.9,
+          "passed": true
+        }
+      ],
+      "receipt_sha256": "da20cbe9ab2442040870ed991abc52ff91fae0722fb1dcfa7b90ed0a22cd54a5"
+    },
+    {
+      "iteration": 2,
+      "success": true,
+      "total_seconds": 45,
+      "first_numeric_blocked": false,
+      "automatic_revision": false,
+      "steps": [
+        {
+          "action": "A2 拖入、零必填整理、完成条数",
+          "seconds": 17.9,
+          "passed": true
+        },
+        {
+          "action": "A3 原文逐字高亮、选择与滚动保留",
+          "seconds": 1.6,
+          "passed": true
+        },
+        {
+          "action": "A4 修改正文确已保存、最后编辑人",
+          "seconds": 1.6,
+          "passed": true
+        },
+        {
+          "action": "A7 新要素页查看草稿",
+          "seconds": 0.8,
+          "passed": true
+        },
+        {
+          "action": "A5 不要、单条采纳、全部高把握采纳",
+          "seconds": 0.2,
+          "passed": true
+        },
+        {
+          "action": "A6 所有条目处理、确认提交、待审核",
+          "seconds": 0.5,
+          "passed": true
+        },
+        {
+          "action": "A8 填理由退回、原方案重提",
+          "seconds": 4.9,
+          "passed": true
+        },
+        {
+          "action": "A9 独立审核并发布",
+          "seconds": 0.4,
+          "passed": true
+        },
+        {
+          "action": "A13 搜索、打开要素、视图差异与刷新保持",
+          "seconds": 4.3,
+          "passed": true
+        },
+        {
+          "action": "A10 就此提问自动选中、手动调整、回答出处可打开要素",
+          "seconds": 9.3,
+          "passed": true
+        },
+        {
+          "action": "A12 报告引用上标原文抽屉",
+          "seconds": 1.6,
+          "passed": true
+        },
+        {
+          "action": "A11 自动修订、Word内容、离线网页、版本再生成",
+          "seconds": 1.8,
+          "passed": true
+        }
+      ],
+      "receipt_sha256": "d9b60ea8c2237fab14f8f9fb10da4a3f8672b9f92534e90b9dcc25f5d9fdee5c"
+    },
+    {
+      "iteration": 3,
+      "success": true,
+      "total_seconds": 51,
+      "first_numeric_blocked": false,
+      "automatic_revision": false,
+      "steps": [
+        {
+          "action": "A2 拖入、零必填整理、完成条数",
+          "seconds": 16.3,
+          "passed": true
+        },
+        {
+          "action": "A3 原文逐字高亮、选择与滚动保留",
+          "seconds": 1.7,
+          "passed": true
+        },
+        {
+          "action": "A4 修改正文确已保存、最后编辑人",
+          "seconds": 1.5,
+          "passed": true
+        },
+        {
+          "action": "A7 新要素页查看草稿",
+          "seconds": 0.7,
+          "passed": true
+        },
+        {
+          "action": "A5 不要、单条采纳、全部高把握采纳",
+          "seconds": 0.1,
+          "passed": true
+        },
+        {
+          "action": "A6 所有条目处理、确认提交、待审核",
+          "seconds": 0.5,
+          "passed": true
+        },
+        {
+          "action": "A8 填理由退回、原方案重提",
+          "seconds": 5.4,
+          "passed": true
+        },
+        {
+          "action": "A9 独立审核并发布",
+          "seconds": 0.4,
+          "passed": true
+        },
+        {
+          "action": "A13 搜索、打开要素、视图差异与刷新保持",
+          "seconds": 4.3,
+          "passed": true
+        },
+        {
+          "action": "A10 就此提问自动选中、手动调整、回答出处可打开要素",
+          "seconds": 17,
+          "passed": true
+        },
+        {
+          "action": "A12 报告引用上标原文抽屉",
+          "seconds": 1.5,
+          "passed": true
+        },
+        {
+          "action": "A11 自动修订、Word内容、离线网页、版本再生成",
+          "seconds": 1.7,
+          "passed": true
+        }
+      ],
+      "receipt_sha256": "b5a532eacb0023bf8fb80edc843db6c4ea03636ce18ea55e9fdb50b2ad6d776b"
+    }
+  ],
+  "cleanup": {
+    "services_stopped": true,
+    "databases_removed": true
+  },
+  "aggregate_receipt_sha256": "6fc10d08b9a90adef83c6441b0d25324a85bd3e2adc82104b7079ee766397cf2",
+  "privacy": "Only synthetic fixture actions, times, outcomes and hashes; no original model answer, source document, prompt or credential."
+}

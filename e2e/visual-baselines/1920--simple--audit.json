@@ -1,10 +1,10 @@
 {
-  "sourceCommit": "ad5d8d54ab5aaf7e142ce6c5ba2313e01017d379",
+  "sourceCommit": "0f5d340ce29d518625ea2b109614f8a851dee7ce",
   "browser": "159.0.8154.6",
   "resultKind": "baseline-capture-not-acceptance",
   "policy": {
     "mode": "capture",
-    "reason": "R1 canonical visual baseline bootstrap; not final acceptance"
+    "reason": "R3 D8 canonical baseline refresh; not final acceptance"
   },
   "preferences": {},
   "calibration": {
@@ -57,6 +57,11 @@
     },
     {
       "family": "Noto Sans SC",
+      "status": "unloaded",
+      "weight": "500"
+    },
+    {
+      "family": "Noto Sans SC",
       "status": "loaded",
       "weight": "700"
     },
@@ -64,6 +69,11 @@
       "family": "Noto Sans SC",
       "status": "loaded",
       "weight": "400"
+    },
+    {
+      "family": "Noto Sans SC",
+      "status": "unloaded",
+      "weight": "500"
     }
   ],
   "auditState": {
@@ -75,7 +85,8 @@
     "actor_username": "fixture.admin",
     "request_id": "fixture"
   },
-  "auditDetailsOpen": true,
+  "auditDetailsOpen": false,
+  "auditDrawerOpen": true,
   "view": "simple",
   "authenticated": true
 }
