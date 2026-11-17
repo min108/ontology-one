@@ -100,16 +100,33 @@ def quantities(text: str, default_unit: str = "") -> list[tuple[Decimal, str]]:
         lambda m: (chinese_number(m[1]) if m[1][0] in CHINESE_DIGITS or m[1][0] in CHINESE_UNITS else m[1]) + "%",
         text,
     )
-    text = re.sub(rf"({CHINESE_NUMBER})(?=\s*(?:{UNITS}))", lambda m: chinese_number(m[1]), text)
+    text = re.sub(rf"({CHINESE_NUMBER})(?=\s*(?:{SCALE})?\s*(?:{UNITS}))", lambda m: chinese_number(m[1]), text)
     # Calendar labels are outside numerical verification; durations still count.
     text = re.sub(r"(?<!\d)\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}(?!\d)", "", text)
     text = re.sub(r"(?<!\d)\d{4}\s*年(?:\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*[日号])?)?", "", text)
     text = re.sub(r"(?<!\d)\d{1,2}\s*月\s*\d{1,2}\s*[日号]", "", text)
     result = []
+
+    # Retain the quantitative meaning of Chinese magnitudes without inventing
+    # a unit; converting them to bare Arabic digits would otherwise drop them.
+    def chinese_magnitude(match: re.Match) -> str:
+        if match[2] or any(char in "百佰千仟万萬亿億" for char in match[1]):
+            unit = normalized_number("1", default_unit)[1]
+            number = Decimal(chinese_number(match[1])) * MAGNITUDES.get(match[2], 1)
+            result.append((number, unit))
+            return " "
+        return match[0]
+
+    text = re.sub(rf"({CHINESE_NUMBER})({SCALE})?", chinese_magnitude, text)
     for match in QUANTITY.finditer(text):
         scale, unit = match[2] or "", match[3] or ""
         if not scale and not unit and not default_unit:
             continue
+        if not scale and not unit and default_unit == "年" and re.fullmatch(r"\d{4}", match[1]):
+            continue
+        if scale and not unit:
+            # An explicit magnitude overrides the header magnitude, not its unit.
+            unit = normalized_number("1", default_unit)[1]
         result.append(normalized_number(match[1], scale + unit if scale or unit else default_unit))
     return result
 
@@ -183,7 +200,10 @@ def blocks_from_answer(answer: str, citations: dict | None = None) -> list[dict]
             width = len(table[0])
             if len(table) > 51 or width > 20 or any(len(row) != width for row in table):
                 raise HTTPException(422, "报告表格需为规则表格，正文最多显示 50 行、20 列。请在助手中缩小结果。")
-            append({"type": "table", "columns": table[0], "rows": table[1:]}, "\n".join(table_raw))
+            block = {"type": "table", "columns": table[0], "rows": table[1:]}
+            if citations is not None:
+                block["row_citations"] = [cited_sources(row, citations) for row in table_raw[1:]]
+            append(block, "\n".join(table_raw))
             table.clear()
             table_raw.clear()
 
@@ -223,12 +243,18 @@ def verify(spec: dict) -> None:
         text = block.get("text", "")
         if block["type"] == "table":
             text = "\n".join(block["columns"])
-            for row in block["rows"]:
+            for row_index, row in enumerate(block["rows"]):
+                row_evidence, row_supported = evidence, supported
+                if "row_citations" in block:
+                    references = block["row_citations"]
+                    keys = references[row_index] if row_index < len(references) else []
+                    row_evidence = [sources[key] for key in keys if key in sources]
+                    row_supported = quantities("\n".join(item["quote"] for item in row_evidence))
                 for column, cell in zip(block["columns"], row, strict=True):
                     hint = re.search(rf"(?:{SCALE})?(?:{UNITS})", column)
-                    values = quantities(without_source_labels(cell, evidence), hint.group() if hint else "")
+                    values = quantities(without_source_labels(cell, row_evidence), hint.group() if hint else "")
                     for number, unit in values:
-                        if not supports(number, unit, supported):
+                        if not supports(number, unit, row_supported):
                             issues.append(f"表格 {index}：{cell}")
         for number, unit in quantities(without_source_labels(text, evidence)):
             if not supports(number, unit, supported):

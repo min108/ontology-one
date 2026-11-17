@@ -2,11 +2,13 @@
 
 import copy
 import io
+import json
 import os
 import secrets
 import unittest
 import zipfile
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from docx import Document
 from fastapi import HTTPException
@@ -14,7 +16,7 @@ from pydantic import ValidationError
 
 from backend.agent_runtime import SESSIONS, _configuration_signature
 from backend.capabilities.artifacts import ArtifactCreate
-from backend.domains.artifacts import render
+from backend.domains.artifacts import render, service
 from backend.security import store
 from backend.security.context import use_context
 from tests.r2 import test_build as construction
@@ -190,6 +192,81 @@ class Renderers(unittest.TestCase):
             render.verify(value)
         value["citations"]["c2"]["title"] = value["citations"]["c1"]["title"]
         self.assertEqual(render.cited_sources("《付款办理规则》", value["citations"]), [])
+
+    def test_chinese_fractional_scales_and_column_units(self) -> None:
+        for text, expected in (("三十点五万元", 305000), ("零点八万元", 8000), ("壹点伍万元", 15000)):
+            with self.subTest(text=text):
+                self.assertEqual(render.quantities(text), [(expected, "元")])
+                value = spec()
+                value["citations"]["c1"]["quote"] += f"金额{expected}元。"
+                value["blocks"][0]["text"] = text
+                render.verify(value)
+                value["citations"]["c1"]["quote"] = "30日内办理，金额80000元。"
+                with self.assertRaises(HTTPException):
+                    render.verify(value)
+        self.assertEqual(render.quantities("三十万"), [(300000, "")])
+        self.assertEqual(render.quantities("三十点五万"), [(305000, "")])
+        self.assertEqual(render.quantities("三十点五万", "家"), [(305000, "家")])
+        self.assertEqual(render.quantities("30万", "家"), [(300000, "家")])
+        self.assertEqual(render.quantities("30万", "万元"), [(300000, "元")])
+        self.assertEqual(render.quantities("2026", "年"), [])
+        value = spec()
+        value["citations"]["c1"]["quote"] += "共有300000家。"
+        value["blocks"][1].update(columns=["数量（家）", "年份"], rows=[["30万", "2026"]])
+        render.verify(value)
+        value["blocks"][0]["text"] = "共有三十万。"
+        with self.assertRaises(HTTPException):
+            render.verify(value)
+        value["citations"]["c1"]["quote"] += "规模30万。"
+        render.verify(value)
+
+    def test_table_rows_cannot_borrow_each_others_sources(self) -> None:
+        value = spec()
+        value["citations"]["c1"].update(entity_id="rule_first", title="付款规则")
+        value["citations"]["c2"] = {
+            **value["citations"]["c1"],
+            "entity_id": "rule_second",
+            "title": "复核规则",
+            "quote": "复核时限60日。",
+        }
+        answer = "|事项|时限（日）|依据|\n|---|---|---|\n|付款|30|rule_first|\n|复核|60|rule_second|"
+        value["blocks"] = render.blocks_from_answer(answer, value["citations"])
+        self.assertEqual(value["blocks"][0]["row_citations"], [["c1"], ["c2"]])
+        render.verify(value)
+        legacy = copy.deepcopy(value)
+        legacy["blocks"][0].pop("row_citations")
+        render.verify(legacy)  # Existing saved tables remain renderable.
+        for wrong_answer in (
+            answer.replace("|付款|30|", "|付款|60|"),
+            answer.replace("|复核|60|", "|复核|30|"),
+            answer.replace("|复核|60|rule_second|", "|复核|30|无引用|"),
+        ):
+            value["blocks"] = render.blocks_from_answer(wrong_answer, value["citations"])
+            with self.subTest(answer=wrong_answer), self.assertRaises(HTTPException):
+                render.verify(value)
+
+    def test_material_name_comes_from_verified_material_not_entity_payload(self) -> None:
+        conn = Mock()
+        checked = {
+            "material_id": "material_a",
+            "quote": "30日办理。",
+            "anchor_id": "anchor_a",
+            "source_version": "source_a",
+        }
+        conn.execute.return_value.fetchone.side_effect = [
+            {"id": "rule_a", "title": "成果名称", "version": 1, "payload": json.dumps({"source_refs": [checked]})},
+            {"title": "原始制度名称"},
+        ]
+        with (
+            patch.object(service, "require_context", return_value=SimpleNamespace(tenant_id="hq")),
+            patch.object(service.provenance, "normalize_source_ref", return_value=checked),
+        ):
+            sources = service._citations(
+                conn, {"provenance": [{"kind": "ontology", "tenant_id": "hq", "entity_id": "rule_a", "version": 1}]}
+            )
+        self.assertEqual(sources["c1"]["source_title"], "原始制度名称")
+        self.assertEqual(render.cited_sources("依据《原始制度名称》", sources), ["c1"])
+        self.assertEqual(conn.execute.call_args.args[1], ("material_a",))
 
     def test_word_filters_xml_controls_in_every_text_location(self) -> None:
         value = spec()

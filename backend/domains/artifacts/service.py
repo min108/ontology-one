@@ -56,11 +56,14 @@ def _citations(conn: db.Connection, run: dict) -> dict:
             raise HTTPException(403, "回答引用的成果已不在可见范围内。")
         for ref in payload.get("source_refs", []):
             checked = provenance.normalize_source_ref(conn, ref.get("material_id"), ref)
+            material = conn.execute(
+                "SELECT title FROM entities WHERE id=? AND kind='material'", (checked["material_id"],)
+            ).fetchone()
             key = f"c{len(result) + 1}"
             result[key] = {
                 "title": row["title"],
                 "entity_id": row["id"],
-                "source_title": payload.get("source_title", ""),
+                "source_title": material["title"] if material else "",
                 "material_id": checked["material_id"],
                 "version": row["version"],
                 "quote": checked["quote"],
