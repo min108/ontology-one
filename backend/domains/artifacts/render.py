@@ -6,6 +6,7 @@ import re
 import zipfile
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 from docx import Document
@@ -19,8 +20,10 @@ from fastapi import HTTPException
 
 LAYOUT = json.loads((Path(__file__).parent / "layouts/official.json").read_text())
 NUMBER = r"(?<![A-Za-z0-9_.])[-+]?\d[\d,]*(?:\.\d+)?"
-UNITS = r"万元人民币|亿元|万元|千元|元|%|％|笔|份|条|家|项|人|天|日|号|小时|分钟|个月|月|年|次|个|件|吨"
-QUANTITY = re.compile(rf"({NUMBER})\s*({UNITS})?")
+MAGNITUDES = {"十": 10, "百": 100, "千": 1000, "万": 10000, "亿": 100000000, "万亿": 1000000000000}
+SCALE = r"万亿|亿|万|千|百|十"
+UNITS = r"元人民币|人民币|元|%|％|笔|份|条|家|项|人|天|日|小时|分钟|个月|月|年|次|个|件|吨|倍"
+QUANTITY = re.compile(rf"({NUMBER})\s*({SCALE})?\s*({UNITS})?")
 CHINESE_DIGITS = dict(
     zip(
         "零〇一二两三四五六七八九壹贰叁肆伍陆柒捌玖",
@@ -56,10 +59,11 @@ CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-acti
 
 def normalized_number(value: str, unit: str = "") -> tuple[Decimal, str]:
     number = Decimal(value.replace(",", ""))
-    if unit in {"万元", "亿元", "千元", "万元人民币"}:
-        number *= {"万元": 10000, "亿元": 100000000, "千元": 1000, "万元人民币": 10000}[unit]
-        unit = "元"
-    return number, {"％": "%", "天": "日", "号": "日", "个月": "月"}.get(unit, unit)
+    match = re.fullmatch(rf"({SCALE})?({UNITS})?", unit)
+    if match:
+        number *= MAGNITUDES.get(match[1], 1)
+        unit = match[2] or ""
+    return number, {"元人民币": "元", "人民币": "元", "％": "%", "天": "日", "个月": "月"}.get(unit, unit)
 
 
 def chinese_number(value: str) -> str:
@@ -87,8 +91,9 @@ def chinese_number(value: str) -> str:
 
 
 def quantities(text: str, default_unit: str = "") -> list[tuple[Decimal, str]]:
+    text = xml_text(text)
     # Citation/list/article identifiers are labels, not quantitative claims.
-    text = re.sub(rf"第(?:\d+|{CHINESE_NUMBER})条|\[(?:c?\d+)(?:,\s*c?\d+)*\]", "", text)
+    text = re.sub(rf"第\s*(?:\d+|{CHINESE_NUMBER})\s*[条款章节项]|\[(?:c?\d+)(?:,\s*c?\d+)*\]", "", text)
     text = re.sub(r"(?m)^\s*(?:\d+[.、)）](?!\d)|[（(]\d+[）)])\s*", "", text)
     text = re.sub(
         rf"百分之({CHINESE_NUMBER}|\d+(?:\.\d+)?)",
@@ -96,9 +101,17 @@ def quantities(text: str, default_unit: str = "") -> list[tuple[Decimal, str]]:
         text,
     )
     text = re.sub(rf"({CHINESE_NUMBER})(?=\s*(?:{UNITS}))", lambda m: chinese_number(m[1]), text)
-    # Normalize ISO dates to the same units as their Chinese written form.
-    text = re.sub(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)", r"\1年\2月\3日", text)
-    return [normalized_number(m.group(1), m.group(2) or default_unit) for m in QUANTITY.finditer(text)]
+    # Calendar labels are outside numerical verification; durations still count.
+    text = re.sub(r"(?<!\d)\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}(?!\d)", "", text)
+    text = re.sub(r"(?<!\d)\d{4}\s*年(?:\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*[日号])?)?", "", text)
+    text = re.sub(r"(?<!\d)\d{1,2}\s*月\s*\d{1,2}\s*[日号]", "", text)
+    result = []
+    for match in QUANTITY.finditer(text):
+        scale, unit = match[2] or "", match[3] or ""
+        if not scale and not unit and not default_unit:
+            continue
+        result.append(normalized_number(match[1], scale + unit if scale or unit else default_unit))
+    return result
 
 
 def close_number(left: Decimal, right: Decimal) -> bool:
@@ -107,8 +120,7 @@ def close_number(left: Decimal, right: Decimal) -> bool:
 
 def supports(number: Decimal, unit: str, evidence: list[tuple[Decimal, str]]) -> bool:
     return any(
-        (not unit or unit == other_unit)
-        and (number == other if unit in {"年", "月", "日", "小时", "分钟"} else close_number(number, other))
+        unit == other_unit and (close_number(number, other) if unit == "元" else number == other)
         for other, other_unit in evidence
     )
 
@@ -129,14 +141,41 @@ def plain(text: str) -> str:
     return re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", text).replace("**", "").replace("`", "").strip()
 
 
-def blocks_from_answer(answer: str) -> list[dict]:
+def cited_sources(text: str, sources: dict) -> list[str]:
+    """Resolve only references written in this block, before stripping links."""
+    text = unquote(text)
+    matched = []
+    for key, source in sources.items():
+        identifiers = (source.get("entity_id"), source.get("anchor_id"))
+        identified = any(
+            value and re.search(r"(?<![A-Za-z0-9_])" + re.escape(value) + r"(?![A-Za-z0-9_])", text)
+            for value in identifiers
+        )
+        named = False
+        for label, identity in (("title", "entity_id"), ("source_title", "material_id")):
+            name = source.get(label)
+            if name and name in plain(text):
+                owners = {item.get(identity) for item in sources.values() if item.get(label) == name}
+                named = named or len(owners) == 1
+        if identified or named:
+            matched.append(key)
+    return matched
+
+
+def blocks_from_answer(answer: str, citations: dict | None = None) -> list[dict]:
     if not answer.strip() or len(answer) > 64000:
         raise HTTPException(422, "回答为空或超过报告大小限制。")
-    blocks, paragraph, table = [], [], []
+    blocks, paragraph, table, table_raw = [], [], [], []
+
+    def append(block: dict, raw: str) -> None:
+        if citations is not None:
+            block["citations"] = cited_sources(raw, citations)
+        blocks.append(block)
 
     def flush_paragraph() -> None:
         if paragraph:
-            blocks.append({"type": "paragraph", "text": plain("\n".join(paragraph))})
+            raw = "\n".join(paragraph)
+            append({"type": "paragraph", "text": plain(raw)}, raw)
             paragraph.clear()
 
     def flush_table() -> None:
@@ -144,8 +183,9 @@ def blocks_from_answer(answer: str) -> list[dict]:
             width = len(table[0])
             if len(table) > 51 or width > 20 or any(len(row) != width for row in table):
                 raise HTTPException(422, "报告表格需为规则表格，正文最多显示 50 行、20 列。请在助手中缩小结果。")
-            blocks.append({"type": "table", "columns": table[0], "rows": table[1:]})
+            append({"type": "table", "columns": table[0], "rows": table[1:]}, "\n".join(table_raw))
             table.clear()
+            table_raw.clear()
 
     for line in answer.splitlines():
         stripped = line.strip()
@@ -154,6 +194,7 @@ def blocks_from_answer(answer: str) -> list[dict]:
             cells = [plain(cell.strip()) for cell in stripped[1:-1].split("|")]
             if not all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
                 table.append(cells)
+                table_raw.append(stripped)
         else:
             flush_table()
             if stripped:
@@ -184,7 +225,7 @@ def verify(spec: dict) -> None:
             text = "\n".join(block["columns"])
             for row in block["rows"]:
                 for column, cell in zip(block["columns"], row, strict=True):
-                    hint = re.search(UNITS, column)
+                    hint = re.search(rf"(?:{SCALE})?(?:{UNITS})", column)
                     values = quantities(without_source_labels(cell, evidence), hint.group() if hint else "")
                     for number, unit in values:
                         if not supports(number, unit, supported):
@@ -252,6 +293,11 @@ def _font(run: Run, style: dict) -> None:
     run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), style["font"])
 
 
+def xml_text(text: str) -> str:
+    # XML 1.0 permits TAB/LF/CR but excludes controls, surrogates and FFFE/FFFF.
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]", "", text)
+
+
 def docx(spec: dict) -> bytes:
     verify(spec)
     document = Document()
@@ -274,7 +320,7 @@ def docx(spec: dict) -> bytes:
         fmt.space_before = fmt.space_after = Pt(0)
         fmt.first_line_indent = Pt(0 if title else 32)
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER if title else WD_ALIGN_PARAGRAPH.JUSTIFY
-        _font(p.add_run(text), LAYOUT["title" if title else "body"])
+        _font(p.add_run(xml_text(text)), LAYOUT["title" if title else "body"])
         return p
 
     paragraph(spec["title"], title=True)
@@ -288,7 +334,7 @@ def docx(spec: dict) -> bytes:
             for row in [block["columns"], *block["rows"]]:
                 cells = table.add_row().cells
                 for cell, text in zip(cells, row, strict=True):
-                    cell.text = text  # Literal text: never a Word field or formula.
+                    cell.text = xml_text(text)  # Literal text: never a Word field or formula.
                     p = cell.paragraphs[0]
                     p.paragraph_format.line_spacing = 1
                     for run in p.runs:

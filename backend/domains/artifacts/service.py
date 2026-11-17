@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from fastapi import HTTPException
 
 from backend import db, provenance
+from backend.core.errors import ApiError
 from backend.domains.artifacts import render
 from backend.security.context import require_context
 from backend.security.store import assert_principal_current
@@ -59,6 +60,8 @@ def _citations(conn: db.Connection, run: dict) -> dict:
             result[key] = {
                 "title": row["title"],
                 "entity_id": row["id"],
+                "source_title": payload.get("source_title", ""),
+                "material_id": checked["material_id"],
                 "version": row["version"],
                 "quote": checked["quote"],
                 "locator": checked.get("locator", ""),
@@ -141,9 +144,18 @@ def create(session_id: str, run_id: str, title: str = "") -> dict:
     with closing(db.connect()) as conn:
         conn.execute("BEGIN")
         citations = _citations(conn, run)
-        blocks = render.blocks_from_answer(run["answer"])
-        for block in blocks:
-            block["citations"] = list(citations)
+        blocks = render.blocks_from_answer(run["answer"], citations)
+        used = {key for block in blocks for key in block["citations"]}
+        citations = {key: source for key, source in citations.items() if key in used}
+        if not citations:
+            raise ApiError(
+                "EVIDENCE_NOT_FOUND",
+                "回答未实际引用已读取的依据，请让助手在各段和表格中标明要素名称或链接。",
+                details={
+                    "code": "CITATION_UNVERIFIED",
+                    "issues": ["回答中的段落和表格未标明可核验来源；请逐段、逐表补充实际读取的要素名称或链接。"],
+                },
+            )
         source_kind = run.get("report_source_kind", "analyst")
         spec = {
             "schema": "r2-report-v1",
@@ -153,7 +165,16 @@ def create(session_id: str, run_id: str, title: str = "") -> dict:
             "source_label": "模拟模型演练结果" if source_kind == "mock" else "真实模型回答 · 已核对引用与数值",
             "created_at": timestamp,
         }
-        render.verify(spec)
+        try:
+            render.verify(spec)
+        except HTTPException as exc:
+            if isinstance(exc.detail, dict) and exc.detail.get("code") == "NUMERIC_UNVERIFIED":
+                raise ApiError(
+                    "NUMERIC_CHECK_FAILED",
+                    exc.detail["message"],
+                    details={"code": exc.detail["code"], "issues": exc.detail["issues"]},
+                ) from exc
+            raise
         conn.execute(
             "INSERT INTO artifacts (id,title,template,owner_user_id,conversation_id,"
             "source_kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
