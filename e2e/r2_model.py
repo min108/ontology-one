@@ -7,13 +7,13 @@ import json
 import re
 import secrets
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class Provider:
-    def __init__(self, responder=None) -> None:
+    def __init__(self, responder: Callable[[dict], dict] | None = None) -> None:
         self.responder = responder or reply
         self.key = "synthetic-r2-" + secrets.token_hex(16)
         self.requests = 0
