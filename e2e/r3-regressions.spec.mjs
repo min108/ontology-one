@@ -132,13 +132,19 @@ for (const [decision, action, status] of [
         builder.page,
         "/api/entities/" + original.id,
       );
-      expect(afterOriginal.status).toBe(status);
-      expect(afterOriginal.version).toBe(
-        original.version + (decision === "return" ? 1 : 2),
-      );
-      expect(await read(builder.page, "/api/entities/" + newer.id)).toEqual(
-        beforeNewer,
-      );
+      const afterNewer = await read(builder.page, "/api/entities/" + newer.id);
+      expect({
+        originalStatus: afterOriginal.status,
+        originalVersion: afterOriginal.version,
+        newerStatus: afterNewer.status,
+        newerVersion: afterNewer.version,
+      }).toEqual({
+        originalStatus: status,
+        originalVersion: original.version + (decision === "return" ? 1 : 2),
+        newerStatus: beforeNewer.status,
+        newerVersion: beforeNewer.version,
+      });
+      expect(afterNewer).toEqual(beforeNewer);
     } finally {
       await Promise.allSettled([
         builder.context.close(),
@@ -243,9 +249,10 @@ test("R3.1 Authority navigation: cancel retains edits and leaving confirms only 
     await expect(page).toHaveURL((url) =>
       /^\/authority\/[^/?#]+$/.test(url.pathname),
     );
-    const originalUrl = page.url(),
-      title = page.getByLabel("规范名称", { exact: true });
+    const title = page.getByLabel("规范名称", { exact: true });
     await title.fill("取消离开后必须保留的内容");
+    await page.waitForLoadState("networkidle");
+    const originalUrl = page.url();
     let confirmations = 0,
       accept = false;
     page.on("dialog", async (dialog) => {
