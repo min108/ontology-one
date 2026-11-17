@@ -1,14 +1,6 @@
 import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
-import {
-  c,
-  a,
-  login,
-  read,
-  button,
-  postResponse,
-  unique,
-} from "./r3-support.mjs";
+import { c, login, read, button, postResponse, unique } from "./r3-support.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
 import { assertNoLeaks, checkStructure } from "./r3-structure.mjs";
 
@@ -129,11 +121,11 @@ test("R4 review specialized authority and skill repair controls match legacy lay
     });
     await page.goto("/authority/" + authority.entity.id);
     await page
-      .getByRole("button", { name: "适用范围与关联", exact: true })
+      .getByRole("tab", { name: "适用范围与关联", exact: true })
       .click();
-    await expect(page.getByLabel("适用条件", { exact: true })).toBeEditable();
+    await expect(page.getByLabel("触发条件", { exact: true })).toBeEditable();
     await expect(page.getByLabel("例外情况", { exact: true })).toBeEditable();
-    await page.getByLabel("适用条件", { exact: true }).fill("收到申请时");
+    await page.getByLabel("触发条件", { exact: true }).fill("收到申请时");
     await page.getByLabel("例外情况", { exact: true }).fill("无");
     await checkStructure(page, "r4-authority-repair", { legacy: true });
     await shot(page, "r4-authority-repair");
@@ -144,7 +136,10 @@ test("R4 review specialized authority and skill repair controls match legacy lay
         new URL(response.url()).pathname ===
           "/api/authority/assets/" + authority.entity.id,
     );
-    await button(page, "保存编辑稿").click();
+    await button(
+      page.locator(".authority-editor-fields"),
+      "保存编辑稿",
+    ).click();
     expect((await save).ok()).toBe(true);
     const authoritySaved = await read(
       page,
@@ -159,6 +154,9 @@ test("R4 review specialized authority and skill repair controls match legacy lay
       package_name: "r4-review-capture",
     });
     await page.goto("/skill-development/" + skill.entity.id);
+    await expect(
+      page.getByRole("heading", { name: "合成核对技能", exact: true }),
+    ).toBeVisible();
     await checkStructure(page, "r4-skill-page", { legacy: true });
     await button(page, "修改名称与业务说明").click();
     const dialog = page.getByRole("dialog");
