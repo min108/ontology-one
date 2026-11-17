@@ -6,12 +6,17 @@ import { terms } from '../i18n/zh-CN';
 import { routeEntry } from './navigation';
 import styles from './WorkspaceBreadcrumbs.module.css';
 
-// New object pages own their return path in PageHeader. Retained object pages
-// keep their source-aware navigation, presented inside their existing title.
+export function legacyTitleRegion(container: Element): HTMLElement | null {
+  const heading = container.querySelector<HTMLElement>('h1');
+  return heading?.closest<HTMLElement>('header') ?? heading?.parentElement ?? null;
+}
+
+// Retain the original ContextTrail when it has a source-aware return link.
+// Directly opened object URLs get a fallback inside that same title region.
 export function WorkspaceBreadcrumbs() {
   const { pathname } = useLocation();
   const [target, setTarget] = useState<HTMLElement | null>(null);
-  const [source, setSource] = useState<{ href: string; label: string } | null>(null);
+  const [originalReturn, setOriginalReturn] = useState(false);
   const entry = routeEntry(pathname);
   const detail =
     /^\/(?:materials|datasets|data-sources|assets|authority|projects|tasks|skill-development)\/[^/]+$/.test(
@@ -19,33 +24,28 @@ export function WorkspaceBreadcrumbs() {
     ) || /^\/knowledge\/collections\/[^/]+$/.test(pathname);
   useEffect(() => {
     setTarget(null);
-    setSource(null);
+    setOriginalReturn(false);
     if (!detail) return;
     const content = document.querySelector('[data-workspace-content]');
     if (!content) return;
     const refresh = () => {
-      const heading = content.querySelector<HTMLElement>('[data-legacy-page] h1');
-      const header = heading?.closest<HTMLElement>('header') ?? heading?.parentElement ?? null;
-      setTarget((previous) => (previous === header ? previous : header));
-      const origin = content.querySelector<HTMLAnchorElement>('.context-back');
-      const href = origin?.getAttribute('href');
-      const label = origin?.textContent?.trim();
-      if (href?.startsWith('/') && !href.startsWith('//') && label)
-        setSource((previous) =>
-          previous?.href === href && previous.label === label ? previous : { href, label },
-        );
+      const legacy = content.querySelector('[data-legacy-page]');
+      const header = legacy ? legacyTitleRegion(legacy) : null;
+      const next = header?.querySelector<HTMLElement>('[data-legacy-header-context]') ?? header;
+      setTarget((previous) => (previous === next ? previous : next));
+      setOriginalReturn(Boolean(legacy?.querySelector('.context-back')));
     };
     const observer = new MutationObserver(refresh);
     observer.observe(content, { childList: true, subtree: true, characterData: true });
     refresh();
     return () => observer.disconnect();
   }, [pathname, detail]);
-  if (!detail || !target || !entry) return null;
+  if (!detail || !target || !entry || originalReturn) return null;
   return createPortal(
     <nav aria-label={terms.labels.shell_breadcrumb} className={styles.breadcrumb} data-object-return>
-      <Link to={source?.href ?? entry.href}>
+      <Link to={entry.href}>
         <ChevronLeft aria-hidden="true" />
-        {source?.label ?? entry.label}
+        {entry.label}
       </Link>
     </nav>,
     target,

@@ -265,8 +265,74 @@
   min-width: var(--zy-content-min);
 }
 
-.legacy-root .context-trail {
+/* Original context and ownership controls live inside the legacy title area. */
+.legacy-root [data-legacy-header-context] .context-trail {
+  display: flex;
+  flex-wrap: wrap;
+  margin: var(--zy-none);
+  padding: var(--zy-none);
+  border: var(--zy-none);
+  border-radius: var(--zy-radius-none);
+  background: var(--zy-transparent);
+}
+
+.legacy-root [data-legacy-header-context] .context-back {
+  color: var(--zy-color-text-secondary);
+}
+
+.legacy-root [data-legacy-header-context] .entity-visibility {
+  margin: var(--zy-none);
+  padding: var(--zy-space-2) var(--zy-none);
+  border: var(--zy-none);
+  border-radius: var(--zy-radius-none);
+  background: var(--zy-transparent);
+}
+
+.legacy-root [data-legacy-header-context] .entity-visibility-note {
+  font-size: var(--zy-font-body);
+}
+
+.legacy-root[data-legacy-page] .page-head {
+  flex-wrap: wrap;
+  row-gap: var(--zy-space-3);
+}
+
+.legacy-root[data-legacy-page] .page-head > div:not([data-legacy-header-context]) {
+  min-width: var(--zy-content-min);
+}
+
+.legacy-root[data-legacy-page] .asset-detail-banner {
+  padding: var(--zy-space-6) var(--zy-none) var(--zy-space-4);
+  border: var(--zy-none);
+  border-radius: var(--zy-radius-none);
+  background: var(--zy-transparent);
+  overflow: visible;
+}
+
+.legacy-root[data-legacy-page] .asset-detail-banner::before {
   display: none;
+}
+
+.legacy-root[data-legacy-page] .agent-page-heading {
+  flex-wrap: wrap;
+}
+
+/* Keep the history toggle, with the title first on the shared left edge. */
+.legacy-root[data-legacy-page] .agent-page-heading > h1 {
+  order: -1;
+}
+
+/* Graph semantic zoom uses clamp(), so literal inline-size selectors cannot cover it. */
+.legacy-root[data-legacy-page] .og-middle .og-node-top {
+  font-size: clamp(
+    var(--zy-font-body),
+    calc(var(--zy-font-body) / var(--node-zoom, 1)),
+    var(--zy-font-heading)
+  );
+}
+
+.legacy-root[data-legacy-page] [class~='react-flow__edge-text'] {
+  font-size: var(--zy-font-body) !important;
 }
 
 .legacy-root .btn-ai,
