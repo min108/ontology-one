@@ -92,9 +92,26 @@ for (const role of roles) {
         const expected = secondaryPaths(path, role, person.permissions);
         if (expected.length) {
           await expect(page).toHaveURL((url) => url.pathname === expected[0]);
-          await primary(page)
-            .locator(`a[data-primary-link][href="${path}"]`)
-            .hover();
+          const item = primary(page).locator(
+            `a[data-primary-link][href="${path}"]`,
+          );
+          // Reviews switches to the collapsed rail at this viewport. A URL
+          // update alone does not mean that the new pointer geometry is ready.
+          const collapsed = path === "/govern";
+          await expect(page.locator("[data-app-shell]")).toHaveAttribute(
+            "data-nav-collapsed",
+            String(collapsed),
+          );
+          await expect(item).toHaveAttribute("aria-current", "page");
+          // Leave the old click target, then enter the settled primary item.
+          // Hovering at an unchanged pointer position need not emit mouseenter.
+          await page.getByRole("main").hover();
+          if (collapsed) {
+            await expect(secondary(page)).toHaveCount(0);
+            // Counterexample: the closed menu cannot satisfy the exact list.
+            expect(await links(secondary(page))).not.toEqual(expected);
+          }
+          await item.hover();
           await expect(secondary(page)).toBeVisible();
           await expect.poll(() => links(secondary(page))).toEqual(expected);
         } else await expect(secondary(page)).toHaveCount(0);
