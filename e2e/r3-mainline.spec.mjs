@@ -449,17 +449,35 @@ for (
       await assertNoLeaks(page, "A13 element");
       record("A13 搜索、打开要素、视图差异与刷新保持");
 
-      await page.goto("/applications");
-      await button(page, "参考范围").click();
-      await page.locator(".agent-auto input").uncheck();
+      await button(page, c.r3_main_ask).click();
+      await expect(page).toHaveURL(
+        (url) =>
+          url.pathname === "/applications" &&
+          url.searchParams.get("element") === editedId,
+      );
+      await expect(page.locator(".agent-auto input")).not.toBeChecked();
       const assets = page
         .locator(".agent-scope-picker")
         .filter({ has: page.getByRole("heading", { name: "本体成果" }) });
-      await assets
+      const currentElement = assets
         .locator("label")
         .filter({ hasText: revisedTitle })
-        .locator("input")
-        .check();
+        .locator("input");
+      await expect(currentElement).toBeChecked();
+      await expect(
+        page.locator(".agent-scope-picker input:checked"),
+      ).toHaveCount(1);
+      // The element shortcut preselects its scope without locking manual changes.
+      await currentElement.uncheck();
+      await expect(currentElement).not.toBeChecked();
+      await expect(
+        page.locator(".agent-scope-picker input:checked"),
+      ).toHaveCount(0);
+      await currentElement.check();
+      await expect(currentElement).toBeChecked();
+      await expect(
+        page.locator(".agent-scope-picker input:checked"),
+      ).toHaveCount(1);
       await button(page, "收起参考范围").click();
       await page
         .getByLabel("说说你希望完成的任务", { exact: true })
@@ -470,7 +488,20 @@ for (
         /\/api\/agent\/sessions\/[^/]+\/turns$/.test(new URL(r.url()).pathname),
       );
       await button(page, "发送").click();
-      expect((await turn).ok()).toBe(true);
+      const submittedTurn = await turn;
+      expect(submittedTurn.ok()).toBe(true);
+      expect(submittedTurn.request().postDataJSON()).toMatchObject({
+        scope_mode: "selected",
+        entity_ids: [editedId],
+        skill_ids: [],
+        mapping_ids: [],
+      });
+      const storedSession = await read(
+        page,
+        new URL(submittedTurn.url()).pathname.replace(/\/turns$/, ""),
+      );
+      expect(storedSession.scope_mode).toBe("selected");
+      expect(storedSession.last_scope.entity_ids).toEqual([editedId]);
       await expect(button(page, "生成报告").last()).toBeVisible({
         timeout: 180_000,
       });
@@ -489,7 +520,7 @@ for (
       ).toBeVisible();
       await sourcePage.close();
       await assertNoLeaks(page, "A10 application answer and citations");
-      record("A10 提问、回答出处可打开要素");
+      record("A10 就此提问自动选中、手动调整、回答出处可打开要素");
       await button(page, "生成报告").last().click();
       // R3's automatic correction must navigate with no second user click.
       await expect(page).toHaveURL(/\/apply\/artifacts\//, {
