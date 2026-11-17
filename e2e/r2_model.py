@@ -13,7 +13,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class Provider:
-    def __init__(self) -> None:
+    def __init__(self, responder=None) -> None:
+        self.responder = responder or reply
         self.key = "synthetic-r2-" + secrets.token_hex(16)
         self.requests = 0
 
@@ -33,7 +34,7 @@ class Provider:
                     return
                 body = json.loads(self.rfile.read(size))
                 owner.requests += 1
-                content = reply(body)
+                content = owner.responder(body)
                 events = [
                     {
                         "type": "message_start",
