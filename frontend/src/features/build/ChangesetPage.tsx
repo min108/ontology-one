@@ -130,7 +130,18 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
   const current =
     proposal.items.find((item) => item.id === selected) || groups.flatMap((group) => group.items)[0];
   const submitBlockers = proposal.submit_blockers || [];
-  const submitted = !proposal.can_submit && !submitBlockers.length && gate.pending === 0 && gate.accepted > 0;
+  const submitted =
+    !proposal.can_submit &&
+    !submitBlockers.length &&
+    gate.pending === 0 &&
+    gate.accepted > 0 &&
+    proposal.items
+      .filter((item) => ['accepted', 'edited'].includes(item.decision))
+      .every(
+        (item) =>
+          !!item.applied_entity_id &&
+          (!item.applied_status || !['draft', 'returned'].includes(item.applied_status)),
+      );
   const blocked = !canEdit || busy || resource.refreshing || !!resource.error;
   const locked = blocked || !current || isHandledElsewhere(current) || submitted;
   const sure = proposal.items.filter(
