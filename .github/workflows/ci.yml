@@ -18,6 +18,53 @@ concurrency:
   group: linux-ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  inspect-visual-artifact:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-DIAGNOSTICS]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: r3-ci-summary-44016319485
+          run-id: 44016319485
+          github-token: ${{ github.token }}
+          path: work/original
+      - name: Inspect failed visual results without rerunning tests
+        run: |
+          python - <<'PYTHON'
+          import json, pathlib, shutil
+          root = pathlib.Path('work/original')
+          for file in root.rglob('results.json'):
+              report = json.loads(file.read_text())
+              print('STATS', report.get('stats'))
+              def visit(value):
+                  if isinstance(value, dict):
+                      if value.get('message') and ('stack' in value or 'snippet' in value):
+                          print(value['message'][:2400])
+                      for child in value.values(): visit(child)
+                  elif isinstance(value, list):
+                      for child in value: visit(child)
+              visit(report)
+          for file in root.rglob('*'):
+              if not file.is_file() or file.is_symlink(): continue
+              relative = file.relative_to(root)
+              visual = relative.parts[:3] == ('r3', 'visual', 'visual')
+              summary = len(relative.parts) == 3 and relative.name in {'playwright.log', 'results.json', 'cleanup.json', 'environment.json'}
+              if (visual and file.name in {'actual.png', 'metrics.json', 'axe.json'}) or summary:
+                  target = pathlib.Path('work/reviewable') / relative
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(file, target)
+          PYTHON
+      - name: Upload one compact diagnostic aggregate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r3-visual-diagnostics-${{ github.run_id }}
+          path: work/reviewable/
+          if-no-files-found: error
+          retention-days: 30
   # A failed full run may stop before the canonical browser is reached. Capture
   # only that unexecuted matrix, without spending another complete-suite run.
   canonical-visual:
@@ -73,16 +120,27 @@ jobs:
           frontend/node_modules/.bin/playwright install --with-deps chromium
       - name: Capture only the canonical visual matrix
         run: python e2e/run.py --target foundation --visual-only --evidence work/evidence/r3/visual
+      - name: Summarize browser failures
+        if: failure()
+        run: |
+          python - <<'PYTHON'
+          import pathlib
+          log = pathlib.Path('work/evidence/r3/visual/playwright.log')
+          if log.exists(): print(log.read_text()[-24000:])
+          PYTHON
       - name: Upload aggregate visual results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: r3-ci-summary-${{ github.run_id }}
-          path: work/evidence/
+          path: |
+            work/evidence/r3/visual/*.json
+            work/evidence/r3/visual/*.log
+            work/evidence/r3/visual/visual/
           if-no-files-found: warn
           retention-days: 30
   foundation:
-    if: "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-VISUAL]')) }}"
+    if: "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && (contains(github.event.head_commit.message, '[R3-VISUAL]') || contains(github.event.head_commit.message, '[R3-DIAGNOSTICS]'))) }}"
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]'))))) && 60 || 15 }}
     services:
