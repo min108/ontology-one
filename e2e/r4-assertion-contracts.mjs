@@ -1,5 +1,22 @@
 import assert from "node:assert/strict";
 
+export function assertRuleClassification(item) {
+  assert.equal(
+    item.after_data.kind,
+    "rule",
+    "the reviewed clause must be a rule",
+  );
+  assert.equal(
+    item.applied_entity_id,
+    null,
+    "classification cannot silently adopt a relationship",
+  );
+  assert.ok(
+    item.after_data.applies_to_id,
+    "the proposed subject must be visible for confirmation",
+  );
+}
+
 export function assertDataRepair(entity, expected) {
   assert.equal(entity.kind, "data");
   assert.equal(

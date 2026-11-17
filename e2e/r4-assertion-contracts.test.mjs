@@ -8,7 +8,21 @@ import {
   assertSubmissionBlocked,
   assertUnwaivedChecks,
   assertDataRepair,
+  assertRuleClassification,
 } from "./r4-assertion-contracts.mjs";
+test("rule classification rejects an unchanged kind, premature adoption or missing subject", () => {
+  const item = {
+    applied_entity_id: null,
+    after_data: { kind: "rule", applies_to_id: "organization" },
+  };
+  assertRuleClassification(item);
+  for (const changed of [
+    { ...item, after_data: { ...item.after_data, kind: "skill" } },
+    { ...item, applied_entity_id: "already-created" },
+    { ...item, after_data: { ...item.after_data, applies_to_id: "" } },
+  ])
+    assert.throws(() => assertRuleClassification(changed));
+});
 test("mainline data repair rejects a lost unit, wrong grain or unsaved version", () => {
   const expected = { unit: "元", grain: "每份合同", before_version: 1 };
   const entity = {

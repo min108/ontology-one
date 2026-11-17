@@ -8,6 +8,7 @@ import { reportIssueSummary } from "./r3-report-diagnostics.mjs";
 import {
   assertUnwaivedChecks,
   assertDataRepair,
+  assertRuleClassification,
 } from "./r4-assertion-contracts.mjs";
 import {
   assertRecipeTrayStage,
@@ -240,12 +241,65 @@ for (
         /还有\s*\d+\s*条没处理/,
       );
       await checkStructure(page, `changeset-${iteration}`);
-      const editedItem = proposal.items.find((item) =>
-        item.evidence.some((ref) => ref.quote.includes("30日")),
+      // This synthetic document states obligations, not an executable skill.
+      // Review model classification before adopting a draft; retain every item.
+      for (const item of proposal.items.filter(
+        (item) => item.after_data.kind === "skill",
+      )) {
+        const quote = item.evidence.find((ref) =>
+          /应|不得|完成|核对|复核/.test(ref.quote),
+        )?.quote;
+        expect(
+          quote,
+          "reclassification requires the actual normative source clause",
+        ).toBeTruthy();
+        await pick(page, item);
+        await button(selected(page), "改一改").click();
+        const classification = page.getByRole("dialog", {
+          name: "改一改",
+          exact: true,
+        });
+        await classification
+          .getByRole("combobox", { name: c.r2_kind, exact: true })
+          .click();
+        await page
+          .locator(".ant-select-item-option")
+          .filter({ hasText: /^规则$/ })
+          .click();
+        await classification
+          .getByRole("textbox", { name: "正文与适用条件", exact: true })
+          .fill(quote);
+        await classification
+          .getByLabel(c.r4_rule_definition, { exact: true })
+          .fill(quote.split("。", 1)[0]);
+        const classified = postResponse(page, "/changeset.decide_items:invoke");
+        await button(classification, c.r4_rule_save_target).click();
+        const savedClassification = (
+          await (await classified).json()
+        ).data.items.find((row) => row.id === item.id);
+        assertRuleClassification(savedClassification);
+        await expect(classification).not.toBeVisible();
+        await expect(selected(page)).toContainText(c.r4_rule_applies_to);
+        await decide(page, savedClassification, "采纳");
+        proposal.items = (
+          await read(page, "/api/v2/changesets/" + proposal.id)
+        ).data.items;
+        gateRepairs.push({
+          kind: "skill",
+          reclassified_as: "rule",
+          fields: ["kind"],
+          persisted: true,
+        });
+      }
+      const editedItem = proposal.items.find(
+        (item) =>
+          item.after_data.kind === "rule" &&
+          !item.applied_entity_id &&
+          item.evidence.some((ref) => ref.quote.includes("30日")),
       );
       expect(Boolean(editedItem)).toBe(true);
       const rejectedItem = proposal.items.find(
-        (item) => item.id !== editedItem.id,
+        (item) => item.id !== editedItem.id && !item.applied_entity_id,
       );
       await pick(page, rejectedItem);
       const scroll = await page
