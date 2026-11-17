@@ -74,6 +74,8 @@ class ProposalItem(ReadModel):
     validation: ItemValidation
     duplicate_of: str | None = None
     applied_entity_id: str | None = None
+    applied_version: int | None = None
+    applied_status: str | None = None
     processed_elsewhere: bool = False
     gates: GateResult | None = None
 

@@ -29,6 +29,7 @@ class ChangesetGet(StrictModel):
 
 
 class CandidatePatch(StrictModel):
+    expected_version: int | None = Field(default=None, ge=1)
     title: str = Field(min_length=1, max_length=250)
     content: str = Field(min_length=1, max_length=16000)
     kind: Literal["rule", "data", "knowledge", "skill"]

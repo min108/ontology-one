@@ -828,6 +828,18 @@
             "title": "Exceptions",
             "type": "string"
           },
+          "expected_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
           "grain": {
             "default": "",
             "maxLength": 1000,
@@ -1931,6 +1943,11 @@
             "title": "Checks",
             "type": "array"
           },
+          "hard_constraint": {
+            "default": false,
+            "title": "Hard Constraint",
+            "type": "boolean"
+          },
           "passed": {
             "title": "Passed",
             "type": "boolean"
@@ -2908,6 +2925,28 @@
               }
             ],
             "title": "Applied Entity Id"
+          },
+          "applied_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Status"
+          },
+          "applied_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Version"
           },
           "content_origin": {
             "title": "Content Origin",

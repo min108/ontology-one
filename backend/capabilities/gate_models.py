@@ -18,6 +18,7 @@ class GateCheck(StrictModel):
 
 class GateResult(StrictModel):
     passed: bool
+    hard_constraint: bool = False
     checks: list[GateCheck]
     blockers: list[str] = Field(default_factory=list)
 
