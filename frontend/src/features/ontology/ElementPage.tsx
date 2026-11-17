@@ -2,6 +2,9 @@ import { Button, Descriptions } from 'antd';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { terms } from '../../i18n/zh-CN';
+import { invokeCapability } from '../../api/client';
+import { RuleEditor } from './RuleEditor';
+import { RuleTests } from './RuleTests';
 import { useUiStore } from '../../state/ui';
 import {
   PageHeader,
@@ -18,7 +21,8 @@ import { businessText, fieldLabels, sourceDescription } from '../build/businessT
 import { SourceEvidence } from '../build/SourceEvidence';
 import { askHref, sentence, isAnchoredEvidence } from '../build/model';
 import { ResourceState, useResource } from '../admin/shared';
-import { type Evidence, useBuildIdentity } from '../build/shared';
+import { GateChecklist } from '../build/GateChecklist';
+import { type Evidence, useBuildIdentity, useLifetime } from '../build/shared';
 import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
@@ -36,6 +40,8 @@ const activityLabels: Record<string, string> = {
   archive: terms.actions.catalog_2_9,
   restore: terms.actions.catalog_2_10,
   complete: terms.actions.catalog_3_4,
+  gate_waiver: copy.r4_gate_waiver,
+  quality_waiver: copy.r4_gate_waiver,
 };
 function activityLabel(action: string): string {
   if (Object.hasOwn(activityLabels, action)) return activityLabels[action];
@@ -43,7 +49,7 @@ function activityLabel(action: string): string {
   return /^[\p{Script=Han}\s、，。（）]+$/u.test(action) ? action : '';
 }
 export type { ElementDetail } from '../../api/generated/types';
-import type { ElementDetail, ElementDetailResult } from '../../api/generated/types';
+import type { ElementDetail, ElementDetailResult, ElementUpdate } from '../../api/generated/types';
 export function BusinessCard({ detail }: { detail: ElementDetail }) {
   const [source, setSource] = useState<Evidence>();
   const sources = Array.isArray(detail.entity.payload.source_refs)
@@ -110,6 +116,7 @@ export default function ElementPage() {
   return <Element key={identity.key + id} id={id} />;
 }
 function Element({ id }: { id: string }) {
+  const lifetime = useLifetime();
   const viewMode = useUiStore((state) => state.viewMode);
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -137,7 +144,6 @@ function Element({ id }: { id: string }) {
     const label = activityLabel(event.action);
     return label ? [{ ...event, label }] : [];
   });
-  const sources = Array.isArray(entity.payload.source_refs) ? entity.payload.source_refs : [];
   return (
     <PageLayout
       variant="archive"
@@ -244,37 +250,33 @@ function Element({ id }: { id: string }) {
                     </div>
                   </FoldRow>
                 )}
-                <FoldRow
-                  title={copy.r3_main_five_checks}
-                  summary={copy.r3_main_pro_checks_summary}
-                  defaultOpen
-                >
-                  <ul className={styles.checks}>
-                    <li>
-                      {copy.r3_main_source_check} ·{' '}
-                      {sources.some(isAnchoredEvidence)
-                        ? copy.r3_main_check_pass
-                        : copy.r3_main_check_pending}
-                    </li>
-                    <li>
-                      {copy.r3_main_content_check} · {copy.r3_main_check_unknown}
-                    </li>
-                    <li>
-                      {copy.r3_main_duplicate_check} · {copy.r3_main_check_unknown}
-                    </li>
-                    <li>
-                      {copy.r3_main_check_scope} ·{' '}
-                      {conditions.length ? copy.r3_main_check_pass : copy.r3_main_check_unknown}
-                    </li>
-                    <li>
-                      {copy.r3_main_check_review} ·{' '}
-                      {entity.status === 'published' ? copy.r3_main_check_pass : copy.r3_main_check_pending}
-                    </li>
-                  </ul>
-                </FoldRow>
               </>
             )}
+            <GateChecklist gates={detail.gates} professional={professional} />
+            {professional && ['rule', 'metric'].includes(entity.kind) && (
+              <RuleTests id={id} disabled={!!query.refreshing || !!query.error} onComplete={query.reload} />
+            )}
             <TechnicalDetails>
+              {detail.can_edit && ['rule', 'metric'].includes(entity.kind) && entity.status === 'draft' && (
+                <RuleEditor
+                  key={entity.id + ':' + entity.version}
+                  entity={entity}
+                  disabled={!!query.refreshing || !!query.error}
+                  onSave={async (payload, sentenceConfirmed) => {
+                    await invokeCapability<ElementDetailResult>(
+                      'element.update_draft',
+                      {
+                        entity_id: id,
+                        version: entity.version,
+                        payload,
+                        sentence_confirmed: sentenceConfirmed,
+                      } satisfies ElementUpdate,
+                      { signal: lifetime.current?.signal },
+                    );
+                    if (!lifetime.current?.signal.aborted) query.reload();
+                  }}
+                />
+              )}
               <p>{entity.id}</p>
               <pre>{JSON.stringify(entity.payload, null, 2)}</pre>
             </TechnicalDetails>

@@ -24,6 +24,7 @@ import { askHref, sentence } from './model';
 import { SourceEvidence } from './SourceEvidence';
 import { businessText, sourceDescription } from './businessText';
 import { isAnchoredEvidence } from './model';
+import { GateChecklist, gateBlockers, type GateWaivers } from './GateChecklist';
 import styles from './Build.module.css';
 
 export default function ReviewsPage() {
@@ -50,18 +51,25 @@ function Inbox() {
     decision: ReviewBody['decision'];
     reason: string;
   }>();
+  const [waivers, setWaivers] = useState<GateWaivers>({});
   const [focus, setFocus] = useState<Evidence>();
   const lifetime = useLifetime(),
     navigate = useNavigate();
   const rows = list.data?.data.items;
   const current = rows?.find((row) => row.entity.id === selected);
   useEffect(() => {
-    if (!confirmation && rows && !rows.some((row) => row.entity.id === selected))
+    if (!confirmation && rows && !rows.some((row) => row.entity.id === selected)) {
       setSelected(rows[0]?.entity.id || '');
+      setWaivers({});
+    }
   }, [rows, selected, confirmation]);
   const blocked = busy || !!list.refreshing || !!list.error || !current?.can_decide;
   const confirmedRow = rows?.find((row) => row.entity.id === confirmation?.id);
   const confirmationBlocked = busy || !!list.refreshing || !!list.error || !confirmedRow?.can_decide;
+  const failedChecks = gateBlockers(current?.gates, waivers);
+  const approvalBlocked = blocked || failedChecks.length > 0;
+  const confirmedGatesBlocked =
+    confirmation?.decision === 'approve_publish' && gateBlockers(confirmedRow?.gates, waivers).length > 0;
   const sources = current?.source_refs || [];
   const conditionValue: unknown = current?.entity.payload.conditions;
   const conditions = (Array.isArray(conditionValue) ? conditionValue : [conditionValue])
@@ -77,9 +85,13 @@ function Inbox() {
       : '/build/intake';
   const revisit = (step: number) =>
     navigate(step === 1 ? '/build/intake' : step === 2 ? sourceChangeset : '/govern/reviews');
-  const blockedReason = current?.blocked_reason || (!current?.can_decide ? copy.r3_main_review_other : '');
+  const blockedReason =
+    current?.blocked_reason ||
+    (!current?.can_decide
+      ? copy.r3_main_review_other
+      : failedChecks[0]?.reason || (failedChecks.length ? copy.r4_gate_waiver_required : ''));
   function confirm(decision: ReviewBody['decision']) {
-    if (!current || blocked) return;
+    if (!current || blocked || (decision === 'approve_publish' && approvalBlocked)) return;
     setConfirmation({
       id: current.entity.id,
       version: current.entity.version,
@@ -93,6 +105,7 @@ function Inbox() {
     const signal = lifetime.current?.signal;
     if (
       confirmationBlocked ||
+      confirmedGatesBlocked ||
       !confirmation ||
       (confirmation.decision === 'return' && !reason.trim()) ||
       signal?.aborted
@@ -104,6 +117,15 @@ function Inbox() {
       decision: confirmation.decision,
       version: confirmation.version,
       reason: reason.trim(),
+      ...(confirmation.decision === 'approve_publish' && Object.values(waivers).some((value) => value?.trim())
+        ? {
+            waivers: Object.fromEntries(
+              Object.entries(waivers)
+                .filter(([, value]) => value?.trim())
+                .map(([key, value]) => [key, value?.trim() || '']),
+            ),
+          }
+        : {}),
     };
     try {
       await api<ReviewResult>('/v2/reviews/' + encodeURIComponent(confirmation.id) + ':decide', {
@@ -119,6 +141,7 @@ function Inbox() {
         reason: reason.trim(),
       });
       setReason('');
+      setWaivers({});
       setSelected('');
       setConfirmation(undefined);
       list.reload();
@@ -144,7 +167,7 @@ function Inbox() {
             current
               ? {
                   label: actions.catalog_2_5,
-                  disabled: blocked || !!confirmation,
+                  disabled: approvalBlocked || !!confirmation,
                   onClick: () => confirm('approve_publish'),
                 }
               : undefined
@@ -248,6 +271,7 @@ function Inbox() {
                     onClick={() => {
                       setSelected(row.entity.id);
                       setReason('');
+                      setWaivers({});
                     }}
                   >
                     <strong>{row.entity.title}</strong>
@@ -317,35 +341,14 @@ function Inbox() {
                 ) : (
                   <p>{copy.r3_main_no_source}</p>
                 )}
-                {professional && (
-                  <FoldRow
-                    title={copy.r3_main_five_checks}
-                    summary={copy.r3_main_pro_checks_summary}
-                    defaultOpen
-                  >
-                    <ul className={styles.checks}>
-                      <li>
-                        {copy.r3_main_source_check} ·{' '}
-                        {sources.some(isAnchoredEvidence)
-                          ? copy.r3_main_check_pass
-                          : copy.r3_main_check_pending}
-                      </li>
-                      <li>
-                        {copy.r3_main_content_check} · {copy.r3_main_check_unknown}
-                      </li>
-                      <li>
-                        {copy.r3_main_duplicate_check} · {copy.r3_main_check_unknown}
-                      </li>
-                      <li>
-                        {copy.r3_main_check_scope} · {copy.r3_main_check_unknown}
-                      </li>
-                      <li>
-                        {copy.r3_main_check_review} ·{' '}
-                        {current.can_decide ? copy.r3_main_check_pass : blockedReason}
-                      </li>
-                    </ul>
-                  </FoldRow>
-                )}
+                <GateChecklist
+                  key={current.entity.id}
+                  gates={current.gates}
+                  professional={professional}
+                  waivers={waivers}
+                  disabled={blocked || !!confirmation}
+                  onWaiver={(code, value) => setWaivers((previous) => ({ ...previous, [code]: value }))}
+                />
                 <TechnicalDetails>
                   <p>{current.entity.id}</p>
                   <pre>
@@ -384,7 +387,10 @@ function Inbox() {
         okButtonProps={{
           autoInsertSpace: false,
           'aria-label': confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5,
-          disabled: confirmationBlocked || (confirmation?.decision === 'return' && !reason.trim()),
+          disabled:
+            confirmationBlocked ||
+            confirmedGatesBlocked ||
+            (confirmation?.decision === 'return' && !reason.trim()),
         }}
       >
         {error && <Alert type="error" title={error} role="alert" />}
@@ -397,6 +403,9 @@ function Inbox() {
         <p>
           {confirmation?.decision === 'return' ? copy.r3_main_return_impact : copy.r3_main_approve_impact}
         </p>
+        {confirmation?.decision === 'approve_publish' && (
+          <GateChecklist gates={confirmedRow?.gates} professional waivers={waivers} />
+        )}
         {confirmation?.decision === 'return' && (
           <label className={styles.field}>
             {copy.r3_main_return_reason}

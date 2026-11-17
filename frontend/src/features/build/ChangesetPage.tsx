@@ -1,4 +1,5 @@
-import { Alert, Button, Input, Modal, Select } from 'antd';
+import { Alert, Button, DatePicker, Input, Modal, Select } from 'antd';
+import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { invokeCapability } from '../../api/client';
@@ -31,6 +32,7 @@ import {
 } from './shared';
 import { changesetGate, groupItems, isHandledElsewhere, sentence } from './model';
 import { sourceLocator } from './businessText';
+import { GateChecklist } from './GateChecklist';
 import styles from './Build.module.css';
 
 export default function ChangesetPage() {
@@ -53,6 +55,8 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
     [focus, setFocus] = useState<Evidence>();
   const [editing, setEditing] = useState<Item>(),
     [confirm, setConfirm] = useState(false);
+  const [judgementText, setJudgementText] = useState('');
+  const [judgementError, setJudgementError] = useState('');
   const [undo, setUndo] = useState<Item[]>();
   const [draft, setDraft] = useState<CandidatePatch>({ title: '', content: '', kind: 'rule' });
   const lifetime = useLifetime();
@@ -122,9 +126,10 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
   const groups = groupItems(proposal.items);
   const current =
     proposal.items.find((item) => item.id === selected) || groups.flatMap((group) => group.items)[0];
-  const submitted = !proposal.can_submit && gate.pending === 0 && gate.accepted > 0;
+  const submitBlockers = proposal.submit_blockers || [];
+  const submitted = !proposal.can_submit && !submitBlockers.length && gate.pending === 0 && gate.accepted > 0;
   const blocked = !canEdit || busy || resource.refreshing || !!resource.error;
-  const locked = blocked || !current || isHandledElsewhere(current) || !!current.applied_entity_id;
+  const locked = blocked || !current || isHandledElsewhere(current) || submitted;
   const sure = proposal.items.filter(
     (item) =>
       item.tier === 'sure' &&
@@ -133,15 +138,17 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       item.validation.level !== 'error',
   );
   const chosen = current?.evidence[0];
-  const note = !canEdit
-    ? copy.r3_main_read_only
-    : submitted
-      ? copy.r3_main_submitted
-      : gate.pending
-        ? sentence(copy.r3_main_pending, { count: gate.pending })
-        : !gate.accepted
-          ? copy.r3_main_no_adopted
-          : undefined;
+  const note =
+    submitBlockers[0] ||
+    (!canEdit
+      ? copy.r3_main_read_only
+      : submitted
+        ? copy.r3_main_submitted
+        : gate.pending
+          ? sentence(copy.r3_main_pending, { count: gate.pending })
+          : !gate.accepted
+            ? copy.r3_main_no_adopted
+            : undefined);
   const lead = gate.pending
     ? proposal.title
     : sentence(copy.r3_main_done, {
@@ -161,7 +168,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           status={<StatusTag domain="proposal" status={proposal.status} />}
           primaryAction={{
             label: submitted ? copy.r3_main_submitted : actions.catalog_1_6,
-            disabled: blocked || !gate.allowed || confirm || !!editing,
+            disabled: blocked || !gate.allowed || !!submitBlockers.length || confirm || !!editing,
             onClick: () => setConfirm(true),
           }}
         />
@@ -230,6 +237,9 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                                 item.decision as keyof typeof terms.statuses.decision
                               ] || copy.unknown_status}
                         </span>
+                        {item.gates && !item.gates.passed && (
+                          <span>{item.gates.blockers?.[0] || copy.r4_gates_fail}</span>
+                        )}
                       </button>
                     ))}
                   </section>
@@ -338,6 +348,13 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                   />
                 )
               )}
+              <GateChecklist key={current.id} gates={current.gates} professional={professional} />
+              {current.after_data.applies_to_title && (
+                <p>
+                  {copy.r4_rule_applies_to}：{current.after_data.applies_to_title}。
+                  {copy.r4_rule_relation_accept}
+                </p>
+              )}
               <h3>{copy.r2_original}</h3>
               {chosen && (
                 <Button type="text" autoInsertSpace={false} onClick={() => setFocus(chosen)}>
@@ -371,6 +388,42 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               </TechnicalDetails>
             </div>
             <div className={styles['pane-actions']}>
+              <Button
+                autoInsertSpace={false}
+                disabled={locked}
+                onClick={() => {
+                  setEditing(current);
+                  setError('');
+                  setJudgementError('');
+                  setJudgementText(
+                    current.after_data.judgement ? JSON.stringify(current.after_data.judgement, null, 2) : '',
+                  );
+                  setDraft({
+                    title: current.after_data.title,
+                    content: current.after_data.content || '',
+                    kind: current.after_data.kind as CandidatePatch['kind'],
+                    ...Object.fromEntries(
+                      (
+                        [
+                          'definition',
+                          'scope',
+                          'conditions',
+                          'exceptions',
+                          'valid_from',
+                          'judgement',
+                          'unit',
+                          'grain',
+                          'boundary',
+                        ] as const
+                      )
+                        .filter((key) => current.after_data[key] !== undefined)
+                        .map((key) => [key, current.after_data[key]]),
+                    ),
+                  });
+                }}
+              >
+                {actions.catalog_1_1}
+              </Button>
               {current.applied_entity_id ? (
                 <Link
                   to={
@@ -390,21 +443,6 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                     onClick={() => void decide([current], 'accepted')}
                   >
                     {actions.catalog_1_0}
-                  </Button>
-                  <Button
-                    autoInsertSpace={false}
-                    disabled={locked}
-                    onClick={() => {
-                      setEditing(current);
-                      setError('');
-                      setDraft({
-                        title: current.after_data.title,
-                        content: current.after_data.content || '',
-                        kind: current.after_data.kind as CandidatePatch['kind'],
-                      });
-                    }}
-                  >
-                    {actions.catalog_1_1}
                   </Button>
                   <Button
                     autoInsertSpace={false}
@@ -449,7 +487,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         okText={actions.catalog_1_6}
         cancelText={actions.r2_cancel}
         confirmLoading={busy}
-        okButtonProps={{ disabled: blocked || !gate.allowed }}
+        okButtonProps={{ disabled: blocked || !gate.allowed || !!submitBlockers.length }}
         onOk={() =>
           void perform(
             () =>
@@ -476,7 +514,24 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           disabled: !!resource.refreshing || !!resource.error || !draft.title.trim() || !draft.content.trim(),
           'aria-label': actions.r2_save,
         }}
-        onOk={() => editing && void decide([editing], 'edited', draft)}
+        onOk={() => {
+          if (!editing) return;
+          try {
+            const judgement = judgementText.trim() ? JSON.parse(judgementText) : null;
+            if (
+              judgementText.trim() &&
+              (!judgement || typeof judgement !== 'object' || Array.isArray(judgement))
+            )
+              throw new Error();
+            void decide(
+              [editing],
+              'edited',
+              judgementText.trim() || editing.after_data.judgement ? { ...draft, judgement } : draft,
+            );
+          } catch {
+            setJudgementError(copy.r4_rule_json_error);
+          }
+        }}
       >
         {(error || resource.error) && (
           <Alert
@@ -515,6 +570,86 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             onChange={(event) => setDraft({ ...draft, content: event.target.value })}
           />
         </label>
+        <label className={styles.field}>
+          {draft.kind === 'rule' ? copy.r4_rule_definition : copy.r2_card_field_definition}
+          <Input.TextArea
+            value={draft.definition || ''}
+            rows={2}
+            maxLength={4000}
+            onChange={(event) => setDraft({ ...draft, definition: event.target.value })}
+          />
+        </label>
+        {draft.kind === 'data' &&
+          (['unit', 'grain'] as const).map((field) => (
+            <label className={styles.field} key={field}>
+              {field === 'unit' ? copy.r2_card_field_unit : copy.r4_rule_grain}
+              <Input
+                value={draft[field] || ''}
+                onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+              />
+            </label>
+          ))}
+        {draft.kind === 'knowledge' && (
+          <label className={styles.field}>
+            {copy.r2_card_field_boundary}
+            <Input.TextArea
+              value={draft.boundary || ''}
+              rows={2}
+              onChange={(event) => setDraft({ ...draft, boundary: event.target.value })}
+            />
+          </label>
+        )}
+        {['rule', 'knowledge'].includes(draft.kind) && (
+          <>
+            {(draft.kind === 'rule' ? (['scope', 'exceptions'] as const) : []).map((field) => (
+              <label className={styles.field} key={field}>
+                {copy[`r4_rule_${field}`]}
+                <Input.TextArea
+                  value={draft[field] || ''}
+                  rows={2}
+                  maxLength={4000}
+                  onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+                />
+              </label>
+            ))}
+            <label className={styles.field}>
+              {copy.r4_rule_conditions}
+              <Input.TextArea
+                value={(draft.conditions || []).join('\n')}
+                rows={3}
+                placeholder={copy.r4_rule_conditions_hint}
+                onChange={(event) => setDraft({ ...draft, conditions: event.target.value.split('\n') })}
+              />
+            </label>
+            {draft.kind === 'rule' && (
+              <label className={styles.field}>
+                {copy.r4_rule_valid_from}
+                <DatePicker
+                  value={draft.valid_from ? dayjs(draft.valid_from) : null}
+                  placeholder={copy.r4_rule_date_hint}
+                  onChange={(value) => setDraft({ ...draft, valid_from: value?.format('YYYY-MM-DD') || '' })}
+                />
+              </label>
+            )}
+          </>
+        )}
+        {professional && draft.kind === 'rule' && (
+          <TechnicalDetails>
+            {judgementError && <Alert type="error" title={judgementError} />}
+            <label className={styles.field}>
+              {copy.r4_rule_judgement}
+              <Input.TextArea
+                rows={10}
+                value={judgementText}
+                maxLength={64000}
+                onChange={(event) => {
+                  setJudgementText(event.target.value);
+                  setJudgementError('');
+                }}
+              />
+            </label>
+          </TechnicalDetails>
+        )}
       </Modal>
     </PageLayout>
   );

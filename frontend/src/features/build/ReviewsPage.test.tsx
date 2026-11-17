@@ -10,6 +10,7 @@ import { useUiStore } from '../../state/ui';
 import type { Review } from '../../api/generated/types';
 import { testQuery, testSession } from './testQuery';
 import ReviewsPage from './ReviewsPage';
+import { gates } from './gateFixtures';
 vi.mock('../../api/client', async (original) => ({
   ...(await original<typeof import('../../api/client')>()),
   api: vi.fn(),
@@ -278,3 +279,41 @@ it.each(['approve_publish', 'return'] as const)(
     focusManager.setFocused(undefined);
   },
 );
+
+it('requires real waiver reasons before approving failed source and condition checks', async () => {
+  current.gates = gates(['QG1', 'QG3']);
+  open();
+  const approve = await screen.findByRole('button', { name: terms.actions.catalog_2_5 });
+  expect(approve).toBeDisabled();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_2_6 })).toBeEnabled();
+  fireEvent.change(screen.getByLabelText('出处可定位 · ' + terms.labels.r4_gate_waiver), {
+    target: { value: '已核对纸质制度' },
+  });
+  expect(approve).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('条件完整 · ' + terms.labels.r4_gate_waiver), {
+    target: { value: '   ' },
+  });
+  expect(approve).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('条件完整 · ' + terms.labels.r4_gate_waiver), {
+    target: { value: '依照既定场景执行' },
+  });
+  expect(approve).toBeEnabled();
+  fireEvent.click(approve);
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: terms.actions.catalog_2_5 }),
+  );
+  await waitFor(() => expect(current.entity.status).toBe('published'));
+  const post = vi.mocked(api).mock.calls.find(([, init]) => init?.method === 'POST');
+  expect(JSON.parse(String(post?.[1]?.body)).waivers).toEqual({
+    QG1: '已核对纸质制度',
+    QG3: '依照既定场景执行',
+  });
+});
+it('cannot approve or waive a missing required relation but can return it', async () => {
+  current.gates = gates(['QG4']);
+  open();
+  expect(await screen.findByRole('button', { name: terms.actions.catalog_2_5 })).toBeDisabled();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(screen.getByText(terms.labels.r4_gate_cannot_waive)).toBeVisible();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_2_6 })).toBeEnabled();
+});

@@ -9,6 +9,7 @@ import { useUiStore } from '../../state/ui';
 import { sentence } from './model';
 import { testQuery, testSession } from './testQuery';
 import ChangesetPage from './ChangesetPage';
+import { gates } from './gateFixtures';
 
 vi.mock('../../api/client', async (original) => ({
   ...(await original<typeof import('../../api/client')>()),
@@ -28,6 +29,7 @@ const seed = () => ({
   source_text: 'Original text',
   source_material_id: 'M-1',
   can_submit: false,
+  submit_blockers: [] as string[],
   items: [
     {
       id: 'item-1',
@@ -46,6 +48,7 @@ const seed = () => ({
         source_quotes: [],
       },
       applied_entity_id: '',
+      gates: gates(),
     },
   ],
 });
@@ -243,4 +246,38 @@ it('returns to the exact intake run and treats externally processed candidates a
   expect(screen.getByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled();
   expect(screen.getAllByText(terms.labels.r3_main_elsewhere).length).toBeGreaterThan(0);
   expect(screen.queryByText('processed_elsewhere')).not.toBeInTheDocument();
+});
+
+it('shows server prerequisites beside the disabled main action instead of claiming already submitted', async () => {
+  proposal.items[0].decision = 'accepted';
+  proposal.items[0].applied_entity_id = 'rule-1';
+  proposal.items[0].gates = gates(['QG4']);
+  proposal.submit_blockers = ['请确认规则的适用主体'];
+  const { container } = open();
+  expect(await screen.findByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled();
+  expect(screen.getByText('请确认规则的适用主体')).toBeVisible();
+  expect(screen.queryByRole('button', { name: terms.labels.r3_main_submitted })).not.toBeInTheDocument();
+  expect(container.querySelector('[data-gate-checklist] details')).toHaveAttribute('open');
+});
+it('saves the missing scope and conditions through the generated candidate patch', async () => {
+  proposal.items[0].gates = gates(['QG3']);
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
+  const modal = screen.getByRole('dialog');
+  fireEvent.change(within(modal).getByLabelText(terms.labels.r4_rule_scope), {
+    target: { value: '合同付款' },
+  });
+  fireEvent.change(within(modal).getByLabelText(terms.labels.r4_rule_conditions), {
+    target: { value: '验收完成\n合同有效' },
+  });
+  fireEvent.click(within(modal).getByRole('button', { name: terms.actions.r2_save }));
+  await waitFor(() =>
+    expect(invokeCapability).toHaveBeenCalledWith(
+      'changeset.decide_items',
+      expect.objectContaining({
+        edit: expect.objectContaining({ scope: '合同付款', conditions: ['验收完成', '合同有效'] }),
+      }),
+      expect.anything(),
+    ),
+  );
 });
