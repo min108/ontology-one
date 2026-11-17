@@ -214,7 +214,9 @@ def _valid_reference(conn: db.Connection, ref: object) -> tuple[bool, bool]:
     )
 
 
-def _relations_pass(conn: db.Connection, entity: dict, proposed: tuple | list = ()) -> bool:
+def _relations_pass(
+    conn: db.Connection, entity: dict, proposed: tuple | list = (), *, declared_empty: bool = False
+) -> bool:
     rows = [
         dict(row)
         for row in conn.execute(
@@ -247,7 +249,7 @@ def _relations_pass(conn: db.Connection, entity: dict, proposed: tuple | list = 
             any(row["type"] == typ and row.get("target_kind") == "object_type" for row in outgoing) for typ in required
         )
     if kind == "skill":
-        return bool(outgoing)
+        return bool(outgoing) or declared_empty
     if kind == "process":
         steps = entity["payload"].get("steps") or []
         return bool(steps) and all(
@@ -304,6 +306,13 @@ def check_entity(
     from backend.kernel.metadata import get_meta
 
     meta = {**(get_meta(conn, entity["id"]) or {}), **(meta_updates or {})}
+    original = entity
+    package_facts = None
+    if entity.get("payload", {}).get("managed_skill"):
+        from backend.skills import skill_gate_facts
+
+        package_facts = skill_gate_facts(conn, entity)
+        entity = {**entity, "payload": package_facts["payload"]}
     payload = entity.get("payload") or {}
     refs = payload.get("source_refs") or []
     verified = [_valid_reference(conn, ref) for ref in refs] if isinstance(refs, list) else []
@@ -325,15 +334,8 @@ def check_entity(
         except (ValueError, ApiError):
             tests = False
     elif entity["kind"] == "skill":
-        # Existing skills retain their own test guard; unverified flags are not proof.
-        tests = bool(
-            conn.execute(
-                "SELECT 1 FROM skill_documents d JOIN skill_checks c ON c.entity_id=d.entity_id "
-                "AND c.revision=d.current_revision AND c.digest=d.digest "
-                "WHERE d.entity_id=? AND c.outcome='passed'",
-                (entity["id"],),
-            ).fetchone()
-        )
+        # Only the controlled package's latest matching proof is trusted.
+        tests = bool(package_facts and package_facts["tests"])
     snapshot = preview or bool(
         conn.execute(
             "SELECT 1 FROM versions WHERE entity_id=? AND TRIM(COALESCE(reason,''))<>'' LIMIT 1", (entity["id"],)
@@ -349,11 +351,14 @@ def check_entity(
         "duplicate": duplicate,
         "tests": tests,
         "snapshot": snapshot,
-        "relations": _relations_pass(conn, entity, proposed_relations),
+        "relations": _relations_pass(
+            conn, entity, proposed_relations, declared_empty=bool(package_facts and package_facts["relations"])
+        )
+        and (not package_facts or package_facts["relations"]),
     }
     result = evaluate_checks(entity, meta, facts)
     stored = _object(meta.get("gates"))
-    fingerprint = _fingerprint(entity, meta)
+    fingerprint = _fingerprint(original, meta)
     for item in result["checks"]:
         waiver = stored.get("waivers", {}).get(item["code"], {})
         if (
