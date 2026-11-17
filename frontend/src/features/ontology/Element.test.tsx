@@ -16,22 +16,25 @@ function detail(): ElementDetail {
     entity: {
       id: 'rule_private_id',
       kind: 'rule',
-      title: '付款管理要求',
+      title: 'Payment requirements',
       status: 'published',
       version: 3,
-      domain: '采购管理',
+      domain: 'Procurement',
       payload: {
-        scope: ['集团总部', { name: '境内子公司', value: { description: '纳入统一付款管理' } }],
+        scope: [
+          'Headquarters',
+          { name: 'Domestic subsidiaries', value: { description: 'Covered by central payment management' } },
+        ],
         conditions: [
           {
-            title: '付款前',
-            content: [{ text: '核验合同' }, { description: '确认验收' }],
+            title: 'Before payment',
+            content: [{ text: 'Verify the contract' }, { description: 'Confirm acceptance' }],
             candidate_id: 'nested-secret',
           },
         ],
         constraints: {
-          unit: '万元',
-          definition: { content: '按含税金额核算', extraction_mode: 'nested-mode' },
+          unit: 'Ten thousand yuan',
+          definition: { content: 'Calculate the tax-inclusive amount', extraction_mode: 'nested-mode' },
           unknown_field: 'unknown-secret',
         },
         obligation: { content: '<script>literal business text</script>' },
@@ -42,8 +45,18 @@ function detail(): ElementDetail {
         future_internal_field: 'future-secret',
       },
       activities: [
-        { id: 'a', action: 'publish', detail: '已完成独立审核', created_at: '2026-11-16T18:05:10Z' },
-        { id: 'b', action: '提交审核', detail: '核对原文', created_at: '2026-11-17T02:06:00+08:00' },
+        {
+          id: 'a',
+          action: 'publish',
+          detail: 'Independent review completed',
+          created_at: '2026-11-16T18:05:10Z',
+        },
+        {
+          id: 'b',
+          action: terms.actions.submit,
+          detail: 'Check the original text',
+          created_at: '2026-11-17T02:06:00+08:00',
+        },
         {
           id: 'c',
           action: 'unknown_internal_action',
@@ -53,15 +66,15 @@ function detail(): ElementDetail {
       ],
     },
     card: {
-      one_liner: '付款前核验合同与验收记录。',
-      points: ['核验合同'],
+      one_liner: 'Verify the contract and acceptance records before payment.',
+      points: ['Verify the contract'],
       relations: [],
-      usage: '用于付款审核。',
+      usage: 'Use for payment review.',
     },
     versions: [
-      { id: 'v3', version: 3, created_at: '2026-11-16T18:05:10Z', reason: '独立审核通过' },
-      { id: 'v2', version: 2, created_at: '2026-11-16 18:04:00', change_note: '补齐适用范围' },
-      { id: 'v1', version: 1, created_at: 'invalid-secret', reason: '创建草稿' },
+      { id: 'v3', version: 3, created_at: '2026-11-16T18:05:10Z', reason: 'Independent review approved' },
+      { id: 'v2', version: 2, created_at: '2026-11-16 18:04:00', change_note: 'Complete the scope' },
+      { id: 'v1', version: 1, created_at: 'invalid-secret', reason: 'Create draft' },
     ],
     can_edit: false,
   };
@@ -75,7 +88,7 @@ async function openElement(value = detail()) {
       </Routes>
     </MemoryRouter>,
   );
-  await screen.findByRole('heading', { name: '付款管理要求' });
+  await screen.findByRole('heading', { name: 'Payment requirements' });
   return rendered;
 }
 beforeEach(() => {
@@ -87,18 +100,18 @@ it('shows readable nested business information with vocabulary labels and exclud
   const { container } = await openElement();
   const structure = screen.getByRole('tabpanel', { name: terms.labels.r2_card_structure });
   for (const text of [
-    '适用范围',
-    '条件',
-    '要求',
-    '取值口径',
-    '集团总部',
-    '境内子公司',
-    '纳入统一付款管理',
-    '付款前',
-    '核验合同',
-    '确认验收',
-    '单位：万元',
-    '按含税金额核算',
+    terms.labels.r2_card_field_scope,
+    terms.labels.r2_card_field_conditions,
+    terms.labels.r2_card_field_obligation,
+    terms.labels.r2_card_field_constraints,
+    'Headquarters',
+    'Domestic subsidiaries',
+    'Covered by central payment management',
+    'Before payment',
+    'Verify the contract',
+    'Confirm acceptance',
+    `${terms.labels.r2_card_field_unit}：Ten thousand yuan`,
+    'Calculate the tax-inclusive amount',
   ]) {
     expect(structure).toHaveTextContent(text);
   }
@@ -137,13 +150,15 @@ it('formats versions and activity in Beijing time and translates action identifi
   await openElement();
   fireEvent.click(screen.getByRole('tab', { name: terms.labels.r2_card_versions }));
   const versions = screen.getByRole('tabpanel', { name: terms.labels.r2_card_versions });
-  expect(versions).toHaveTextContent('v3 · 2026-11-17 02:05 · 独立审核通过');
-  expect(versions).toHaveTextContent('v2 · 2026-11-17 02:04 · 补齐适用范围');
+  expect(versions).toHaveTextContent('v3 · 2026-11-17 02:05 · Independent review approved');
+  expect(versions).toHaveTextContent('v2 · 2026-11-17 02:04 · Complete the scope');
   expect(versions).not.toHaveTextContent('invalid-secret');
   fireEvent.click(screen.getByRole('tab', { name: terms.labels.r2_card_activity }));
   const activity = screen.getByRole('tabpanel', { name: terms.labels.r2_card_activity });
-  expect(activity).toHaveTextContent('发布 · 已完成独立审核 · 2026-11-17 02:05');
-  expect(activity).toHaveTextContent('提交审核 · 核对原文 · 2026-11-17 02:06');
+  expect(activity).toHaveTextContent(
+    `${terms.actions.catalog_2_4} · Independent review completed · 2026-11-17 02:05`,
+  );
+  expect(activity).toHaveTextContent(`${terms.actions.submit} · Check the original text · 2026-11-17 02:06`);
   expect(activity).not.toHaveTextContent('publish');
   expect(activity).not.toHaveTextContent('unknown_internal_action');
   expect(activity).not.toHaveTextContent('internal-action-secret');
