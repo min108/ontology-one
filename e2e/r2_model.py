@@ -116,7 +116,7 @@ def reply(body: dict) -> dict:
                     "kind": "rule",
                     # Different source clauses must not fabricate the same title
                     # with different definitions under the real QG2 check.
-                    "title": "付款申请时限" if "30日" in quote else quote[:80],
+                    "title": "付款申请时限" if "30日" in quote else quote[:24],
                     "summary": quote,
                     "content": quote,
                     "source_chunk_ids": [chunk["id"]],
