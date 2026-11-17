@@ -112,6 +112,16 @@
   --zy-chart-7: #94506b; /* 【改值】原为品牌红 */
   --zy-chart-8: #6b7582; /* 【改值】随中性色 */
 
+  /* 身份表单与登录页内容尺寸 */
+  --zy-form-pane-min: 280px;
+  --zy-form-pane-max: 400px;
+  --zy-login-brand-max: 460px;
+  --zy-login-form-min: 320px;
+  --zy-login-form-max: 440px;
+  --zy-field-label-width: 120px;
+  --zy-brand-mark-size: 64px;
+  --zy-filter-field-min: 160px;
+
   /* ───────── 字体 ───────── */
   --zy-font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   --zy-font-mono: ui-monospace, 'Cascadia Mono', consolas, monospace; /* 只在“技术详情”里用 */
@@ -131,6 +141,7 @@
   --zy-line-heading: 28px; /* 【新增】 */
   --zy-font-display: 36px; /* 首屏结论与关键数字 */
   --zy-line-display: 44px; /* 【改值】 */
+
   /* 过渡别名：旧十级字号并入五级，新代码不得使用 */
   --zy-font-small: var(--zy-font-caption); /* 【过渡别名】原 13 */
   --zy-line-small: var(--zy-line-caption);

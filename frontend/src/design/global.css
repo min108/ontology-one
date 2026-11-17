@@ -16,6 +16,7 @@ body {
   font-size: var(--zy-font-body);
   line-height: var(--zy-line-body);
   font-synthesis: none;
+  font-variant-numeric: tabular-nums;
   min-width: 0;
 }
 
@@ -51,16 +52,15 @@ body {
   }
 }
 
-.zy-root {
-  font-variant-numeric: tabular-nums;
-}
 .zy-root :where(a):not(:where(.legacy-root, .legacy-root *)) {
   color: var(--zy-color-link);
 }
+
 .zy-root :where(h2):not(:where(.legacy-root, .legacy-root *)) {
   font-size: var(--zy-font-title);
   line-height: var(--zy-line-title);
 }
+
 .zy-root :where(h3, h4):not(:where(.legacy-root, .legacy-root *)) {
   font-size: var(--zy-font-body);
   line-height: var(--zy-line-body);
