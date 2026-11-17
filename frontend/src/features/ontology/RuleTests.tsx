@@ -11,10 +11,10 @@ import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
 const outcomeLabels: Record<string, string> = {
-  pass: copy.r4_rule_test_pass,
-  fail: copy.r4_rule_test_fail,
+  pass: copy.r4_rule_outcome_pass,
+  violate: copy.r4_rule_outcome_violate,
   not_applicable: copy.r4_gate_not_applicable,
-  needs_review: copy.r3_main_needs_confirm,
+  needs_review: copy.r4_rule_outcome_review,
 };
 function outcome(value: unknown) {
   if (typeof value === 'string') return outcomeLabels[value] || value;
@@ -91,6 +91,7 @@ export function RuleTests({
                     {copy.r4_rule_expected}：{outcome(row.expected)}；{copy.r4_rule_actual}：
                     {outcome(row.actual)}
                   </p>
+                  {row.actual === 'violate' && <p>{copy.r4_rule_outcome_notice}</p>}
                   {row.error && <p>{row.error}</p>}
                 </li>
               ))}

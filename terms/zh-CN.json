@@ -1270,7 +1270,11 @@
     "r4_rule_edit_hint": "保存草稿后运行测试，检查会按当前内容重新计算。",
     "r4_rule_date_hint": "选择日期",
     "r4_rule_sentence_confirm": "已核对中文说明与判定式一致",
-    "r4_rule_grain": "粒度"
+    "r4_rule_grain": "粒度",
+    "r4_rule_outcome_pass": "符合",
+    "r4_rule_outcome_violate": "不符",
+    "r4_rule_outcome_review": "待核实",
+    "r4_rule_outcome_notice": "需结合原始凭证由人员核实，不构成责任认定。"
   },
   "states": {
     "loading": {

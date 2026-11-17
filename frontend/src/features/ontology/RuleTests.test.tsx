@@ -15,7 +15,7 @@ it('runs stored test cases and renders real results before refreshing gates', as
       passed_count: 1,
       results: [
         { name: '适用通过', expected: 'pass', actual: 'pass', passed: true, error: '' },
-        { name: '应拒绝', expected: 'fail', actual: 'needs_review', passed: false, error: '需要补齐输入' },
+        { name: '应拒绝', expected: 'violate', actual: 'needs_review', passed: false, error: '需要补齐输入' },
       ],
       errors: [],
     },
@@ -45,4 +45,24 @@ it('explains the readonly boundary before running a test capability', () => {
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_run }));
   expect(invokeCapability).not.toHaveBeenCalled();
   testSession();
+});
+
+it('renders noncompliance in Chinese with the required human-verification notice', async () => {
+  vi.mocked(invokeCapability).mockResolvedValue({
+    data: {
+      passed: true,
+      total: 2,
+      passed_count: 2,
+      results: [
+        { name: '负额不符', expected: 'violate', actual: 'violate', passed: true, error: '' },
+        { name: '正额符合', expected: 'pass', actual: 'pass', passed: true, error: '' },
+      ],
+      errors: [],
+    },
+  });
+  render(<RuleTests id="rule-1" disabled={false} onComplete={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_run }));
+  expect(await screen.findByText(terms.labels.r4_rule_outcome_notice)).toBeVisible();
+  expect(screen.getByText('预期结果：不符；实际结果：不符')).toBeVisible();
+  expect(screen.queryByText('violate')).not.toBeInTheDocument();
 });

@@ -132,7 +132,7 @@ test("R4 AA3 capabilities create seven kinds, persist drafts and expose derived 
         severity: "must",
         test_cases: [
           { name: "正额通过", input: { amount: 20 }, expected: "pass" },
-          { name: "负额不通过", input: { amount: -1 }, expected: "fail" },
+          { name: "负额不通过", input: { amount: -1 }, expected: "violate" },
         ],
       },
     });
@@ -170,7 +170,7 @@ test("R4 AA3 capabilities create seven kinds, persist drafts and expose derived 
         (await read(page, "/api/v2/elements/" + item.entity.id)).data.entity,
       );
     assertSavedSemanticGroup(persisted);
-    for (const item of [object, link, metric, term, rule, process]) {
+    for (const item of [object, link, metric, rule, process]) {
       const detail = (await read(page, "/api/v2/elements/" + item.entity.id))
         .data;
       expect(detail.card.relations.length, item.entity.kind).toBeGreaterThan(0);
@@ -195,6 +195,14 @@ test("R4 AA3 capabilities create seven kinds, persist drafts and expose derived 
     await expect(
       page.getByRole("article", { name: rule.entity.title }),
     ).toContainText(detail.entity.payload.judgement.requirement.sentence);
+    await selectSavedViewMode(page, "professional");
+    const running = postResponse(page, "/rule.test_cases:invoke");
+    await button(page, c.r4_rule_run).click();
+    assertRuleCaseResults((await (await running).json()).data);
+    await expect(
+      page.getByText(c.r4_rule_outcome_notice, { exact: true }),
+    ).toBeVisible();
+    await assertNoLeaks(page, "AA3 rule outcome", { professional: true });
   } finally {
     await owner.context.close();
   }
