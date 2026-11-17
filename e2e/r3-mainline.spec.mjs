@@ -533,12 +533,25 @@ for (
         await compare.locator("summary").click();
       }
       await checkStructure(page, `report-${iteration}`);
-      const superscript = page.locator("sup button,sup a").first();
+      await page
+        .locator("summary")
+        .filter({ hasText: c.r3_report_body })
+        .click();
+      await assertNoLeaks(page, "A12 complete report body open");
+      const superscript = page
+        .locator("sup button:visible,sup a:visible")
+        .first();
       await expect(superscript).toBeVisible();
+      const citationNumber = Number((await superscript.textContent()).trim());
+      const citationKey = Object.keys(artifact.spec.citations)[
+        citationNumber - 1
+      ];
+      expect(Boolean(citationKey)).toBe(true);
+      const quotedOriginal = artifact.spec.citations[citationKey].quote;
+      expect(quotedOriginal.length).toBeGreaterThan(0);
       await superscript.click();
       const evidence = page.getByRole("dialog");
-      await expect(evidence).toContainText("30日");
-      await expect(evidence.locator("mark")).toBeVisible();
+      await expect(evidence.locator("mark")).toHaveText(quotedOriginal);
       await assertNoLeaks(page, "A12 report evidence drawer open");
       await evidence.getByRole("button", { name: /关闭|Close/ }).click();
       record("A12 报告引用上标原文抽屉");
