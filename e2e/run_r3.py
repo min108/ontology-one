@@ -28,8 +28,10 @@ from run import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(round_name: str = "r3") -> int:
+    if round_name not in {"r3", "r4"}:
+        raise ValueError("Unknown acceptance round")
+    parser = argparse.ArgumentParser(description=__doc__.replace("R3", round_name.upper()))
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--repetitions", type=int, help="UI mainline repetitions (live default: 3; early rehearsal: 1)")
     parser.add_argument("--mainline-only", action="store_true")
@@ -61,7 +63,7 @@ def main() -> int:
             destination = output / f"run-{index}"
             command = [
                 sys.executable,
-                "e2e/run_r3.py",
+                f"e2e/run_{round_name}.py",
                 "--repetitions",
                 "1",
                 "--skip-build",
@@ -124,7 +126,10 @@ def main() -> int:
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip(),
     }
     processes = []
-    with tempfile.TemporaryDirectory(prefix="r3-actions-", dir=ROOT / "work") as temporary, ExitStack() as stack:
+    with (
+        tempfile.TemporaryDirectory(prefix=f"{round_name}-actions-", dir=ROOT / "work") as temporary,
+        ExitStack() as stack,
+    ):
         work = Path(temporary)
         provider = stack.enter_context(nullcontext() if args.live else Provider())
         environment = child_environment(
@@ -137,6 +142,7 @@ def main() -> int:
             E2E_EVIDENCE_DIR=str(output),
             E2E_DEPENDENCY_ROOT=str(ROOT / "frontend"),
             E2E_R3_LIVE="1" if args.live else "0",
+            E2E_R4="1" if round_name == "r4" else "0",
             ONTOLOGY_MODEL_SOURCE="analyst" if args.live else "mock",
             ONTOLOGY_MODEL_FROM_ENV="1",
             E2E_PYTHON=sys.executable,
@@ -161,6 +167,8 @@ def main() -> int:
                     scope.record_created()
                     run_command([sys.executable, "scripts/migrate.py"], ROOT, bootstrap, output / "migrate.log")
                     scope.record_created()
+                    if round_name == "r4" and not args.live and not args.mainline_only:
+                        run_command([sys.executable, "e2e/r4_seed.py"], ROOT, bootstrap, output / "r4-seed.log")
                     for name, module, port in [
                         ("agent", "backend.agent_service:app", args.agent_port),
                         ("api", "backend.main:app", args.api_port),
@@ -185,7 +193,7 @@ def main() -> int:
                         "frontend/node_modules/@playwright/test/cli.js",
                         "test",
                         "--config",
-                        "e2e/r3.config.mjs",
+                        f"e2e/{round_name}.config.mjs",
                         *(["--grep", args.grep] if args.grep else []),
                     ]
                     if args.live:
