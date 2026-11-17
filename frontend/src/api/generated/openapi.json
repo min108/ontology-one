@@ -808,6 +808,182 @@
         "title": "DecideItems",
         "type": "object"
       },
+      "ElementActivity": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "detail",
+          "created_at"
+        ],
+        "title": "ElementActivity",
+        "type": "object"
+      },
+      "ElementCard": {
+        "additionalProperties": true,
+        "properties": {
+          "one_liner": {
+            "title": "One Liner",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "relations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relations",
+            "type": "array"
+          },
+          "usage": {
+            "title": "Usage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "one_liner",
+          "points",
+          "relations",
+          "usage"
+        ],
+        "title": "ElementCard",
+        "type": "object"
+      },
+      "ElementDetail": {
+        "additionalProperties": true,
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "card": {
+            "$ref": "#/components/schemas/ElementCard"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/ElementEntity"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ElementVersion"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity",
+          "card",
+          "versions",
+          "can_edit"
+        ],
+        "title": "ElementDetail",
+        "type": "object"
+      },
+      "ElementDetailResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ElementDetail"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "ElementDetailResult",
+        "type": "object"
+      },
+      "ElementEntity": {
+        "additionalProperties": true,
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/ElementActivity"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Payload",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "status",
+          "version",
+          "domain",
+          "payload",
+          "activities"
+        ],
+        "title": "ElementEntity",
+        "type": "object"
+      },
       "ElementGet": {
         "additionalProperties": false,
         "properties": {
@@ -860,6 +1036,161 @@
           }
         },
         "title": "ElementList",
+        "type": "object"
+      },
+      "ElementListData": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ElementListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ElementListData",
+        "type": "object"
+      },
+      "ElementListItem": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source_title": {
+            "title": "Source Title",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "status"
+        ],
+        "title": "ElementListItem",
+        "type": "object"
+      },
+      "ElementListResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ElementListData"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "ElementListResult",
+        "type": "object"
+      },
+      "ElementVersion": {
+        "additionalProperties": true,
+        "properties": {
+          "change_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "created_at"
+        ],
+        "title": "ElementVersion",
         "type": "object"
       },
       "EmptyInput": {
@@ -3731,6 +4062,12 @@
                     },
                     {
                       "$ref": "#/components/schemas/BuildResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ElementListResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ElementDetailResult"
                     }
                   ],
                   "title": "Response Invoke Api V2 Capabilities  Id  Invoke Post"
@@ -4029,7 +4366,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BuildResult"
+                  "$ref": "#/components/schemas/ElementListResult"
                 }
               }
             },
@@ -4068,7 +4405,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BuildResult"
+                  "$ref": "#/components/schemas/ElementDetailResult"
                 }
               }
             },

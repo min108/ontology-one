@@ -1,11 +1,12 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
 import { BusinessCard, type ElementDetail } from './ElementPage';
 import { testQuery, testSession } from '../build/testQuery';
 import { api } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
-import { assetKinds } from './CatalogPage';
+import CatalogPage, { assetKinds } from './CatalogPage';
+import { useUiStore } from '../../state/ui';
 
 vi.mock('../../api/client', async (original) => ({
   ...(await original<typeof import('../../api/client')>()),
@@ -64,4 +65,79 @@ it('presents the four kinds and a literal, anchored business card', async () => 
     '/materials/M-1?anchor=A-1&source_version=V-1',
   );
   expect(drawer.querySelector('mark')).toHaveTextContent('Pay within 30 days.');
+});
+
+function CatalogLocation() {
+  const location = useLocation();
+  return <output data-testid="catalog-location">{location.pathname + location.search}</output>;
+}
+it('searches the catalog through the server, preserves six simple columns and adds version in professional view', async () => {
+  testSession();
+  useUiStore.setState({ viewMode: 'simple' });
+  vi.mocked(api).mockReset();
+  vi.mocked(api).mockImplementation(
+    async (path) =>
+      ({
+        data: {
+          items: [
+            {
+              id: 'rule_internal_secret',
+              title: path.includes('q=') && !path.includes('q=&') ? '检索后的付款规则' : '付款规则',
+              kind: 'rule',
+              status: 'published',
+              source_title: '付款制度',
+              updated_at: '2026-11-17T01:30:00Z',
+              version: 3,
+            },
+          ],
+          total: 26,
+        },
+      }) as never,
+  );
+  render(
+    <MemoryRouter initialEntries={['/ontology/catalog']}>
+      <CatalogPage />
+      <CatalogLocation />
+    </MemoryRouter>,
+    { wrapper: testQuery() },
+  );
+  expect(await screen.findByRole('link', { name: '付款规则' })).toHaveAttribute(
+    'href',
+    '/ontology/elements/rule_internal_secret',
+  );
+  expect(screen.getAllByRole('columnheader')).toHaveLength(6);
+  expect(screen.getByText('付款制度')).toBeVisible();
+  expect(screen.getByText('2026-11-17 09:30')).toBeVisible();
+  expect(screen.queryByText('rule_internal_secret')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: terms.actions.columns })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(terms.labels.r2_catalog_search), { target: { value: '付款' } });
+  fireEvent.keyDown(screen.getByLabelText(terms.labels.r2_catalog_search), { key: 'Enter', code: 'Enter' });
+  await waitFor(() =>
+    expect(api).toHaveBeenCalledWith(expect.stringContaining('q=%E4%BB%98%E6%AC%BE'), expect.anything()),
+  );
+  expect(await screen.findByRole('link', { name: '检索后的付款规则' })).toBeVisible();
+  act(() => useUiStore.getState().setViewMode('professional'));
+  expect(screen.getAllByRole('columnheader')).toHaveLength(7);
+  expect(screen.getByText('v3')).toBeVisible();
+  expect(screen.getByRole('button', { name: terms.actions.columns })).toBeEnabled();
+  act(() => useUiStore.getState().setViewMode('simple'));
+  expect(screen.getAllByRole('columnheader')).toHaveLength(6);
+  expect(screen.queryByText('v3')).not.toBeInTheDocument();
+});
+it('hides headings and pagination for an empty catalog and can clear the search', async () => {
+  testSession();
+  useUiStore.setState({ viewMode: 'simple' });
+  vi.mocked(api).mockResolvedValue({ data: { items: [], total: 0 } });
+  render(
+    <MemoryRouter initialEntries={['/ontology/catalog?q=missing']}>
+      <CatalogPage />
+      <CatalogLocation />
+    </MemoryRouter>,
+    { wrapper: testQuery() },
+  );
+  expect(await screen.findByText(terms.labels.r3_main_catalog_none)).toBeVisible();
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r3_main_catalog_clear }));
+  expect(screen.getByTestId('catalog-location')).toHaveTextContent('/ontology/catalog?q=&kind=&page=1');
 });

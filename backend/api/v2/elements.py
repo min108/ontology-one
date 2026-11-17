@@ -3,16 +3,16 @@
 from fastapi import APIRouter
 
 from backend.api.v2.build import call
-from backend.capabilities.build import BuildResult
+from backend.capabilities.element_models import ElementDetailResult, ElementListResult
 
 router = APIRouter()
 
 
-@router.get("/elements", response_model=BuildResult)
-def elements(q: str = "", kind: str = "", page: int = 1, page_size: int = 25) -> BuildResult:
+@router.get("/elements", response_model=ElementListResult)
+def elements(q: str = "", kind: str = "", page: int = 1, page_size: int = 25) -> ElementListResult:
     return call("element.list", {"q": q, "kind": kind, "page": page, "page_size": page_size})
 
 
-@router.get("/elements/{id}", response_model=BuildResult)
-def element(id: str) -> BuildResult:
+@router.get("/elements/{id}", response_model=ElementDetailResult)
+def element(id: str) -> ElementDetailResult:
     return call("element.get", {"entity_id": id})

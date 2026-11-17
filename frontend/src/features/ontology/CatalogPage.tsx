@@ -12,16 +12,8 @@ import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
 export const assetKinds = ['data', 'rule', 'skill', 'knowledge'] as const;
-interface Item {
-  id: string;
-  title: string;
-  summary: string;
-  kind: string;
-  status: string;
-  version?: number;
-  updated_at?: string;
-  source_title?: string;
-}
+import type { ElementListItem as Item, ElementListResult } from '../../api/generated/types';
+
 export default function CatalogPage() {
   const identity = useBuildIdentity();
   return <Catalog key={identity.key} />;
@@ -32,7 +24,7 @@ function Catalog() {
   const [text, setText] = useState(params.get('q') || '');
   const kind = params.get('kind') || '',
     page = Math.max(1, Number(params.get('page')) || 1);
-  const query = useResource<{ data: { items: Item[]; total: number } }>(
+  const query = useResource<ElementListResult>(
     '/v2/elements?' + new URLSearchParams({ q: params.get('q') || '', kind, page: String(page) }),
   );
   function filter(q: string, value: string, nextPage = 1) {

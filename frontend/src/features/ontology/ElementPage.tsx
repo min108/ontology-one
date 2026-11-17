@@ -60,21 +60,8 @@ function activityLabel(action: string): string {
   // Older records already carry a business-facing Chinese action name.
   return /^[\p{Script=Han}\s、，。（）]+$/u.test(action) ? action : '';
 }
-export interface ElementDetail {
-  entity: {
-    id: string;
-    kind: string;
-    title: string;
-    status: string;
-    version: number;
-    domain: string;
-    payload: Record<string, unknown>;
-    activities: { id: string; action: string; detail: string; created_at: string }[];
-  };
-  card: { one_liner: string; points: string[]; relations: string[]; usage: string };
-  versions: { id: string; version: number; created_at: string; reason?: string; change_note?: string }[];
-  can_edit: boolean;
-}
+export type { ElementDetail } from '../../api/generated/types';
+import type { ElementDetail, ElementDetailResult } from '../../api/generated/types';
 export function BusinessCard({ detail }: { detail: ElementDetail }) {
   const [source, setSource] = useState<Evidence>();
   const sources = Array.isArray(detail.entity.payload.source_refs)
@@ -129,7 +116,7 @@ export default function ElementPage() {
 function Element({ id }: { id: string }) {
   const viewMode = useUiStore((state) => state.viewMode);
   const navigate = useNavigate();
-  const query = useResource<{ data: ElementDetail }>('/v2/elements/' + encodeURIComponent(id));
+  const query = useResource<ElementDetailResult>('/v2/elements/' + encodeURIComponent(id));
   if (!query.data)
     return (
       <PageLayout variant="archive" header={<PageHeader title={copy.r2_catalog_title} />}>
