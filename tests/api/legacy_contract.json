@@ -885,5 +885,12 @@
     "edit": "b88809cae52332afb4094323d36b0e94421b952d94c01e6c6edab4da53af22f2",
     "_entity_action": "dc65b3f5f998421d19fa74a12fed7623ca71fa1e09ae04ef8fdb37ec28657238",
     "_restore_entity": "2437dd3d86ea1c44f2c8cbd7e544c9faa704a1ccf2c70e0c7356635c5c4e5e39"
+  },
+  "r4_functions": {
+    "entities": "7c6fd2aeee7b1f9a0e24bb2f2876dca36d12d62cb33151d670dd58dd918e3555",
+    "_create_entity": "a36ff8b438771cbd55ebb579c4b0aa13576cf0e843b9c5b48b2047d927083f21",
+    "edit": "037dc300d4e8deafc41fb74b8c66579b3e80f69a103c13486b2d473de3e02987",
+    "_restore_entity": "54ea007e64d9bfb44fca3b1e38a98a1901136abcc4517cf30a61293da81cac7d",
+    "relation_work_entry": "cc34e211ef137e3ed3bb8eebebdfaf42a43175d502e7ffc83c31f6f6905b075d"
   }
 }

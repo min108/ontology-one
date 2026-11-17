@@ -33,6 +33,17 @@ class ContractTests(unittest.TestCase):
                 "artifact.list",
                 "element.list",
                 "element.get",
+                "element.create_draft",
+                "element.update_draft",
+                "element.start_revision",
+                "element.restore_version",
+                "element.discard_draft",
+                "relation.propose",
+                "relation.decide",
+                "semantic.describe",
+                "quality.check_gates",
+                "quality.waive_gates",
+                "rule.test_cases",
                 "model.configure",
                 "backup.export",
                 "backup.restore",
@@ -52,6 +63,7 @@ class ContractTests(unittest.TestCase):
                 "model.configure",
                 "backup.restore",
                 "review.decide",
+                "relation.decide",
             }
             draft = item.id in {
                 "recipe.start",
@@ -60,19 +72,47 @@ class ContractTests(unittest.TestCase):
                 "changeset.apply_and_submit",
                 "artifact.create",
                 "artifact.render",
+                "element.create_draft",
+                "element.update_draft",
+                "element.start_revision",
+                "element.restore_version",
+                "element.discard_draft",
+                "quality.waive_gates",
             }
-            self.assertEqual(item.effect, "state_change" if mutation else "write_draft" if draft else "read")
+            proposal = item.id == "relation.propose"
+            self.assertEqual(
+                item.effect,
+                "state_change" if mutation else "write_draft" if draft else "propose" if proposal else "read",
+            )
             confirmation = (
                 "L3"
                 if mutation or item.id == "backup.export"
                 else "L2"
                 if item.id == "changeset.apply_and_submit"
                 else "L1"
-                if draft
+                if draft or proposal
                 else "L0"
             )
             self.assertEqual(item.confirm, confirmation)
             self.assertEqual(item.tool_name, item.id.replace(".", "_"))
+
+    def test_r4_permission_contracts(self) -> None:
+        expected = {
+            "element.create_draft": ("build.edit",),
+            "element.update_draft": ("build.edit",),
+            "element.start_revision": ("build.edit",),
+            "element.restore_version": ("build.edit",),
+            "element.discard_draft": ("build.edit",),
+            "relation.propose": ("build.edit",),
+            "relation.decide": ("review.decide",),
+            "semantic.describe": (),
+            "quality.check_gates": (),
+            "quality.waive_gates": ("review.decide",),
+            "rule.test_cases": (),
+        }
+        for name, permissions in expected.items():
+            with self.subTest(capability=name):
+                self.assertEqual(registry.entries[name].permissions, permissions)
 
     def test_every_role_matches_declared_permissions(self) -> None:
         for role in ("admin", "modeler", "reviewer", "analyst", "viewer", "unknown"):
@@ -110,6 +150,36 @@ class ContractTests(unittest.TestCase):
                                 "artifact.get": {"artifact_id": "ART-" + "a" * 16},
                                 "artifact.render": {"artifact_id": "ART-" + "a" * 16, "expected_version": 1},
                                 "element.get": {"entity_id": "entity"},
+                                "element.create_draft": {"kind": "knowledge", "title": "Test knowledge"},
+                                "element.update_draft": {"entity_id": "entity", "version": 1, "summary": "Updated"},
+                                "element.start_revision": {"entity_id": "entity", "version": 1, "reason": "Revise"},
+                                "element.restore_version": {
+                                    "entity_id": "entity",
+                                    "version": 2,
+                                    "restore_version": 1,
+                                    "reason": "Restore",
+                                },
+                                "element.discard_draft": {"entity_id": "entity", "version": 1, "reason": "Discard"},
+                                "relation.propose": {
+                                    "source": "source",
+                                    "target": "target",
+                                    "type": "related_to",
+                                    "reason": "Related",
+                                },
+                                "relation.decide": {
+                                    "relation_id": "relation",
+                                    "status": "confirmed",
+                                    "reason": "Reviewed",
+                                },
+                                "semantic.describe": {"entity_id": "entity"},
+                                "quality.check_gates": {"entity_id": "entity"},
+                                "quality.waive_gates": {
+                                    "entity_id": "entity",
+                                    "version": 1,
+                                    "reason": "Reviewed",
+                                    "waivers": {"QG1": "Documented exception"},
+                                },
+                                "rule.test_cases": {"entity_id": "entity"},
                                 "model.configure": {"base_url": "https://model.test/anthropic", "model": "test"},
                                 "user.manage": {
                                     "action": "update",

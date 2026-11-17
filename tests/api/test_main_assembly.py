@@ -49,8 +49,13 @@ class AssemblyTests(unittest.TestCase):
                         child.level -= 2
                 actual[node.name] = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
                 self.assertIs(getattr(main, node.name), getattr(core, node.name))
-        # R2 retains the frozen R1 hashes and pins the three authorized changes exactly.
-        self.assertEqual(actual, {**CONTRACT["functions"], **CONTRACT["r2_functions"]})
+        # Preserve every R1/R2 hash. R4 changes only asset discovery, kernel-backed
+        # create/edit/restore, and the edit destination for derived relations.
+        self.assertEqual(
+            set(CONTRACT["r4_functions"]),
+            {"entities", "_create_entity", "edit", "_restore_entity", "relation_work_entry"},
+        )
+        self.assertEqual(actual, {**CONTRACT["functions"], **CONTRACT["r2_functions"], **CONTRACT["r4_functions"]})
 
     def test_legacy_connection_patch_is_forwarded(self) -> None:
         from backend.api.v1 import core
