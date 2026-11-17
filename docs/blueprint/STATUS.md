@@ -4,11 +4,12 @@
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
 | R2 | 1.1.0 | 已验收（R2.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R2-REPORT](rounds/R2-REPORT.md)、[R2-ACCEPTANCE](rounds/R2-ACCEPTANCE.md) |
-| R3 / R3.1 | 1.2.0 | R3 有条件通过；R3.1 修复自验完成，待 Claude 复验 | 2026-11-17（R3） | [R3-REPORT](rounds/R3-REPORT.md)、[R3-ACCEPTANCE](rounds/R3-ACCEPTANCE.md)、[R3-PLAN](rounds/R3-PLAN.md) |
+| R3 | 1.2.0 | 已验收（R3.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R3-REPORT](rounds/R3-REPORT.md)、[R3-ACCEPTANCE](rounds/R3-ACCEPTANCE.md)、[R3-PLAN](rounds/R3-PLAN.md) |
+| R4 | 1.3.0 | 计划已发布，待实施（语义内核补齐，分 A、B 两段交付） | — | [R4-PLAN](rounds/R4-PLAN.md) |
 
 ## 当前基线
 
-R3.1 从 `263fdea` 合并验收规划 `a777cc9` 后继续，严格限于验收第 4 节；版本、迁移和权限边界不变。交付代码 `14db5e918608eb7196352fb96da5ea61cfad30d8` 的快速层及 D1 补验 CI `44046206248` 全绿；唯一完整层 `44039477056` 的旧文案断言失败及此前未执行离线范围均已补验，不称完整层单次全绿。独立发现 4/4 关闭；真实 DeepSeek deepseek-chat / 界面 / 本地 Linux / 同交付代码连续 45/46/48 秒通过，首次拦截及自动修订均否，前序一次失败完整保留。详见 R3-REPORT 的 R3.1 节，待 Claude 复验。以下保留 R3 原交付及 R2/R1 历史证据。
+R3.1 从 `263fdea` 合并验收规划 `a777cc9` 后继续，严格限于验收第 4 节；版本、迁移和权限边界不变。交付代码 `14db5e918608eb7196352fb96da5ea61cfad30d8` 的快速层及 D1 补验 CI `44046206248` 全绿；唯一完整层 `44039477056` 的旧文案断言失败及此前未执行离线范围均已补验，不称完整层单次全绿。独立发现 4/4 关闭；真实 DeepSeek deepseek-chat / 界面 / 本地 Linux / 同交付代码连续 45/46/48 秒通过，首次拦截及自动修订均否，前序一次失败完整保留。详见 R3-REPORT 的 R3.1 节。Claude 复验通过（R3-ACCEPTANCE 第 6 节）：本地后端 998、前端 460、合成模型浏览器 16/16、真实 DeepSeek 经界面在交付代码上连续 3 次通过。以下保留 R3 原交付及 R2/R1 历史证据。
 
 R3 分支 `dev/r3-ui-foundation`，规划起点 `016c6c6`，版本1.2.0。界面基础、主线精修及旧页过渡均已实现，无工作包延后；三路独立审查累计19项已修复并复核。两次完整CI均失败；定向CI `44026467722`补验失败与未执行范围成功，集成应用补齐由 `44029599125` 单页补验成功，精确渠道、模型、环境与源码见[R3-REPORT](rounds/R3-REPORT.md)。真实DeepSeek deepseek-chat / 界面 / 本地Linux / `452e8a68a0d77e24db00dc1945ef68010478c074`连续三次通过52/44/41秒，首次数字拦截及自动修订均为是/否/否。控制库0001–0005、机构库0001–0003、可信恢复v1–v6不变；以下保留R2/R1历史过程。
 
