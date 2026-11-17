@@ -4,7 +4,7 @@
 
 R3（1.2.0）界面基础与主线精修：范围与裁决见 `docs/blueprint/rounds/R3-PLAN.md`，界面上位依据见 `docs/design/UI-BASELINE.md` 与 `docs/design/benchmarks/`，执行按 `docs/blueprint/EXECUTION-RULES.md` v3（质量第一；交付前独立对抗审查；动作清单逐条断言结果；真实模型经界面连续 3 次），经验与反面案例见 `docs/blueprint/LESSONS.md`。所有人默认简洁视图。R2 已于 2026-11-17 经 R2.1 修复后验收通过（`R2-ACCEPTANCE.md`）。环境模型仅在 `ONTOLOGY_MODEL_FROM_ENV=1` 时覆盖机构配置，只限演示或单机构部署；环境变量不能把模拟结果提升为真实。数字核验按段落及表格行的实际引用，计数精确匹配，仅金额允许 0.5% 舍入差；裸数字、序号、年份和日期不核验；规则不放宽。
 
-知元（英文名 Ontology One）是集团本体管理平台。R3（1.2.0）经 Claude 独立验收有条件通过，R3.1 按 `R3-ACCEPTANCE.md` 第 4 节修复，版本不变；交付代码、真实主线与 CI 的最终证据见 R3 报告的 R3.1 节，之后由 Claude 复验。R2（1.1.0）已验收，交接见 `docs/blueprint/rounds/R2-REPORT.md`；CI结论按报告列出的各实际受验提交分别核对；R3原交付两次完整层均失败，修复后按执行守则D1定向补验，不称原交付完整层全绿。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
+知元（英文名 Ontology One）是集团本体管理平台。R3（1.2.0）经 Claude 独立验收有条件通过，R3.1 已按 `R3-ACCEPTANCE.md` 第 4 节完成修复自验，版本不变；交付代码、真实主线与 CI 的最终证据见 R3 报告的 R3.1 节，之后由 Claude 复验。R2（1.1.0）已验收，交接见 `docs/blueprint/rounds/R2-REPORT.md`；CI结论按报告列出的各实际受验提交分别核对；R3原交付两次完整层均失败，修复后按执行守则D1定向补验，不称原交付完整层全绿。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
 ## 2 硬规则摘要
 
