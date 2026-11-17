@@ -245,6 +245,30 @@ class Renderers(unittest.TestCase):
             with self.subTest(answer=wrong_answer), self.assertRaises(HTTPException):
                 render.verify(value)
 
+    def test_table_unit_hints_require_explicit_units(self) -> None:
+        value = spec()
+        value["citations"]["c1"].update(entity_id="rule_demo", title="付款规则", version=4)
+        value["citations"]["c1"]["quote"] += "覆盖30家。"
+        for answer in (
+            "|事项|要求|\n|---|---|\n|1|30日[付款规则](/assets/rule_demo)|",
+            "|条款依据|时限（日）|\n|---|---|\n|[1](/assets/rule_demo)|30|",
+            "|条款依据|时限（日）|\n|---|---|\n|[付款规则](/assets/rule_demo)，原文第1版|30|",
+            "|事项数量（家）|依据|\n|---|---|\n|30|[付款规则](/assets/rule_demo)|",
+            "|家|依据|\n|---|---|\n|30|[付款规则](/assets/rule_demo)|",
+            "|事项金额(万元)|依据|\n|---|---|\n|1|[付款规则](/assets/rule_demo)|",
+        ):
+            value["blocks"] = render.blocks_from_answer(answer, value["citations"])
+            with self.subTest(answer=answer):
+                render.verify(value)
+        for answer in (
+            "|事项|要求|\n|---|---|\n|需核对2项|30日[付款规则](/assets/rule_demo)|",
+            "|条款依据|时限（日）|\n|---|---|\n|[1](/assets/rule_demo)|99|",
+            "|事项数量（家）|依据|\n|---|---|\n|30.1|[付款规则](/assets/rule_demo)|",
+        ):
+            value["blocks"] = render.blocks_from_answer(answer, value["citations"])
+            with self.subTest(answer=answer), self.assertRaises(HTTPException):
+                render.verify(value)
+
     def test_material_name_comes_from_verified_material_not_entity_payload(self) -> None:
         conn = Mock()
         checked = {

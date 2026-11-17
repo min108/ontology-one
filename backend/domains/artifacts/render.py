@@ -228,6 +228,16 @@ def blocks_from_answer(answer: str, citations: dict | None = None) -> list[dict]
     return blocks
 
 
+def column_unit(column: str) -> str:
+    """Only an explicit unit declaration supplies units for bare cell numbers."""
+    unit = rf"(?:{SCALE})?(?:{UNITS})"
+    bracketed = re.search(rf"[（(]\s*({unit})\s*[)）]", column)
+    if bracketed:
+        return bracketed[1]
+    stripped = column.strip()
+    return stripped if re.fullmatch(unit, stripped) else ""
+
+
 def verify(spec: dict) -> None:
     sources = spec["citations"]
     issues = []
@@ -251,8 +261,7 @@ def verify(spec: dict) -> None:
                     row_evidence = [sources[key] for key in keys if key in sources]
                     row_supported = quantities("\n".join(item["quote"] for item in row_evidence))
                 for column, cell in zip(block["columns"], row, strict=True):
-                    hint = re.search(rf"(?:{SCALE})?(?:{UNITS})", column)
-                    values = quantities(without_source_labels(cell, row_evidence), hint.group() if hint else "")
+                    values = quantities(without_source_labels(cell, row_evidence), column_unit(column))
                     for number, unit in values:
                         if not supports(number, unit, row_supported):
                             reason = "缺少本行的来源引用" if not row_evidence else "数值或单位与本行引用原文不符"
