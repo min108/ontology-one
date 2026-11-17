@@ -91,6 +91,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
     }
   }
   function decide(items: Item[], decision: DecideItems['decision'], edit?: CandidatePatch) {
+    const confirmRuleTarget = edit?.kind === 'rule' && items.some((item) => item.after_data.kind !== 'rule');
     return perform(
       async () => {
         const body: DecideItems = {
@@ -101,15 +102,17 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         };
         const options = { signal: lifetime.current?.signal };
         await invokeCapability('changeset.decide_items', body, options);
-        if (['accepted', 'edited'].includes(decision))
+        if (['accepted', 'edited'].includes(decision) && !confirmRuleTarget)
           await invokeCapability('changeset.apply', { changeset_id: id } satisfies ChangesetGet, options);
         setUndo(decision === 'rejected' ? items : undefined);
       },
-      decision === 'rejected'
-        ? copy.r3_main_undo_saved
-        : decision === 'pending'
-          ? copy.r2_saved
-          : copy.r2_drafts,
+      confirmRuleTarget
+        ? copy.r4_rule_target_saved
+        : decision === 'rejected'
+          ? copy.r3_main_undo_saved
+          : decision === 'pending'
+            ? copy.r2_saved
+            : copy.r2_drafts,
     );
   }
   if (!proposal)
@@ -507,12 +510,19 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         title={actions.catalog_1_1}
         open={!!editing}
         onCancel={() => !busy && setEditing(undefined)}
-        okText={actions.r2_save}
+        okText={
+          draft.kind === 'rule' && editing?.after_data.kind !== 'rule'
+            ? copy.r4_rule_save_target
+            : actions.r2_save
+        }
         cancelText={actions.r2_cancel}
         confirmLoading={busy}
         okButtonProps={{
           disabled: !!resource.refreshing || !!resource.error || !draft.title.trim() || !draft.content.trim(),
-          'aria-label': actions.r2_save,
+          'aria-label':
+            draft.kind === 'rule' && editing?.after_data.kind !== 'rule'
+              ? copy.r4_rule_save_target
+              : actions.r2_save,
         }}
         onOk={() => {
           if (!editing) return;
@@ -523,11 +533,11 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               (!judgement || typeof judgement !== 'object' || Array.isArray(judgement))
             )
               throw new Error();
-            void decide(
-              [editing],
-              'edited',
-              judgementText.trim() || editing.after_data.judgement ? { ...draft, judgement } : draft,
-            );
+            void decide([editing], 'edited', {
+              ...draft,
+              ...(judgementText.trim() || editing.after_data.judgement ? { judgement } : {}),
+              ...(editing.applied_version ? { expected_version: editing.applied_version } : {}),
+            });
           } catch {
             setJudgementError(copy.r4_rule_json_error);
           }
@@ -601,6 +611,11 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               onChange={(event) => setDraft({ ...draft, boundary: event.target.value })}
             />
           </label>
+        )}
+        {draft.kind === 'rule' && editing?.after_data.applies_to_title && (
+          <p>
+            {copy.r4_rule_applies_to}：{editing.after_data.applies_to_title}。{copy.r4_rule_relation_accept}
+          </p>
         )}
         {['rule', 'knowledge'].includes(draft.kind) && (
           <>

@@ -262,26 +262,28 @@ function Element({ id }: { id: string }) {
               />
             )}
             <TechnicalDetails>
-              {detail.can_edit && ['rule', 'metric'].includes(entity.kind) && entity.status === 'draft' && (
-                <RuleEditor
-                  key={entity.id + ':' + entity.version}
-                  entity={entity}
-                  disabled={!!query.refreshing || !!query.error}
-                  onSave={async (payload, sentenceConfirmed) => {
-                    await invokeCapability<ElementDetailResult>(
-                      'element.update_draft',
-                      {
-                        entity_id: id,
-                        version: entity.version,
-                        payload,
-                        sentence_confirmed: sentenceConfirmed,
-                      } satisfies ElementUpdate,
-                      { signal: lifetime.current?.signal },
-                    );
-                    if (!lifetime.current?.signal.aborted) query.reload();
-                  }}
-                />
-              )}
+              {detail.can_edit &&
+                ['rule', 'metric'].includes(entity.kind) &&
+                ['draft', 'returned'].includes(entity.status) && (
+                  <RuleEditor
+                    key={entity.id + ':' + entity.version}
+                    entity={entity}
+                    disabled={!!query.refreshing || !!query.error}
+                    onSave={async (payload, sentenceConfirmed) => {
+                      await invokeCapability<ElementDetailResult>(
+                        'element.update_draft',
+                        {
+                          entity_id: id,
+                          version: entity.version,
+                          payload,
+                          sentence_confirmed: sentenceConfirmed,
+                        } satisfies ElementUpdate,
+                        { signal: lifetime.current?.signal },
+                      );
+                      if (!lifetime.current?.signal.aborted) query.reload();
+                    }}
+                  />
+                )}
               <p>{entity.id}</p>
               <pre>{JSON.stringify(entity.payload, null, 2)}</pre>
             </TechnicalDetails>

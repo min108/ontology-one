@@ -51,3 +51,44 @@ it('counterexample: malformed judgement never calls save and retains the edit', 
   expect(field).toHaveValue('{broken');
   expect(onSave).not.toHaveBeenCalled();
 });
+
+it('edits metric test cases at the payload root while keeping the formula schema separate', async () => {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  const metric = {
+    ...entity,
+    kind: 'metric',
+    payload: { schema: 'metric/1', object_type: 'object-1', formula: { oxl: 'amount * 2' }, test_cases: [] },
+  };
+  render(<RuleEditor entity={metric} disabled={false} onSave={onSave} />);
+  const cases = [
+    { name: '正额', input: { amount: 2 }, expected: 4 },
+    { name: '零额', input: { amount: 0 }, expected: 0 },
+  ];
+  fireEvent.change(screen.getByRole('textbox', { name: terms.labels.r4_rule_cases }), {
+    target: { value: JSON.stringify(cases) },
+  });
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ ...metric.payload, test_cases: cases }, false));
+  expect(onSave.mock.calls[0][0].formula).toEqual({ oxl: 'amount * 2' });
+});
+it('rejects metric cases accidentally nested under formula and invalid root input records', async () => {
+  const onSave = vi.fn();
+  render(
+    <RuleEditor
+      entity={{ ...entity, kind: 'metric', payload: { formula: { oxl: 'amount' }, test_cases: [] } }}
+      disabled={false}
+      onSave={onSave}
+    />,
+  );
+  const formula = screen.getByRole('textbox', { name: terms.labels.r4_rule_formula });
+  fireEvent.change(formula, { target: { value: JSON.stringify({ oxl: 'amount', test_cases: [] }) } });
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(terms.labels.r4_metric_cases_separate);
+  fireEvent.change(formula, { target: { value: JSON.stringify({ oxl: 'amount' }) } });
+  fireEvent.change(screen.getByRole('textbox', { name: terms.labels.r4_rule_cases }), {
+    target: { value: JSON.stringify([{ name: '错误输入', input: [], expected: 0 }]) },
+  });
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(terms.labels.r4_metric_cases_invalid);
+  expect(onSave).not.toHaveBeenCalled();
+});

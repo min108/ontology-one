@@ -16,6 +16,7 @@ export function RuleEditor({
 }) {
   const field = entity.kind === 'metric' ? 'formula' : 'judgement';
   const [value, setValue] = useState(() => JSON.stringify(entity.payload[field] || {}, null, 2));
+  const [casesText, setCasesText] = useState(() => JSON.stringify(entity.payload.test_cases || [], null, 2));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -23,17 +24,49 @@ export function RuleEditor({
   async function save() {
     if (disabled || busy) return;
     let parsed: JsonValue;
+    let cases: JsonValue;
     try {
       parsed = JSON.parse(value);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      if (field === 'formula' && 'test_cases' in parsed) {
+        setError(copy.r4_metric_cases_separate);
+        return;
+      }
     } catch {
       setError(copy.r4_rule_json_error);
       return;
     }
+    if (field === 'formula') {
+      try {
+        cases = JSON.parse(casesText);
+        if (
+          !Array.isArray(cases) ||
+          cases.some(
+            (entry) =>
+              !entry ||
+              typeof entry !== 'object' ||
+              Array.isArray(entry) ||
+              typeof entry.name !== 'string' ||
+              !entry.name.trim() ||
+              !entry.input ||
+              typeof entry.input !== 'object' ||
+              Array.isArray(entry.input) ||
+              !Object.hasOwn(entry, 'expected'),
+          )
+        )
+          throw new Error();
+      } catch {
+        setError(copy.r4_metric_cases_invalid);
+        return;
+      }
+    }
     setBusy(true);
     setError('');
     try {
-      await onSave({ ...entity.payload, [field]: parsed }, sentenceConfirmed);
+      await onSave(
+        { ...entity.payload, [field]: parsed, ...(field === 'formula' ? { test_cases: cases } : {}) },
+        sentenceConfirmed,
+      );
       setSaved(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : copy.r2_failure);
@@ -61,6 +94,23 @@ export function RuleEditor({
           }}
         />
       </label>
+      {field === 'formula' && (
+        <label className={styles.field}>
+          {copy.r4_rule_cases}
+          <p>{copy.r4_metric_cases_hint}</p>
+          <Input.TextArea
+            aria-label={copy.r4_rule_cases}
+            value={casesText}
+            rows={8}
+            maxLength={64000}
+            disabled={disabled || busy}
+            onChange={(event) => {
+              setCasesText(event.target.value);
+              setSaved(false);
+            }}
+          />
+        </label>
+      )}
       <Checkbox
         checked={sentenceConfirmed}
         disabled={disabled || busy}

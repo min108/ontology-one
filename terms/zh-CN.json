@@ -1274,7 +1274,16 @@
     "r4_rule_outcome_pass": "符合",
     "r4_rule_outcome_violate": "不符",
     "r4_rule_outcome_review": "待核实",
-    "r4_rule_outcome_notice": "需结合原始凭证由人员核实，不构成责任认定。"
+    "r4_rule_outcome_notice": "需结合原始凭证由人员核实，不构成责任认定。",
+    "r4_metric_cases_hint": "每项包含名称、输入数据与预期结果；至少填写两个用例。",
+    "r4_metric_cases_invalid": "测试用例须为列表，每项填写名称、输入数据与预期结果。",
+    "r4_metric_cases_separate": "请在下方“测试用例”填写用例，不要放入计算公式。",
+    "r4_gates_waived": "检查已完成，含豁免项",
+    "r4_source_waived": "出处已豁免",
+    "r4_conditions_waived": "条件已豁免",
+    "r4_waiver_basis_warning": "该内容的依据仅为访谈、底稿或他人陈述",
+    "r4_rule_target_saved": "内容已保存，请核对规则适用对象后再采纳。",
+    "r4_rule_save_target": "保存并核对关系"
   },
   "states": {
     "loading": {

@@ -48,7 +48,7 @@ def main() -> None:
             identifier = "R4-LEGACY-" + suffix
             payload = {
                 "definition": title,
-                "content": "已在旧版提交、等待独立审核的试行要求。",
+                "content": "应在30日内完成核验办理；本条为升级前已经提交的试行要求。",
                 "scope": "本机构试行事项",
                 "source_refs": [],
                 "r2_review": {

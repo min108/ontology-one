@@ -1,4 +1,4 @@
-import { Input } from 'antd';
+import { Alert, Input } from 'antd';
 import type { ElementDetail, ReviewBody } from '../../api/generated/types';
 import { terms } from '../../i18n/zh-CN';
 import { FoldRow } from '../../ui';
@@ -34,12 +34,27 @@ export function GateChecklist({
   disabled?: boolean;
 }) {
   if (!gates) return null;
+  const waived = gates.checks.filter((check) => check.status === 'waived');
+  const sourceWaived = waived.some((check) => check.code === 'QG1');
+  const sourceWaiverProposed = !!waivers?.QG1?.trim();
   return (
     <div data-gate-checklist data-gates-passed={gates.passed}>
+      {waived.length > 0 && (
+        <p data-gate-waiver-marker>
+          {waived
+            .map((check) => (check.code === 'QG1' ? copy.r4_source_waived : copy.r4_conditions_waived))
+            .join(' · ')}
+        </p>
+      )}
+      {gates.hard_constraint && (sourceWaived || sourceWaiverProposed) && (
+        <Alert data-gate-basis-warning type="warning" title={copy.r4_waiver_basis_warning} />
+      )}
       <FoldRow
         key={gates.passed ? 'passed' : 'failed'}
         title={copy.r3_main_five_checks}
-        summary={gates.passed ? copy.r4_gates_pass : copy.r4_gates_fail}
+        summary={
+          gates.passed ? (waived.length ? copy.r4_gates_waived : copy.r4_gates_pass) : copy.r4_gates_fail
+        }
         defaultOpen={professional || !gates.passed}
       >
         <ul className={styles.checks}>

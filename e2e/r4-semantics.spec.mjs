@@ -450,6 +450,10 @@ test("R4 AA7 legacy pending review: source and condition waivers publish and ret
       .getByLabel("条件完整 · " + c.r4_gate_waiver)
       .fill(conditionReason);
     await expect(button(page, a.catalog_2_5)).toBeEnabled();
+    await expect(
+      page.getByText(c.r4_waiver_basis_warning, { exact: true }),
+    ).toBeVisible();
+    await page.locator("[data-review-id] h2").scrollIntoViewIfNeeded();
     await page.screenshot({
       path: resolve(process.env.E2E_EVIDENCE_DIR, "r4-review-waiver.png"),
     });
@@ -462,6 +466,22 @@ test("R4 AA7 legacy pending review: source and condition waivers publish and ret
     assertWaiverActivity(entity, sourceReason);
     assertWaiverActivity(entity, conditionReason);
     await page.goto("/ontology/elements/" + entity.id);
+    await expect(page.locator("[data-gate-waiver-marker]")).toContainText(
+      c.r4_source_waived,
+    );
+    await expect(page.locator("[data-gate-waiver-marker]")).toContainText(
+      c.r4_conditions_waived,
+    );
+    await expect(
+      page.getByText(c.r4_waiver_basis_warning, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator("[data-gate-checklist] details"),
+    ).not.toHaveAttribute("open");
+    await checkStructure(page, "r4-waived-element");
+    await page.screenshot({
+      path: resolve(process.env.E2E_EVIDENCE_DIR, "r4-waived-element.png"),
+    });
     await page.getByText(c.r2_card_activity, { exact: true }).click();
     await expect(page.locator("[data-page-content]")).toContainText(
       sourceReason,

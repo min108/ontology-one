@@ -32,3 +32,32 @@ it('counterexample: an empty or whitespace waiver never removes a blocker', () =
   expect(gateBlockers(gates(['QG1', 'QG3']), { QG1: ' ', QG3: '' })).toHaveLength(2);
   expect(gateBlockers(gates(['QG4']), { QG1: '不能代替必备关系' })).toHaveLength(1);
 });
+
+it('keeps both waiver markers and the hard-constraint basis warning visible when checks are collapsed', () => {
+  const result = gates();
+  result.hard_constraint = true;
+  result.checks = result.checks.map((check) =>
+    ['QG1', 'QG3'].includes(check.code)
+      ? { ...check, status: 'waived', waiver_reason: '接受该依据的具体理由' }
+      : check,
+  );
+  const { container, rerender } = render(<GateChecklist gates={result} />);
+  expect(container.querySelector('details')).not.toHaveAttribute('open');
+  expect(
+    screen.getByText(terms.labels.r4_source_waived + ' · ' + terms.labels.r4_conditions_waived),
+  ).toBeVisible();
+  expect(screen.getByText(terms.labels.r4_waiver_basis_warning)).toBeVisible();
+  expect(screen.queryByText(terms.labels.r4_gates_pass)).not.toBeInTheDocument();
+  rerender(<GateChecklist gates={{ ...result, hard_constraint: false }} />);
+  expect(screen.queryByText(terms.labels.r4_waiver_basis_warning)).not.toBeInTheDocument();
+  expect(container.querySelector('[data-gate-waiver-marker]')).toBeVisible();
+});
+it('warns the reviewer while proposing an evidence waiver for a hard constraint', () => {
+  const result = { ...gates(['QG1']), hard_constraint: true };
+  const { rerender } = render(
+    <GateChecklist gates={result} waivers={{ QG1: '已核对访谈原始记录' }} onWaiver={() => undefined} />,
+  );
+  expect(screen.getByText(terms.labels.r4_waiver_basis_warning)).toBeVisible();
+  rerender(<GateChecklist gates={result} waivers={{ QG1: ' ' }} onWaiver={() => undefined} />);
+  expect(screen.queryByText(terms.labels.r4_waiver_basis_warning)).not.toBeInTheDocument();
+});

@@ -2,6 +2,7 @@ import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
+import { focusManager } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { api, ApiError, invokeCapability } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
@@ -279,5 +280,66 @@ it('saves the missing scope and conditions through the generated candidate patch
       }),
       expect.anything(),
     ),
+  );
+});
+
+it('sends the version shown when editing began, even if a refocus refresh finds a newer draft', async () => {
+  proposal.items[0].decision = 'accepted';
+  proposal.items[0].applied_entity_id = 'rule-1';
+  proposal.can_submit = true;
+  Object.assign(proposal.items[0], { applied_version: 3, applied_status: 'draft' });
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
+  const modal = screen.getByRole('dialog');
+  Object.assign(proposal.items[0], { applied_version: 4 });
+  proposal.items[0].after_data.content = '另一位建设人员刚保存的内容';
+  await act(async () => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  await waitFor(() => expect(api).toHaveBeenCalledTimes(2));
+  expect(within(modal).getByLabelText(terms.labels.r2_content)).toHaveValue('Original content');
+  fireEvent.click(within(modal).getByRole('button', { name: terms.actions.r2_save }));
+  await waitFor(() =>
+    expect(invokeCapability).toHaveBeenCalledWith(
+      'changeset.decide_items',
+      expect.objectContaining({
+        edit: expect.objectContaining({ expected_version: 3, content: 'Original content' }),
+      }),
+      expect.anything(),
+    ),
+  );
+  focusManager.setFocused(undefined);
+});
+
+it('requires a separate acceptance after converting content to a rule so its proposed target is visible first', async () => {
+  proposal.items[0].after_data.kind = 'knowledge';
+  vi.mocked(invokeCapability).mockImplementation(async (operation) => {
+    if (operation === 'changeset.decide_items') {
+      proposal.items[0].after_data.kind = 'rule';
+      proposal.items[0].decision = 'edited';
+      Object.assign(proposal.items[0].after_data, {
+        applies_to_id: 'org-1',
+        applies_to_title: '本机构办公室',
+      });
+    }
+    return {} as never;
+  });
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
+  const modal = screen.getByRole('dialog');
+  fireEvent.mouseDown(within(modal).getByRole('combobox', { name: terms.labels.r2_kind }));
+  fireEvent.click(await screen.findByText(terms.kinds.rule, { selector: '.ant-select-item-option-content' }));
+  fireEvent.click(within(modal).getByRole('button', { name: terms.labels.r4_rule_save_target }));
+  expect(await screen.findByText(terms.labels.r4_rule_target_saved)).toBeVisible();
+  expect(screen.getByText(/适用主体或对象：本机构办公室/)).toBeVisible();
+  expect(vi.mocked(invokeCapability).mock.calls.filter(([name]) => name === 'changeset.apply')).toHaveLength(
+    0,
+  );
+  fireEvent.click(screen.getByRole('button', { name: terms.actions.catalog_1_0 }));
+  await waitFor(() =>
+    expect(
+      vi.mocked(invokeCapability).mock.calls.filter(([name]) => name === 'changeset.apply'),
+    ).toHaveLength(1),
   );
 });
