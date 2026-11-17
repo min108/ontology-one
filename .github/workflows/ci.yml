@@ -94,8 +94,9 @@ jobs:
           retention-days: 30
   # D1 follow-up after the two full runs: the one failed SDK case and only the
   # scopes that full run 44022360844 never reached. Earlier green suites are not rerun.
+  # A separate marker covers the late U6 integration presentation gap only.
   r3-remaining:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-REMAINING]')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && (contains(github.event.head_commit.message, '[R3-REMAINING]') || contains(github.event.head_commit.message, '[R3-INTEGRATION]'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -111,6 +112,7 @@ jobs:
           --health-cmd="mysqladmin ping -h127.0.0.1 --silent"
           --health-interval=5s --health-timeout=5s --health-retries=30
     env:
+      R3_INTEGRATION_ONLY: ${{ contains(github.event.head_commit.message, '[R3-INTEGRATION]') }}
       MYSQL_HOST: 127.0.0.1
       MYSQL_PORT: '3306'
       MYSQL_USER: root
@@ -145,26 +147,34 @@ jobs:
                   cur.execute("SET GLOBAL collation_server = 'utf8mb4_unicode_ci'")
                   cur.execute("SET GLOBAL max_connections = 512")
           PYTHON
-          docker build -f ops/skill-runner.Dockerfile -t ontology-skill-test:0.5.0 .
+          if [ "$R3_INTEGRATION_ONLY" != "true" ]; then
+            docker build -f ops/skill-runner.Dockerfile -t ontology-skill-test:0.5.0 .
+          fi
           frontend/node_modules/.bin/playwright install --with-deps chromium
+      - name: Verify only the integration presentation component contracts
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY == 'true' }}
+        run: npm --prefix frontend test -- --run src/features/admin/integrations/IntegrationApplicationsPage.test.tsx
+      - name: Verify only the integration applications presentation and operations
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY == 'true' }}
+        run: python e2e/run_r3.py --grep 'R3 integration applications' --output work/evidence/r3/integration
       - name: Recheck only the failed SDK background-task UI case
-        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY != 'true' }}
         run: python e2e/run.py --target foundation --harness --evidence work/evidence/r3/harness-fix -- --project harness-sdk --no-deps
       - name: Previously unexecuted administration operations
-        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY != 'true' }}
         run: python e2e/run_admin.py --evidence work/evidence/r3/admin
       - name: Previously unexecuted R2 mainline
-        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY != 'true' }}
         run: python e2e/run_r2.py --output work/evidence/r2/mainline
       - name: Previously unexecuted reviewed visual comparison
-        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY != 'true' }}
         run: python e2e/run.py --target foundation --visual-only --evidence work/evidence/r3/visual
       - name: Previously unexecuted R3 actions and structure
-        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY != 'true' }}
         run: python e2e/run_r3.py --output work/evidence/r3/actions
       - name: Prepare previously unexecuted offline acceptance
         id: offline_dependencies
-        if: ${{ !cancelled() && steps.environment.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.environment.outcome == 'success' && env.R3_INTEGRATION_ONLY != 'true' }}
         run: python ops/offline/prepare.py --output work/offline/ci --export-images
       - name: Install build migrate and start without external networking
         if: ${{ !cancelled() && steps.offline_dependencies.outcome == 'success' }}
@@ -181,7 +191,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
   foundation:
-    if: "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && (contains(github.event.head_commit.message, '[R3-VISUAL]') || contains(github.event.head_commit.message, '[R3-REMAINING]'))) }}"
+    if: "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && (contains(github.event.head_commit.message, '[R3-VISUAL]') || contains(github.event.head_commit.message, '[R3-REMAINING]') || contains(github.event.head_commit.message, '[R3-INTEGRATION]'))) }}"
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]'))))) && 60 || 15 }}
     services:
