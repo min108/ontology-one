@@ -259,7 +259,6 @@ test("R3 new administration and landing pages: structural baseline and leakage",
       "/admin/orgs",
       "/admin/users",
       "/admin/model",
-      "/integration-applications",
       "/admin/backup",
       "/admin/demo",
       "/admin/system",
@@ -272,8 +271,8 @@ test("R3 new administration and landing pages: structural baseline and leakage",
       "/admin",
     ]) {
       await admin.page.goto(path);
-      if (["/integration-applications", "/apply"].includes(path)) {
-        // U7 retains these business pages; /apply is the legacy application redirect.
+      if (path === "/apply") {
+        // /apply remains the legacy application redirect; integration has its dedicated U6 suite.
         await expect(admin.page.locator("[data-legacy-page]")).toBeVisible();
         await admin.page.waitForLoadState("networkidle");
         await checkStructure(
@@ -351,8 +350,13 @@ test("R3 A17: expanded rail and all 25 retained routes with legacy bridge", asyn
       }
       await expect(page.locator("main")).toBeVisible();
       await page.waitForLoadState("networkidle");
-      await expect(page.locator("[data-legacy-page]")).toBeVisible();
-      await checkStructure(page, `legacy-${name}`, { legacy: true });
+      if (name === "integration-applications") {
+        await expect(page.locator('[data-page-template="list"]')).toBeVisible();
+        await checkStructure(page, `legacy-${name}`);
+      } else {
+        await expect(page.locator("[data-legacy-page]")).toBeVisible();
+        await checkStructure(page, `legacy-${name}`, { legacy: true });
+      }
       rows.push({ name, path, rail: list, reachable: true });
     }
     expect(rows).toHaveLength(25);

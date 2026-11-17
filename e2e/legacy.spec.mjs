@@ -48,8 +48,19 @@ for (const role of roles) {
         await expect(
           page.getByText("没有找到这个页面", { exact: true }),
         ).toHaveCount(0);
-        if (target === "foundation")
-          await expect(page.locator("[data-legacy-page]")).toBeVisible();
+        if (target === "foundation") {
+          if (key === "integration-applications") {
+            await expect(
+              page.locator('[data-page-template="list"]'),
+            ).toBeVisible();
+            await expect(page.locator("[data-page-header]")).toHaveCount(1);
+            await expect(page.locator("[data-page-title]")).toHaveText(
+              "集成应用",
+            );
+          } else {
+            await expect(page.locator("[data-legacy-page]")).toBeVisible();
+          }
+        }
         await page.evaluate(() => document.fonts.ready);
         const directory = resolve(evidence, "screenshots", role);
         mkdirSync(directory, { recursive: true });
