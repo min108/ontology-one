@@ -1,5 +1,6 @@
 """Opt-in real tenant storage and conservative demo archive/restore checks."""
 
+import json
 import os
 import secrets
 import shutil
@@ -13,6 +14,7 @@ from fastapi import HTTPException
 from starlette.staticfiles import StaticFiles
 
 from backend import db, demo, demo_data, sources
+from backend.infra import migrations
 from backend.security import store
 from backend.security.context import use_context
 
@@ -30,7 +32,7 @@ class DemoMySQL(unittest.TestCase):
         created = []
         password = "DemoFixture9-" + secrets.token_hex(16)
         try:
-            __import__("backend.infra.migrations", fromlist=["run_migrations"]).run_migrations()
+            migrations.run_migrations()
             store.bootstrap_superadmin("demo-owner", password)
             token = store.login("demo-owner", password, "127.0.0.1", "demo-test")
             owner = store.authenticate_session(token, "test")[0]
@@ -38,8 +40,8 @@ class DemoMySQL(unittest.TestCase):
             owner = store.authenticate_session(token, "test")[0]
             principals = []
             for index, tenant in enumerate(("dept-01", "dept-02")):
-                db.ensure_tenant_schema(tenant)
                 created.append(store.get_tenant(tenant)["db_name"])
+                migrations.provision_tenant(tenant)
                 username = "demo-admin-" + str(index)
                 store.create_user(
                     owner,
@@ -118,9 +120,42 @@ class DemoMySQL(unittest.TestCase):
                 with patch(
                     "fastapi.staticfiles.StaticFiles", side_effect=lambda **kw: StaticFiles(**kw, check_dir=False)
                 ):
+                    from backend.api.v1.core import _edit_entity
                     from backend.main import _entity_action
                 standards = [item["id"] for item in restored["items"] if item["kind"] == "data"]
                 for ident in standards:
+                    # The pack intentionally loads drafts. Complete their real
+                    # column provenance and grain before independent release.
+                    with closing(db.connect()) as conn:
+                        entity = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (ident,)).fetchone())
+                        field = entity["payload"]["field_name"]
+                        table = "contracts" if field in demo_data.CONTRACTS[0] else "payments"
+                        dataset_id = demo.PREFIX + "DATASET-" + table.upper()
+                        sheet = conn.execute(
+                            "SELECT sheet_name,payload FROM dataset_sheets WHERE dataset_id=? LIMIT 1", (dataset_id,)
+                        ).fetchone()
+                        column = json.loads(sheet["payload"])["columns"][list(demo_data.TABLES[table][0]).index(field)][
+                            "name"
+                        ]
+                    _edit_entity(
+                        ident,
+                        {
+                            "expected_version": entity["version"],
+                            "reason": "按模拟台账核对字段出处与粒度",
+                            "payload": {
+                                **entity["payload"],
+                                "grain": "每份合同" if table == "contracts" else "每笔付款",
+                                "source_refs": [
+                                    {
+                                        "kind": "dataset",
+                                        "dataset_id": dataset_id,
+                                        "sheet": sheet["sheet_name"],
+                                        "column": column,
+                                    }
+                                ],
+                            },
+                        },
+                    )
                     _entity_action(ident, {"action": "submit", "reason": "提交模拟口径核对"})
                     with use_context(reviewer):
                         _entity_action(ident, {"action": "approve", "reason": "独立核对模拟字段口径"})
