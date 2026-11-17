@@ -125,8 +125,8 @@ test("real SDK task survives closing its global view and is stopped through the 
       await panel.evaluate((node) => Boolean(node.closest(".legacy-root"))),
     ).toBe(true);
     for (const layout of [
-      ...layouts,
       { name: "1920", width: 1920, height: 1080, zoom: "native 100%" },
+      ...layouts,
     ]) {
       await page.setViewportSize({
         width: layout.width,
