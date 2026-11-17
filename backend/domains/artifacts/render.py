@@ -255,10 +255,12 @@ def verify(spec: dict) -> None:
                     values = quantities(without_source_labels(cell, row_evidence), hint.group() if hint else "")
                     for number, unit in values:
                         if not supports(number, unit, row_supported):
-                            issues.append(f"表格 {index}：{cell}")
+                            reason = "缺少本行的来源引用" if not row_evidence else "数值或单位与本行引用原文不符"
+                            issues.append(f"表格 {index} 第{row_index + 1}行：{number}{unit}（{reason}）")
         for number, unit in quantities(without_source_labels(text, evidence)):
             if not supports(number, unit, supported):
-                issues.append(f"段落 {index}：{number}{unit}")
+                reason = "缺少本段的来源引用" if not evidence else "数值或单位与本段引用原文不符"
+                issues.append(f"段落 {index}：{number}{unit}（{reason}）")
     if issues:
         raise HTTPException(
             422,

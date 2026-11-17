@@ -318,6 +318,18 @@ test("R2: hand in, check, independently publish, ask, export", async ({
       .last()
       .click();
     let createdResponse = await created;
+    const reportChecks = [];
+    async function recordReportCheck(result) {
+      if (result.status() !== 422) return;
+      const error = await result.json();
+      const detail = error.error?.details || error.detail || {};
+      reportChecks.push({ code: detail.code, issues: detail.issues });
+      writeFileSync(
+        resolve(output, "report-checks.json"),
+        JSON.stringify(reportChecks, null, 2) + "\n",
+      );
+    }
+    await recordReportCheck(createdResponse);
     let revisionUsed = false;
     if (!createdResponse.ok()) {
       const detail = await createdResponse.json();
@@ -338,6 +350,7 @@ test("R2: hand in, check, independently publish, ask, export", async ({
         .last()
         .click();
       createdResponse = await repaired;
+      await recordReportCheck(createdResponse);
       revisionUsed = true;
     }
     expect(createdResponse.status()).toBe(200);
