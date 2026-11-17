@@ -139,13 +139,6 @@ test("R3 A1 A14 A15: new user, empty workbench, account actions and business aud
     await page
       .getByRole("combobox", { name: c.r3_admin_outcome, exact: true })
       .selectOption("success");
-    const today = new Intl.DateTimeFormat("sv-SE", {
-      timeZone: "Asia/Shanghai",
-    }).format(new Date());
-    for (const name of [c.identity_audit_since, c.identity_audit_until]) {
-      await page.getByLabel(name, { exact: true }).fill(today);
-      await page.getByLabel(name, { exact: true }).press("Enter");
-    }
     const actorId = (await read(page, "/api/auth/session")).user.id;
     const filteredResponse = page.waitForResponse((r) => {
       const url = new URL(r.url());
@@ -157,6 +150,13 @@ test("R3 A1 A14 A15: new user, empty workbench, account actions and business aud
         url.searchParams.has("until")
       );
     });
+    const today = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Asia/Shanghai",
+    }).format(new Date());
+    for (const name of [c.identity_audit_since, c.identity_audit_until]) {
+      await page.getByLabel(name, { exact: true }).fill(today);
+      await page.getByLabel(name, { exact: true }).press("Enter");
+    }
     await button(page, a.identity_filter).click();
     await expect(page).toHaveURL(
       (url) =>
@@ -266,6 +266,17 @@ test("R3 new administration and landing pages: structural baseline and leakage",
       "/admin",
     ]) {
       await admin.page.goto(path);
+      if (["/integration-applications", "/apply"].includes(path)) {
+        // U7 retains these business pages; /apply is the legacy application redirect.
+        await expect(admin.page.locator("[data-legacy-page]")).toBeVisible();
+        await admin.page.waitForLoadState("networkidle");
+        await checkStructure(
+          admin.page,
+          "retained" + path.replaceAll("/", "-"),
+          { legacy: true },
+        );
+        continue;
+      }
       await expect
         .soft(admin.page.locator("[data-page-title]"), path + " page skeleton")
         .toBeVisible();

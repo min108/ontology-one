@@ -461,11 +461,10 @@ for (
         `a[href="/assets/${editedId}"],a[href="/ontology/elements/${editedId}"]`,
       );
       await expect(citations.first()).toBeVisible();
-      const sourcePage = await builder.context.newPage();
-      await sourcePage.goto(
-        process.env.E2E_BASE_URL +
-          (await citations.first().getAttribute("href")),
-      );
+      const [sourcePage] = await Promise.all([
+        builder.context.waitForEvent("page"),
+        citations.first().click({ modifiers: ["Control"] }),
+      ]);
       await expect(
         sourcePage
           .getByRole("heading", { name: revisedTitle, exact: true })
