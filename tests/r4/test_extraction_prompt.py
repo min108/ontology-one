@@ -50,6 +50,11 @@ class ExtractionPromptContract(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(candidate["questions"], list)
         self.assertIn("均为字符串，缺失时用空字符串，不能用数组或对象", prompt)
         self.assertIn("exceptions须用一句文字合并例外，不能写成列表", prompt)
+        self.assertIn("chunk_id必须等于实际复制的输入片段id", prompt)
+        self.assertIn("保留原有标点、空格和换行", prompt)
+        self.assertIn("不得清理引文、改写、拼接不相邻片段或跨片段合并", prompt)
+        self.assertIn("不足8字时，不要只引用短值", prompt)
+        self.assertIn("片段很长时只复制支持候选的连续完整句子，不必整段引用", prompt)
 
     async def test_optional_scalar_nulls_remain_accepted_without_inventing_values(self) -> None:
         value = response()
@@ -81,6 +86,37 @@ class ExtractionPromptContract(unittest.IsolatedAsyncioTestCase):
                 self.assertRaisesRegex(ValueError, "AI候选的原文引用未通过逐字校验"),
             ):
                 await materials.online_candidates("material-1", GROUP, {})
+
+    async def test_short_field_values_need_exact_continuous_surrounding_context(self) -> None:
+        source = "第四条 金额单位：元；\n金额的记录粒度：每份合同。"
+        group = [{"id": "chunk-units", "position": 1, "content": source}]
+        valid = response()
+        candidate = valid["candidates"][0]
+        candidate.update(
+            content=source,
+            source_chunk_ids=["chunk-units"],
+            source_quotes=[{"chunk_id": "chunk-units", "quote": source}],
+        )
+        valid["coverage"] = [{"chunk_id": "chunk-units", "reason": "单位与粒度均有完整原文支持"}]
+        with patch("backend.ai.complete", AsyncMock(return_value=valid)):
+            found, _ = await materials.online_candidates("material-1", group, {})
+        self.assertEqual(found[0]["source_quotes"], [{"chunk_id": "chunk-units", "quote": source}])
+        for quote in (
+            "元",
+            "每份合同",
+            "第四条 金额单位为元；金额按每份合同记录。",
+            "第四条 金额单位：元；每份合同。",
+            source.replace("\n", ""),
+        ):
+            invalid = copy.deepcopy(valid)
+            invalid["candidates"][0]["source_quotes"][0]["quote"] = quote
+            with (
+                self.subTest(quote=quote),
+                patch("backend.ai.complete", AsyncMock(return_value=invalid)),
+                self.assertRaisesRegex(ValueError, "AI候选的原文引用未通过逐字校验") as caught,
+            ):
+                await materials.online_candidates("material-1", group, {})
+            self.assertEqual(materials._extraction_failure_code(caught.exception), "SOURCE_QUOTE_INVALID")
 
 
 class ExtractionSafeDiagnostics(unittest.IsolatedAsyncioTestCase):
