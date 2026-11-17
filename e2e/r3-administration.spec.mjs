@@ -355,6 +355,9 @@ test("R3 A17: expanded rail and all 25 retained routes with legacy bridge", asyn
         await checkStructure(page, `legacy-${name}`);
       } else {
         await expect(page.locator("[data-legacy-page]")).toBeVisible();
+        // The legacy wrapper also surrounds loading states; wait for the actual
+        // page title before measuring its unchanged B1 geometry contract.
+        await expect(page.locator("[data-legacy-page] h1")).toBeVisible();
         await checkStructure(page, `legacy-${name}`, { legacy: true });
       }
       rows.push({ name, path, rail: list, reachable: true });

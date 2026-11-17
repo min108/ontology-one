@@ -58,6 +58,10 @@ test("B1 counterexample: individually aligned pages with different padding still
   assertOneTitleLine([row, { ...row }]);
   assertOneTitleLine([row, { ...row, navCollapsed: "true", titleX: 96 }]);
   assert.throws(() => assertOneTitleLine([row, { ...row, titleX: 304 }]), /B1/);
+  assert.throws(
+    () => assertOneTitleLine([{ ...row, titleX: null }]),
+    /actual page title/,
+  );
 });
 test("dataset direct-entry counterexamples reject missing layout and escaping text", () => {
   const card = { display: "flex", width: 400, height: 80, overflow: false };
