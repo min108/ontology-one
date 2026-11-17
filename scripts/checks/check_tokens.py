@@ -19,6 +19,15 @@ def scan_text(text: str) -> list[str]:
     for label, pattern in rules.items():
         for match in re.finditer(pattern, text):
             findings.append(f"{text.count(chr(10), 0, match.start()) + 1}: {label}: {match.group(0)}")
+    # CSS custom properties cannot be used in media conditions. These two
+    # deliberate breakpoint forms are the only dimensional-literal exception.
+    dimensional = re.sub(r"/\*[\s\S]*?\*/", lambda m: " " * len(m[0]), text)
+    dimensional = re.sub(r"@media\b[^{}]*", lambda m: " " * len(m[0]), dimensional)
+    dimensional = re.sub(r"\bmatchMedia\(\s*(['\"])[^'\"]*\1\s*\)", lambda m: " " * len(m[0]), dimensional)
+    for match in re.finditer(r"(?<![\w-])\d+(?:\.\d+)?px\b", dimensional):
+        findings.append(f"{text.count(chr(10), 0, match.start()) + 1}: literal dimension: {match[0]}")
+    for match in re.finditer(r"(?:url\(\s*['\"]?|(?:src|poster)\s*=\s*['\"])(?:https?:)?//", text):
+        findings.append(f"{text.count(chr(10), 0, match.start()) + 1}: public presentation asset")
     for match in re.finditer(
         r"\b(border-(?:top-left-|top-right-|bottom-left-|bottom-right-|start-start-|start-end-|end-start-|end-end-)?radius"
         r"|box-shadow|text-shadow|border(?:(?:Top|Bottom)(?:Left|Right)|(?:Start|End)(?:Start|End))?Radius"

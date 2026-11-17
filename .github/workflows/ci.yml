@@ -1,6 +1,6 @@
 name: Linux sprint CI
 # Manual fallback when the caller cannot dispatch Actions: explicitly mark a
-# dev/r2-sprint code commit [R2-FULL]. Ordinary pushes always run the quick tier.
+# a sprint code commit [R2-FULL] or [R3-FULL]. Ordinary pushes run the quick tier.
 on:
   push:
     branches: ['dev/**']
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   foundation:
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]'))) && 60 || 15 }}
+    timeout-minutes: ${{ ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]'))))) && 60 || 15 }}
     services:
       mysql:
         image: mysql:8.4
@@ -89,6 +89,7 @@ jobs:
           python scripts/gen_api_types.py --check
           python scripts/gen_terms.py --check
           python scripts/checks/check_tokens.py
+          python scripts/checks/check_page_layout.py
           python scripts/checks/check_terms.py
           python scripts/checks/check_migrations.py
           python scripts/checks/check_policy_coverage.py
@@ -115,47 +116,51 @@ jobs:
       - name: Offline source and artifact checks
         run: python scripts/checks/check_offline.py --require-dist
       - name: Original 0.7.0 upgrade and recovery drill
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: |
           set -euo pipefail
           git worktree add --detach work/v070-source 1359118dd672431dcd0cde2eb81f2b0f994eef37
           python scripts/drills/upgrade_from_v070.py --v070-source work/v070-source --output work/evidence/r1/ci/upgrade-drill.json 2>&1 | tee work/evidence/r1/ci/upgrade-drill.log
       - name: Original identity and grant behavior comparison across migration
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: |
           set -euo pipefail
           python scripts/drills/compare_identity_v070.py --v070-source work/v070-source --current-source . --output work/evidence/r1/ci/identity-v070-comparison.json 2>&1 | tee work/evidence/r1/ci/identity-v070-comparison.log
       - name: Install fixed browser for acceptance
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: frontend/node_modules/.bin/playwright install --with-deps chromium
       - name: Original UI browser baseline
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python e2e/run.py --target legacy --evidence work/evidence/r1/e2e-legacy-ci
       - name: Foundation core pages home identity and SDK acceptance
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python e2e/run.py --target foundation --harness --evidence work/evidence/r1/e2e-foundation-ci
       - name: Administration operations in a separate fresh fixture scope
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python e2e/run_admin.py --evidence work/evidence/r1/e2e-admin-ci
       - name: R2 five-step mainline through the official SDK
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python e2e/run_r2.py --output work/evidence/r2/mainline
+      - name: R3 complete UI actions and structural acceptance
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
+        run: python e2e/run_r3.py --output work/evidence/r3/actions
       - name: Prepare locked offline dependencies
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python ops/offline/prepare.py --output work/offline/ci --export-images
       - name: Install build migrate and start without external networking
-        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')))
+        if: ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]')))))
         run: python ops/offline/verify.py --bundle work/offline/ci --evidence work/evidence/r1/offline
       - name: Upload aggregate results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: r2-ci-summary-${{ github.run_id }}
+          name: r3-ci-summary-${{ github.run_id }}
           path: |
             work/evidence/r1/ci/
             work/evidence/r1/e2e-*/results.json
             work/evidence/r1/e2e-*/cleanup.json
             work/evidence/r1/offline/
             work/evidence/r2/
+            work/evidence/r3/
           if-no-files-found: warn
           retention-days: 30

@@ -80,7 +80,13 @@ for (const role of roles) {
       const person = await identity(page);
       expect(person.role).toBe(role);
       await expect(primary(page)).toBeVisible();
-      expect(await links(primary(page))).toEqual(primaryPaths);
+      expect(
+        await primary(page)
+          .locator("a[data-primary-link]")
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getAttribute("href")),
+          ),
+      ).toEqual(primaryPaths);
       for (const path of primaryPaths) {
         await primary(page).locator(`a[href="${path}"]`).click();
         const expected = secondaryPaths(path, role, person.permissions);
@@ -120,7 +126,7 @@ for (const role of roles) {
             primary(page).locator(`a[href="${path}"]`),
           ).toBeInViewport();
         await expect(
-          page.getByRole("combobox", { name: "机构", exact: true }),
+          page.getByRole("button", { name: "机构与身份", exact: true }),
         ).toBeInViewport();
         await primary(page).locator('a[href="/ontology"]').click();
         await expect(
@@ -194,6 +200,14 @@ test.describe("superadmin: workspace transition", () => {
         workspacePosts++;
     });
     const choose = async () => {
+      if (
+        !(await page
+          .getByRole("combobox", { name: "机构", exact: true })
+          .isVisible())
+      )
+        await page
+          .getByRole("button", { name: "机构与身份", exact: true })
+          .click();
       await page.getByRole("combobox", { name: "机构", exact: true }).click();
       await page.getByRole("option", { name: "办公厅", exact: true }).click();
     };
