@@ -173,8 +173,8 @@
         ]
       },
       "triggers": {
-        "sec_audit_no_update": "CREATE DEFINER=`root`@`%` TRIGGER `sec_audit_no_update` BEFORE UPDATE ON `sec_audit` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Security audit is append-only'",
-        "sec_audit_no_delete": "CREATE DEFINER=`root`@`%` TRIGGER `sec_audit_no_delete` BEFORE DELETE ON `sec_audit` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Security audit is append-only'"
+        "sec_audit_no_delete": "CREATE TRIGGER `sec_audit_no_delete` BEFORE DELETE ON `sec_audit` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Security audit is append-only'",
+        "sec_audit_no_update": "CREATE TRIGGER `sec_audit_no_update` BEFORE UPDATE ON `sec_audit` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Security audit is append-only'"
       }
     },
     "tenant": {
