@@ -1,3 +1,4 @@
 {
-  "mode": "compare"
+  "mode": "capture",
+  "reason": "R3 D8 canonical baseline refresh; not final acceptance"
 }
