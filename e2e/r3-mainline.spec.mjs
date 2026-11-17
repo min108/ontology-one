@@ -78,6 +78,7 @@ for (
   }) => {
     mkdirSync(output, { recursive: true });
     const times = [],
+      preSubmissionChecks = [],
       publicationChecks = [],
       reportChecks = [],
       reportReads = [],
@@ -380,6 +381,37 @@ for (
         );
       }
       record("A5 不要、单条采纳、全部高把握采纳");
+      const ready = (await read(page, "/api/v2/changesets/" + proposal.id))
+        .data;
+      preSubmissionChecks.push(
+        ...ready.items.map((item) => ({
+          kind: item.after_data.kind,
+          decision: item.decision,
+          applied_status: item.applied_status,
+          checks: item.gates.checks.map(({ code, status }) => ({
+            code,
+            status,
+          })),
+          present: Object.fromEntries(
+            [
+              "definition",
+              "unit",
+              "grain",
+              "scope",
+              "conditions",
+              "exceptions",
+              "valid_from",
+              "boundary",
+              "judgement",
+            ].map((key) => [
+              key,
+              Array.isArray(item.after_data[key])
+                ? item.after_data[key].length > 0
+                : Boolean(item.after_data[key]),
+            ]),
+          ),
+        })),
+      );
       await expect(button(page, "采纳并提交审核")).toBeEnabled();
       const applied = await submit(page);
       expect(applied.entity_ids).toHaveLength(proposal.items.length);
@@ -769,6 +801,7 @@ for (
             soft_failures: test.info().errors.map(safeFailure),
             first_numeric_blocked: firstNumericBlocked,
             automatic_revision: revisionUsed,
+            pre_submission_checks: preSubmissionChecks,
             publication_checks: publicationChecks,
             report_checks: reportChecks,
             total_seconds: Math.round((Date.now() - started) / 1000),
