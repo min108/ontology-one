@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { invokeCapability } from '../../api/client';
 import type { ElementGet, RuleCasesResult } from '../../api/generated/types';
 import { terms } from '../../i18n/zh-CN';
+import { useSessionStore } from '../../state/session';
 import { FoldRow } from '../../ui';
 import { sentence } from '../build/model';
 import { useLifetime } from '../build/shared';
@@ -30,12 +31,13 @@ export function RuleTests({
   disabled: boolean;
   onComplete: () => void;
 }) {
+  const readonly = useSessionStore((state) => !!state.session?.workspace.readonly);
   const [result, setResult] = useState<RuleCasesResult['data']>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const lifetime = useLifetime();
   async function run() {
-    if (disabled || busy || lifetime.current?.signal.aborted) return;
+    if (disabled || readonly || busy || lifetime.current?.signal.aborted) return;
     const signal = lifetime.current?.signal;
     setBusy(true);
     setError('');
@@ -69,12 +71,13 @@ export function RuleTests({
         <Button
           autoInsertSpace={false}
           aria-label={copy.r4_rule_run}
-          disabled={disabled}
+          disabled={disabled || readonly}
           loading={busy}
           onClick={() => void run()}
         >
           {copy.r4_rule_run}
         </Button>
+        {readonly && <p>{copy.r3_main_read_only}</p>}
         {result && (
           <div data-rule-test-result data-passed={result.passed} role="status">
             <p>{sentence(copy.r4_rule_test_summary, { passed: result.passed_count, total: result.total })}</p>
