@@ -1,19 +1,20 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { LegacyPage } from './LegacyPage';
 import { WorkspaceBreadcrumbs } from './WorkspaceBreadcrumbs';
+import { terms } from '../i18n/zh-CN';
 import { readWorkspaceGuards, setWorkspaceTransition } from '../state/workspace-guard';
 const { api, reload } = vi.hoisted(() => ({ api: vi.fn(), reload: vi.fn() }));
 vi.mock('@legacy/navigation', () => ({
   ContextTrail: () => (
     <div className="context-trail">
       <a className="context-back" href="/projects/parent?via=source">
-        返回原工作
+        Return to source work
       </a>
       <details className="context-belonging">
-        <summary>所属工作与专栏</summary>
-        <a href="/knowledge/collections/parent">业务专栏</a>
+        <summary>Business parents</summary>
+        <a href="/knowledge/collections/parent">Business collection</a>
       </details>
     </div>
   ),
@@ -23,11 +24,11 @@ vi.mock('@legacy/auth', () => ({
 }));
 vi.mock('@legacy/api', () => {
   const data = {
-    entity: { visibility: 'institution', tenant_name: '总部', status: 'published' },
+    entity: { visibility: 'institution', tenant_name: 'Headquarters', status: 'published' },
     can_set_visibility: true,
     visibility_options: ['institution', 'headquarters'],
   };
-  return { api, statusLabel: () => '已发布', useApi: () => ({ data, reload }) };
+  return { api, statusLabel: () => 'Published', useApi: () => ({ data, reload }) };
 });
 beforeEach(() => {
   api.mockReset().mockResolvedValue({ ok: true });
@@ -51,24 +52,28 @@ it('keeps original source and business-parent links plus editable visibility ins
     <div className="page">
       <header className="page-head">
         <div>
-          <h1>材料</h1>
+          <h1>Material</h1>
         </div>
       </header>
     </div>,
   );
-  const back = await screen.findByRole('link', { name: '返回原工作' });
+  const back = await screen.findByRole('link', { name: 'Return to source work' });
   await waitFor(() => expect(back.closest('header')).not.toBeNull());
   expect(back).toHaveAttribute('href', '/projects/parent?via=source');
-  fireEvent.click(screen.getByText('所属工作与专栏'));
-  expect(screen.getByRole('link', { name: '业务专栏' })).toHaveAttribute(
+  fireEvent.click(screen.getByText('Business parents'));
+  expect(screen.getByRole('link', { name: 'Business collection' })).toHaveAttribute(
     'href',
     '/knowledge/collections/parent',
   );
-  expect(screen.getByLabelText('设置成果可见范围').closest('header')).not.toBeNull();
-  expect(screen.queryByText('素材整理')).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('设置成果可见范围'), { target: { value: 'headquarters' } });
+  expect(screen.getByRole('combobox').closest('header')).not.toBeNull();
+  expect(screen.queryByText(terms.labels.shell_materials)).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'headquarters' } });
   expect(readWorkspaceGuards().dirtyCount).toBe(1);
-  fireEvent.click(screen.getByRole('button', { name: '保存范围' }));
+  const scope = screen.getByRole('combobox').closest('aside')!;
+  expect(screen.getByRole('combobox')).toHaveAccessibleName();
+  const save = within(scope).getByRole('button');
+  expect(save).toHaveAccessibleName();
+  fireEvent.click(save);
   await waitFor(() =>
     expect(api).toHaveBeenCalledWith(expect.stringContaining('/visibility'), {
       method: 'POST',
@@ -79,8 +84,8 @@ it('keeps original source and business-parent links plus editable visibility ins
 });
 
 it('moves one stable control tree into a late or replaced header without discarding unsaved selection', async () => {
-  const view = show(<p>正在读取材料</p>);
-  const selection = screen.getByLabelText('设置成果可见范围');
+  const view = show(<p>Loading material</p>);
+  const selection = screen.getByRole('combobox');
   fireEvent.change(selection, { target: { value: 'headquarters' } });
   expect(readWorkspaceGuards().dirtyCount).toBe(1);
   const rerender = (title: string) =>
@@ -100,12 +105,12 @@ it('moves one stable control tree into a late or replaced header without discard
         <WorkspaceBreadcrumbs />
       </MemoryRouter>,
     );
-  await act(async () => rerender('材料'));
+  await act(async () => rerender('Material'));
   await waitFor(() => expect(selection.closest('header')).not.toBeNull());
-  await act(async () => rerender('材料新标题'));
-  await waitFor(() => expect(selection.closest('header')).toHaveTextContent('材料新标题'));
-  expect(screen.getAllByLabelText('设置成果可见范围')).toHaveLength(1);
-  expect(screen.getByLabelText('设置成果可见范围')).toBe(selection);
+  await act(async () => rerender('Updated material'));
+  await waitFor(() => expect(selection.closest('header')).toHaveTextContent('Updated material'));
+  expect(screen.getAllByRole('combobox')).toHaveLength(1);
+  expect(screen.getByRole('combobox')).toBe(selection);
   expect(selection).toHaveValue('headquarters');
   expect(readWorkspaceGuards().dirtyCount).toBe(1);
 });

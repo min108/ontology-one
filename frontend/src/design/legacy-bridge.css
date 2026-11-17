@@ -84,8 +84,13 @@
 
 /* 英文小字眉题、面包屑：外壳已经给出当前位置，旧页面内不再重复 */
 .legacy-root .eyebrow,
-.legacy-root .section-kicker,
-.legacy-root .breadcrumb {
+.legacy-root .section-kicker {
+  display: none;
+}
+
+/* Only suppress the redundant page-level trail once the object title exists.
+ * Error views keep their original return link; context and business parents stay visible. */
+.legacy-root[data-legacy-page] > .page:has(h1) > .breadcrumb {
   display: none;
 }
 
@@ -108,14 +113,14 @@
   box-shadow: var(--zy-shadow-none);
 }
 
-.legacy-root .btn-primary,
-.legacy-root .btn-primary:hover {
+.legacy-root .btn.btn-primary,
+.legacy-root .btn.btn-primary:hover {
   border-color: var(--zy-color-accent);
   background: var(--zy-color-accent);
   color: var(--zy-color-text-inverse);
 }
 
-.legacy-root .btn-primary:hover {
+.legacy-root .btn.btn-primary:hover {
   border-color: var(--zy-color-accent-hover);
   background: var(--zy-color-accent-hover);
 }
@@ -335,8 +340,10 @@
   font-size: var(--zy-font-body) !important;
 }
 
-.legacy-root .btn-ai,
-.legacy-root .btn-ai-outline,
+/* Explicit primary actions keep their accent; AI styling alone stays secondary.
+ * Match the compound legacy selectors, including lazy Experience styles. */
+.legacy-root .btn.btn-ai:not(.btn-primary),
+.legacy-root .btn.btn-ai-outline:not(.btn-primary),
 .legacy-root .ai-pill {
   background: var(--zy-color-surface);
   border-color: var(--zy-color-border-control);
@@ -344,8 +351,8 @@
   box-shadow: var(--zy-shadow-none);
 }
 
-.legacy-root .btn-ai:hover,
-.legacy-root .btn-ai-outline:hover {
+.legacy-root .btn.btn-ai:not(.btn-primary):hover,
+.legacy-root .btn.btn-ai-outline:not(.btn-primary):hover {
   background: var(--zy-color-hover);
   color: var(--zy-color-text);
   box-shadow: var(--zy-shadow-none);

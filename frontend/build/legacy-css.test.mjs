@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import postcss from 'postcss';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
 import { legacyCssPlugin, assertScopedLegacyCss } from './legacy-css.mjs';
 
 const transform = async (css, from = '/project/frontend/src/legacy/styles.css') =>
@@ -67,4 +69,55 @@ test('legacy surfaces lose gradients, translucency and serif titles while remain
   assert.doesNotMatch(css, /linear-gradient|backdrop-filter:blur|font-family:Georgia/);
   assert.match(css, /background:var\(--zy-color-surface\)/);
   assert.doesNotThrow(() => assertScopedLegacyCss(css));
+});
+
+
+test('generated legacy buttons retain readable solid colors after lazy page styles load', async () => {
+  const tokens = readFileSync(new URL('../src/design/tokens.css', import.meta.url), 'utf8');
+  let css = tokens;
+  for (const path of ['styles.css', 'pages/experience.css', 'pages/assets.css']) {
+    const source = readFileSync(new URL('../src/legacy/' + path, import.meta.url), 'utf8');
+    css += await transform(source.replace(/@import[^;]+;/g, ''), '/project/frontend/src/legacy/' + path);
+  }
+  const variants = ['btn-primary', 'btn-ai', 'btn-ai-outline', 'btn-primary btn-ai'];
+  const contexts = ['page-actions', 'exp-page', 'exp-form', 'asset-modal-footer'];
+  const dom = new JSDOM(`<style>${css}</style><div class="legacy-root">${contexts.map(context =>
+    `<section class="${context}">${variants.map(variant => `<button class="btn ${variant}">${context} ${variant}</button>`).join('')}</section>`
+  ).join('')}</div>`);
+  const luminance = color => color.match(/[\d.]+/g).slice(0, 3).map(Number)
+    .map(channel => channel / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4)
+    .reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+  try {
+    for (const button of dom.window.document.querySelectorAll('button')) {
+      const style = dom.window.getComputedStyle(button);
+      const values = [luminance(style.color), luminance(style.backgroundColor)].sort((a, b) => b - a);
+      const contrast = (values[0] + .05) / (values[1] + .05);
+      assert.ok(contrast >= 4.5, `${button.textContent}: contrast ${contrast}, ${style.color} on ${style.backgroundColor}`);
+      assert.equal(style.backgroundImage, 'none', `${button.textContent}: no gradient`);
+    }
+  } finally { dom.window.close(); }
+});
+
+
+test('only redundant top-level trails disappear after lazy detail CSS, retaining real returns and parents', async () => {
+  let css = '';
+  for (const path of ['styles.css', 'pages/materials.css', 'pages/datasets.css', 'navigation.css']) {
+    const source = readFileSync(new URL('../src/legacy/' + path, import.meta.url), 'utf8');
+    css += await transform(source.replace(/@import[^;]+;/g, ''), '/project/frontend/src/legacy/' + path);
+  }
+  const dom = new JSDOM(`<style>${css}</style><div class="legacy-root" data-legacy-page>
+    <div class="page materials-detail-page"><a class="breadcrumb" href="/materials">Repeated trail</a>
+      <header><div data-legacy-header-context><div class="context-trail"><a class="context-back" href="/work?via=source">Original source</a><details class="context-belonging"><summary>Business parents</summary></details></div><nav data-object-return>Fallback return</nav></div><h1>Material</h1></header>
+    </div><div class="page"><a class="breadcrumb" href="/materials">Error return</a><p>Unavailable</p></div>
+    <div class="page"><nav class="asset-detail-breadcrumb">Asset return</nav><nav class="sd-breadcrumb">Skill return</nav><nav class="pw-breadcrumb">Parent project</nav><h1>Detail</h1></div>
+  </div><div class="page"><nav class="breadcrumb">New UI trail</nav><h1>New UI</h1></div>`);
+  try {
+    const document = dom.window.document;
+    const display = selector => dom.window.getComputedStyle(document.querySelector(selector)).display;
+    assert.equal(display('.materials-detail-page > .breadcrumb'), 'none');
+    for (const selector of ['.page:not(.materials-detail-page) > .breadcrumb', '.context-trail', '.context-belonging', '[data-object-return]', '.asset-detail-breadcrumb', '.sd-breadcrumb', '.pw-breadcrumb', 'body > .page > .breadcrumb']) {
+      assert.notEqual(display(selector), 'none', selector);
+    }
+    assert.equal(document.querySelector('.context-back').getAttribute('href'), '/work?via=source');
+  } finally { dom.window.close(); }
 });
