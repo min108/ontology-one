@@ -2,6 +2,7 @@
 import json
 
 BRAND = json.loads(
-    '{"product_name":"知元","product_name_en":"Ontology One","product_d'
-    'escriptor":"集团本体平台","tagline":"知其然，知其所以然"}'
+    '{"product_name":"知元","product_name_en":"Ontology'
+    ' One","product_descriptor":"集团本体平台","tagline":"知'
+    '其然，知其所以然"}'
 )

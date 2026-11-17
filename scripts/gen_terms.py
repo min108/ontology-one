@@ -25,8 +25,8 @@ def generated_files(source: dict[str, Any]) -> dict[str, str]:
 
     def python_value(name: str, value: dict[str, Any]) -> str:
         encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-        # JSON remains the canonical representation; wrapped chunks keep generated Python readable to Ruff.
-        chunks = [encoded[index : index + 64] for index in range(0, len(encoded), 64)]
+        # Ruff counts Chinese display width; leave room for double-width text and literal escaping.
+        chunks = [encoded[index : index + 48] for index in range(0, len(encoded), 48)]
         return (
             py_header
             + f"{name} = json.loads(\n"
