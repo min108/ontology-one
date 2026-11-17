@@ -262,7 +262,7 @@ test("R3.1 Authority navigation: cancel retains edits and leaving confirms only 
       if (accept) await dialog.accept();
       else await dialog.dismiss();
     });
-    const destination = page.locator('[data-primary-link][href="/build"]');
+    const destination = page.locator('[data-primary-link][href="/"]');
     await destination.click();
     expect(confirmations).toBe(1);
     expect(page.url()).toBe(originalUrl);
@@ -270,7 +270,7 @@ test("R3.1 Authority navigation: cancel retains edits and leaving confirms only 
     accept = true;
     confirmations = 0;
     await destination.click();
-    await expect(page).toHaveURL((url) => url.pathname === "/build");
+    await expect(page).toHaveURL((url) => url.pathname === "/");
     expect(confirmations).toBe(1);
     const id = new URL(originalUrl).pathname.split("/").at(-1);
     expect((await read(page, "/api/entities/" + id)).title).toBe(savedTitle);
