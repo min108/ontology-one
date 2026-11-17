@@ -1,11 +1,18 @@
 """Catalog response schemas preserve existing dictionaries and safe extension fields."""
 
-from typing import NotRequired
+from typing import Annotated, NotRequired
 
-from pydantic import ConfigDict, JsonValue
+from pydantic import BeforeValidator, ConfigDict, JsonValue
 from typing_extensions import TypedDict
 
+from backend.capabilities.build_models import ReadText, legacy_source_refs
 from backend.core.errors import StrictModel
+
+
+def legacy_payload(value: object) -> object:
+    if isinstance(value, dict) and "source_refs" in value:
+        return {**value, "source_refs": legacy_source_refs(value["source_refs"])}
+    return value
 
 
 class ElementListItem(TypedDict):
@@ -39,7 +46,7 @@ class ElementActivity(TypedDict):
 
     id: str | int
     action: str
-    detail: str
+    detail: ReadText
     created_at: str
 
 
@@ -52,7 +59,7 @@ class ElementEntity(TypedDict):
     status: str
     version: int
     domain: str | None
-    payload: dict[str, JsonValue]
+    payload: Annotated[dict[str, JsonValue], BeforeValidator(legacy_payload)]
     activities: list[ElementActivity]
 
 

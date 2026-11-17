@@ -1,8 +1,25 @@
 """Typed read contracts keep legacy extension fields while documenting business data."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, JsonValue
+
+
+def empty_legacy_text(value: object) -> object:
+    """Only historical null text is normalized; other invalid values still fail."""
+    return "" if value is None else value
+
+
+ReadText = Annotated[str, BeforeValidator(empty_legacy_text)]
+
+
+def legacy_source_refs(value: object) -> object:
+    """Expose old free-text sources as readable, unverified excerpts without writing back."""
+    if isinstance(value, (str, dict)):
+        value = [value]
+    if isinstance(value, list):
+        return [{"excerpt": item} if isinstance(item, str) else item for item in value]
+    return value
 
 
 class ReadModel(BaseModel):
@@ -93,19 +110,22 @@ class LegacyEvidence(ReadModel):
     excerpt: str | None = None
 
 
+LegacySourceRefs = Annotated[list[LegacyEvidence] | None, BeforeValidator(legacy_source_refs)]
+
+
 class EntityPayload(ReadModel):
     # Legacy editors and importers intentionally preserve structured JSON values.
     # This read schema must describe them; write/anchor verification stays separate.
     content: JsonValue = None
     definition: JsonValue = None
     conditions: JsonValue = None
-    source_refs: list[LegacyEvidence] | None = Field(default_factory=list)
+    source_refs: LegacySourceRefs = Field(default_factory=list)
 
 
 class ReviewEntity(ReadModel):
     id: str
     title: str
-    summary: str
+    summary: ReadText
     kind: str
     status: str
     version: int
@@ -118,7 +138,7 @@ class Review(ReadModel):
     submitted_at: str
     can_decide: bool
     blocked_reason: str
-    source_refs: list[LegacyEvidence] | None
+    source_refs: LegacySourceRefs
 
 
 class ReviewResult(ReadModel):
