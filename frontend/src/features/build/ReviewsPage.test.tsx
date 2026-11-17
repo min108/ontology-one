@@ -1,3 +1,4 @@
+import fixture from '../../../test-fixtures/r4-semantic-content.json';
 import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { focusManager } from '@tanstack/react-query';
@@ -286,16 +287,16 @@ it('requires real waiver reasons before approving failed source and condition ch
   const approve = await screen.findByRole('button', { name: terms.actions.catalog_2_5 });
   expect(approve).toBeDisabled();
   expect(screen.getByRole('button', { name: terms.actions.catalog_2_6 })).toBeEnabled();
-  fireEvent.change(screen.getByLabelText('出处可定位 · ' + terms.labels.r4_gate_waiver), {
-    target: { value: '已核对纸质制度' },
+  fireEvent.change(screen.getByLabelText(fixture.sourceLabel + ' · ' + terms.labels.r4_gate_waiver), {
+    target: { value: fixture.paperVerified },
   });
   expect(approve).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('条件完整 · ' + terms.labels.r4_gate_waiver), {
+  fireEvent.change(screen.getByLabelText(fixture.conditionsLabel + ' · ' + terms.labels.r4_gate_waiver), {
     target: { value: '   ' },
   });
   expect(approve).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('条件完整 · ' + terms.labels.r4_gate_waiver), {
-    target: { value: '依照既定场景执行' },
+  fireEvent.change(screen.getByLabelText(fixture.conditionsLabel + ' · ' + terms.labels.r4_gate_waiver), {
+    target: { value: fixture.scenarioAccepted },
   });
   expect(approve).toBeEnabled();
   fireEvent.click(approve);
@@ -305,8 +306,8 @@ it('requires real waiver reasons before approving failed source and condition ch
   await waitFor(() => expect(current.entity.status).toBe('published'));
   const post = vi.mocked(api).mock.calls.find(([, init]) => init?.method === 'POST');
   expect(JSON.parse(String(post?.[1]?.body)).waivers).toEqual({
-    QG1: '已核对纸质制度',
-    QG3: '依照既定场景执行',
+    QG1: fixture.paperVerified,
+    QG3: fixture.scenarioAccepted,
   });
 });
 it('cannot approve or waive a missing required relation but can return it', async () => {

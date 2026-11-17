@@ -1,3 +1,4 @@
+import fixture from '../../../test-fixtures/r4-semantic-content.json';
 import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -253,10 +254,10 @@ it('shows server prerequisites beside the disabled main action instead of claimi
   proposal.items[0].decision = 'accepted';
   proposal.items[0].applied_entity_id = 'rule-1';
   proposal.items[0].gates = gates(['QG4']);
-  proposal.submit_blockers = ['请确认规则的适用主体'];
+  proposal.submit_blockers = [fixture.confirmTarget];
   const { container } = open();
   expect(await screen.findByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled();
-  expect(screen.getByText('请确认规则的适用主体')).toBeVisible();
+  expect(screen.getByText(fixture.confirmTarget)).toBeVisible();
   expect(screen.queryByRole('button', { name: terms.labels.r3_main_submitted })).not.toBeInTheDocument();
   expect(container.querySelector('[data-gate-checklist] details')).toHaveAttribute('open');
 });
@@ -266,17 +267,20 @@ it('saves the missing scope and conditions through the generated candidate patch
   fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
   const modal = screen.getByRole('dialog');
   fireEvent.change(within(modal).getByLabelText(terms.labels.r4_rule_scope), {
-    target: { value: '合同付款' },
+    target: { value: fixture.paymentScope },
   });
   fireEvent.change(within(modal).getByLabelText(terms.labels.r4_rule_conditions), {
-    target: { value: '验收完成\n合同有效' },
+    target: { value: fixture.conditionsText },
   });
   fireEvent.click(within(modal).getByRole('button', { name: terms.actions.r2_save }));
   await waitFor(() =>
     expect(invokeCapability).toHaveBeenCalledWith(
       'changeset.decide_items',
       expect.objectContaining({
-        edit: expect.objectContaining({ scope: '合同付款', conditions: ['验收完成', '合同有效'] }),
+        edit: expect.objectContaining({
+          scope: fixture.paymentScope,
+          conditions: [fixture.accepted, fixture.contractValid],
+        }),
       }),
       expect.anything(),
     ),
@@ -292,7 +296,7 @@ it('sends the version shown when editing began, even if a refocus refresh finds 
   fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
   const modal = screen.getByRole('dialog');
   Object.assign(proposal.items[0], { applied_version: 4 });
-  proposal.items[0].after_data.content = '另一位建设人员刚保存的内容';
+  proposal.items[0].after_data.content = fixture.concurrentContent;
   await act(async () => {
     focusManager.setFocused(false);
     focusManager.setFocused(true);
@@ -320,7 +324,7 @@ it('requires a separate acceptance after converting content to a rule so its pro
       proposal.items[0].decision = 'edited';
       Object.assign(proposal.items[0].after_data, {
         applies_to_id: 'org-1',
-        applies_to_title: '本机构办公室',
+        applies_to_title: fixture.officeTarget,
       });
     }
     return {} as never;

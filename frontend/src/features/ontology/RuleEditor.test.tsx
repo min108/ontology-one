@@ -1,3 +1,4 @@
+import fixture from '../../../test-fixtures/r4-semantic-content.json';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import type { ElementEntity } from '../../api/generated/types';
@@ -6,40 +7,44 @@ import { RuleEditor } from './RuleEditor';
 const entity: ElementEntity = {
   id: 'rule-1',
   kind: 'rule',
-  title: '付款检查',
+  title: fixture.paymentRule,
   version: 1,
   status: 'draft',
   domain: '',
   activities: [],
   payload: {
     judgement: {
-      condition: { oxl: 'amount > 0', sentence: '金额大于零' },
+      condition: { oxl: 'amount > 0', sentence: fixture.positiveAmount },
       requirement: { oxl: 'approved == true' },
       test_cases: [],
     },
-    scope: '本机构付款',
+    scope: fixture.institutionScope,
   },
 };
 it('saves two actual cases and preserves other payload fields without silently confirming the sentence', async () => {
   const onSave = vi.fn().mockResolvedValue(undefined);
   render(<RuleEditor entity={entity} disabled={false} onSave={onSave} />);
   const judgement = {
-    condition: { oxl: 'amount > 0', sentence: '金额大于零' },
+    condition: { oxl: 'amount > 0', sentence: fixture.positiveAmount },
     requirement: { oxl: 'approved == true' },
     test_cases: [
-      { name: '适用通过', input: { amount: 1, approved: true }, expected: 'pass' },
-      { name: '不适用', input: { amount: 0, approved: false }, expected: 'not_applicable' },
+      { name: fixture.applicableCase, input: { amount: 1, approved: true }, expected: 'pass' },
+      { name: fixture.inapplicableCase, input: { amount: 0, approved: false }, expected: 'not_applicable' },
     ],
   };
   fireEvent.change(screen.getByLabelText(terms.labels.r4_rule_judgement), {
     target: { value: JSON.stringify(judgement) },
   });
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
-  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ scope: '本机构付款', judgement }, false));
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith({ scope: fixture.institutionScope, judgement }, false),
+  );
   await screen.findByText(terms.labels.r4_rule_saved);
   fireEvent.click(screen.getByRole('checkbox', { name: terms.labels.r4_rule_sentence_confirm }));
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
-  await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ scope: '本机构付款', judgement }, true));
+  await waitFor(() =>
+    expect(onSave).toHaveBeenLastCalledWith({ scope: fixture.institutionScope, judgement }, true),
+  );
 });
 it('counterexample: malformed judgement never calls save and retains the edit', async () => {
   const onSave = vi.fn();
@@ -61,8 +66,8 @@ it('edits metric test cases at the payload root while keeping the formula schema
   };
   render(<RuleEditor entity={metric} disabled={false} onSave={onSave} />);
   const cases = [
-    { name: '正额', input: { amount: 2 }, expected: 4 },
-    { name: '零额', input: { amount: 0 }, expected: 0 },
+    { name: fixture.positiveCase, input: { amount: 2 }, expected: 4 },
+    { name: fixture.zeroCase, input: { amount: 0 }, expected: 0 },
   ];
   fireEvent.change(screen.getByRole('textbox', { name: terms.labels.r4_rule_cases }), {
     target: { value: JSON.stringify(cases) },
@@ -86,7 +91,7 @@ it('rejects metric cases accidentally nested under formula and invalid root inpu
   expect(await screen.findByRole('alert')).toHaveTextContent(terms.labels.r4_metric_cases_separate);
   fireEvent.change(formula, { target: { value: JSON.stringify({ oxl: 'amount' }) } });
   fireEvent.change(screen.getByRole('textbox', { name: terms.labels.r4_rule_cases }), {
-    target: { value: JSON.stringify([{ name: '错误输入', input: [], expected: 0 }]) },
+    target: { value: JSON.stringify([{ name: fixture.invalidInput, input: [], expected: 0 }]) },
   });
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
   expect(await screen.findByRole('alert')).toHaveTextContent(terms.labels.r4_metric_cases_invalid);

@@ -65,7 +65,7 @@ it('sends correction details in one follow-up and generates once from the comple
   expect(revise).toHaveBeenCalledTimes(1);
   expect(revise.mock.calls[0][1]).toBe('run-1');
   expect(revise.mock.calls[0][0]).toContain('2 items');
-  expect(revise.mock.calls[0][0]).toContain('保留有依据的关键数字与单位');
+  expect(revise.mock.calls[0][0]).toContain(terms.labels.r21_revision_prompt);
   expect(api).toHaveBeenLastCalledWith(
     '/agent/sessions/session-1/runs/run-2/report',
     expect.objectContaining({ method: 'POST' }),
