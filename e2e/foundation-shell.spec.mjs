@@ -92,6 +92,9 @@ for (const role of roles) {
         const expected = secondaryPaths(path, role, person.permissions);
         if (expected.length) {
           await expect(page).toHaveURL((url) => url.pathname === expected[0]);
+          await primary(page)
+            .locator(`a[data-primary-link][href="${path}"]`)
+            .hover();
           await expect(secondary(page)).toBeVisible();
           await expect.poll(() => links(secondary(page))).toEqual(expected);
         } else await expect(secondary(page)).toHaveCount(0);
@@ -169,6 +172,34 @@ test.describe("admin: collapsed pointer navigation", () => {
     await expect(
       page.getByRole("heading", { name: "素材整理", exact: true }),
     ).toBeVisible();
+  });
+});
+
+test.describe("admin: responsive assistant panel", () => {
+  test.use({ storageState: resolve(authDirectory, "admin.json") });
+  test("docks on wide screens, overlays below 1680 and closes by keyboard or toggle", async ({
+    page,
+  }) => {
+    for (const width of [1366, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      const toggle = page.getByRole("button", { name: "助手", exact: true });
+      const panel = page.locator("[data-assistant-panel]");
+      await toggle.click();
+      await expect(panel).toBeVisible();
+      const box = await panel.boundingBox(),
+        main = await page.locator("main").boundingBox();
+      expect(box.width).toBe(420);
+      expect(box.y).toBe(56);
+      if (width >= 1680) expect(main.x + main.width).toBeLessThanOrEqual(box.x);
+      else expect(main.x + main.width).toBeGreaterThan(box.x);
+      await page.keyboard.press("Escape");
+      await expect(panel).toBeHidden();
+      await toggle.click();
+      await expect(panel).toBeVisible();
+      await toggle.click();
+      await expect(panel).toBeHidden();
+    }
   });
 });
 

@@ -105,6 +105,9 @@ function Reports({ id, identity }: { id?: string; identity: string }) {
   }
   const source = sourceKey && report?.spec.citations[sourceKey];
   const citations = report ? Object.keys(report.spec.citations) : [];
+  const preview =
+    report?.spec.blocks.find((item) => item.type === 'paragraph' && item.citations.length) ??
+    report?.spec.blocks.find((item) => item.type === 'paragraph');
   const cite = (keys: string[]) =>
     keys.map((key) => (
       <sup key={key}>
@@ -191,11 +194,8 @@ function Reports({ id, identity }: { id?: string; identity: string }) {
             </p>
             {report.spec.revision && <p>{copy.r3_report_revised}</p>}
             <p className={styles.paragraph}>
-              {businessText(
-                report.spec.blocks.find((item) => item.type === 'paragraph')?.text ?? report.title,
-                report.spec.citations,
-              ).slice(0, 220)}{' '}
-              {cite(report.spec.blocks[0]?.citations ?? [])}
+              {businessText(preview?.text ?? report.title, report.spec.citations).slice(0, 220)}{' '}
+              {cite(preview?.citations ?? [])}
             </p>
           </article>
           <div>

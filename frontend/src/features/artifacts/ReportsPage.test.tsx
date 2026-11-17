@@ -98,6 +98,27 @@ it('keeps server-owned before and after answers visibly distinguished', async ()
   expect(screen.getAllByText(terms.labels.r3_report_revised).length).toBeGreaterThan(0);
 });
 
+it('previews an evidenced paragraph when the model begins with an uncited introduction', async () => {
+  vi.mocked(api).mockResolvedValue({
+    data: {
+      ...report,
+      spec: {
+        ...report.spec,
+        blocks: [{ type: 'paragraph', text: 'Introduction', citations: [] }, ...report.spec.blocks],
+      },
+    },
+  });
+  const { container } = open();
+  await screen.findByRole('heading', { name: report.title });
+  const preview = container.querySelector('[data-page-content] > article')!;
+  const citation = within(preview as HTMLElement).getByRole('button', {
+    name: terms.actions.r3_report_source + ' 1',
+  });
+  expect(citation).toBeVisible();
+  expect(preview).toHaveTextContent('Payment rule');
+  expect(preview).not.toHaveTextContent('Introduction');
+});
+
 it('downloads the chosen saved version and regenerates with a strict version request', async () => {
   const regenerated = {
     ...report,
