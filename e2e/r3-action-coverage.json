@@ -3,7 +3,7 @@
   "execution_receipt": "work/<run>/runner.json and mainline-1.json; this map does not claim execution success",
   "actions": {
     "A1": "r3-administration: UI-create institution and user; new login; simple default; zero metrics hidden; one start action; r3-regressions proves actual data-home-count nodes match and injected visible zero fails",
-    "A2": "r3-mainline: real drag/drop; zero-required dialog; start; task tray stage; completed count",
+    "A2": "r3-mainline: real drag/drop; zero-required dialog; start; task tray stage; completed count; completed real recipe returns through workbench navigation, exact unprocessed proposal count and step 2 shown, primary action reopens the same proposal",
     "A3": "r3-mainline: selected source drawer mark equals evidence quote; same URL, selection and scroll after close",
     "A4": "r3-mainline: empty input blocked; real server 422 via stale-field request injection; retry; persisted content and editor",
     "A5": "r3-mainline: reject then single adopt; all pending high-confidence items adopt; decisions read back",

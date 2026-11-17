@@ -184,7 +184,7 @@ for (
         .getByRole("button", { name: "核对建设方案", exact: true })
         .click();
       const proposal = (await (await getting).json()).data;
-      const changesetUrl = page.url();
+      let changesetUrl = page.url();
       expect(proposal.items.length).toBeGreaterThan(1);
       expect(
         proposal.items.some((item) => item.content_origin !== "local"),
@@ -192,6 +192,41 @@ for (
       expect(proposal.items.every((item) => item.evidence.length > 0)).toBe(
         true,
       );
+      const pendingProposalCount = proposal.items.filter(
+        (item) =>
+          item.decision === "pending" &&
+          !item.applied_entity_id &&
+          !item.processed_elsewhere,
+      ).length;
+      expect(pendingProposalCount).toBeGreaterThan(0);
+      await page.locator('[data-primary-link][href="/"]').click();
+      await expect(page).toHaveURL((url) => url.pathname === "/");
+      await expect(page.locator("[data-home-workbench]")).toHaveAttribute(
+        "aria-busy",
+        "false",
+      );
+      await expect(page.getByTestId("home-focus")).toHaveText(
+        `${pendingProposalCount} 条内容等你核对`,
+      );
+      await expect(page.getByTestId("home-workflow")).toHaveAttribute(
+        "data-current-step",
+        "2",
+      );
+      await expect(page.locator("[aria-current=step]")).toContainText("看一眼");
+      await checkStructure(page, `home-ready-proposal-${iteration}`);
+      await button(
+        page.locator("[data-home-workbench] [data-page-header]"),
+        "核对建设方案",
+      ).click();
+      await expect(page).toHaveURL(
+        (url) => url.pathname === "/build/changesets/" + proposal.id,
+      );
+      await expect(
+        page.locator("button[data-item-id]").first(),
+      ).toHaveAttribute("data-item-id", proposal.items[0].id);
+      await page.waitForLoadState("networkidle");
+      changesetUrl = page.url();
+      record("A2 工作台显示真实待核对数、第2步，并回到原建设方案");
       await expect(button(page, "采纳并提交审核")).toBeDisabled();
       await expect(page.locator("[data-page-header]")).toContainText(
         /还有\s*\d+\s*条没处理/,
