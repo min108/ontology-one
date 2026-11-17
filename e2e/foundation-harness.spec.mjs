@@ -44,6 +44,14 @@ async function business(page, path, body) {
   );
 }
 
+// NavigationProvider recreates its in-memory visit token after a reload.
+// Every other part of the task URL, including query order and hash, stays exact.
+function withoutVia(value) {
+  const url = new URL(value);
+  url.searchParams.delete("via");
+  return url.href;
+}
+
 test("real SDK task survives closing its global view and is stopped through the UI", async ({
   page,
 }, testInfo) => {
@@ -161,8 +169,25 @@ test("real SDK task survives closing its global view and is stopped through the 
     ).toBeVisible();
     expect((await read()).status).toBe("running");
     record.reopening_checks.push("same_url_reopened_while_running");
+    const viaDeepLink = new URL(taskUrl);
+    viaDeepLink.searchParams.set("via", "harness-reopen-regression");
+    viaDeepLink.searchParams.set("reopen_probe", "retained");
+    viaDeepLink.hash = "task-reopen";
+    const expectedDeepLink = withoutVia(viaDeepLink.href);
+    await page.goto(viaDeepLink.href);
+    await expect(page).toHaveURL(
+      (url) => withoutVia(url.href) === expectedDeepLink,
+    );
+    await expect(conversation).toBeVisible();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("via"))
+      .toBeTruthy();
+    expect((await read()).status).toBe("running");
+    record.reopening_checks.push("via_deep_link_opened_while_running");
     await page.reload();
-    await expect(page).toHaveURL(taskUrl);
+    await expect(page).toHaveURL(
+      (url) => withoutVia(url.href) === expectedDeepLink,
+    );
     await expect(conversation).toBeVisible();
     await expect(
       conversation.getByRole("button", { name: "停止本轮处理", exact: true }),
