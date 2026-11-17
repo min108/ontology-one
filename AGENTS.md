@@ -2,7 +2,7 @@
 
 ## 1 项目与轮次
 
-R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁决 D1–D10 与 A 段动作清单见 `docs/blueprint/rounds/R4-PLAN.md`，任务书为蓝图 §14.4（只做 `SCOPE-TIERS.md` 的基础部分）。界面上位依据仍为 `docs/design/UI-BASELINE.md` 与 `docs/design/benchmarks/`；执行按 `docs/blueprint/EXECUTION-RULES.md` v3（质量第一；交付前独立对抗审查；动作清单逐条断言结果并用反例证明断言能失败；快速层每次推送都运行、不可跳过；真实模型经界面连续 3 次），经验见 `docs/blueprint/LESSONS.md`。门禁接入后汇报主线必须照常走通（R4-PLAN D2）。所有人默认简洁视图。环境模型仅在 `ONTOLOGY_MODEL_FROM_ENV=1` 时覆盖机构配置，只限演示或单机构部署；数字核验规则不放宽。
+R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁决 D1–D10 与 A 段动作清单见 `docs/blueprint/rounds/R4-PLAN.md`，任务书为蓝图 §14.4（只做 `SCOPE-TIERS.md` 的基础部分）。界面上位依据仍为 `docs/design/UI-BASELINE.md` 与 `docs/design/benchmarks/`；执行按 `docs/blueprint/EXECUTION-RULES.md` v3（质量第一；交付前独立对抗审查；动作清单逐条断言结果并用反例证明断言能失败；快速层每次推送都运行、不可跳过；真实模型经界面连续 3 次），经验见 `docs/blueprint/LESSONS.md`。门禁接入后汇报主线必须照常走通（R4-PLAN D2）。R4-A 实现与三次真实模型界面自验已完成，交接与精确受验提交见 `R4-REPORT.md`；等待 Claude 独立验收后才启动 B 段。所有人默认简洁视图。环境模型仅在 `ONTOLOGY_MODEL_FROM_ENV=1` 时覆盖机构配置，只限演示或单机构部署；数字核验规则不放宽。
 
 知元（英文名 Ontology One）是集团本体管理平台。R3（1.2.0）经 R3.1 修复后由 Claude 复验通过（`R3-ACCEPTANCE.md` 第 6 节）。R2（1.1.0）已验收，交接见 `docs/blueprint/rounds/R2-REPORT.md`；CI结论按报告列出的各实际受验提交分别核对；R3原交付两次完整层均失败，修复后按执行守则D1定向补验，不称原交付完整层全绿。R1（1.0.0）已通过独立验收；交付情况见 [STATUS](docs/blueprint/STATUS.md)、[R1 报告](docs/blueprint/rounds/R1-REPORT.md) 与 `docs/blueprint/rounds/R1-PLAN.md` 第 11 节；报告中的规范验证代码提交与最终文档交付提交分别记录。进入任何 worktree 先读 VERSION 并核对起点；默认 main 是旧 demo，不能作为开发基线。
 
