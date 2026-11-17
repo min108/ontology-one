@@ -175,6 +175,7 @@ def harness_queue_summaries(principal, limit=20):
 
             from .core.errors import ApiError
 
+            starting = False
             try:
                 recipe = recipe_status(row["job_id"])
             except ApiError as exc:
@@ -202,7 +203,9 @@ def harness_queue_summaries(principal, limit=20):
                     }
                     status = "queued" if starting else "failed"
             href = (
-                "/build/changesets/" + recipe["changeset_id"]
+                ""
+                if starting
+                else "/build/changesets/" + recipe["changeset_id"]
                 if recipe["changeset_id"]
                 else "/materials/" + entity_id
                 if recipe["stage"] == "failed"

@@ -56,7 +56,7 @@ class Followups(unittest.TestCase):
             if state in {"queued", "running", "retry"}:
                 self.assertEqual(item["status"], "queued")
                 self.assertEqual(item["stage"], "queued")
-                self.assertEqual(item["href"], "/build/intake?run=recipe")
+                self.assertEqual(item["href"], "")
                 self.assertIn("正在等待整理", item["message"])
             else:
                 self.assertEqual(item["status"], "failed")
@@ -138,9 +138,9 @@ class StartupMySQL(unittest.TestCase):
         ident = started.json()["data"]["id"]
         item = next(item for item in captured if item["id"] == ident)
         self.assertEqual((item["status"], item["stage"]), ("queued", "queued"))
-        self.assertEqual(item["href"], "/build/intake?run=" + ident)
+        self.assertEqual(item["href"], "")
         self.assertIn("正在等待整理", item["message"])
         with use_context(person):
             committed = next(item for item in jobs.harness_queue_summaries(person) if item["id"] == ident)
         self.assertEqual(committed["status"], "queued")
-        self.assertEqual(committed["href"], item["href"])
+        self.assertEqual(committed["href"], "/build/intake?run=" + ident)
