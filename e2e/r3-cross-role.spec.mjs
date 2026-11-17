@@ -98,14 +98,14 @@ test("R3 A9 cross-role: editor A, submitter B, independent C; both review entrie
       .click();
     await expect(button(page, "通过并发布")).toBeDisabled();
     await expect(button(page, "退回")).toBeDisabled();
+    const blockedReview = (await read(page, "/api/v2/reviews")).data.items.find(
+      (item) => item.entity.id === entityId,
+    );
+    expect(blockedReview.can_decide).toBe(false);
+    expect(blockedReview.blocked_reason).toMatch(/提交人|最后编辑人/);
     await expect(
-      page.getByText("不能审核自己的内容", { exact: true }),
+      page.getByText(blockedReview.blocked_reason, { exact: true }),
     ).toBeVisible();
-    expect(
-      (await read(page, "/api/v2/reviews")).data.items.find(
-        (item) => item.entity.id === entityId,
-      ).can_decide,
-    ).toBe(false);
     await page.goto("/maintenance");
     await page.getByLabel("搜索维护内容", { exact: true }).fill(title);
     const row = page

@@ -112,6 +112,21 @@ class QuickTierContractTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "same artifact name"):
             check_artifact_aggregation(changed)
 
+    def test_r31_followup_keeps_only_failed_scope_and_unexecuted_offline(self) -> None:
+        steps = {step.get("name"): step for step in self.workflow["jobs"]["r3-remaining"]["steps"]}
+        for name in (
+            "Recheck only the failed SDK background-task UI case",
+            "Previously unexecuted administration operations",
+            "Previously unexecuted R2 mainline",
+            "Previously unexecuted reviewed visual comparison",
+            "Previously unexecuted R3 actions and structure",
+        ):
+            self.assertIn("env.R31_RECHECK_ONLY != 'true'", steps[name]["if"])
+        failed = steps["R3.1 recheck the failed cross-role review case"]
+        self.assertIn("env.R31_RECHECK_ONLY == 'true'", failed["if"])
+        self.assertIn("--grep 'R3 A9 cross-role'", failed["run"])
+        self.assertNotIn("R31_RECHECK_ONLY", steps["Prepare previously unexecuted offline acceptance"]["if"])
+
 
 if __name__ == "__main__":
     unittest.main()
