@@ -40,7 +40,20 @@ async function write(page, path, body) {
 }
 
 async function pendingEntity(page, title, source) {
-  const quote = source.text.slice(0, 40);
+  const quote = source.text.match(/附件信息[^。]+。/)[0];
+  const chunks = await read(
+    page,
+    "/api/materials/" + fixture.objects.material + "/chunks",
+  );
+  const chunk = chunks.items.find((item) => item.content.includes(quote));
+  const anchored = await read(
+    page,
+    "/api/materials/" +
+      fixture.objects.material +
+      "/source?" +
+      new URLSearchParams({ chunk_id: chunk.id, quote }),
+  );
+  expect(anchored.focus.quote).toBe(quote);
   const entity = await write(page, "/api/entities", {
     kind: "knowledge",
     title,
@@ -51,15 +64,7 @@ async function pendingEntity(page, title, source) {
       definition: "确认框锁定原项的独立核验知识",
       conditions: ["需要独立核验时"],
       boundary: "仅用于确认框重排验收",
-      source_refs: [
-        {
-          material_id: fixture.objects.material,
-          source_version: source.source_version,
-          start: 0,
-          end: quote.length,
-          quote,
-        },
-      ],
+      source_refs: [anchored.focus],
     },
   });
   return write(page, "/api/entities/" + entity.id + "/action", {

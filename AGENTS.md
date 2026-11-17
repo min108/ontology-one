@@ -24,6 +24,8 @@ R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁
 
 ## 3 代码地图
 
+- R4-A：`kernel/kinds/metadata/elements/relations/cards/oxl/rules/gates` 统一种类、侧表、写入、派生关系、卡片、表达式与五项检查；新能力与 v1 共用内核。岗位/外部主体的检查适用性独立于业务资产分类。配方 A 在 `domains/build.py` 提出适用关系并从明确原文补条件，有外部编辑时必须显式版本确认；豁免只由独立审核人记录。`e2e/run_r4.py` 复用隔离生命周期，完整动作包含原 R3 用例；AA2 的 200 条中合成扩充与原始夹具必须区分。
+
 - R2：`domains/build.py`复用原材料分段/提炼/采纳；`domains/reviews.py`保护新提案的独立审核；`domains/artifacts`从已完成会话生成私有版本化报告。`kernel/cards.py`生成确定性业务卡，`capabilities/elements.py`复用本地与联邦检索；`features/ontology`提供本体目录与统一要素页。`features/build`与`features/artifacts`为新主线页面，旧页继续保留。`DEEPSEEK_API_KEY`仅运行环境读取，设置与测试操作不得将环境密钥写入文件。
 
 - R3 集成应用使用 `features/admin/integrations` 展示适配器提供共享骨架，仍复用旧业务体及原请求/授权/一次性令牌清理；旧路由和文件未退役。只在专业技术详情显示内部标识，普通视图按业务名称展示。
@@ -32,7 +34,7 @@ R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁
 - `backend/security/`：store、policy、middleware、context、applications、directory、preferences，承载身份、目录治理、会话、审计、应用授权和用户偏好。duties随会话读取并参与捕获身份/提交复核，仅存储不开放授予。
 - R1-8 管理包：`features/admin` 与 `capabilities/model`、`capabilities/backup` 承接设置；`api/v2/system.py` 提供安全元数据和二进制绑定。浏览器15项后退役Settings/HarnessConfiguration及其专属CSS，DemoWorkspace继续保留。离线恢复仅可信offline绑定且持独占锁；模型新入口保持16KiB和严格拒重复JSON。主干完整回归与CI43832921234已通过，见R1-8-REPORT。
 - R1-6 `features/home`：工作台使用真实同源统计、任务与近期运行；HomeIntake只在内存转交文件，RecentRecorder按身份/机构/scope记录有限本机元数据。`app/guardedNavigation.ts`沿用旧Authority未保存确认。O-01–06实际对照后退役Overview与41条专属CSS；旧素材/台账接收器保持人工确认上传；R2制度文件默认经零必填对话框进入配方A，文件仍只在内存转交，未保存确认先于上传。
-- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control`当前0001–0005，`migrations/tenant`当前0001–0003；恢复定义v1–v6按各库连续可信迁移历史精确选择，未知历史/部分结构拒绝。启动只校验、不自动升级。
+- `backend/infra/`：版本化迁移、完整升级备份、可信恢复结构校验；`migrations/control`当前0001–0006，`migrations/tenant`当前0001–0004；恢复定义v1–v7按各库连续可信迁移历史精确选择，未知历史/部分结构拒绝。R4 只加侧表，旧四表行哈希保持不变。启动只校验、不自动升级。
 - `backend/db.py`：MySQL 适配、连接池、机构初始化；`jobs.py`：任务队列；`maintenance.py`：维护锁。
 - `backend/provenance.py`、`materials.py`：原文版本与出处；datasets、sources、skills、federation 等旧模块按所属轮次迁移。
 - `backend/skill_harness*.py`、`backend/agent_*.py`、`backend/harness_plugin/`：受控 Harness 与现有应用执行。

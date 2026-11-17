@@ -81,7 +81,7 @@ def main() -> None:
     )
     print("演示环境就绪：http://localhost:" + os.getenv("ONTOLOGY_PORT", "8765"))
     print("账号：demo.admin / demo.builder / demo.reviewer；密码为刚输入的演示密码。")
-    print("后续流程：docs/blueprint/rounds/R2-DEMO.md")
+    print("后续流程：docs/blueprint/rounds/R4-DEMO.md（含发布前五项检查）")
 
 
 if __name__ == "__main__":
