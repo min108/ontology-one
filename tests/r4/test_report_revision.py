@@ -59,6 +59,7 @@ class RevisionQuantityActions(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result["revision_of"], run["id"])
                 self.assertEqual(len(prompts), 2)
                 self.assertIn("保留有依据的关键数字与单位", prompts[-1])
+                self.assertIn("条款序号或表格行数", prompts[-1])
                 self.assertIn(original, prompts[-1])
                 value = report(result["answer"])
                 render.verify(value)  # Numeric validity alone cannot detect a deleted supported claim.
