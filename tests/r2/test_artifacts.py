@@ -390,7 +390,35 @@ class ArtifactMySQL(unittest.TestCase):
         self.assertTrue(missing.json()["error"]["details"]["issues"])
         with use_context(person):
             session["runs"][run_id]["answer"] = referenced_answer
+        original_id = secrets.token_hex(16)
+        with use_context(person):
+            session["runs"][original_id] = {
+                **session["runs"][run_id],
+                "id": original_id,
+                "answer": "原回答含未核验的99日。",
+            }
+            session["runs"][run_id]["revision_of"] = original_id
         report = self.invoke(builder, "artifact.create", body)
+        self.assertEqual(
+            report["spec"]["revision"], {"count": 1, "before": "原回答含未核验的99日。", "after": referenced_answer}
+        )
+        self.assertIn("已按核对结果修订 1 次", report["spec"]["source_label"])
+        from fastapi.testclient import TestClient
+
+        from backend.agent_service import app as agent_app
+
+        agent_client = TestClient(agent_app)
+        self.addCleanup(agent_client.close)
+        agent_client.cookies.update(builder.cookies)
+        agent_client.headers.update(builder.headers)
+        path = f"/api/agent/sessions/{session['id']}/runs/{run_id}/report"
+        duplicate = agent_client.post(
+            path, content='{"title":"one","title":"two"}', headers={"Content-Type": "application/json"}
+        )
+        self.assertEqual(duplicate.status_code, 422, duplicate.text)
+        response = agent_client.post(path, json={})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["data"]["spec"]["revision"], report["spec"]["revision"])
         self.assertEqual(report["source_kind"], "mock")
         ident = report["id"]
         for client in (reviewer, self.login("r2.other")):
@@ -402,6 +430,7 @@ class ArtifactMySQL(unittest.TestCase):
             self.assertIn("attachment", response.headers["content-disposition"])
         regenerated = self.invoke(builder, "artifact.render", {"artifact_id": ident, "expected_version": 1})
         self.assertEqual(regenerated["current_version"], 2)
+        self.assertEqual(regenerated["spec"]["revision"], report["spec"]["revision"])
         stale = builder.post(f"/api/v2/artifacts/{ident}:render", json={"artifact_id": ident, "expected_version": 1})
         self.assertEqual(stale.status_code, 409)
         with use_context(person):

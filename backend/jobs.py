@@ -172,10 +172,24 @@ def harness_queue_summaries(principal, limit=20):
         if row["kind"] == "recipe_run":
             from .domains.build import status as recipe_status
 
-            recipe = recipe_status(row["job_id"])
+            from .core.errors import ApiError
+
+            try:
+                recipe = recipe_status(row["job_id"])
+            except ApiError as exc:
+                if exc.code != "NOT_FOUND":
+                    raise
+                recipe = {
+                    "changeset_id": None,
+                    "stage": "failed",
+                    "stage_message": "整理记录已不可用，原材料仍保留，请在素材页继续。",
+                }
+                status = "failed"
             href = (
                 "/build/changesets/" + recipe["changeset_id"]
                 if recipe["changeset_id"]
+                else "/materials/" + entity_id
+                if recipe["stage"] == "failed"
                 else "/build/intake?run=" + row["job_id"]
             )
         result.append(

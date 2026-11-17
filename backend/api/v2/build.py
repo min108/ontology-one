@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from backend.capabilities.build import BuildResult, ChangesetGet, DecideItems, RecipeStart
+from backend.capabilities.build_models import ProposalResult, RecipeResult, ReviewListResult, ReviewResult
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.registry import registry
 from backend.capabilities.reviews import ReviewDecision
@@ -17,22 +18,22 @@ def call(ident: str, body: dict) -> BuildResult:
     return registry.invoke(ident, CapabilityContext(person, permissions=frozenset(permissions_for(person))), body)
 
 
-@router.post("/recipes", response_model=BuildResult)
+@router.post("/recipes", response_model=RecipeResult)
 def start_recipe(body: RecipeStart) -> BuildResult:
     return call("recipe.start", body.model_dump())
 
 
-@router.get("/recipes/{id}", response_model=BuildResult)
+@router.get("/recipes/{id}", response_model=RecipeResult)
 def get_recipe(id: str) -> BuildResult:
     return call("recipe.status", {"run_id": id})
 
 
-@router.get("/changesets/{id}", response_model=BuildResult)
+@router.get("/changesets/{id}", response_model=ProposalResult)
 def get_changeset(id: str) -> BuildResult:
     return call("changeset.get", {"changeset_id": id})
 
 
-@router.post("/changesets/{id}/items:bulk-decide", response_model=BuildResult)
+@router.post("/changesets/{id}/items:bulk-decide", response_model=ProposalResult)
 def decide_items(id: str, body: DecideItems) -> BuildResult:
     from backend.core.errors import ApiError
 
@@ -51,12 +52,12 @@ def submit(id: str) -> BuildResult:
     return call("changeset.apply_and_submit", {"changeset_id": id})
 
 
-@router.get("/reviews", response_model=BuildResult)
+@router.get("/reviews", response_model=ReviewListResult)
 def list_reviews(kind: str = "") -> BuildResult:
     return call("review.list", {"kind": kind})
 
 
-@router.get("/reviews/{id}", response_model=BuildResult)
+@router.get("/reviews/{id}", response_model=ReviewResult)
 def get_review(id: str) -> BuildResult:
     return call("review.get", {"entity_id": id})
 
@@ -65,7 +66,7 @@ class ReviewBody(ReviewDecision):
     entity_id: str = ""
 
 
-@router.post("/reviews/{id}:decide", response_model=BuildResult)
+@router.post("/reviews/{id}:decide", response_model=ReviewResult)
 def decide_review(id: str, body: ReviewBody) -> BuildResult:
     from backend.core.errors import ApiError
 

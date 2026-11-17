@@ -168,6 +168,13 @@ def create(session_id: str, run_id: str, title: str = "") -> dict:
             "source_label": "模拟模型演练结果" if source_kind == "mock" else "真实模型回答 · 已核对引用与数值",
             "created_at": timestamp,
         }
+        original_id = run.get("revision_of")
+        if original_id:
+            original = session["runs"].get(original_id)
+            if not original or not original.get("answer") or original.get("status") != "completed":
+                raise HTTPException(409, "修订前的回答已不可用，请重新提问后生成报告。")
+            spec["revision"] = {"count": 1, "before": original["answer"], "after": run["answer"]}
+            spec["source_label"] += " · 已按核对结果修订 1 次"
         try:
             render.verify(spec)
         except HTTPException as exc:

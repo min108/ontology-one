@@ -18,6 +18,10 @@ def response_for(error: ApiError, request_id: str) -> JSONResponse:
 
 
 async def api_error(request: Request, exc: ApiError) -> Response:
+    if not request.url.path.startswith("/api/v2/"):
+        # Agent reports retain structured correction details inside the legacy detail envelope.
+        detail = {"message": exc.message, **exc.details} if exc.details else exc.message
+        return await http_exception_handler(request, HTTPException(exc.status_code, detail))
     return response_for(exc, getattr(request.state, "request_id", ""))
 
 

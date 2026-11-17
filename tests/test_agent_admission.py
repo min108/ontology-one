@@ -77,6 +77,13 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("first answer 2项", message)
             self.assertNotIn("later answer", message)
             self.assertEqual(session["runs"][result["run_id"]]["_report_scope"], scope)
+            self.assertEqual(session["runs"][result["run_id"]]["revision_of"], "original")
+            repeated = await store.start(
+                principal, session, "retry same correction", [], [], [], revision_of="original"
+            )
+            self.assertEqual(repeated["run_id"], result["run_id"])
+            self.assertEqual(session["runs"]["original"]["report_revision_id"], result["run_id"])
+            self.assertEqual(len(session["messages"]), 1)
             await store.close()
 
     async def test_report_revision_rejects_missing_answer_or_changed_scope(self):

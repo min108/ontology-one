@@ -43,6 +43,15 @@ def confidence(*, exact: bool, complete: bool, unique: bool, local: bool) -> tup
     return score, "sure" if score >= 0.8 else "check" if score >= 0.5 else "doubt"
 
 
+def processed_elsewhere(candidate: dict | None) -> bool:
+    """Legacy missing status means pending; every terminal state stays terminal."""
+    return candidate is None or bool(candidate.get("entity_id")) or candidate.get("status", "pending") != "pending"
+
+
+def item_processed_elsewhere(item: dict, candidates: dict[str, dict]) -> bool:
+    return not item["applied_entity_id"] and processed_elsewhere(candidates.get(item["after_data"]["id"]))
+
+
 def model_available() -> bool:
     try:
         return bool(ai.config()["api_key"])
@@ -208,7 +217,7 @@ async def run_recipe(ident: str) -> None:
                 ),
             )
             for index, candidate in enumerate(item["payload"].get("candidates", []), 1):
-                if candidate.get("entity_id"):
+                if processed_elsewhere(candidate):
                     continue
                 evidence, issues = [], []
                 for quote in candidate.get("source_quotes", []):
@@ -287,6 +296,12 @@ def get(ident: str) -> dict:
             decode(item)
             for item in conn.execute("SELECT * FROM changeset_items WHERE changeset_id=? ORDER BY seq", (ident,))
         ]
+        material = materials.material(conn, result["source_refs"][0]["material_id"])
+        candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
+        for item in result["items"]:
+            item["processed_elsewhere"] = item_processed_elsewhere(item, candidates)
+            if item["processed_elsewhere"]:
+                item["decision"] = "processed_elsewhere"
         result["can_submit"] = any(
             item["decision"] in {"accepted", "edited"}
             and (
@@ -317,7 +332,11 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict
     if (decision == "edited") != (edit is not None) or (edit and len(ids) != 1):
         raise ApiError("VALIDATION_FAILED")
     with closing(db.connect()) as conn, conn:
-        lock_changeset(conn, ident)
+        proposal = lock_changeset(conn, ident)
+        material_id = proposal["source_refs"][0]["material_id"]
+        conn.execute("SELECT id FROM entities WHERE id=? FOR UPDATE", (material_id,)).fetchone()
+        material = materials.material(conn, material_id)
+        candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
         for item_id in dict.fromkeys(ids):
             row = conn.execute(
                 "SELECT * FROM changeset_items WHERE id=? AND changeset_id=? FOR UPDATE", (item_id, ident)
@@ -325,6 +344,8 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict
             if not row:
                 raise ApiError("NOT_FOUND")
             item = decode(row)
+            if item_processed_elsewhere(item, candidates):
+                continue
             if item["applied_entity_id"]:
                 raise ApiError("ITEM_CHANGED", "这条内容已形成草稿，请在草稿页继续修改。")
             if decision in {"accepted", "edited"} and item["validation"]["level"] == "error":
@@ -370,8 +391,12 @@ def apply(ident: str, *, submit: bool) -> dict:
                 "SELECT * FROM changeset_items WHERE changeset_id=? ORDER BY seq FOR UPDATE", (ident,)
             )
         ]
+        material = materials.material(conn, material_id)
+        candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
         entity_ids = []
         for item in items:
+            if item_processed_elsewhere(item, candidates):
+                continue
             if item["decision"] not in {"accepted", "edited"}:
                 continue
             if not item["applied_entity_id"]:
@@ -381,8 +406,6 @@ def apply(ident: str, *, submit: bool) -> dict:
                     provenance.normalize_source_ref(conn, material_id, ref)
                 material = materials.material(conn, material_id)
                 candidate = materials.find_candidate(material, item["after_data"]["id"])
-                if candidate.get("entity_id"):
-                    raise ApiError("ITEM_CHANGED", "候选已在其他页面采纳，请重新整理材料后核对。")
                 candidate.update(item["after_data"])
                 materials.save_payload(conn, material, material["payload"])
                 entity = materials.adopt_candidate_in_transaction(conn, material_id, candidate["id"])["entity"]

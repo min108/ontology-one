@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Response
 
 from backend.api.v2.build import call
+from backend.capabilities.artifact_models import ArtifactListResult, ArtifactResult
 from backend.capabilities.artifacts import ArtifactRender
 from backend.capabilities.build import BuildResult
 from backend.domains.artifacts import service
@@ -10,17 +11,17 @@ from backend.domains.artifacts import service
 router = APIRouter()
 
 
-@router.get("/artifacts", response_model=BuildResult)
+@router.get("/artifacts", response_model=ArtifactListResult)
 def list_reports() -> BuildResult:
     return call("artifact.list", {})
 
 
-@router.get("/artifacts/{id}", response_model=BuildResult)
+@router.get("/artifacts/{id}", response_model=ArtifactResult)
 def get(id: str) -> BuildResult:
     return call("artifact.get", {"artifact_id": id})
 
 
-@router.post("/artifacts/{id}:render", response_model=BuildResult)
+@router.post("/artifacts/{id}:render", response_model=ArtifactResult)
 def render(id: str, body: ArtifactRender) -> BuildResult:
     from fastapi import HTTPException
 

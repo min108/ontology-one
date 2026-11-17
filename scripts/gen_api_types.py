@@ -19,6 +19,10 @@ def openapi_schema() -> dict:
 
     app = FastAPI(title=f"{BRAND['product_name_en']} REST v2", version=APP_VERSION)
     app.include_router(router)
+    # The report UI shares the authenticated agent transport and its strict contracts.
+    from backend.agent_service import router as agent_router
+
+    app.include_router(agent_router)
     return app.openapi()
 
 

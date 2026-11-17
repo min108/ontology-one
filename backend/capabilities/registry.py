@@ -162,7 +162,13 @@ class Registry:
             if len(result.model_dump_json().encode()) > item.limits.get(
                 "max_result_bytes", CONFIG.maximum_result_bytes
             ):
-                raise ApiError("IMPORT_LIMIT_EXCEEDED", "返回内容超过上限，请缩小查询范围后重试。")
+                raise ApiError(
+                    "IMPORT_LIMIT_EXCEEDED",
+                    "这份材料整理后的内容超过单次方案容量（2 MiB）。原文与已保存条目仍保留；"
+                    "请在素材页继续处理，或按章节拆成较小文件，分批上传整理。"
+                    if ident.startswith("changeset.")
+                    else "返回内容超过上限，请缩小查询范围后重试。",
+                )
             if time.monotonic() - started > item.limits.get("timeout_s", CONFIG.capability_timeout_seconds):
                 raise ApiError("QUERY_TIMEOUT")
             count = len(result.items) if isinstance(getattr(result, "items", None), list) else 1

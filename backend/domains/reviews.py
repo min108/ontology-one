@@ -5,7 +5,7 @@ from contextlib import closing
 
 from backend import db, provenance
 from backend.core.errors import ApiError
-from backend.security.context import require_context
+from backend.security.context import Principal, require_context
 
 ASSETS = ("rule", "data", "knowledge", "skill")
 WORKFLOW_ACTIONS = ("提交审核", "审核通过", "发布成果", "退回补充", "发起修订", "归档停用")
@@ -59,6 +59,10 @@ def guard_marked_action(conn: db.Connection, entity: dict, body: dict) -> None:
                 provenance.normalize_source_ref(conn, ref["material_id"], ref)
 
 
+def is_same_person(person: Principal, actor: str | None) -> bool:
+    return bool(actor) and actor in {person.user_id, person.username}
+
+
 def review_info(conn: db.Connection, entity: dict) -> dict:
     meta = entity["payload"].get("r2_review", {})
     actions = [
@@ -71,10 +75,10 @@ def review_info(conn: db.Connection, entity: dict) -> dict:
     editor = next((row for row in actions if row["action"] not in WORKFLOW_ACTIONS), {})
     person = require_context()
     submitter = meta.get("submitted_name") or submission.get("actor", "")
-    blocked = person.user_id in {meta.get("submitted_by"), meta.get("last_editor_id")} or person.username in {
-        submitter,
-        editor.get("actor", ""),
-    }
+    blocked = any(
+        is_same_person(person, actor)
+        for actor in (meta.get("submitted_by"), meta.get("last_editor_id"), submitter, editor.get("actor"))
+    )
     package = bool(conn.execute("SELECT 1 FROM skill_documents WHERE entity_id=?", (entity["id"],)).fetchone())
     return {
         "entity": entity,
@@ -134,13 +138,21 @@ def decide(ident: str, decision: str, version: int, reason: str) -> dict:
         if decision == "return":
             if not reason.strip():
                 raise ApiError("VALIDATION_FAILED", "请填写需要补充或修改的内容。")
-            entity_action_in_transaction(conn, ident, {"action": "return", "reason": reason.strip()})
+            entity_action_in_transaction(
+                conn, ident, {"action": "return", "reason": reason.strip(), "expected_version": version}
+            )
         else:
             refs = entity["payload"].get("source_refs", [])
             if not refs:
                 raise ApiError("EVIDENCE_NOT_FOUND")
             for ref in refs:
                 provenance.normalize_source_ref(conn, ref["material_id"], ref)
-            entity_action_in_transaction(conn, ident, {"action": "approve", "reason": reason or "核对内容与原文后通过"})
-            entity_action_in_transaction(conn, ident, {"action": "publish", "reason": "独立审核通过并发布"})
+            entity_action_in_transaction(
+                conn,
+                ident,
+                {"action": "approve", "reason": reason or "核对内容与原文后通过", "expected_version": version},
+            )
+            entity_action_in_transaction(
+                conn, ident, {"action": "publish", "reason": "独立审核通过并发布", "expected_version": version + 1}
+            )
     return get(ident)

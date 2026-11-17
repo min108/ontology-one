@@ -18,6 +18,7 @@ from .agent_tools import definitions
 from .db import connect, business_readonly
 from .version import APP_VERSION
 from .core.errors import ApiError
+from .capabilities.artifact_models import AgentReportRun, ArtifactResult
 
 
 @asynccontextmanager
@@ -264,7 +265,7 @@ async def turn(ident: str, request: Request):
     )
 
 
-@router.get("/sessions/{ident}/runs/{run_id}")
+@router.get("/sessions/{ident}/runs/{run_id}", response_model=AgentReportRun)
 async def run(ident: str, run_id: str):
     session = SESSIONS.get(principal(), ident)
     await SESSIONS.validate(session)
@@ -280,8 +281,8 @@ class Report(Strict):
     title: str = Field(default="", max_length=255)
 
 
-@router.post("/sessions/{ident}/runs/{run_id}/report")
-async def report(ident: str, run_id: str, request: Request):
+@router.post("/sessions/{ident}/runs/{run_id}/report", response_model=ArtifactResult)
+async def report(ident: str, run_id: str, request: Request, contract: Report):
     from .capabilities.artifacts import ArtifactCreate
     from .api.v2.build import call
 

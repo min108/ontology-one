@@ -378,9 +378,8 @@ def entity_action_in_transaction(c, eid, b):
         "archive": "archived",
         "complete": "completed",
     }
-    existing = entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone())
-    if existing and existing["payload"].get("authority_spec"):
-        c.execute("BEGIN IMMEDIATE")
+    # The caller owns the transaction. Starting another BEGIN here would commit
+    # an earlier approve in MySQL and leave a half-published authority rule.
     old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
     if not old:
         raise HTTPException(404, "未找到内容。")
