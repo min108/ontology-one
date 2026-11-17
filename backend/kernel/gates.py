@@ -36,8 +36,9 @@ def _object(value: object) -> dict:
 # independently below, so a bland sentence cannot hide its numeric constraint.
 _HARD_WORDS = re.compile(
     r"时限|期限|阈值|限额|上限|下限|审批权限|(?:不得|不能|不应|不可|不)(?:超过|高于|低于|少于|多于)|"
-    r"(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万]+)"
-    r"\s*(?:个工作日|工作日|日内|天内|万元|元|小时|%)"
+    r"(?:金额|付款|支付|额度)[^。；\n]{0,24}(?:超过|高于|低于|达到)[^。；\n]{0,24}(?:时|则|须|需|应)|"
+    r"(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千][一二三四五六七八九十百千万亿]*)"
+    r"\s*(?:个工作日|工作日|日内|天内|亿元|万元|元|小时|%)"
 )
 _NUMERIC_DATE_TYPES = {"integer", "decimal", "number", "date", "datetime"}
 _NUMERIC_DATE_CALLS = {"max", "min", "abs", "round", "len", "days_between", "today", "year", "month"}

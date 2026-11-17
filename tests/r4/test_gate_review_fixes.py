@@ -111,6 +111,9 @@ class GateReviewTable(unittest.TestCase):
                 "累计已付款金额，以元记录。",
                 "本次付款金额，字段为payment_yuan。",
                 "金额之差",
+                "合同金额，单位为元。",
+                "合同金额，单位为万元。",
+                "合同金额，单位为亿元。",
             ):
                 with self.subTest(kind=kind, prose=prose):
                     self.assertFalse(gates.hard_constraint({"kind": kind, "payload": {"definition": prose}}))
@@ -123,6 +126,10 @@ class GateReviewTable(unittest.TestCase):
                 "应在30日内完成。",
                 "本次付款不得超过100万元。",
                 "金额阈值以正式制度为准。",
+                "金额超过合同金额时需核实。",
+                "补助金额十万元。",
+                "补助金额100000元。",
+                "拨款金额一亿元。",
             ):
                 with self.subTest(kind=kind, prose=prose):
                     self.assertTrue(gates.hard_constraint({"kind": kind, "payload": {"definition": prose}}))
