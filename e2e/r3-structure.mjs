@@ -102,6 +102,49 @@ export async function assertNoLeaks(
     )
     .toEqual([]);
 }
+function violationCodes(r, width, { legacy, empty }) {
+  const codes = [];
+  if (r.minSize < 12) codes.push("A1");
+  if (r.smallBad.length) codes.push("A2");
+  if (r.titleX !== r.expectedX || r.blockX !== r.titleX) codes.push("B1");
+  if (r.overflow) codes.push("C1");
+  if (!legacy) {
+    if (
+      r.sizes.length > 5 ||
+      r.sizes.some((size) => ![12, 14, 16, 20, 36].includes(size))
+    )
+      codes.push("A3");
+    if (
+      r.headers !== 1 ||
+      r.extraHorizontalBars.length ||
+      (width === 1366 && r.bodyY > (r.template === "workbench" ? 256 : 196))
+    )
+      codes.push("B2");
+    if (
+      width === 1366 &&
+      r.template === "list" &&
+      r.rowY !== null &&
+      r.rowY > 264
+    )
+      codes.push("B3");
+    if (width === 1440 && r.first > budgets[r.template]) codes.push("D1");
+    if (
+      width === 1440 &&
+      ["workbench", "archive"].includes(r.template) &&
+      r.all >= 600 &&
+      r.first / r.all > 0.5
+    )
+      codes.push("D2");
+    if (r.accents > 3) codes.push("E1");
+    if (r.primaries > 1) codes.push("E2");
+    if (r.columns > 6 || r.rowButtons > 2) codes.push("G1");
+    if (r.bareTags.length) codes.push("G2");
+    if (leakedText(r.visibleText).length) codes.push("G3/G5");
+    if (empty && (r.zeroMetrics || r.primaries !== 1)) codes.push("G4");
+    if (r.nativeDates) codes.push("G5");
+  }
+  return codes;
+}
 export async function checkStructure(
   page,
   label,
@@ -325,6 +368,7 @@ export async function checkStructure(
         width,
         height,
         ...measurements,
+        violations: violationCodes(r, width, { legacy, empty }),
         bareTags: live ? bareTags.length : bareTags,
         smallBad: live
           ? smallBad.map(({ size, secondary }) => ({ size, secondary }))
