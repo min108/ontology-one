@@ -174,10 +174,12 @@ class Session:
                 database,
             )
 
-    def publish(self, ident):
+    def publish(self, ident, reviewer):
         self.prepare_publication(ident)
-        for action in ("submit", "approve", "publish"):
-            self.ok("POST", f"/entities/{ident}/action", json={"action": action})
+        self.ok("POST", f"/entities/{ident}/action", json={"action": "submit"})
+        expect(self.request("POST", f"/entities/{ident}/action", json={"action": "approve"}), 403)
+        for action in ("approve", "publish"):
+            reviewer.ok("POST", f"/entities/{ident}/action", json={"action": action})
 
     def switch(self, tenant):
         return self.consume(self.request("POST", "/auth/workspace", json={"tenant_id": tenant}))
@@ -455,6 +457,7 @@ def run_checks(box):
     reviewer = box.user(admin, "sub-01", "reviewer", "review-a")
     local_admin = box.user(admin, "sub-01", "admin", "admin-a")
     department = box.user(admin, "dept-01", "admin", "department-a")
+    department_reviewer = box.user(admin, "dept-01", "reviewer", "department-reviewer")
     other_dept = box.user(admin, "dept-02", "modeler", "department-b")
     headquarters = box.user(admin, "hq", "modeler", "hq-modeler")
     hq_reviewer = box.user(admin, "hq", "reviewer", "hq-reviewer")
@@ -600,8 +603,8 @@ def run_checks(box):
 
     for ident in ("DEPT-PUBLIC", "DEPT-PRIVATE", "DEPT-DRAFT"):
         department.create(ident, ident)
-    department.publish("DEPT-PUBLIC")
-    department.publish("DEPT-PRIVATE")
+    department.publish("DEPT-PUBLIC", department_reviewer)
+    department.publish("DEPT-PRIVATE", department_reviewer)
     for ident in ("DEPT-PUBLIC", "DEPT-DRAFT"):
         department.ok("POST", f"/federation/entities/dept-01/{ident}/visibility", json={"visibility": "headquarters"})
 
