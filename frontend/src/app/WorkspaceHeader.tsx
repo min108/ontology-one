@@ -58,6 +58,7 @@ export function WorkspaceHeader({
     void refetch();
   }, [pathname, refetch]);
   if (!session) return null;
+  const identityLabel = `${terms.labels.r3_ui_org_switch}：${session.workspace.name} ${roleLabel(session.user.role)}`;
   return (
     <TopBar
       workspaceName={session.workspace.name}
@@ -102,11 +103,7 @@ export function WorkspaceHeader({
               </div>
             }
           >
-            <Button
-              className={styles['identity-trigger']}
-              type="text"
-              aria-label={terms.labels.r3_ui_org_switch}
-            >
+            <Button className={styles['identity-trigger']} type="text" aria-label={identityLabel}>
               <span>{session.workspace.name}</span>
               <span className={styles['identity-role']}>{roleLabel(session.user.role)}</span>
               <ChevronDown aria-hidden="true" />

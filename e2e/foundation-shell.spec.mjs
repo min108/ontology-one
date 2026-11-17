@@ -129,7 +129,7 @@ for (const role of roles) {
             primary(page).locator(`a[href="${path}"]`),
           ).toBeInViewport();
         await expect(
-          page.getByRole("button", { name: "机构与身份", exact: true }),
+          page.getByRole("button", { name: /^机构与身份：/ }),
         ).toBeInViewport();
         await primary(page).locator('a[href="/ontology"]').click();
         await expect(
@@ -261,7 +261,7 @@ test.describe("superadmin: workspace transition", () => {
           .isVisible())
       )
         await page
-          .getByRole("button", { name: "机构与身份", exact: true })
+          .getByRole("button", { name: /^机构与身份：/ })
           .click();
       await page.getByRole("combobox", { name: "机构", exact: true }).click();
       await page.getByRole("option", { name: "办公厅", exact: true }).click();

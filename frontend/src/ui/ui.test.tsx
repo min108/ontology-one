@@ -66,7 +66,9 @@ describe('platform components', () => {
     const onSearch = vi.fn();
     render(<TopBar workspaceName={terms.labels.sample_organization} onSearch={onSearch} />);
     expect(screen.getByText(brand.product_name)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: terms.actions.search }));
+    const search = screen.getByRole('button', { name: terms.labels.r3_ui_search });
+    expect(search).toHaveTextContent(terms.labels.r3_ui_search);
+    fireEvent.click(search);
     expect(onSearch).toHaveBeenCalled();
   });
   it('IdentityBar displays all three identity parts', () => {

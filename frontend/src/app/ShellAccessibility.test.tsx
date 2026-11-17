@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -6,6 +7,7 @@ import { DesignProvider } from '../design/DesignProvider';
 import { theme } from '../design/theme';
 import { terms } from '../i18n/zh-CN';
 import { UserMenu } from './UserMenu';
+import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceBreadcrumbs } from './WorkspaceBreadcrumbs';
 
 const identity = vi.hoisted(() => ({
@@ -16,17 +18,22 @@ const identity = vi.hoisted(() => ({
       display_name: 'Test Administrator',
       role: 'admin',
       is_superadmin: true,
+      home_tenant_id: 'hq',
     },
     workspace: { name: 'Headquarters', tenant_id: 'hq' },
-    permissions: { manage_users: true },
+    permissions: { manage_users: true, can_edit: true },
+    workspaces: [{ name: 'Headquarters', tenant_id: 'hq' }],
     password_change_recommended: false,
   },
   logout: vi.fn(),
   permission_keys: ['admin.users'],
 }));
 vi.mock('../state/session', () => ({
-  useSessionStore: (select: (value: typeof identity) => unknown) => select(identity),
+  useSessionStore: (select?: (value: typeof identity) => unknown) => (select ? select(identity) : identity),
 }));
+
+vi.mock('@legacy/components/HarnessActivity', () => ({ default: () => null }));
+vi.mock('../api/shell', () => ({ readAssistantStatus: async () => ({ configured: true }) }));
 
 it('names the account trigger with its visible person and role and still opens account actions', async () => {
   render(
@@ -94,4 +101,24 @@ it('list and workbench routes have no extra breadcrumb row', () => {
     </MemoryRouter>,
   );
   expect(view.container).toBeEmptyDOMElement();
+});
+
+it('includes the visible institution and role in the identity trigger and keeps its chooser operable', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  render(
+    <QueryClientProvider client={client}>
+      <DesignProvider>
+        <MemoryRouter>
+          <WorkspaceHeader onSearch={() => {}} />
+        </MemoryRouter>
+      </DesignProvider>
+    </QueryClientProvider>,
+  );
+  const trigger = screen.getByRole('button', {
+    name: `${terms.labels.r3_ui_org_switch}：${identity.session.workspace.name} ${terms.roles.admin}`,
+  });
+  expect(trigger).toHaveTextContent(identity.session.workspace.name);
+  expect(trigger).toHaveTextContent(terms.roles.admin);
+  await userEvent.click(trigger);
+  expect(await screen.findByRole('combobox', { name: terms.labels.organization })).toBeInTheDocument();
 });

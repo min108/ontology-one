@@ -121,3 +121,18 @@ test('only redundant top-level trails disappear after lazy detail CSS, retaining
     assert.equal(document.querySelector('.context-back').getAttribute('href'), '/work?via=source');
   } finally { dom.window.close(); }
 });
+
+test('legacy prose links have a non-color cue after page styles without changing action buttons', async () => {
+  let css = '';
+  for (const path of ['styles.css', 'pages/materials.css']) {
+    const source = readFileSync(new URL('../src/legacy/' + path, import.meta.url), 'utf8');
+    css += await transform(source.replace(/@import[^;]+;/g, ''), '/project/frontend/src/legacy/' + path);
+  }
+  const dom = new JSDOM(`<style>${css}</style><div class="legacy-root"><div class="materials-footnotes"><p>Continue in <a href="/datasets">Data intake</a>.</p></div><a class="btn" href="/datasets">Open</a></div>`);
+  try {
+    const link = dom.window.document.querySelector('p a');
+    assert.equal(dom.window.getComputedStyle(link).textDecorationLine, 'underline');
+    assert.equal(link.getAttribute('href'), '/datasets');
+    assert.notEqual(dom.window.getComputedStyle(dom.window.document.querySelector('.btn')).textDecorationLine, 'underline');
+  } finally { dom.window.close(); }
+});

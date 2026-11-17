@@ -340,7 +340,7 @@ test.describe("headquarters superadministrator", () => {
     expect((await invoke(page, "/auth/session")).body.workspace.tenant_id).toBe(
       "hq",
     );
-    await page.getByRole("button", { name: "机构与身份", exact: true }).click();
+    await page.getByRole("button", { name: /^机构与身份：/ }).click();
     await page.getByRole("combobox", { name: "机构", exact: true }).click();
     await page.getByRole("option", { name: "办公厅", exact: true }).click();
     await expect(page).toHaveURL((url) => url.pathname === "/");

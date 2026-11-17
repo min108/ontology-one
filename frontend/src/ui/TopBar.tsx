@@ -59,9 +59,9 @@ export function TopBar({
             <Button
               autoInsertSpace={false}
               className={styles.search}
-              icon={<Search />}
+              icon={<Search aria-hidden="true" />}
               onClick={onSearch}
-              aria-label={terms.actions.search}
+              aria-label={terms.labels.r3_ui_search}
             >
               {terms.labels.r3_ui_search}
             </Button>

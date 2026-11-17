@@ -28,7 +28,9 @@ async function more(page, row, name) {
   await page.getByRole("menuitem", { name, exact: true }).click();
 }
 async function switchOrganization(page, name) {
-  await button(page, c.r3_ui_org_switch || "切换机构与范围").click();
+  await page
+    .getByRole("button", { name: new RegExp("^" + c.r3_ui_org_switch + "：") })
+    .click();
   await page.getByRole("combobox", { name: "机构", exact: true }).click();
   await Promise.all([
     page.waitForEvent("domcontentloaded"),
@@ -225,7 +227,11 @@ test("R3 A16: organization switch and scope retain server permissions", async ({
     expect(after.workspace.tenant_id).toBe("dept-01");
     expect(after.permissions.manage_users).toBe(true);
     expect(after.workspace.readonly).toBe(false);
-    await button(page, c.r3_ui_org_switch).click();
+    await page
+      .getByRole("button", {
+        name: new RegExp("^" + c.r3_ui_org_switch + "："),
+      })
+      .click();
     await expect(
       page.getByText(c.r3_ui_cross_org, { exact: true }).last(),
     ).toBeVisible();

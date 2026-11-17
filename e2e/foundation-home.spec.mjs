@@ -407,7 +407,7 @@ test.describe("R1-6 empty institution next step", () => {
     expect((await readWorkspace(page)).tenant).toBe("hq");
     // Earlier Shell/Home cases create real drafts in HQ/dept-01. The original
     // sub-01 fixture has only its organization root and zero business assets.
-    await page.getByRole("button", { name: "机构与身份", exact: true }).click();
+    await page.getByRole("button", { name: /^机构与身份：/ }).click();
     await page.getByRole("combobox", { name: "机构", exact: true }).click();
     await Promise.all([
       page.waitForEvent("domcontentloaded"),
