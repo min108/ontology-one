@@ -206,7 +206,7 @@ for (
         "false",
       );
       await expect(page.getByTestId("home-focus")).toHaveText(
-        `${pendingProposalCount} 条内容等你核对`,
+        c.r31_home_check_count.replace("{count}", String(pendingProposalCount)),
       );
       await expect(page.getByTestId("home-workflow")).toHaveAttribute(
         "data-current-step",
