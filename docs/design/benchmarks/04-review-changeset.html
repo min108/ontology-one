@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>核对建设方案 · 知元界面基准 04</title>
+    <link rel="stylesheet" href="../tokens-v2.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 页面形态：三栏工作台。左：按把握程度分组的条目；中：当前条目的结论与原文；右：依据。 */
+      .cs-meta {
+        margin-left: auto;
+      }
+      .cs-form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--zy-gap);
+      }
+      .cs-form__row {
+        display: grid;
+        grid-template-columns: minmax(var(--zy-content-min), 1fr) var(--zy-menu-min);
+        gap: var(--zy-gap);
+      }
+      .cs-form .zy-input {
+        width: var(--zy-full);
+      }
+      .cs-checks li {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--zy-space-2);
+      }
+      .cs-checks .zy-icon {
+        height: var(--zy-line-body);
+      }
+      .cs-ok {
+        color: var(--zy-success-500);
+      }
+      .cs-ask {
+        color: var(--zy-warning-500);
+      }
+      .cs-keys {
+        margin-left: auto;
+      }
+    </style>
+  </head>
+  <body data-ws="build" data-item="制度整理" data-user="周明远" data-role="建设人员" data-form="split">
+    <main class="zy-main">
+      <div class="zy-page">
+        <header class="zy-head">
+          <a class="zy-head__back" href="#"><i data-icon="chev-left"></i>制度整理</a>
+          <div class="zy-head__titlerow">
+            <h1 class="zy-title">【演示】付款核对制度 · 整理结果</h1>
+            <span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待核对</span>
+          </div>
+          <div class="zy-head__actions">
+            <span class="zy-head__note" data-when="default edit">还有 4 条没处理</span>
+            <button class="zy-btn zy-btn--primary" type="button" disabled data-when="default edit">采纳并提交审核</button>
+            <button class="zy-btn zy-btn--primary" type="button" data-when="done">采纳并提交审核</button>
+          </div>
+          <p class="zy-head__lead" data-when="default edit">
+            共 12 条。8 条高把握已替你勾选，<b>还有 4 条需要你看一眼</b>。
+          </p>
+          <p class="zy-head__lead" data-when="done"><b>12 条都处理完了</b>：采纳 11 条，不要 1 条。现在可以提交审核。</p>
+        </header>
+
+        <div class="zy-body">
+          <div class="zy-split zy-split--three">
+            <!-- ── 左栏：条目，按把握程度三档分组 ── -->
+            <section class="zy-pane" aria-label="条目">
+              <div class="zy-pane__head">
+                <h2 class="zy-h2">条目</h2>
+                <span class="zy-secondary cs-meta" data-when="default edit">已处理 8 条，共 12 条</span>
+                <span class="zy-secondary cs-meta" data-when="done">已处理 12 条，共 12 条</span>
+              </div>
+              <div class="zy-pane__body zy-pane__body--list">
+                <div class="zy-group"><i data-icon="alert"></i>需核对 · 3 条</div>
+                <a class="zy-pick" aria-current="true" data-when="default edit">
+                  <span class="zy-pick__name">大额付款复核</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state">待处理</span>
+                </a>
+                <a class="zy-pick" data-when="done">
+                  <span class="zy-pick__name">大额付款复核</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="edit"></i>改后采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">预付款比例上限</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state" data-when="default edit">待处理</span>
+                  <span class="zy-pick__state zy-pick__state--done" data-when="done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">验收通过日期</span>
+                  <span class="zy-pick__meta">数据项</span>
+                  <span class="zy-pick__state" data-when="default edit">待处理</span>
+                  <span class="zy-pick__state zy-pick__state--done" data-when="done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <div class="zy-group"><i data-icon="help"></i>存疑 · 1 条</div>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">质量争议的认定</span>
+                  <span class="zy-pick__meta">知识经验</span>
+                  <span class="zy-pick__state" data-when="default edit">待处理</span>
+                  <span class="zy-pick__state zy-pick__state--done" data-when="done"><i data-icon="x"></i>不要</span>
+                </a>
+                <div class="zy-group"><i data-icon="check-circle"></i>高把握 · 8 条，已替你勾选</div>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">付款前核对合同与验收资料</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">付款申请时限</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">累计付款上限</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">异议款项暂停支付</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">质保金支付条件</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">付款申请附件</span>
+                  <span class="zy-pick__meta">规则</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">合同金额</span>
+                  <span class="zy-pick__meta">数据项</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">累计付款金额</span>
+                  <span class="zy-pick__meta">数据项</span>
+                  <span class="zy-pick__state zy-pick__state--done"><i data-icon="check"></i>已采纳</span>
+                </a>
+              </div>
+            </section>
+
+            <!-- ── 中栏 · 默认：当前条目的一句话结论、种类、原文逐字高亮；底部是这一条的动作 ── -->
+            <section class="zy-pane" aria-label="当前条目" data-when="default">
+              <div class="zy-pane__body">
+                <div class="zy-row zy-row--wrap">
+                  <span class="zy-tag zy-tag--outline"><i data-icon="rule"></i>规则</span>
+                  <span class="zy-tag zy-tag--warning"><i data-icon="alert"></i>需核对</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="sparkle"></i>AI 整理 · 待人工核对</span>
+                </div>
+                <div class="zy-list">
+                  <h2 class="zy-h2">大额付款复核</h2>
+                  <p class="zy-statement">单笔付款金额达到 50 万元的，付款前要经财务负责人复核。</p>
+                </div>
+                <div class="zy-note zy-note--decide">
+                  <i data-icon="alert"></i>
+                  <p><b>需要你确认：</b>原文写的是“50 万元以上”，没有说明是否包含 50 万元整。这里按“包含”整理。</p>
+                </div>
+                <div class="zy-list">
+                  <div class="zy-row">
+                    <span class="zy-label">原文 · 第五条</span>
+                    <span class="zy-spacer"></span>
+                    <a class="zy-link" href="#">打开完整原文</a>
+                  </div>
+                  <div class="zy-quote zy-source">
+                    <p>第四条　对有异议的款项，应记录原因并暂停支付。</p>
+                    <p><mark>第五条　单笔付款金额在 50 万元以上的，应经财务负责人复核。</mark></p>
+                    <p>第六条　预付款比例一般不超过合同金额的 30%；确需超过的，应报分管领导批准。</p>
+                  </div>
+                </div>
+              </div>
+              <div class="zy-pane__foot">
+                <button class="zy-btn" type="button"><i data-icon="check"></i>采纳<kbd class="zy-kbd" data-view="pro">A</kbd></button>
+                <button class="zy-btn" type="button" data-go="state:edit"><i data-icon="edit"></i>改一改<kbd class="zy-kbd" data-view="pro">E</kbd></button>
+                <button class="zy-btn zy-btn--text" type="button">不要<kbd class="zy-kbd" data-view="pro">X</kbd></button>
+                <button class="zy-btn zy-btn--text" type="button">稍后<kbd class="zy-kbd" data-view="pro">S</kbd></button>
+                <span class="zy-caption cs-keys" data-view="pro">方向键换一条</span>
+              </div>
+            </section>
+
+            <!-- ── 中栏 · 正在“改一改”：就地编辑，原文留在下方对照 ── -->
+            <section class="zy-pane" aria-label="修改当前条目" data-when="edit">
+              <div class="zy-pane__body">
+                <div class="zy-row zy-row--wrap">
+                  <span class="zy-tag zy-tag--warning"><i data-icon="alert"></i>需核对</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="edit"></i>正在修改</span>
+                </div>
+                <div class="cs-form">
+                  <div class="cs-form__row">
+                    <label class="zy-field">
+                      <span>名称</span>
+                      <span class="zy-input">大额付款复核</span>
+                    </label>
+                    <label class="zy-field">
+                      <span>种类</span>
+                      <span class="zy-input">规则<span class="zy-spacer"></span><i data-icon="chev-down"></i></span>
+                    </label>
+                  </div>
+                  <label class="zy-field">
+                    <span>正文与适用条件</span>
+                    <textarea class="zy-textarea is-focus" rows="3">单笔付款金额达到 50 万元（含 50 万元）的，付款前要经财务负责人复核。</textarea>
+                  </label>
+                </div>
+                <div class="zy-list">
+                  <div class="zy-row">
+                    <span class="zy-label">原文 · 第五条</span>
+                    <span class="zy-spacer"></span>
+                    <a class="zy-link" href="#">打开完整原文</a>
+                  </div>
+                  <div class="zy-quote zy-source">
+                    <p><mark>第五条　单笔付款金额在 50 万元以上的，应经财务负责人复核。</mark></p>
+                  </div>
+                </div>
+              </div>
+              <div class="zy-pane__foot">
+                <button class="zy-btn" type="button" data-go="state:done"><i data-icon="check"></i>保存并采纳</button>
+                <button class="zy-btn zy-btn--text" type="button" data-go="state:default">取消</button>
+                <span class="zy-caption cs-keys">保存后会重新检查出处和条件</span>
+              </div>
+            </section>
+
+            <!-- ── 中栏 · 全部处理完，待提交 ── -->
+            <section class="zy-pane" aria-label="处理结果" data-when="done">
+              <div class="zy-pane__body">
+                <div class="zy-list">
+                  <h2 class="zy-h2">这次提交的内容</h2>
+                  <p class="zy-secondary">采纳的 11 条会形成草稿并送审，不要的 1 条不会保存。</p>
+                </div>
+                <dl class="zy-kv">
+                  <dt>采纳</dt>
+                  <dd>11 条，其中 1 条改后采纳</dd>
+                  <dt>不要</dt>
+                  <dd>1 条：质量争议的认定　<a class="zy-link" href="#">撤销</a></dd>
+                  <dt>检查</dt>
+                  <dd>11 条都能定位到原文，条件完整</dd>
+                  <dt>谁来审核</dt>
+                  <dd>陈静、赵立新中的任一人。你不能审核自己提交的内容。</dd>
+                </dl>
+              </div>
+            </section>
+
+            <!-- ── 右栏：依据。视口不足 1280 时收为抽屉 ── -->
+            <aside class="zy-pane" aria-label="依据" data-when="default edit">
+              <div class="zy-pane__head"><h2 class="zy-h2">依据</h2></div>
+              <div class="zy-pane__body">
+                <div class="zy-list">
+                  <span class="zy-label">出处</span>
+                  <p>《【演示】付款核对制度》第五条</p>
+                  <p class="zy-caption" data-view="pro">第 1 版 · 原文第 118–146 字 · 逐字比对一致</p>
+                </div>
+                <div class="zy-list">
+                  <span class="zy-label">三项检查</span>
+                  <ul class="zy-list cs-checks">
+                    <li><i data-icon="check-circle" class="cs-ok"></i>出处可定位</li>
+                    <li><i data-icon="check-circle" class="cs-ok"></i>条件完整</li>
+                    <li><i data-icon="alert" class="cs-ask"></i>口径待确认：金额边界</li>
+                  </ul>
+                </div>
+                <div class="zy-list">
+                  <span class="zy-label">与现有内容</span>
+                  <p>新增。目录里没有相似的规则。</p>
+                </div>
+                <div class="zy-list" data-view="pro">
+                  <span class="zy-label">结构化内容</span>
+                  <dl class="zy-kv">
+                    <dt>适用范围</dt>
+                    <dd>合同付款</dd>
+                    <dt>条件</dt>
+                    <dd>单笔付款金额 ≥ 50 万元</dd>
+                    <dt>要求</dt>
+                    <dd>财务负责人复核</dd>
+                  </dl>
+                </div>
+                <div class="zy-list" data-view="pro">
+                  <span class="zy-label">把握程度的构成</span>
+                  <dl class="zy-kv">
+                    <dt>原文匹配</dt>
+                    <dd>高</dd>
+                    <dt>条件完整</dt>
+                    <dd>高</dd>
+                    <dt>口径明确</dt>
+                    <dd>低：边界词“以上”</dd>
+                  </dl>
+                </div>
+              </div>
+            </aside>
+            <aside class="zy-pane" aria-label="提交之后" data-when="done">
+              <div class="zy-pane__head"><h2 class="zy-h2">提交之后</h2></div>
+              <div class="zy-pane__body">
+                <ul class="zy-bullets">
+                  <li>11 条进入审核中心，状态为“待审核”</li>
+                  <li>审核通过后发布，应用助手才能引用</li>
+                  <li>被退回的会回到你的工作台</li>
+                </ul>
+                <div class="zy-list" data-view="pro">
+                  <span class="zy-label">提交前检查</span>
+                  <ul class="zy-list cs-checks">
+                    <li><i data-icon="check-circle" class="cs-ok"></i>出处可定位：11 / 11</li>
+                    <li><i data-icon="check-circle" class="cs-ok"></i>条件完整：11 / 11</li>
+                    <li><i data-icon="check-circle" class="cs-ok"></i>没有重名内容</li>
+                  </ul>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <!-- ── 下一步条：把主线五步串起来 ── -->
+          <div class="zy-nextstep" role="status">
+            <ol class="zy-steps zy-steps--mini" aria-label="第 2 步，共 5 步">
+              <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>交进来</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step zy-step--now" aria-current="step"><i class="zy-step__n">2</i><span>看一眼</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">3</i><span>点通过</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">4</i><span>问一个问题</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">5</i><span>出一份报告</span></li>
+            </ol>
+            <p class="zy-nextstep__text" data-when="default edit"><b>下一步：</b>处理完剩下的 4 条，提交审核。</p>
+            <p class="zy-nextstep__text" data-when="done"><b>下一步：</b>提交审核。之后由审核人员通过并发布（第 3 步）。</p>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script>
+      window.BM = {
+        states: [
+          ['default', '默认'],
+          ['edit', '正在改一改'],
+          ['done', '全部处理完'],
+        ],
+        views: true,
+      };
+    </script>
+    <script src="assets/base.js"></script>
+  </body>
+</html>

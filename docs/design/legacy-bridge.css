@@ -1,0 +1,232 @@
+/*
+ * 知元界面基准 v1 · 旧页面过渡补丁（草案）
+ *
+ * 作用对象：尚未重建、仍在 .legacy-root 容器里渲染的旧页面（frontend/src/legacy/styles.css 的类名）。
+ * 目的：在不改旧页面结构和逻辑的前提下，让它与新页面同屏时不再是“另一套视觉语言”。
+ * 加载顺序：在旧样式之后加载；只引用 tokens-v2.css 的令牌。
+ * 状态：按旧样式表的类名写成，没有在真实旧页面上逐页验证。实施时要逐页打开核对，
+ *       发现盖不住的内联样式或专属类，就地补一条，不要放宽成全局规则。
+ * 另需一步构建期处理（与现有“旧样式加作用域”的那一步放在一起）：把旧样式里的字号钳到五级——
+ *       9–13 → 12 或 14（正文、表格、表单、按钮取 14，其余取 12）；15 → 14；17–18 → 16；21–31 → 20。
+ *       补丁里已覆盖通用类，页面专属类靠这一步兜底。
+ */
+
+/* 1 变量：旧页面的颜色、圆角变量指向新令牌；朱红主按钮与新强调色本来同值 */
+.legacy-root {
+  --bg: var(--zy-color-page);
+  --ink: var(--zy-color-text);
+  --muted: var(--zy-color-text-secondary);
+  --brand: var(--zy-color-accent);
+  --red: var(--zy-color-accent);
+  --line: var(--zy-color-border);
+  --glass: var(--zy-color-surface); /* 半透明卡片改为不透明白面 */
+  --radius: var(--zy-radius-card); /* 16 → 10 */
+  color: var(--zy-color-text);
+  font-family: var(--zy-font-family);
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+  background: var(--zy-transparent); /* 去掉渐变底，露出外壳的冷白底 */
+}
+
+/* 2 标题：衬线改黑体，并入字号五级 */
+.legacy-root h1,
+.legacy-root h2,
+.legacy-root h3 {
+  font-family: var(--zy-font-family);
+  font-weight: var(--zy-weight-heading);
+  letter-spacing: normal;
+  color: var(--zy-color-text);
+}
+.legacy-root h1 {
+  font-size: var(--zy-font-heading);
+  line-height: var(--zy-line-heading);
+  margin-bottom: var(--zy-space-1);
+}
+.legacy-root h2,
+.legacy-root .section-title,
+.legacy-root .modal > header h2 {
+  font-size: var(--zy-font-title);
+  line-height: var(--zy-line-title);
+}
+.legacy-root h3 {
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+}
+
+/* 3 页面容器：与新页面同一条左边线，同样的标题区上下距 */
+.legacy-root .page {
+  max-width: calc(var(--zy-content-max) + var(--zy-page-wide-padding) + var(--zy-page-wide-padding));
+  margin: var(--zy-none);
+  padding: var(--zy-none) var(--zy-page-padding) var(--zy-space-7);
+}
+@media (min-width: 1440px) {
+  .legacy-root .page {
+    padding: var(--zy-none) var(--zy-page-wide-padding) var(--zy-space-7);
+  }
+}
+.legacy-root .page-head {
+  align-items: flex-start;
+  padding-top: var(--zy-space-6);
+  margin-bottom: var(--zy-space-4);
+}
+.legacy-root .page-head p {
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+}
+/* 英文小字眉题、面包屑：外壳已经给出当前位置，旧页面内不再重复 */
+.legacy-root .eyebrow,
+.legacy-root .section-kicker,
+.legacy-root .breadcrumb {
+  display: none;
+}
+
+/* 4 按钮：三级的外观；危险按钮不再用红色区分 */
+.legacy-root .btn {
+  min-height: var(--zy-control-height);
+  padding: var(--zy-none) var(--zy-space-4);
+  border: var(--zy-border-width) solid var(--zy-color-border-control);
+  border-radius: var(--zy-radius-control);
+  background: var(--zy-color-surface);
+  color: var(--zy-color-text);
+  font-size: var(--zy-font-body);
+  font-weight: var(--zy-weight-medium);
+  box-shadow: var(--zy-shadow-none);
+}
+.legacy-root .btn:hover {
+  border-color: var(--zy-color-border-strong);
+  background: var(--zy-color-surface);
+  box-shadow: var(--zy-shadow-none);
+}
+.legacy-root .btn-primary,
+.legacy-root .btn-primary:hover {
+  border-color: var(--zy-color-accent);
+  background: var(--zy-color-accent);
+  color: var(--zy-color-text-inverse);
+}
+.legacy-root .btn-primary:hover {
+  border-color: var(--zy-color-accent-hover);
+  background: var(--zy-color-accent-hover);
+}
+.legacy-root .btn-ghost,
+.legacy-root .btn-ghost:hover {
+  border-color: var(--zy-transparent);
+  background: var(--zy-transparent);
+}
+.legacy-root .btn-ghost:hover {
+  background: var(--zy-color-hover);
+}
+.legacy-root .btn-danger {
+  border-color: var(--zy-color-border-control);
+  background: var(--zy-color-surface);
+  color: var(--zy-color-text);
+}
+
+/* 5 卡片与指标：细边白面，去阴影、去毛玻璃；大数字改黑体 36 */
+.legacy-root .card,
+.legacy-root .metric-grid {
+  border: var(--zy-border-width) solid var(--zy-color-border);
+  border-radius: var(--zy-radius-card);
+  background: var(--zy-color-surface);
+  box-shadow: var(--zy-shadow-none);
+  backdrop-filter: none;
+}
+.legacy-root .stat strong {
+  font-family: var(--zy-font-family);
+  font-size: var(--zy-font-display);
+  line-height: var(--zy-line-display);
+  font-weight: var(--zy-weight-heading);
+  letter-spacing: normal;
+  color: var(--zy-color-text);
+}
+
+/* 6 最小字号：正文类 14，次要类 12 */
+.legacy-root .table,
+.legacy-root .input,
+.legacy-root .select,
+.legacy-root textarea,
+.legacy-root .form-field,
+.legacy-root .toast,
+.legacy-root .meta-list,
+.legacy-root .check-row,
+.legacy-root .step-list > div,
+.legacy-root .empty p,
+.legacy-root .tab {
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+}
+.legacy-root .badge,
+.legacy-root .stat > span,
+.legacy-root .stat small,
+.legacy-root .form-field > label,
+.legacy-root .guidance-note,
+.legacy-root small,
+.legacy-root .small {
+  font-size: var(--zy-font-caption);
+  line-height: var(--zy-line-caption);
+}
+
+/* 7 表格、输入、标签、页签 */
+.legacy-root .table th {
+  background: var(--zy-color-surface-sunken);
+  color: var(--zy-color-text-secondary);
+  font-weight: var(--zy-weight-medium);
+}
+.legacy-root .table td {
+  border-bottom-color: var(--zy-color-border);
+}
+.legacy-root .table a,
+.legacy-root .table .title-link,
+.legacy-root .entity-link {
+  color: var(--zy-color-link);
+}
+.legacy-root .input,
+.legacy-root .select,
+.legacy-root textarea {
+  border-color: var(--zy-color-border-control);
+  border-radius: var(--zy-radius-control);
+  background-color: var(--zy-color-surface);
+}
+.legacy-root .input,
+.legacy-root .select {
+  min-height: var(--zy-control-height);
+}
+.legacy-root .input:focus,
+.legacy-root .select:focus,
+.legacy-root textarea:focus {
+  border-color: var(--zy-color-border-strong);
+  outline: var(--zy-focus-width) solid var(--zy-color-focus);
+  outline-offset: var(--zy-focus-offset);
+}
+.legacy-root .badge {
+  border-radius: var(--zy-radius-tag);
+}
+.legacy-root .badge.red,
+.legacy-root .badge.brand,
+.legacy-root .badge.purple {
+  background: var(--zy-color-hover); /* 品牌红与紫色标签退为中性；真正表示“不符、失败”的保留 .danger */
+  color: var(--zy-color-icon);
+}
+.legacy-root .tab.active {
+  color: var(--zy-color-text); /* 页签不染强调色 */
+  font-weight: var(--zy-weight-heading);
+}
+.legacy-root .tab.active::after {
+  background: var(--zy-color-text);
+}
+.legacy-root .guidance-note {
+  border-left-color: var(--zy-color-border-control);
+  background: var(--zy-color-surface-sunken);
+  color: var(--zy-color-text-secondary);
+}
+
+/* 8 对话框：去模糊与大圆角 */
+.legacy-root .modal-backdrop {
+  background: var(--zy-overlay);
+  backdrop-filter: none;
+}
+.legacy-root .modal {
+  border: var(--zy-none);
+  border-radius: var(--zy-radius-panel);
+  background: var(--zy-color-surface);
+  box-shadow: var(--zy-shadow-lg);
+}

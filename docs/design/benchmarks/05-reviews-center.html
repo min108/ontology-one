@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>审核中心 · 知元界面基准 05</title>
+    <link rel="stylesheet" href="../tokens-v2.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 页面形态：列表加详情。左：收件箱；右：当前一项的内容、出处、提交人；动作固定在详情栏底部。 */
+      .rv-filter {
+        margin-left: auto;
+      }
+      .rv-ok {
+        color: var(--zy-success-500);
+      }
+      .rv-checks {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(var(--zy-menu-min), 1fr));
+        gap: var(--zy-gap-tight);
+      }
+      .rv-checks li {
+        display: flex;
+        align-items: center;
+        gap: var(--zy-space-2);
+      }
+      .rv-empty {
+        flex: 1;
+        border: var(--zy-border-width) solid var(--zy-color-border);
+        border-radius: var(--zy-radius-card);
+        background: var(--zy-color-surface);
+      }
+    </style>
+  </head>
+  <body data-ws="govern" data-item="审核中心" data-user="陈静" data-role="审核官" data-form="split">
+    <main class="zy-main">
+      <div class="zy-page">
+        <header class="zy-head">
+          <div class="zy-head__titlerow"><h1 class="zy-title">审核中心</h1></div>
+          <div class="zy-head__actions">
+            <a class="zy-btn zy-btn--text" href="#">看已审核的</a>
+          </div>
+          <p class="zy-head__lead" data-when="default return blocked">
+            <b>12 项等你审核</b>，其中 1 项是你自己提交的，要请别人审核。
+          </p>
+          <p class="zy-head__lead" data-when="empty">现在没有要审核的内容。</p>
+        </header>
+
+        <div class="zy-body">
+          <div class="zy-split" data-when="default return blocked">
+            <!-- ── 左栏：收件箱 ── -->
+            <section class="zy-pane" aria-label="待审核">
+              <div class="zy-pane__head">
+                <h2 class="zy-h2">待审核</h2>
+                <span class="zy-secondary">12 项</span>
+                <span class="zy-input rv-filter">全部种类<i data-icon="chev-down"></i></span>
+              </div>
+              <div class="zy-pane__body zy-pane__body--list">
+                <a class="zy-pick" data-when="default return" data-go="state:blocked">
+                  <span class="zy-pick__name">合同变更审批</span>
+                  <span class="zy-pick__meta">规则 · 你 · 昨天 17:20</span>
+                  <span class="zy-pick__state"><i data-icon="lock"></i>你提交的</span>
+                </a>
+                <a class="zy-pick" aria-current="true" data-when="blocked">
+                  <span class="zy-pick__name">合同变更审批</span>
+                  <span class="zy-pick__meta">规则 · 你 · 昨天 17:20</span>
+                  <span class="zy-pick__state"><i data-icon="lock"></i>你提交的</span>
+                </a>
+                <a class="zy-pick" aria-current="true" data-when="default return">
+                  <span class="zy-pick__name">付款申请时限</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick" data-when="blocked" data-go="state:default">
+                  <span class="zy-pick__name">付款申请时限</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">累计付款上限</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">大额付款复核</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">验收通过日期</span>
+                  <span class="zy-pick__meta">数据项 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">预付款比例上限</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">付款前核对合同与验收资料</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">异议款项暂停支付</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">质保金支付条件</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">付款申请附件</span>
+                  <span class="zy-pick__meta">规则 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">合同金额</span>
+                  <span class="zy-pick__meta">数据项 · 周明远 · 今天 09:58</span>
+                </a>
+                <a class="zy-pick">
+                  <span class="zy-pick__name">累计付款金额</span>
+                  <span class="zy-pick__meta">数据项 · 周明远 · 今天 09:58</span>
+                </a>
+              </div>
+            </section>
+
+            <!-- ── 右栏 · 可以审核的一项 ── -->
+            <section class="zy-pane" aria-label="付款申请时限" data-when="default return">
+              <div class="zy-pane__body">
+                <div class="zy-row zy-row--wrap">
+                  <span class="zy-tag zy-tag--outline"><i data-icon="rule"></i>规则</span>
+                  <span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待审核</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="sparkle"></i>AI 整理 · 已人工核对</span>
+                </div>
+                <div class="zy-list">
+                  <h2 class="zy-h2">付款申请时限</h2>
+                  <p class="zy-statement">验收通过后 30 日内，经办部门要完成付款申请。</p>
+                </div>
+                <dl class="zy-kv">
+                  <dt>适用范围</dt>
+                  <dd>按合同办理的付款</dd>
+                  <dt>条件</dt>
+                  <dd>验收通过</dd>
+                  <dt>提交人</dt>
+                  <dd>周明远，2026-11-17 09:58 提交</dd>
+                  <dt>谁能审核</dt>
+                  <dd>周明远以外的审核人员。提交人不能审核自己的内容。</dd>
+                </dl>
+                <div class="zy-list">
+                  <span class="zy-label">出处</span>
+                  <blockquote class="zy-quote">验收通过后 30 日内，经办部门应完成付款申请。</blockquote>
+                  <p><a class="zy-link" href="#">《【演示】付款核对制度》第二条</a></p>
+                </div>
+                <div class="zy-list" data-view="pro">
+                  <span class="zy-label">五项检查</span>
+                  <ul class="rv-checks">
+                    <li><i data-icon="check-circle" class="rv-ok"></i>出处可定位</li>
+                    <li><i data-icon="check-circle" class="rv-ok"></i>口径无歧义</li>
+                    <li><i data-icon="check-circle" class="rv-ok"></i>条件完整</li>
+                    <li><i data-icon="check-circle" class="rv-ok"></i>关系经审定</li>
+                    <li><i data-icon="check-circle" class="rv-ok"></i>版本可还原</li>
+                  </ul>
+                </div>
+                <div class="zy-list" data-view="pro">
+                  <span class="zy-label">与目录里的现有内容</span>
+                  <p>新增。没有同名或相似的规则。把握程度：高把握。</p>
+                </div>
+              </div>
+              <!-- 动作条 · 默认：这一栏唯一的主要按钮 -->
+              <div class="zy-pane__foot" data-when="default">
+                <button class="zy-btn zy-btn--primary" type="button">通过并发布</button>
+                <button class="zy-btn" type="button" data-go="state:return">退回</button>
+                <span class="zy-spacer"></span>
+                <span class="zy-caption">发布后，应用助手就能引用这一条</span>
+              </div>
+              <!-- 动作条 · 退回要填理由 -->
+              <div class="zy-pane__foot zy-pane__foot--stack" data-when="return">
+                <label class="zy-field">
+                  <span>退回理由</span>
+                  <textarea class="zy-textarea is-focus" rows="2">请写明“30 日”是自然日还是工作日，原文没有说明。</textarea>
+                </label>
+                <div class="zy-row">
+                  <button class="zy-btn zy-btn--primary" type="button">确认退回</button>
+                  <button class="zy-btn zy-btn--text" type="button" data-go="state:default">取消</button>
+                  <span class="zy-spacer"></span>
+                  <span class="zy-caption">退回后，周明远的工作台会出现一件待办</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── 右栏 · 按钮不可用，说明原因 ── -->
+            <section class="zy-pane" aria-label="合同变更审批" data-when="blocked">
+              <div class="zy-pane__body">
+                <div class="zy-row zy-row--wrap">
+                  <span class="zy-tag zy-tag--outline"><i data-icon="rule"></i>规则</span>
+                  <span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待审核</span>
+                </div>
+                <div class="zy-list">
+                  <h2 class="zy-h2">合同变更审批</h2>
+                  <p class="zy-statement">合同金额变更超过 10% 的，要重新履行审批手续。</p>
+                </div>
+                <dl class="zy-kv">
+                  <dt>适用范围</dt>
+                  <dd>已签订的合同</dd>
+                  <dt>条件</dt>
+                  <dd>变更金额超过原合同金额的 10%</dd>
+                  <dt>提交人</dt>
+                  <dd>陈静（你），2026-11-16 17:20 提交</dd>
+                </dl>
+                <div class="zy-list">
+                  <span class="zy-label">出处</span>
+                  <blockquote class="zy-quote">合同金额变更超过原合同金额 10% 的，应重新履行审批手续。</blockquote>
+                  <p><a class="zy-link" href="#">《合同管理办法》第十四条</a></p>
+                </div>
+              </div>
+              <div class="zy-pane__foot zy-pane__foot--stack">
+                <div class="zy-note">
+                  <i data-icon="lock"></i>
+                  <p><b>这一条由你提交，不能自己审核。</b>可以请赵立新审核；管理员也不能代替。</p>
+                </div>
+                <div class="zy-row">
+                  <button class="zy-btn zy-btn--primary" type="button" disabled>通过并发布</button>
+                  <button class="zy-btn" type="button" disabled>退回</button>
+                  <span class="zy-spacer"></span>
+                  <button class="zy-btn zy-btn--text" type="button">撤回这次提交</button>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ── 空：没有待审核内容 ── -->
+          <div class="rv-empty" data-when="empty">
+            <div class="zy-state">
+              <i data-icon="check-circle" class="zy-icon--xl"></i>
+              <h2 class="zy-state__title">都审完了</h2>
+              <p class="zy-state__desc">建设人员提交审核后，内容会出现在这里。</p>
+              <div class="zy-state__actions"><a class="zy-btn" href="#">看已审核的</a></div>
+            </div>
+          </div>
+
+          <div class="zy-nextstep" role="status" data-when="default return blocked">
+            <ol class="zy-steps zy-steps--mini" aria-label="第 3 步，共 5 步">
+              <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>交进来</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>看一眼</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step zy-step--now" aria-current="step"><i class="zy-step__n">3</i><span>点通过</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">4</i><span>问一个问题</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">5</i><span>出一份报告</span></li>
+            </ol>
+            <p class="zy-nextstep__text"><b>下一步：</b>发布后，到应用助手问一个问题，看它能不能引用这些内容。</p>
+            <a class="zy-btn zy-btn--text" href="#">去应用助手<i data-icon="arrow-right"></i></a>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script>
+      window.BM = {
+        states: [
+          ['default', '默认'],
+          ['return', '退回，填理由'],
+          ['blocked', '按钮不可用'],
+          ['empty', '没有待审核'],
+        ],
+        views: true,
+      };
+    </script>
+    <script src="assets/base.js"></script>
+  </body>
+</html>

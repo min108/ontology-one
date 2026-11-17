@@ -1,0 +1,241 @@
+/*
+ * 知元设计令牌 v2（界面基准 v1 配套）
+ *
+ * 用法：实施时以本文件替换 frontend/src/design/tokens.css，并按 UI-BASELINE.md 附录 A 同步 theme.ts。
+ * 约定：
+ *   1. 页面、组件样式只引用“语义令牌”和尺寸令牌；“基础色板”只在本文件内被语义令牌引用。
+ *   2. 标注【新增】的是 v2 新增令牌；标注【改值】的是沿用旧名但取值变化；
+ *      标注【过渡别名】的是为旧代码保留的名字，新代码不得使用，旧引用清零后删除。
+ *   3. 除本文件与 theme.ts 外，任何样式不得出现颜色、字号、圆角、阴影、间距的裸值。
+ */
+:root {
+  /* ───────── 基础色板：中性色（冷白底、墨色字）【改值】 ───────── */
+  --zy-transparent: transparent;
+  --zy-gray-0: #ffffff; /* 卡片面、顶栏、导航、抽屉 */
+  --zy-gray-25: #f8f9fb; /* 表头、卡片内的次级底 */
+  --zy-gray-50: #f1f3f6; /* 页面底（冷白） */
+  --zy-gray-100: #e9ecf1; /* 悬停底、选中底、禁用底 */
+  --zy-gray-200: #dde2e9; /* 分隔线、卡片边 */
+  --zy-gray-300: #c5ccd6; /* 控件边、次要按钮边 */
+  --zy-gray-400: #98a1ae; /* 仅用于装饰性图形与占位骨架，不用于文字 */
+  --zy-gray-500: #6b7582; /* 输入占位文字（白底 4.67:1） */
+  --zy-gray-600: #5b6572; /* 次要文字（白底 5.92:1，冷白底 5.32:1） */
+  --zy-gray-700: #3a434f; /* 图标、标签文字 */
+  --zy-gray-800: #232a33; /* 墨色控件悬停 */
+  --zy-gray-900: #12161b; /* 正文墨色（冷白底 16.3:1） */
+
+  /* ───────── 基础色板：品牌红（唯一强调色） ───────── */
+  --zy-brand-50: #fbeef0; /* 需要决定的浅底 */
+  --zy-brand-100: #f4d5da; /* 【新增】浅底上的边 */
+  --zy-brand-500: #a51c30; /* 强调色本体；白字对比 7.48:1 */
+  --zy-brand-600: #8a1728; /* 悬停 */
+  --zy-brand-700: #741220; /* 【新增】按下 */
+
+  /* ───────── 基础色板：状态色（只用于状态，须配图标和文字，面积小） ───────── */
+  --zy-success-50: #e7f4ed; /* 【改值】 */
+  --zy-success-500: #1b7a4a; /* 【改值】图标 */
+  --zy-success-700: #17694a; /* 【新增】浅底上的文字 5.88:1 */
+  --zy-warning-50: #fbf2df; /* 【改值】 */
+  --zy-warning-500: #b7791f; /* 图标 */
+  --zy-warning-700: #8a5a12; /* 【新增】浅底上的文字 5.31:1 */
+  --zy-danger-50: #fbecea;
+  --zy-danger-500: #c2362b; /* 图标 */
+  --zy-danger-700: #a32a21; /* 【新增】浅底上的文字 6.28:1 */
+  --zy-info-50: #ecf1f6; /* 【新增】提示浅底（钢蓝灰，不是交互色） */
+  --zy-info-500: #3a5a7e; /* 【新增】提示图标与文字 6.28:1 */
+  --zy-mark-bg: #fff3c4; /* 【新增】原文逐字高亮底；不用强调色 */
+
+  /* ───────── 语义令牌【新增】：页面与组件只用这一层 ───────── */
+  --zy-color-page: var(--zy-gray-50);
+  --zy-color-surface: var(--zy-gray-0);
+  --zy-color-surface-sunken: var(--zy-gray-25);
+  --zy-color-hover: var(--zy-gray-100);
+  --zy-color-selected: var(--zy-gray-100); /* 选中底色不染强调色 */
+  --zy-color-text: var(--zy-gray-900);
+  --zy-color-text-secondary: var(--zy-gray-600);
+  --zy-color-text-placeholder: var(--zy-gray-500);
+  --zy-color-text-disabled: var(--zy-gray-600); /* 禁用靠灰底区分，文字仍可读 */
+  --zy-color-text-inverse: var(--zy-gray-0);
+  --zy-color-icon: var(--zy-gray-700);
+  --zy-color-skeleton: var(--zy-gray-100);
+  --zy-color-border: var(--zy-gray-200);
+  --zy-color-border-control: var(--zy-gray-300);
+  --zy-color-border-strong: var(--zy-gray-900); /* 悬停与选中的控件边、页签下划线 */
+  --zy-color-link: var(--zy-gray-900); /* 链接为墨色加下划线，不染强调色 */
+  --zy-color-control-checked: var(--zy-gray-900); /* 复选、单选、开关、分段选择的选中态 */
+  --zy-color-accent: var(--zy-brand-500); /* 只做四件事，见 UI-BASELINE §4.2 */
+  --zy-color-accent-hover: var(--zy-brand-600);
+  --zy-color-accent-active: var(--zy-brand-700);
+  --zy-color-accent-soft: var(--zy-brand-50);
+  --zy-color-accent-soft-border: var(--zy-brand-100);
+  --zy-color-focus: var(--zy-brand-500); /* 键盘焦点环 */
+
+  /* ───────── 过渡别名：靛青交互色与紫色智能色已取消 ─────────
+     旧代码中的 primary / ai 引用在迁移完成前落到墨色与中性色上，
+     不会再出现第二种、第三种强调色。主要按钮改用 --zy-color-accent。 */
+  --zy-primary-50: var(--zy-gray-100); /* 【过渡别名】 */
+  --zy-primary-100: var(--zy-gray-100); /* 【过渡别名】 */
+  --zy-primary-200: var(--zy-gray-200); /* 【过渡别名】 */
+  --zy-primary-300: var(--zy-gray-300); /* 【过渡别名】 */
+  --zy-primary-400: var(--zy-gray-700); /* 【过渡别名】 */
+  --zy-primary-500: var(--zy-gray-900); /* 【过渡别名】 */
+  --zy-primary-600: var(--zy-gray-800); /* 【过渡别名】 */
+  --zy-primary-700: var(--zy-gray-900); /* 【过渡别名】 */
+  --zy-ai-50: var(--zy-gray-100); /* 【过渡别名】AI 内容改用图标加文字标识 */
+  --zy-ai-500: var(--zy-gray-700); /* 【过渡别名】 */
+  --zy-ai-600: var(--zy-gray-900); /* 【过渡别名】 */
+
+  /* ───────── 种类色：只用于图谱节点与图表图例，页面内的种类标签用中性色加图标 ───────── */
+  --zy-kind-organization: #3d5a80;
+  --zy-kind-position: #5c7aa8;
+  --zy-kind-person: #7c93b8;
+  --zy-kind-party: #8a6fb0;
+  --zy-kind-material: #6b7582; /* 【改值】随中性色 */
+  --zy-kind-dataset: #2f8f9d;
+  --zy-kind-term: #5b6572; /* 【改值】随中性色 */
+  --zy-kind-object-type: #2b6cb8;
+  --zy-kind-link-type: #4f5bd5;
+  --zy-kind-data: #178f8f;
+  --zy-kind-metric: #b7791f;
+  --zy-kind-rule: #94506b; /* 【改值】原为品牌红，让出强调色 */
+  --zy-kind-skill: #7a4fb5;
+  --zy-kind-process: #5e7d3a;
+  --zy-kind-knowledge: #2e8b57;
+  --zy-kind-event: #c2552d;
+  --zy-kind-collection: #6b7582; /* 【改值】随中性色 */
+  --zy-chart-1: #3a5a7e; /* 【改值】图表首色改为钢蓝，不用旧靛青 */
+  --zy-chart-2: #2e8b57;
+  --zy-chart-3: #b7791f;
+  --zy-chart-4: #7a4fb5;
+  --zy-chart-5: #c2552d;
+  --zy-chart-6: #178f8f;
+  --zy-chart-7: #94506b; /* 【改值】原为品牌红 */
+  --zy-chart-8: #6b7582; /* 【改值】随中性色 */
+
+  /* ───────── 字体 ───────── */
+  --zy-font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --zy-font-mono: ui-monospace, 'Cascadia Mono', consolas, monospace; /* 只在“技术详情”里用 */
+  --zy-font-serif: 'Noto Serif SC', serif; /* 只用于报告封面与领导导览；业务页面不用 */
+  --zy-weight-normal: 400;
+  --zy-weight-medium: 500; /* 【新增】需补 Noto Sans SC 500 字重文件；补齐前回落为 400 */
+  --zy-weight-heading: 700;
+
+  /* ───────── 字号阶梯：全站只有五级 ───────── */
+  --zy-font-caption: 12px; /* 次要：标签、时间、表格辅助信息、标注 */
+  --zy-line-caption: 18px;
+  --zy-font-body: 14px; /* 【改值】正文、表格、表单、按钮 */
+  --zy-line-body: 22px; /* 【改值】 */
+  --zy-font-title: 16px; /* 【新增】卡片标题、区块标题、对话正文 */
+  --zy-line-title: 24px; /* 【新增】 */
+  --zy-font-heading: 20px; /* 【新增】页面标题、对象页的一句话 */
+  --zy-line-heading: 28px; /* 【新增】 */
+  --zy-font-display: 36px; /* 首屏结论与关键数字 */
+  --zy-line-display: 44px; /* 【改值】 */
+  /* 过渡别名：旧十级字号并入五级，新代码不得使用 */
+  --zy-font-small: var(--zy-font-caption); /* 【过渡别名】原 13 */
+  --zy-line-small: var(--zy-line-caption);
+  --zy-font-dense: var(--zy-font-body); /* 【过渡别名】原 14 */
+  --zy-line-dense: var(--zy-line-body);
+  --zy-font-lead: var(--zy-font-title); /* 【过渡别名】原 16 */
+  --zy-line-lead: var(--zy-line-title);
+  --zy-font-h4: var(--zy-font-title); /* 【过渡别名】原 17 */
+  --zy-line-h4: var(--zy-line-title);
+  --zy-font-h3: var(--zy-font-heading); /* 【过渡别名】原 20 */
+  --zy-line-h3: var(--zy-line-heading);
+  --zy-font-h2: var(--zy-font-heading); /* 【过渡别名】原 24 */
+  --zy-line-h2: var(--zy-line-heading);
+  --zy-font-h1: var(--zy-font-heading); /* 【过渡别名】原 28 */
+  --zy-line-h1: var(--zy-line-heading);
+
+  /* ───────── 间距：4px 基准 ─────────
+     纵向（块与块之间）只允许 space-2 / space-4 / space-7 三档，见下方 gap 令牌；
+     其余档位只用于控件内边距和横向排布。 */
+  --zy-space-half: 2px; /* 【新增】图标与文字的微调、标签内边距 */
+  --zy-space-1: 4px;
+  --zy-space-2: 8px;
+  --zy-space-3: 12px;
+  --zy-space-4: 16px;
+  --zy-space-5: 20px;
+  --zy-space-6: 24px;
+  --zy-space-7: 32px;
+  --zy-space-8: 40px;
+  --zy-space-9: 48px;
+  --zy-space-10: 64px;
+  --zy-gap-tight: var(--zy-space-2); /* 【新增】8：同一组内的行与行 */
+  --zy-gap: var(--zy-space-4); /* 【新增】16：同一区块内的组与组、卡片与卡片 */
+  --zy-gap-section: var(--zy-space-7); /* 【新增】32：区块与区块 */
+
+  /* ───────── 圆角 ───────── */
+  --zy-radius-tag: 4px;
+  --zy-radius-control: 6px;
+  --zy-radius-card: 10px;
+  --zy-radius-panel: 14px; /* 对话框 */
+  --zy-radius-pill: 999px;
+  --zy-radius-none: 0;
+
+  /* ───────── 阴影：卡片默认无阴影，用 1px 边 ───────── */
+  --zy-shadow-sm: 0 1px 2px rgb(18 22 27 / 0.06); /* 悬停的可点卡片 */
+  --zy-shadow-md: 0 4px 14px rgb(18 22 27 / 0.08); /* 下拉、浮层、下一步条 */
+  --zy-shadow-lg: 0 14px 36px rgb(18 22 27 / 0.14); /* 抽屉、对话框、助手停靠栏覆盖态 */
+  --zy-shadow-none: none;
+  --zy-overlay: rgb(18 22 27 / 0.35);
+
+  /* ───────── 外壳与页面骨架 ───────── */
+  --zy-topbar-height: 56px;
+  --zy-nav-width: 216px; /* 导航展开：一级 6 项，当前工作区展开二级 */
+  --zy-nav-collapsed: 72px; /* 导航收起：图标加 12px 文字 */
+  --zy-nav-item-height: 36px; /* 【新增】 */
+  --zy-nav-collapsed-item: 56px; /* 【新增】 */
+  --zy-assistant-width: 420px;
+  --zy-assistant-dock-min: 1680px; /* 【新增】视口不小于此值时停靠挤压正文，小于时覆盖 */
+  --zy-page-padding: 24px; /* 视口 < 1440 */
+  --zy-page-wide-padding: 32px; /* 视口 ≥ 1440 */
+  --zy-content-max: 1440px; /* 【新增】工作台、列表、三栏页的内容最大宽 */
+  --zy-reading-width: 1120px; /* 【改值】档案页与表单页的内容最大宽（原 1280） */
+  --zy-rail-width: 320px; /* 【新增】档案页右栏 */
+  --zy-pane-list: 320px; /* 【新增】列表加详情、三栏页的左栏 */
+  --zy-pane-side: 320px; /* 【新增】三栏页的右栏 */
+  --zy-drawer-width: 480px; /* 【新增】依据、来源、技术详情 */
+  --zy-drawer-wide: 640px; /* 【新增】原文查看、版本对比 */
+  --zy-dialog-width: 480px; /* 【改值】确认对话框（原 640） */
+  --zy-popover-width: 320px; /* 【新增】机构选择器、数字来源浮层 */
+  --zy-menu-min: 160px; /* 【新增】下拉菜单最小宽 */
+  --zy-search-width: 280px; /* 【新增】工具条搜索框 */
+  --zy-omnibox-width: 440px; /* 【新增】顶栏万能入口 */
+  --zy-secondary-width: 220px; /* 【过渡别名】二级页签横条已取消，旧次级导航退役后删除 */
+
+  /* ───────── 控件与行 ───────── */
+  --zy-control-height: 36px; /* 按钮、输入、选择 */
+  --zy-control-height-sm: 28px; /* 【新增】表格行内文字按钮、标签页内的小控件 */
+  --zy-tag-height: 24px; /* 【新增】 */
+  --zy-row-comfortable: 48px;
+  --zy-row-compact: 40px; /* 仅专业视图可选 */
+  --zy-table-header: 44px; /* 【新增】 */
+  --zy-fold-height: 48px; /* 【新增】折叠行 */
+  --zy-nextstep-height: 56px; /* 【新增】下一步条 */
+  --zy-col-short: 96px; /* 【新增】表格列宽档位：短文字（版本、数量） */
+  --zy-col-tag: 128px; /* 【新增】表格列宽档位：标签（种类、状态） */
+  --zy-col-time: 168px; /* 【新增】表格列宽档位：日期时间、行内操作 */
+  --zy-col-text: 28%; /* 【新增】表格列宽档位：次要长文字（出处）；名称列占剩余宽度 */
+  --zy-icon-size: 16px; /* 【改值】行内图标（原 18） */
+  --zy-icon-size-lg: 20px; /* 【新增】导航、顶栏图标 */
+  --zy-icon-size-xl: 32px; /* 【新增】状态块图标 */
+  --zy-avatar-size: 28px; /* 【新增】 */
+  --zy-indicator-width: 3px; /* 【新增】当前位置指示条 */
+  --zy-dot-size: 8px; /* 【新增】待办圆点、步骤点 */
+  --zy-step-size: 24px; /* 【新增】步骤圆 */
+  --zy-border-width: 1px;
+  --zy-focus-width: 2px;
+  --zy-focus-offset: 2px; /* 【新增】焦点环与控件之间留白，红底按钮上也看得见 */
+
+  /* ───────── 动效与层级 ───────── */
+  --zy-duration-hover: 120ms;
+  --zy-duration-panel: 200ms;
+  --zy-ease: ease-out;
+  --zy-layer-nav: 100;
+  --zy-layer-sticky: 200; /* 【新增】下一步条、详情动作条 */
+  --zy-layer-overlay: 1000;
+  --zy-content-min: 0;
+  --zy-full: 100%;
+  --zy-none: 0;
+}

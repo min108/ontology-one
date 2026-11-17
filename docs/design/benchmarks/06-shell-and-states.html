@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>外壳与组件状态板 · 知元界面基准 06</title>
+    <link rel="stylesheet" href="../tokens-v2.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 状态板：每种状态并排画出，这张图不分层。bd- 开头的类只为排版状态板，不属于产品。 */
+      .bd-grid {
+        display: grid;
+        gap: var(--zy-gap);
+        align-items: start;
+      }
+      .bd-grid--2 {
+        grid-template-columns: repeat(2, minmax(var(--zy-content-min), 1fr));
+      }
+      .bd-grid--3 {
+        grid-template-columns: repeat(3, minmax(var(--zy-content-min), 1fr));
+      }
+      .bd-grid--4 {
+        grid-template-columns: repeat(4, minmax(var(--zy-content-min), 1fr));
+      }
+      .bd-grid--nav {
+        grid-template-columns: var(--zy-nav-width) auto minmax(var(--zy-content-min), 1fr);
+      }
+      .bd-frame {
+        position: relative;
+        border: var(--zy-border-width) solid var(--zy-color-border);
+        border-radius: var(--zy-radius-card);
+        background: var(--zy-color-page);
+        overflow: hidden;
+      }
+      .bd-frame--pad {
+        padding: var(--zy-none) var(--zy-space-6);
+      }
+      .bd-frame--tall {
+        height: var(--zy-bd-tall);
+      }
+      .bd-frame--center {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--zy-space-6);
+      }
+      :root {
+        --zy-bd-tall: calc(var(--zy-popover-width) + var(--zy-space-10));
+      }
+      .bd-frame .zy-topbar {
+        --nav-w: var(--zy-nav-width);
+        height: var(--zy-topbar-height);
+      }
+      .bd-frame .zy-nav {
+        height: var(--zy-full);
+        border-right: var(--zy-none);
+      }
+      .bd-frame .zy-drawer,
+      .bd-frame .zy-mask {
+        position: absolute;
+      }
+      .bd-frame .zy-drawer {
+        width: 60%;
+      }
+      .bd-pop {
+        margin: var(--zy-space-2) var(--zy-none) var(--zy-space-4) calc(var(--zy-nav-width) + var(--zy-space-4));
+      }
+      .bd-fly {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--zy-space-2);
+      }
+      .bd-fly .zy-menu {
+        margin-top: calc(var(--zy-nav-collapsed-item) + var(--zy-space-4));
+      }
+      .bd-collapsed {
+        width: var(--zy-nav-collapsed);
+      }
+      .bd-hide {
+        visibility: hidden;
+      }
+      .bd-static {
+        position: static;
+        box-shadow: var(--zy-shadow-none);
+      }
+      .bd-cap {
+        color: var(--zy-color-text-secondary);
+        font-size: var(--zy-font-caption);
+        line-height: var(--zy-line-caption);
+      }
+      .bd-btns {
+        display: grid;
+        grid-template-columns: max-content repeat(5, max-content);
+        gap: var(--zy-space-4) var(--zy-space-7);
+        align-items: center;
+      }
+      .bd-rules {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(var(--zy-content-min), 1fr));
+        column-gap: var(--zy-gap-section);
+      }
+      .bd-grid--stretch {
+        align-items: stretch;
+      }
+      .bd-menuwrap {
+        display: flex;
+        justify-content: flex-end;
+        padding: var(--zy-none) var(--zy-space-4) var(--zy-space-4);
+      }
+      .bd-type {
+        display: grid;
+        grid-template-columns: max-content max-content minmax(var(--zy-content-min), 1fr);
+        column-gap: var(--zy-space-7);
+        row-gap: var(--zy-space-3);
+        align-items: baseline;
+      }
+      .bd-t36 {
+        font-size: var(--zy-font-display);
+        line-height: var(--zy-line-display);
+        font-weight: var(--zy-weight-heading);
+      }
+      .bd-t20 {
+        font-size: var(--zy-font-heading);
+        line-height: var(--zy-line-heading);
+        font-weight: var(--zy-weight-heading);
+      }
+      .bd-colors {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(var(--zy-content-min), 1fr));
+        gap: var(--zy-gap);
+      }
+      .bd-swatch {
+        display: flex;
+        flex-direction: column;
+        gap: var(--zy-space-1);
+      }
+      .bd-swatch i {
+        height: var(--zy-space-9);
+        border: var(--zy-border-width) solid var(--zy-color-border);
+        border-radius: var(--zy-radius-control);
+      }
+      .bd-c1 {
+        background: var(--zy-color-page);
+      }
+      .bd-c2 {
+        background: var(--zy-color-surface);
+      }
+      .bd-c3 {
+        background: var(--zy-color-text);
+      }
+      .bd-c4 {
+        background: var(--zy-color-text-secondary);
+      }
+      .bd-c5 {
+        background: var(--zy-color-border);
+      }
+      .bd-c6 {
+        background: var(--zy-color-accent);
+      }
+    </style>
+  </head>
+  <body data-ws="admin" data-item="系统信息" data-user="周明远" data-role="建设人员">
+    <main class="zy-main">
+      <div class="zy-page">
+        <header class="zy-head">
+          <div class="zy-head__titlerow"><h1 class="zy-title">外壳与组件状态板</h1></div>
+          <div class="zy-head__actions"></div>
+          <p class="zy-head__lead">所有页面共用这一套外壳和组件。<b>画出的每种状态都要实现</b>，不留空白。</p>
+        </header>
+
+        <div class="zy-body">
+          <!-- ══ 1 外壳 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">1　顶栏与机构选择器</h2>
+            <div class="bd-frame">
+              <div id="bd-topbar"></div>
+              <div class="zy-popover bd-pop" role="dialog" aria-label="机构、身份与范围">
+                <div class="zy-list">
+                  <span class="zy-label">机构</span>
+                  <div class="zy-menu__item is-hover"><i data-icon="check"></i>集团总部</div>
+                  <div class="zy-menu__item"><i data-icon="check" class="bd-hide"></i>办公厅</div>
+                  <div class="zy-menu__item"><i data-icon="check" class="bd-hide"></i>财务部</div>
+                </div>
+                <dl class="zy-kv">
+                  <dt>身份</dt>
+                  <dd>建设人员</dd>
+                  <dt>查看范围</dt>
+                  <dd>本机构</dd>
+                </dl>
+                <p class="zy-caption">切换机构会放弃没保存的修改。</p>
+              </div>
+            </div>
+            <p class="bd-cap">
+              顶栏高 56。机构、身份、范围并入机构选择器，不再单独占一条。机构选择器的文字与正文左边线对齐。计数用墨色，不用强调色。
+            </p>
+          </section>
+
+          <section class="zy-section">
+            <h2 class="zy-h2">2　左侧导航：展开与收起</h2>
+            <div class="bd-grid bd-grid--nav">
+              <div class="bd-frame" id="bd-nav-open"></div>
+              <div class="bd-fly">
+                <div class="bd-frame bd-collapsed" id="bd-nav-closed"></div>
+                <div class="zy-menu" role="menu" aria-label="建设">
+                  <div class="zy-menu__item is-hover">制度整理</div>
+                  <div class="zy-menu__item">素材整理</div>
+                  <div class="zy-menu__item">数据台账导入</div>
+                  <div class="zy-menu__item">数据源管理</div>
+                  <div class="zy-menu__item">经验萃取室</div>
+                  <div class="zy-menu__item">技能开发</div>
+                  <div class="zy-menu__item">专题工作室</div>
+                  <div class="zy-menu__item">我的工作台</div>
+                </div>
+              </div>
+              <ul class="zy-bullets">
+                <li>展开宽 216：六个工作区，当前工作区展开二级；二级页签横条取消。</li>
+                <li>收起宽 72：图标加文字；指到工作区上，二级列表从右侧浮出。</li>
+                <li>当前位置：浅灰底、粗体，加一条强调色指示条。全屏只有这一处。</li>
+                <li>新旧页面的入口在同一个列表里，不做任何区分。</li>
+                <li>三栏页和列表加详情页在视口不足 1440 时自动收起；其余页面记住用户的选择。</li>
+              </ul>
+            </div>
+          </section>
+
+          <!-- ══ 3 标题区 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">3　标题区的三种变体</h2>
+            <div class="bd-grid bd-grid--3">
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--pad">
+                  <header class="zy-head">
+                    <div class="zy-head__titlerow"><h3 class="zy-title">工作台</h3></div>
+                    <div class="zy-head__actions"><button class="zy-btn zy-btn--primary" type="button">去核对</button></div>
+                    <p class="zy-head__kicker">等你处理</p>
+                    <p class="zy-head__display">4 条内容等你核对</p>
+                    <p class="zy-head__lead">8 条高把握已替你勾选。</p>
+                  </header>
+                </div>
+                <p class="bd-cap">工作区页：标题 20，结论 36，再加一句 14 的补充。</p>
+              </div>
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--pad">
+                  <header class="zy-head">
+                    <div class="zy-head__titlerow"><h3 class="zy-title">本体目录</h3></div>
+                    <div class="zy-head__actions"><button class="zy-btn zy-btn--primary" type="button">交一份制度</button></div>
+                    <p class="zy-head__lead">共 128 项，<b>5 项待审核</b>。</p>
+                  </header>
+                </div>
+                <p class="bd-cap">列表页：标题 20，一句 14 的结论，要紧的数加粗。</p>
+              </div>
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--pad">
+                  <header class="zy-head">
+                    <a class="zy-head__back" href="#"><i data-icon="chev-left"></i>本体目录</a>
+                    <div class="zy-head__titlerow">
+                      <h3 class="zy-title">付款申请时限</h3>
+                      <span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span>
+                    </div>
+                    <div class="zy-head__actions"><button class="zy-btn zy-btn--primary" type="button">问助手</button></div>
+                  </header>
+                </div>
+                <p class="bd-cap">对象页：标题上方一行 12 的返回路径；状态紧跟标题；结论由首屏卡片的一句话承担。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ══ 4 字与色 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">4　字号五级与六个常用色</h2>
+            <div class="bd-grid bd-grid--2">
+              <div class="zy-card">
+                <div class="bd-type">
+                  <span class="bd-t36">4 条</span><span class="bd-cap">36 / 44 · 700</span><span>首屏结论、关键数字</span>
+                  <span class="bd-t20">付款申请时限</span><span class="bd-cap">20 / 28 · 700</span><span>页面标题；对象的一句话用 400</span>
+                  <span class="zy-h2">怎么用</span><span class="bd-cap">16 / 24 · 700</span><span>卡片标题、区块标题</span>
+                  <span>从验收通过那天起算</span><span class="bd-cap">14 / 22 · 400</span><span>正文、表格、表单、按钮（按钮 500）</span>
+                  <span class="zy-caption">今天 09:58</span><span class="bd-cap">12 / 18 · 400</span><span>次要：标签、时间、标注</span>
+                </div>
+              </div>
+              <div class="zy-card">
+                <div class="bd-colors">
+                  <div class="bd-swatch"><i class="bd-c1"></i><span class="bd-cap">页面底</span></div>
+                  <div class="bd-swatch"><i class="bd-c2"></i><span class="bd-cap">卡片面</span></div>
+                  <div class="bd-swatch"><i class="bd-c3"></i><span class="bd-cap">正文</span></div>
+                  <div class="bd-swatch"><i class="bd-c4"></i><span class="bd-cap">次要文字</span></div>
+                  <div class="bd-swatch"><i class="bd-c5"></i><span class="bd-cap">分隔线</span></div>
+                  <div class="bd-swatch"><i class="bd-c6"></i><span class="bd-cap">强调</span></div>
+                </div>
+                <p class="bd-cap">强调色只做四件事：主要动作、需要你决定、当前位置、键盘焦点。一屏不超过三处。链接、页签、选中底、复选开关都用墨色。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ══ 5 按钮 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">5　按钮三级</h2>
+            <div class="zy-card">
+              <div class="bd-btns">
+                <span></span><span class="bd-cap">默认</span><span class="bd-cap">悬停</span><span class="bd-cap">聚焦</span><span class="bd-cap">禁用</span><span class="bd-cap">进行中</span>
+                <span class="zy-label">主要</span>
+                <button class="zy-btn zy-btn--primary" type="button">提交审核</button>
+                <button class="zy-btn zy-btn--primary is-hover" type="button">提交审核</button>
+                <button class="zy-btn zy-btn--primary is-focus" type="button">提交审核</button>
+                <button class="zy-btn zy-btn--primary" type="button" disabled>提交审核</button>
+                <button class="zy-btn zy-btn--primary is-loading" type="button"><i class="zy-spin"></i>提交中</button>
+                <span class="zy-label">次要</span>
+                <button class="zy-btn" type="button">改一改</button>
+                <button class="zy-btn is-hover" type="button">改一改</button>
+                <button class="zy-btn is-focus" type="button">改一改</button>
+                <button class="zy-btn" type="button" disabled>改一改</button>
+                <button class="zy-btn is-loading" type="button"><i class="zy-spin"></i>保存中</button>
+                <span class="zy-label">文字</span>
+                <button class="zy-btn zy-btn--text" type="button">稍后</button>
+                <button class="zy-btn zy-btn--text is-hover" type="button">稍后</button>
+                <button class="zy-btn zy-btn--text is-focus" type="button">稍后</button>
+                <button class="zy-btn zy-btn--text" type="button" disabled>稍后</button>
+                <button class="zy-btn zy-btn--text is-loading" type="button"><i class="zy-spin"></i>处理中</button>
+              </div>
+              <ul class="zy-bullets bd-rules">
+                <li>高 36，圆角 6；表格行内用高 28 的文字按钮。</li>
+                <li>一个区域只有一个主要按钮；整页的主要按钮在标题区右侧。</li>
+                <li>按钮不可用时，在旁边用一句话写明原因。</li>
+                <li>危险操作不用红色区分，靠确认级别（见第 10 节）。</li>
+              </ul>
+            </div>
+          </section>
+
+          <!-- ══ 6 标签 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">6　标签：状态、把握程度、种类、来源标识</h2>
+            <div class="zy-card">
+              <dl class="zy-kv">
+                <dt>状态</dt>
+                <dd class="zy-row zy-row--wrap">
+                  <span class="zy-tag"><i data-icon="edit"></i>草稿</span>
+                  <span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待审核</span>
+                  <span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span>
+                  <span class="zy-tag zy-tag--danger"><i data-icon="return"></i>已退回</span>
+                  <span class="zy-tag"><i data-icon="archive"></i>已归档</span>
+                  <span class="zy-tag zy-tag--info"><i data-icon="clock"></i>整理中</span>
+                </dd>
+                <dt>把握程度</dt>
+                <dd class="zy-row zy-row--wrap">
+                  <span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>高把握</span>
+                  <span class="zy-tag zy-tag--warning"><i data-icon="alert"></i>需核对</span>
+                  <span class="zy-tag"><i data-icon="help"></i>存疑</span>
+                </dd>
+                <dt>种类</dt>
+                <dd class="zy-row zy-row--wrap">
+                  <span class="zy-tag zy-tag--outline"><i data-icon="rule"></i>规则</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="data"></i>数据项</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="skill"></i>技能</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="knowledge"></i>知识经验</span>
+                  <span class="zy-kind"><i data-icon="rule"></i>规则</span>
+                  <span class="bd-cap">表格里不带框</span>
+                </dd>
+                <dt>来源标识</dt>
+                <dd class="zy-row zy-row--wrap">
+                  <span class="zy-tag zy-tag--outline"><i data-icon="sparkle"></i>AI 整理 · 待人工核对</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="sparkle"></i>AI 建议</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="sparkle"></i>真实模型回答</span>
+                  <span class="zy-tag zy-tag--warning"><i data-icon="flask"></i>模拟演示 · 未调用真实模型</span>
+                  <span class="zy-tag zy-tag--warning"><i data-icon="flask"></i>演示数据</span>
+                  <span class="zy-tag zy-tag--outline"><i data-icon="rule"></i>本地规则识别 · 未经智能整理</span>
+                </dd>
+              </dl>
+              <p class="bd-cap">
+                状态一律图标加文字，不单靠颜色。AI 内容不用专门的颜色，用星形图标加“AI 整理 / AI 建议”文字。模拟和演示用提醒色标签，不能与真实结果混淆。
+              </p>
+            </div>
+          </section>
+
+          <!-- ══ 7 表格行内操作、折叠行 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">7　表格行内操作，折叠行</h2>
+            <div class="bd-grid bd-grid--2">
+              <div class="zy-list">
+                <div class="zy-card zy-card--flush">
+                  <table class="zy-table">
+                    <thead>
+                      <tr>
+                        <th>名称</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><a class="zy-table__name" href="#">付款申请时限</a></td>
+                        <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                        <td>
+                          <div class="zy-table__ops">
+                            <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                            <button class="zy-btn zy-btn--text zy-btn--sm is-hover" type="button">更多<i data-icon="chev-down"></i></button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div class="bd-menuwrap">
+                    <div class="zy-menu" role="menu">
+                      <div class="zy-menu__item is-hover">发起修订</div>
+                      <div class="zy-menu__item">复制链接</div>
+                      <div class="zy-menu__sep"></div>
+                      <div class="zy-menu__item">归档</div>
+                    </div>
+                  </div>
+                </div>
+                <p class="bd-cap">一行最多 2 个文字按钮，其余收进“更多”。名称本身就是进入详情的链接。行高 48。</p>
+              </div>
+              <div class="zy-list">
+                <div class="zy-folds">
+                  <details class="zy-fold">
+                    <summary>
+                      <span class="zy-fold__name">关系</span><span class="zy-fold__what">3 条</span><i data-icon="chev-down"></i>
+                    </summary>
+                  </details>
+                  <details class="zy-fold" open>
+                    <summary>
+                      <span class="zy-fold__name">动态</span><span class="zy-fold__what">13 条，最近一次是审核通过</span><i data-icon="chev-down"></i>
+                    </summary>
+                    <div class="zy-fold__body">
+                      <ul class="zy-bullets">
+                        <li>2026-11-17 10:42 · 陈静审核通过并发布</li>
+                        <li>2026-11-17 09:58 · 周明远提交审核</li>
+                        <li>2026-11-17 09:51 · 周明远采纳整理结果</li>
+                      </ul>
+                      <p><a class="zy-link" href="#">其余 10 条</a></p>
+                    </div>
+                  </details>
+                  <details class="zy-fold">
+                    <summary>
+                      <span class="zy-fold__name">技术详情</span><span class="zy-fold__what">编号、原文定位、原始数据</span><i data-icon="chev-down"></i>
+                    </summary>
+                  </details>
+                </div>
+                <p class="bd-cap">行高 48。写明里面有什么、有多少，不写“更多”“详情”。在原位展开，再点收起。技术详情只在专业视图出现。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ══ 8 抽屉、来源浮层 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">8　抽屉，数字来源浮层</h2>
+            <div class="bd-grid bd-grid--2">
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--tall">
+                  <div class="zy-mask"></div>
+                  <aside class="zy-drawer">
+                    <div class="zy-drawer__head">
+                      <h3 class="zy-h2">原文出处</h3>
+                      <span class="zy-spacer"></span>
+                      <button class="zy-btn zy-btn--text" type="button" aria-label="关闭"><i data-icon="x"></i></button>
+                    </div>
+                    <div class="zy-drawer__body">
+                      <p><b>《【演示】付款核对制度》第二条</b></p>
+                      <div class="zy-quote zy-source">
+                        <p><mark>第二条　验收通过后 30 日内，经办部门应完成付款申请。</mark></p>
+                      </div>
+                    </div>
+                    <div class="zy-drawer__foot"><button class="zy-btn" type="button">打开完整原文</button></div>
+                  </aside>
+                </div>
+                <p class="bd-cap">宽 480（原文对照、版本对比用 640）。一次只开一个；再往下一层是替换内容并给返回。Esc 或点暗处关闭，焦点回到触发处。</p>
+              </div>
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--tall bd-frame--center">
+                  <div class="zy-list">
+                    <p>10 月累计付款 <span class="zy-figure">1,286.40 万元</span></p>
+                    <div class="zy-popover" role="dialog" aria-label="数字来源">
+                      <dl class="zy-kv">
+                        <dt>来源</dt>
+                        <dd>合同付款台账</dd>
+                        <dt>时点</dt>
+                        <dd>截至 2026-10-31</dd>
+                        <dt>口径</dt>
+                        <dd>已支付金额合计，不含在途</dd>
+                        <dt>版本</dt>
+                        <dd>口径第 2 版</dd>
+                        <dt>负责人</dt>
+                        <dd>财务部 何敏</dd>
+                      </dl>
+                    </div>
+                  </div>
+                </div>
+                <p class="bd-cap">能点开来源的数字带虚下划线。来源、时点、口径、版本、负责人五项缺一不可；缺项的数字不显示。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ══ 9 四种状态 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">9　空、加载、出错、无权限</h2>
+            <div class="bd-grid bd-grid--4 bd-grid--stretch">
+              <div class="zy-card zy-card--flush">
+                <div class="zy-state">
+                  <i data-icon="file" class="zy-icon--xl"></i>
+                  <h3 class="zy-state__title">还没有报告</h3>
+                  <p class="zy-state__desc">在应用助手完成一次回答，就能生成报告。</p>
+                  <div class="zy-state__actions"><button class="zy-btn" type="button">去应用助手</button></div>
+                </div>
+              </div>
+              <div class="zy-card zy-card--flush" aria-busy="true">
+                <div class="zy-state">
+                  <span class="zy-skel zy-skel--w30"></span>
+                  <span class="zy-skel zy-skel--w90"></span>
+                  <span class="zy-skel zy-skel--w70"></span>
+                  <span class="zy-skel zy-skel--w50"></span>
+                  <p class="zy-state__desc">正在定位原文，第 3 步，共 4 步</p>
+                </div>
+              </div>
+              <div class="zy-card zy-card--flush">
+                <div class="zy-state">
+                  <i data-icon="alert" class="zy-icon--xl"></i>
+                  <h3 class="zy-state__title">这次整理中断了</h3>
+                  <p class="zy-state__desc">已完成的 9 条已保存，剩下 3 条可以继续。</p>
+                  <div class="zy-state__actions">
+                    <button class="zy-btn" type="button">继续整理</button>
+                    <button class="zy-btn zy-btn--text" type="button">看已完成的</button>
+                  </div>
+                </div>
+              </div>
+              <div class="zy-card zy-card--flush">
+                <div class="zy-state">
+                  <i data-icon="lock" class="zy-icon--xl"></i>
+                  <h3 class="zy-state__title">你看不了草稿</h3>
+                  <p class="zy-state__desc">查看草稿需要建设或审核身份，可以找本机构管理员林海开通。</p>
+                  <div class="zy-state__actions"><button class="zy-btn" type="button">返回目录</button></div>
+                </div>
+              </div>
+            </div>
+            <p class="bd-cap">
+              每种状态都是一句话加一个动作，左对齐，不放插图。加载在 300 毫秒内不显示；超过 3 秒写明进行到哪一步。出错先说保住了什么。数值为 0 的区块整体不出现，不显示“0”。
+            </p>
+          </section>
+
+          <!-- ══ 10 确认级别 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">10　确认级别</h2>
+            <div class="bd-grid bd-grid--3">
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--tall bd-frame--center">
+                  <div class="zy-toast" role="status">
+                    已采纳 8 条<button class="zy-btn zy-btn--sm" type="button">撤销</button>
+                  </div>
+                </div>
+                <p class="bd-cap">一级 · 能撤销：不问，直接做，给 8 秒的“撤销”。例：采纳、不要、稍后。</p>
+              </div>
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--tall bd-frame--center">
+                  <div class="zy-dialog" role="dialog" aria-label="提交审核">
+                    <h3 class="zy-h2">提交 11 条内容去审核？</h3>
+                    <ul class="zy-bullets">
+                      <li>陈静、赵立新会收到通知</li>
+                      <li>审核前可以撤回</li>
+                    </ul>
+                    <div class="zy-dialog__foot">
+                      <button class="zy-btn zy-btn--text" type="button">取消</button>
+                      <button class="zy-btn zy-btn--primary" type="button">提交审核</button>
+                    </div>
+                  </div>
+                </div>
+                <p class="bd-cap">二级 · 影响别人或对外生效：对话框。标题是动词短语，正文写清会发生什么、能否撤回。例：提交审核、通过并发布、退回。</p>
+              </div>
+              <div class="zy-list">
+                <div class="bd-frame bd-frame--tall bd-frame--center">
+                  <div class="zy-dialog" role="dialog" aria-label="归档">
+                    <h3 class="zy-h2">归档“付款申请时限”？</h3>
+                    <ul class="zy-bullets">
+                      <li>应用助手不再引用它</li>
+                      <li>引用它的 2 份报告会标为“依据已归档”</li>
+                      <li>归档后不能自行恢复，要重新提交审核</li>
+                    </ul>
+                    <div class="zy-check"><i class="is-on"><i data-icon="check"></i></i><span>我已了解以上影响</span></div>
+                    <div class="zy-dialog__foot">
+                      <button class="zy-btn zy-btn--text" type="button">取消</button>
+                      <button class="zy-btn" type="button">归档</button>
+                    </div>
+                  </div>
+                </div>
+                <p class="bd-cap">三级 · 不能撤回或范围大：对话框列出影响，勾选后按钮才可用；按钮是次要样式，不用强调色。例：归档、撤回发布、清理演示资料。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ══ 11 下一步条 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">11　下一步条</h2>
+            <div class="zy-list">
+              <div class="zy-nextstep bd-static">
+                <ol class="zy-steps zy-steps--mini">
+                  <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>交进来</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step zy-step--now"><i class="zy-step__n">2</i><span>看一眼</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step"><i class="zy-step__n">3</i><span>点通过</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step"><i class="zy-step__n">4</i><span>问一个问题</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step"><i class="zy-step__n">5</i><span>出一份报告</span></li>
+                </ol>
+                <p class="zy-nextstep__text"><b>下一步：</b>处理完剩下的 4 条，提交审核。</p>
+              </div>
+              <p class="bd-cap">本页的事还没做完：只有进度和一句话，不放按钮。主要按钮在标题区。</p>
+              <div class="zy-nextstep bd-static">
+                <ol class="zy-steps zy-steps--mini">
+                  <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>交进来</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>看一眼</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step zy-step--now"><i class="zy-step__n">3</i><span>点通过</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step"><i class="zy-step__n">4</i><span>问一个问题</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step"><i class="zy-step__n">5</i><span>出一份报告</span></li>
+                </ol>
+                <p class="zy-nextstep__text"><b>已提交审核。</b>陈静或赵立新通过后会通知你。</p>
+                <a class="zy-btn zy-btn--text" href="#">看审核进度<i data-icon="arrow-right"></i></a>
+              </div>
+              <p class="bd-cap">这一步要等别人：写明等谁，给一个文字按钮。</p>
+              <div class="zy-nextstep bd-static">
+                <ol class="zy-steps zy-steps--mini">
+                  <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>交进来</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>看一眼</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step zy-step--done"><i class="zy-step__n"><i data-icon="check"></i></i><span>点通过</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step zy-step--now"><i class="zy-step__n">4</i><span>问一个问题</span></li>
+                  <li class="zy-steps__line"></li>
+                  <li class="zy-step"><i class="zy-step__n">5</i><span>出一份报告</span></li>
+                </ol>
+                <p class="zy-nextstep__text"><b>11 条已发布。</b>下一步：问一个问题，看助手能不能用上它们。</p>
+                <a class="zy-btn zy-btn--primary" href="#">去应用助手<i data-icon="arrow-right"></i></a>
+              </div>
+              <p class="bd-cap">本页的事做完了，标题区不再有主要按钮：下一步条的按钮升为主要按钮。一屏仍然只有一个。</p>
+            </div>
+          </section>
+
+          <!-- ══ 12 日期 ══ -->
+          <section class="zy-section">
+            <h2 class="zy-h2">12　日期与时间</h2>
+            <div class="zy-card">
+              <div class="zy-row zy-row--wrap">
+                <span class="zy-input"><i data-icon="calendar"></i>2026-11-01<span class="zy-secondary">至</span>2026-11-17</span>
+                <span class="zy-input"><i data-icon="calendar"></i><span class="zy-input__ph">选择日期</span></span>
+              </div>
+              <dl class="zy-kv">
+                <dt>列表与详情</dt>
+                <dd>2026-11-17 10:42（北京时间，24 小时制，不写秒）</dd>
+                <dt>当天与昨天</dt>
+                <dd>今天 09:58　昨天 17:20（只用于工作台和收件箱）</dd>
+                <dt>只有日期</dt>
+                <dd>2026-01-01</dd>
+              </dl>
+              <p class="bd-cap">日期一律用组件库的日期控件，占位文字和星期、月份用中文；不用浏览器自带的日期框。</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+    <script src="assets/base.js"></script>
+    <script>
+      document.getElementById('bd-topbar').innerHTML = zyShell.topbarHtml('周明远', '建设人员', '集团总部');
+      document.getElementById('bd-nav-open').innerHTML = zyShell.navHtml('build', '制度整理', false);
+      document.getElementById('bd-nav-closed').innerHTML = zyShell.navHtml('build', '制度整理', true);
+    </script>
+  </body>
+</html>

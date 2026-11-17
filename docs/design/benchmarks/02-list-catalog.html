@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>本体目录 · 知元界面基准 02</title>
+    <link rel="stylesheet" href="../tokens-v2.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 页面形态：列表页。标题区 + 工具条 + 表格 + 分页。表格默认不超过 6 列，行内最多 2 个文字按钮。 */
+      .ct-tag {
+        width: var(--zy-col-tag);
+      }
+      .ct-short {
+        width: var(--zy-col-short);
+      }
+      .ct-time {
+        width: var(--zy-col-time);
+      }
+      .ct-source {
+        width: var(--zy-col-text);
+      }
+      .ct-total {
+        margin-right: auto;
+        color: var(--zy-color-text-secondary);
+      }
+      .ct-value {
+        color: var(--zy-color-text);
+      }
+    </style>
+  </head>
+  <body data-ws="ontology" data-item="本体目录" data-user="周明远" data-role="建设人员">
+    <main class="zy-main">
+      <div class="zy-page">
+        <header class="zy-head">
+          <div class="zy-head__titlerow"><h1 class="zy-title">本体目录</h1></div>
+          <div class="zy-head__actions">
+            <button class="zy-btn zy-btn--primary" type="button"><i data-icon="upload"></i>交一份制度</button>
+          </div>
+          <p class="zy-head__lead">本机构共 128 项内容，<b>5 项待审核，1 项被退回</b>。</p>
+        </header>
+
+        <div class="zy-body">
+          <!-- 工具条：筛选在左，搜索在右；不放按钮 -->
+          <div class="zy-toolbar">
+            <div class="zy-seg" role="group" aria-label="种类">
+              <button type="button" aria-pressed="true">全部 <small>128</small></button>
+              <button type="button" aria-pressed="false">规则 <small>71</small></button>
+              <button type="button" aria-pressed="false">数据项 <small>38</small></button>
+              <button type="button" aria-pressed="false">技能 <small>6</small></button>
+              <button type="button" aria-pressed="false">知识经验 <small>13</small></button>
+            </div>
+            <span class="zy-input">全部状态<i data-icon="chev-down"></i></span>
+            <span class="zy-spacer"></span>
+            <button class="zy-btn zy-btn--text" type="button" data-view="pro"><i data-icon="columns"></i>列设置</button>
+            <span class="zy-input zy-input--search" data-when="default"><i data-icon="search"></i><span class="zy-input__ph">搜索名称或内容</span></span>
+            <span class="zy-input zy-input--search" data-when="empty"><i data-icon="search"></i><span class="ct-value">保证金</span><span class="zy-spacer"></span><i data-icon="x"></i></span>
+          </div>
+
+          <!-- 表格 -->
+          <div class="zy-card zy-card--flush" data-when="default">
+            <table class="zy-table">
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th class="ct-tag">种类</th>
+                  <th class="ct-tag">状态</th>
+                  <th class="ct-source">出处</th>
+                  <th class="ct-short" data-view="pro">版本</th>
+                  <th class="ct-time">更新时间</th>
+                  <th class="ct-time">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><a class="zy-table__name" href="#">付款申请时限</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《【演示】付款核对制度》第二条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-17 10:42</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">累计付款上限</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待审核</span></td>
+                  <td>《【演示】付款核对制度》第三条</td>
+                  <td data-view="pro">第 1 版</td>
+                  <td>2026-11-17 09:58</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">大额付款复核</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待审核</span></td>
+                  <td>《【演示】付款核对制度》第五条</td>
+                  <td data-view="pro">第 1 版</td>
+                  <td>2026-11-17 09:58</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">验收通过日期</a></td>
+                  <td><span class="zy-kind"><i data-icon="data"></i>数据项</span></td>
+                  <td><span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待审核</span></td>
+                  <td>《【演示】付款核对制度》第二条</td>
+                  <td data-view="pro">第 1 版</td>
+                  <td>2026-11-17 09:58</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">预付款比例上限</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--danger"><i data-icon="return"></i>已退回</span></td>
+                  <td>《【演示】付款核对制度》第六条</td>
+                  <td data-view="pro">第 1 版</td>
+                  <td>2026-11-17 10:15</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">质保金支付条件</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag"><i data-icon="edit"></i>草稿</span></td>
+                  <td>《【演示】付款核对制度》第七条</td>
+                  <td data-view="pro">第 1 版</td>
+                  <td>2026-11-17 09:51</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">合同变更审批</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--warning"><i data-icon="clock"></i>待审核</span></td>
+                  <td>《合同管理办法》第十四条</td>
+                  <td data-view="pro">第 1 版</td>
+                  <td>2026-11-16 17:20</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">合同付款核对</a></td>
+                  <td><span class="zy-kind"><i data-icon="skill"></i>技能</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>依据 3 条规则</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-14 11:20</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">合同金额</a></td>
+                  <td><span class="zy-kind"><i data-icon="data"></i>数据项</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《合同管理办法》第六条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-12 15:06</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">验收单必备内容</a></td>
+                  <td><span class="zy-kind"><i data-icon="knowledge"></i>知识经验</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《验收管理细则》第八条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-10 14:32</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">采购方式选择</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《采购管理办法》第九条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-06 09:47</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">发票开具期限</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《发票管理规定》第四条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-05 16:08</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">供应商准入条件</a></td>
+                  <td><span class="zy-kind"><i data-icon="rule"></i>规则</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《采购管理办法》第五条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-06 09:47</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">合同签订日期</a></td>
+                  <td><span class="zy-kind"><i data-icon="data"></i>数据项</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《合同管理办法》第六条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-12 15:06</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><a class="zy-table__name" href="#">验收不合格的处理</a></td>
+                  <td><span class="zy-kind"><i data-icon="knowledge"></i>知识经验</span></td>
+                  <td><span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span></td>
+                  <td>《验收管理细则》第十一条</td>
+                  <td data-view="pro">第 2 版</td>
+                  <td>2026-11-10 14:32</td>
+                  <td>
+                    <div class="zy-table__ops">
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button">问助手</button>
+                      <button class="zy-btn zy-btn--text zy-btn--sm" type="button" aria-haspopup="menu">更多<i data-icon="chev-down"></i></button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <nav class="zy-pager" aria-label="分页">
+              <span class="ct-total">第 1–15 项，共 128 项</span>
+              <button class="zy-pager__page" type="button" aria-label="上一页" disabled><i data-icon="chev-left"></i></button>
+              <button class="zy-pager__page" type="button" aria-current="page">1</button>
+              <button class="zy-pager__page" type="button">2</button>
+              <button class="zy-pager__page" type="button">3</button>
+              <span class="zy-secondary">…</span>
+              <button class="zy-pager__page" type="button">9</button>
+              <button class="zy-pager__page" type="button" aria-label="下一页"><i data-icon="chev-right"></i></button>
+            </nav>
+          </div>
+
+          <!-- 空结果：一句话加一个动作，表头和分页都不出现 -->
+          <div class="zy-card zy-card--flush" data-when="empty">
+            <div class="zy-state">
+              <i data-icon="search" class="zy-icon--xl"></i>
+              <h2 class="zy-state__title">没有找到“保证金”</h2>
+              <p class="zy-state__desc">换个说法试试，或者直接问助手。</p>
+              <div class="zy-state__actions">
+                <button class="zy-btn" type="button" data-go="state:default">清除搜索</button>
+                <button class="zy-btn zy-btn--text" type="button">问助手“保证金”</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script>
+      window.BM = {
+        states: [
+          ['default', '默认'],
+          ['empty', '空结果'],
+        ],
+        views: true,
+      };
+    </script>
+    <script src="assets/base.js"></script>
+  </body>
+</html>

@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>要素页 · 知元界面基准 03</title>
+    <link rel="stylesheet" href="../tokens-v2.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 页面形态：档案页。回答“这是什么、能不能用、怎么用”。首屏是业务语言卡，其余进折叠行和抽屉。 */
+      .el-cols {
+        display: grid;
+        grid-template-columns: minmax(var(--zy-content-min), 1fr) var(--zy-rail-width);
+        gap: var(--zy-gap);
+        align-items: start;
+      }
+      .el-main {
+        display: flex;
+        flex-direction: column;
+        gap: var(--zy-gap);
+        min-width: var(--zy-content-min);
+      }
+      .el-card {
+        padding: var(--zy-space-7);
+      }
+      .el-foot {
+        padding-top: var(--zy-space-4);
+        border-top: var(--zy-border-width) solid var(--zy-color-border);
+      }
+      .el-next a {
+        display: flex;
+        align-items: center;
+        gap: var(--zy-space-2);
+        text-decoration: none;
+      }
+      .el-next a:hover {
+        text-decoration: underline;
+      }
+      .el-next .zy-icon {
+        color: var(--zy-color-text-secondary);
+      }
+      .el-diff {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(var(--zy-content-min), 1fr));
+        gap: var(--zy-gap);
+      }
+      .el-diff del {
+        background: var(--zy-danger-50);
+        color: var(--zy-danger-700);
+      }
+      .el-diff ins {
+        background: var(--zy-success-50);
+        color: var(--zy-success-700);
+        text-decoration: none;
+      }
+      .el-ok {
+        color: var(--zy-success-500);
+      }
+      .el-checks {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(var(--zy-menu-min), 1fr));
+        gap: var(--zy-gap-tight);
+      }
+      .el-checks li {
+        display: flex;
+        align-items: center;
+        gap: var(--zy-space-2);
+      }
+      .el-raw {
+        padding: var(--zy-space-3) var(--zy-space-4);
+        border-radius: var(--zy-radius-control);
+        background: var(--zy-color-surface-sunken);
+        white-space: pre-wrap;
+        margin: var(--zy-none);
+      }
+    </style>
+  </head>
+  <body data-ws="ontology" data-item="本体目录" data-user="周明远" data-role="建设人员">
+    <main class="zy-main">
+      <div class="zy-page zy-page--reading">
+        <header class="zy-head">
+          <a class="zy-head__back" href="#"><i data-icon="chev-left"></i>本体目录</a>
+          <div class="zy-head__titlerow">
+            <h1 class="zy-title">付款申请时限</h1>
+            <span class="zy-tag zy-tag--outline"><i data-icon="rule"></i>规则</span>
+            <span class="zy-tag zy-tag--success"><i data-icon="check-circle"></i>已发布</span>
+            <span class="zy-secondary" data-view="pro">第 2 版 · 机构公共部分</span>
+          </div>
+          <div class="zy-head__actions">
+            <button class="zy-btn zy-btn--text" type="button" aria-label="其他操作：复制链接、打印、归档"><i data-icon="more"></i></button>
+            <button class="zy-btn" type="button">发起修订</button>
+            <button class="zy-btn zy-btn--primary" type="button"><i data-icon="apply"></i>问助手</button>
+          </div>
+        </header>
+
+        <div class="zy-body">
+          <div class="el-cols">
+            <div class="el-main">
+              <!-- 业务语言卡：一句话、要点、出处。首屏永远是它，不是表单 -->
+              <article class="zy-card el-card">
+                <p class="zy-statement">验收通过后 30 日内，经办部门要完成付款申请。</p>
+                <div class="zy-list">
+                  <span class="zy-label">要点</span>
+                  <ul class="zy-bullets">
+                    <li>适用于按合同办理的付款</li>
+                    <li>从验收通过那天起算</li>
+                    <li>付款前还要核对合同约定与验收资料</li>
+                  </ul>
+                </div>
+                <div class="zy-list">
+                  <span class="zy-label">出处</span>
+                  <blockquote class="zy-quote">验收通过后 30 日内，经办部门应完成付款申请。</blockquote>
+                  <p>
+                    <a class="zy-link" href="#" data-go="state:evidence">《【演示】付款核对制度》第二条</a>
+                  </p>
+                </div>
+                <div class="zy-row zy-row--wrap el-foot">
+                  <span class="zy-tag zy-tag--outline"><i data-icon="sparkle"></i>AI 整理 · 已人工审核</span>
+                  <span class="zy-caption">周明远核对，陈静 2026-11-17 10:42 审核通过</span>
+                </div>
+              </article>
+
+              <!-- 折叠行：每一行写明里面有什么、有多少 -->
+              <div class="zy-folds">
+                <details class="zy-fold" data-view="pro" open>
+                  <summary>
+                    <span class="zy-fold__name">结构化信息</span><span class="zy-fold__what">5 项</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <dl class="zy-kv">
+                      <dt>适用范围</dt>
+                      <dd>合同付款</dd>
+                      <dt>条件</dt>
+                      <dd>验收通过</dd>
+                      <dt>要求</dt>
+                      <dd>自验收通过日期起 30 日内完成付款申请</dd>
+                      <dt>例外</dt>
+                      <dd>无</dd>
+                      <dt>生效日期</dt>
+                      <dd>2026-01-01</dd>
+                    </dl>
+                  </div>
+                </details>
+                <details class="zy-fold" data-view="pro" open>
+                  <summary>
+                    <span class="zy-fold__name">五项检查</span><span class="zy-fold__what">全部通过</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <ul class="el-checks">
+                      <li><i data-icon="check-circle" class="el-ok"></i>出处可定位</li>
+                      <li><i data-icon="check-circle" class="el-ok"></i>口径无歧义</li>
+                      <li><i data-icon="check-circle" class="el-ok"></i>条件完整</li>
+                      <li><i data-icon="check-circle" class="el-ok"></i>关系经审定</li>
+                      <li><i data-icon="check-circle" class="el-ok"></i>版本可还原</li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="zy-fold" data-view="simple">
+                  <summary>
+                    <span class="zy-fold__name">适用条件</span><span class="zy-fold__what">1 个条件，没有例外</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <dl class="zy-kv">
+                      <dt>条件</dt>
+                      <dd>验收通过</dd>
+                      <dt>例外</dt>
+                      <dd>无</dd>
+                      <dt>生效日期</dt>
+                      <dd>2026-01-01</dd>
+                    </dl>
+                  </div>
+                </details>
+                <details class="zy-fold">
+                  <summary>
+                    <span class="zy-fold__name">关系</span><span class="zy-fold__what">3 条</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <ul class="zy-bullets">
+                      <li>用到数据项 <a class="zy-link" href="#">验收通过日期</a></li>
+                      <li>与规则 <a class="zy-link" href="#">付款前核对合同与验收资料</a> 同属付款核对</li>
+                      <li>被技能 <a class="zy-link" href="#">合同付款核对</a> 引用</li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="zy-fold" data-view="simple">
+                  <summary>
+                    <span class="zy-fold__name">版本</span><span class="zy-fold__what">2 个，最近一次 2026-11-17</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <ul class="zy-bullets">
+                      <li>第 2 版 · 2026-11-17 10:42 · 写明由经办部门提出</li>
+                      <li>第 1 版 · 2026-11-12 15:06 · 首次发布</li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="zy-fold" data-view="pro" open>
+                  <summary>
+                    <span class="zy-fold__name">版本</span><span class="zy-fold__what">2 个，下面是第 1 版到第 2 版的变化</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <div class="el-diff">
+                      <div class="zy-list">
+                        <span class="zy-label">第 1 版 · 2026-11-12 15:06</span>
+                        <p>验收通过后 30 日内<del>完成</del>付款申请。</p>
+                      </div>
+                      <div class="zy-list">
+                        <span class="zy-label">第 2 版 · 2026-11-17 10:42</span>
+                        <p>验收通过后 30 日内，<ins>经办部门要完成</ins>付款申请。</p>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+                <details class="zy-fold">
+                  <summary>
+                    <span class="zy-fold__name">动态</span><span class="zy-fold__what">5 条，最近一次是审核通过</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <ul class="zy-bullets">
+                      <li>2026-11-17 10:42 · 陈静审核通过并发布</li>
+                      <li>2026-11-17 09:58 · 周明远提交审核</li>
+                      <li>2026-11-17 09:51 · 周明远采纳整理结果</li>
+                    </ul>
+                    <p><a class="zy-link" href="#">其余 2 条</a></p>
+                  </div>
+                </details>
+                <details class="zy-fold" data-view="pro">
+                  <summary>
+                    <span class="zy-fold__name">技术详情</span><span class="zy-fold__what">编号、原文定位、原始数据</span><i data-icon="chev-down"></i>
+                  </summary>
+                  <div class="zy-fold__body">
+                    <dl class="zy-kv">
+                      <dt>编号</dt>
+                      <dd class="zy-mono">RULE-0128</dd>
+                      <dt>原文定位</dt>
+                      <dd>第 1 版，第 27–52 字</dd>
+                    </dl>
+                    <pre class="el-raw zy-mono">{ "kind": "rule", "version": 2, "status": "published" }</pre>
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            <!-- 右栏：怎么用、下一步 -->
+            <aside class="zy-card">
+              <div class="zy-list">
+                <h2 class="zy-h2">怎么用</h2>
+                <ul class="zy-bullets">
+                  <li>提付款申请前，对照这个期限</li>
+                  <li>问助手付款问题时，它会引用这一条</li>
+                  <li>已有 2 份报告引用</li>
+                </ul>
+              </div>
+              <div class="zy-list el-next">
+                <h2 class="zy-h2">下一步</h2>
+                <a href="#"><i data-icon="arrow-right"></i>问：这笔付款超期了吗</a>
+                <a href="#"><i data-icon="arrow-right"></i>看引用它的 2 份报告</a>
+                <a href="#"><i data-icon="arrow-right"></i>觉得不对，提一条反馈</a>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <!-- 抽屉：依据与原文。看完要回来，所以不跳页 -->
+      <div class="zy-mask" data-when="evidence" data-go="state:default"></div>
+      <aside class="zy-drawer" role="dialog" aria-label="原文出处" data-when="evidence">
+        <div class="zy-drawer__head">
+          <h2 class="zy-h2">原文出处</h2>
+          <span class="zy-spacer"></span>
+          <button class="zy-btn zy-btn--text" type="button" aria-label="关闭" data-go="state:default"><i data-icon="x"></i></button>
+        </div>
+        <div class="zy-drawer__body">
+          <div class="zy-list">
+            <p><b>《【演示】付款核对制度》第二条</b></p>
+            <p class="zy-caption">第 1 版 · 周明远 2026-11-17 09:12 交入 · 演示材料，不代表实际制度</p>
+          </div>
+          <div class="zy-quote zy-source">
+            <p>第一条　办理付款前，经办人应核对合同约定与验收资料。</p>
+            <p><mark>第二条　验收通过后 30 日内，经办部门应完成付款申请。</mark></p>
+            <p>第三条　累计付款不得超过合同金额。</p>
+            <p>第四条　对有异议的款项，应记录原因并暂停支付。</p>
+          </div>
+          <p class="zy-caption" data-view="pro">原文第 27–52 字 · 与发布内容逐字比对一致</p>
+        </div>
+        <div class="zy-drawer__foot">
+          <button class="zy-btn" type="button">打开完整原文<i data-icon="external"></i></button>
+        </div>
+      </aside>
+    </main>
+    <script>
+      window.BM = {
+        states: [
+          ['default', '首屏'],
+          ['evidence', '抽屉：原文出处'],
+        ],
+        views: true,
+      };
+    </script>
+    <script src="assets/base.js"></script>
+  </body>
+</html>

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>工作台 · 知元界面基准 01</title>
+    <link rel="stylesheet" href="../tokens-v2.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 页面形态：工作台。回答“现在该做什么”。首屏只有一件焦点，三块摘要只给数目和最要紧的两项。 */
+      .wb-steps {
+        flex-direction: row;
+        align-items: center;
+        gap: var(--zy-space-6);
+        padding: var(--zy-space-4) var(--zy-space-6);
+      }
+      .wb-steps .zy-steps {
+        flex: 1;
+      }
+      .wb-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(var(--zy-content-min), 1fr));
+        gap: var(--zy-gap);
+        align-items: start;
+      }
+      .wb-block {
+        padding: var(--zy-none);
+        gap: var(--zy-none);
+        overflow: hidden;
+      }
+      .wb-block__head {
+        display: flex;
+        align-items: baseline;
+        gap: var(--zy-space-2);
+        padding: var(--zy-space-4) var(--zy-space-6) var(--zy-space-2);
+      }
+      .wb-block__count {
+        margin-left: auto;
+        color: var(--zy-color-text-secondary);
+      }
+      .wb-item {
+        display: flex;
+        flex-direction: column;
+        padding: var(--zy-space-2) var(--zy-space-6);
+        color: inherit;
+        text-decoration: none;
+      }
+      .wb-item:hover {
+        background: var(--zy-color-surface-sunken);
+      }
+      .wb-item span:first-child {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .wb-block .zy-fold {
+        margin-top: var(--zy-space-2);
+        border-top: var(--zy-border-width) solid var(--zy-color-border);
+      }
+      .wb-block .zy-fold__body {
+        padding: var(--zy-none) var(--zy-none) var(--zy-space-2);
+        gap: var(--zy-none);
+      }
+      .wb-block__end {
+        height: var(--zy-space-2);
+      }
+    </style>
+  </head>
+  <body data-ws="home" data-user="周明远" data-role="建设人员">
+    <main class="zy-main">
+      <div class="zy-page">
+        <!-- ══ 状态一：有数据的默认首屏 ══ -->
+        <header class="zy-head" data-when="default">
+          <div class="zy-head__titlerow"><h1 class="zy-title">工作台</h1></div>
+          <div class="zy-head__actions">
+            <button class="zy-btn" type="button">交一份制度</button>
+            <button class="zy-btn zy-btn--primary" type="button">
+              去核对<svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-arrow-right" /></svg>
+            </button>
+          </div>
+          <p class="zy-head__kicker">等你处理</p>
+          <p class="zy-head__display">4 条内容等你核对</p>
+          <p class="zy-head__lead">从《【演示】付款核对制度》整理出 12 条，8 条高把握已替你勾选，其余 4 条需要你看一眼。</p>
+        </header>
+        <div class="zy-body" data-when="default">
+          <section class="zy-card wb-steps" aria-label="这份制度走到哪一步">
+            <ol class="zy-steps">
+              <li class="zy-step zy-step--done">
+                <i class="zy-step__n"><svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-check" /></svg></i><span>交进来</span>
+              </li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step zy-step--now" aria-current="step"><i class="zy-step__n">2</i><span>看一眼</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">3</i><span>点通过</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">4</i><span>问一个问题</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">5</i><span>出一份报告</span></li>
+            </ol>
+            <span class="zy-caption">今天 09:12 交入</span>
+          </section>
+
+          <div class="wb-grid">
+            <section class="zy-card wb-block">
+              <div class="wb-block__head">
+                <h2 class="zy-h2">其余待办</h2>
+                <span class="wb-block__count">2 件</span>
+              </div>
+              <a class="wb-item" href="#">
+                <span>修改被退回的“验收单签署要求”</span>
+                <span class="zy-caption">陈静退回 · 没有写清由谁签署</span>
+              </a>
+              <a class="wb-item" href="#">
+                <span>回复 1 条反馈：质保金支付条件</span>
+                <span class="zy-caption">财务部 何敏 · 昨天 16:20</span>
+              </a>
+              <div class="wb-block__end"></div>
+            </section>
+
+            <section class="zy-card wb-block">
+              <div class="wb-block__head">
+                <h2 class="zy-h2">进行中</h2>
+                <span class="wb-block__count">2 项</span>
+              </div>
+              <a class="wb-item" href="#">
+                <span>正在整理《合同管理办法》</span>
+                <span class="zy-caption">第 3 步，共 4 步：定位原文</span>
+              </a>
+              <a class="wb-item" href="#">
+                <span>正在生成“10 月付款核对报告”</span>
+                <span class="zy-caption">应用助手 · 09:40 开始</span>
+              </a>
+              <div class="wb-block__end"></div>
+            </section>
+
+            <section class="zy-card wb-block">
+              <div class="wb-block__head">
+                <h2 class="zy-h2">我交的材料</h2>
+                <span class="wb-block__count">5 份</span>
+              </div>
+              <a class="wb-item" href="#">
+                <span>《合同管理办法》</span>
+                <span class="zy-caption">整理中 · 今天 09:31 交入</span>
+              </a>
+              <a class="wb-item" href="#">
+                <span>《验收管理细则》</span>
+                <span class="zy-caption">14 条已发布，2 条待审核</span>
+              </a>
+              <details class="zy-fold">
+                <summary>
+                  <span class="zy-fold__what">其余 2 份，都已发布</span>
+                  <svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-chev-down" /></svg>
+                </summary>
+                <div class="zy-fold__body">
+                  <a class="wb-item" href="#">
+                    <span>《采购管理办法》</span>
+                    <span class="zy-caption">31 条已发布</span>
+                  </a>
+                  <a class="wb-item" href="#">
+                    <span>《发票管理规定》</span>
+                    <span class="zy-caption">9 条已发布</span>
+                  </a>
+                </div>
+              </details>
+            </section>
+          </div>
+
+          <section class="zy-section" aria-label="常用入口">
+            <h2 class="zy-h2">常用入口</h2>
+            <div class="zy-row zy-row--wrap">
+              <a class="zy-btn" href="#"><svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-upload" /></svg>接一张台账</a>
+              <a class="zy-btn" href="#"><svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-apply" /></svg>问一个问题</a>
+              <a class="zy-btn" href="#"><svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-ontology" /></svg>查本体目录</a>
+              <a class="zy-btn" href="#"><svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-file" /></svg>看我的报告</a>
+            </div>
+          </section>
+        </div>
+
+        <!-- ══ 状态二：空数据。一句话加一个起点动作；数值为 0 的区块整体不出现 ══ -->
+        <header class="zy-head" data-when="empty">
+          <div class="zy-head__titlerow"><h1 class="zy-title">工作台</h1></div>
+          <div class="zy-head__actions">
+            <button class="zy-btn zy-btn--primary" type="button">
+              <svg class="zy-icon" viewBox="0 0 24 24"><use href="#i-upload" /></svg>交一份制度
+            </button>
+          </div>
+          <p class="zy-head__kicker">从这里开始</p>
+          <p class="zy-head__display">先交一份制度</p>
+          <p class="zy-head__lead">系统把它整理成一条条内容，你看一眼就能提交审核。也可以直接把文件拖进页面。</p>
+        </header>
+        <div class="zy-body" data-when="empty">
+          <section class="zy-card wb-steps" aria-label="一份制度要走的五步">
+            <ol class="zy-steps">
+              <li class="zy-step zy-step--now" aria-current="step"><i class="zy-step__n">1</i><span>交进来</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">2</i><span>看一眼</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">3</i><span>点通过</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">4</i><span>问一个问题</span></li>
+              <li class="zy-steps__line" aria-hidden="true"></li>
+              <li class="zy-step"><i class="zy-step__n">5</i><span>出一份报告</span></li>
+            </ol>
+            <a class="zy-link" href="#">先看演示资料</a>
+          </section>
+        </div>
+      </div>
+    </main>
+    <script>
+      window.BM = {
+        states: [
+          ['default', '有数据'],
+          ['empty', '空数据'],
+        ],
+      };
+    </script>
+    <script src="assets/base.js"></script>
+  </body>
+</html>
