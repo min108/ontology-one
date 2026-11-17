@@ -383,6 +383,25 @@ describe('identity administration pages', () => {
     );
     expect(readWorkspaceGuards().dirtyCount).toBe(0);
   });
+  it.each(['demo_loaded', 'source_mapping_create'] as const)(
+    'keeps the historical %s action selectable by its business name',
+    async (action) => {
+      wrapper(<AuditPage />, '/admin/audit');
+      const select = await screen.findByRole('combobox', { name: terms.labels.r3_admin_action });
+      expect(within(select).getByRole('option', { name: terms.identity_audit_actions[action] })).toHaveValue(
+        action,
+      );
+      fireEvent.change(select, { target: { value: action } });
+      fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_filter }));
+      await waitFor(() =>
+        expect(
+          request.mock.calls.some(
+            ([path]) => String(path).includes('/v2/audit?') && String(path).includes('action=' + action),
+          ),
+        ).toBe(true),
+      );
+    },
+  );
 });
 
 describe('audit Beijing date boundaries', () => {
