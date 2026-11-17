@@ -276,6 +276,10 @@ def assert_job_lease_current():
 
 def assert_execution_principal_current(principal, require_write=False):
     """Only a valid server-owned worker lease may retain its captured workspace."""
+    if principal.identity_kind == "system":
+        from .infra.scheduler import assert_system_job_current
+
+        return assert_system_job_current(principal, _job_lease.get())
     if has_readonly_agent_execution(principal):
         # A readonly scope can narrow another owned context, never inherit its
         # ability to write. The store still revalidates the actual live session.
@@ -344,6 +348,16 @@ def _finish(row, status, message=""):
             "UPDATE ontology_task_queue SET status=%s,last_error=%s,lease_until=NULL,lease_token=NULL,active_key=IF(%s,active_key,NULL),available_at=DATE_ADD(UTC_TIMESTAMP(6),INTERVAL 10 SECOND),updated_at=UTC_TIMESTAMP(6) WHERE job_id=%s AND lease_token=%s",
             (status, message[:500], retrying, row["job_id"], row["lease_token"]),
         )
+        if cur.rowcount == 1 and row["kind"] == "meta_backfill":
+            cur.execute(
+                "UPDATE job_schedule_state SET last_status=%s WHERE job_kind=%s AND tenant_id=%s AND last_job_id=%s",
+                (
+                    "running" if retrying else "done" if status == "completed" else "failed",
+                    row["kind"],
+                    row["tenant_id"],
+                    row["job_id"],
+                ),
+            )
 
 
 async def _heartbeat(row, principal):
@@ -364,6 +378,23 @@ async def _invoke(row):
         token = _job_lease.set((row["job_id"], row["lease_token"]))
         try:
             p = assert_execution_principal_current(p, require_write=True)
+            if p.identity_kind == "system":
+                from .infra.job_registry import invoke
+
+                task = asyncio.create_task(invoke(row["kind"]))
+                heartbeat = asyncio.create_task(_heartbeat(row, p))
+                try:
+                    done, _ = await asyncio.wait({task, heartbeat}, return_when=asyncio.FIRST_COMPLETED)
+                    if heartbeat in done:
+                        await heartbeat
+                    await task
+                    assert_execution_principal_current(p, require_write=True)
+                    return "completed"
+                finally:
+                    for running in (task, heartbeat):
+                        if not running.done():
+                            running.cancel()
+                    await asyncio.gather(task, heartbeat, return_exceptions=True)
             with closing(connect()) as c:
                 job = c.execute(
                     "SELECT status FROM jobs WHERE id=? AND kind=? AND entity_id=?",
@@ -467,7 +498,10 @@ async def worker_loop(stop=None, concurrency=None):
             if not worked:
                 await asyncio.sleep(1)
 
+    from .infra.scheduler import scheduler_loop
+
     tasks = [asyncio.create_task(worker()) for _ in range(limit)]
+    tasks.append(asyncio.create_task(scheduler_loop(stop)))
     try:
         await asyncio.gather(*tasks)
     finally:

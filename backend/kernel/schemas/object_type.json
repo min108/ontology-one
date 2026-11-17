@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ontology-one:payload:object_type:1",
+  "title": "object_type",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "object_type/1"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "definition": {
+      "type": "string"
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "grain": {
+      "type": "string"
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "properties": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "data_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "datatype": {
+            "enum": [
+              "string",
+              "integer",
+              "decimal",
+              "boolean",
+              "date",
+              "datetime",
+              "enum"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enum": {
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sensitivity": {
+            "enum": [
+              "public",
+              "internal",
+              "sensitive",
+              "restricted"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "datatype"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "title_property": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_interface": {
+      "type": "boolean"
+    },
+    "implements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "extends": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "boundary": {
+      "type": "string"
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "additionalProperties": true
+}

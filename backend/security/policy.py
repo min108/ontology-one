@@ -259,6 +259,7 @@ V2_RULES = (
     ("POST", "/api/v2/capabilities/{id}:invoke", ()),
     ("GET", "/api/v2/system/model", ()),
     ("GET", "/api/v2/system/metadata", ()),
+    ("GET", "/api/v2/meta/kinds", ()),
     ("POST", "/api/v2/system/model:test", ("admin.model",)),
     ("GET", "/api/v2/system/backup", ("admin.settings",)),
     ("GET", "/api/v2/system/backups", ("admin.settings",)),

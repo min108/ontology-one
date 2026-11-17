@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ontology-one:payload:metric:1",
+  "title": "metric",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "metric/1"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "definition": {
+      "type": "string"
+    },
+    "object_type": {
+      "type": "string"
+    },
+    "grain": {
+      "type": "string"
+    },
+    "unit": {
+      "type": "string"
+    },
+    "datatype": {
+      "enum": [
+        "string",
+        "integer",
+        "decimal",
+        "boolean",
+        "date",
+        "datetime",
+        "enum"
+      ]
+    },
+    "formula": {
+      "type": "object",
+      "properties": {
+        "oxl": {
+          "type": "string"
+        },
+        "sentence": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "oxl"
+      ],
+      "additionalProperties": false
+    },
+    "aggregations": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "sum",
+          "avg",
+          "max",
+          "min",
+          "count"
+        ]
+      }
+    },
+    "default_aggregation": {
+      "enum": [
+        "sum",
+        "avg",
+        "max",
+        "min",
+        "count"
+      ]
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "caveats": {
+      "type": "string"
+    },
+    "test_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object"
+          },
+          "expected": {}
+        },
+        "required": [
+          "name",
+          "input",
+          "expected"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "additionalProperties": true
+}

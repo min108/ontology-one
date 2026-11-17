@@ -69,6 +69,7 @@ TABLE_CLASSIFICATION = dict.fromkeys(
         "demo_installations",
         "entities",
         "entity_access",
+        "entity_meta",
         "entity_ownership",
         "jobs",
         "mappings",

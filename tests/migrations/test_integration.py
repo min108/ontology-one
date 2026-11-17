@@ -152,7 +152,7 @@ class MigrationMySQL(unittest.TestCase):
         tenant = store.get_tenant("dept-02")
         self.assertEqual(migrations.table_names(tenant["db_name"]), [])
         migrations.provision_tenant("dept-02")
-        self.assertEqual(migrations.migration_status("tenant", tenant["db_name"])["current"], 3)
+        self.assertEqual(migrations.migration_status("tenant", tenant["db_name"])["current"], 4)
         self.assertIn("demo_installations", migrations.table_names(tenant["db_name"]))
 
     def test_existing_legacy_tenant_cannot_upgrade_online(self) -> None:
@@ -202,7 +202,7 @@ class MigrationMySQL(unittest.TestCase):
             migrations.run_migrations()
         migrations.provision_tenant("hq")
         migrations.validate_runtime()
-        self.assertEqual(migrations.migration_status("control", store._config()["database"])["current"], 5)
+        self.assertEqual(migrations.migration_status("control", store._config()["database"])["current"], 6)
 
     def test_interrupted_fresh_install_resumes_offline(self) -> None:
         with (

@@ -124,7 +124,8 @@ class ContractTests(unittest.TestCase):
     def test_kind_vocabulary_has_sixteen_entries(self) -> None:
         from backend.capabilities.read import KINDS
 
-        self.assertEqual(len(KINDS), 16)
+        self.assertEqual(len(KINDS), 23)
+        self.assertTrue({"position", "party", "term", "object_type", "link_type", "metric", "process"} <= KINDS.keys())
         self.assertEqual(KINDS["data"], "数据项")
         self.assertEqual(KINDS["analysis"], "分析记录")
 

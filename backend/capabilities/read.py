@@ -10,30 +10,11 @@ from backend.api.v2.models import ListResponse
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.registry import capability
 from backend.core.errors import StrictModel
-from backend.core.terms import TERMS
+from backend.kernel.kinds import KINDS as KIND_REGISTRY
+from backend.kernel.kinds import list_kinds
 from backend.security import store
 
-KINDS = {
-    key: TERMS["kinds"][key]
-    for key in (
-        "organization",
-        "person",
-        "material",
-        "dataset",
-        "data",
-        "rule",
-        "skill",
-        "knowledge",
-        "project",
-        "task",
-        "matter",
-        "evidence",
-        "issue",
-        "case",
-        "analysis",
-        "collection",
-    )
-}
+KINDS = {key: item.name for key, item in KIND_REGISTRY.items()}
 
 
 class EmptyInput(StrictModel):
@@ -51,7 +32,17 @@ class IdentityOutput(StrictModel):
 
 class Kind(StrictModel):
     id: str
+    kind: str
     name: str
+    pillar: str
+    family: str | None
+    icon: str
+    color_token: str
+    id_prefix: str
+    payload_schema: str | None
+    governed: bool
+    module_eligible: bool
+    card_template: str
 
 
 class Organization(StrictModel):
@@ -127,7 +118,7 @@ def whoami(ctx: CapabilityContext, body: EmptyInput) -> IdentityOutput:
 
 @read_capability("meta.kinds", "种类元数据", EmptyInput, ListResponse[Kind])
 def kinds(ctx: CapabilityContext, body: EmptyInput) -> ListResponse[Kind]:
-    return ListResponse[Kind](items=[Kind(id=key, name=name) for key, name in KINDS.items()], total=len(KINDS))
+    return ListResponse[Kind](items=[Kind(id=item["kind"], **item) for item in list_kinds()], total=len(KINDS))
 
 
 @read_capability("org.tree", "机构树", EmptyInput, ListResponse[Organization])

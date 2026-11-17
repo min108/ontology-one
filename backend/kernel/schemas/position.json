@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ontology-one:payload:position:1",
+  "title": "position",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "position/1"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "org_id": {
+      "type": "string"
+    },
+    "duties": {
+      "type": "string"
+    },
+    "authority_note": {
+      "type": "string"
+    },
+    "reports_to": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "additionalProperties": true
+}

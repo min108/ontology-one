@@ -144,10 +144,17 @@ class IdentityMigration(unittest.TestCase):
         names = self.prepare()
         current = backup.snapshot_database(names["control"])
         validate_schema(current, "control")
-        self.assertEqual(migrations.migration_status("control", names["control"])["current"], 5)
+        self.assertEqual(migrations.migration_status("control", names["control"])["current"], 6)
         self.assertEqual(
             [m.name for m in migrations.discover("control")],
-            ["0001_baseline", "0002_directory", "0003_duties", "0004_preferences", "0005_password_advice"],
+            [
+                "0001_baseline",
+                "0002_directory",
+                "0003_duties",
+                "0004_preferences",
+                "0005_password_advice",
+                "0006_job_schedule",
+            ],
         )
         self.assertEqual(len(current["columns"]["sec_tenants"]), 16)
 
@@ -196,7 +203,7 @@ class IdentityMigration(unittest.TestCase):
         row = store.get_tenant(ident)
         self.assertRegex(ident, r"^org-[0-9a-f]{8}$")
         self.assertEqual(row["status"], "active")
-        self.assertEqual(migrations.migration_status("tenant", row["db_name"])["current"], 3)
+        self.assertEqual(migrations.migration_status("tenant", row["db_name"])["current"], 4)
         with closing(db._raw_connection(row["db_name"])) as raw:
             self.assertEqual(
                 db.Connection(raw).execute("SELECT title FROM entities WHERE id=?", (ident,)).fetchone()[0], row["name"]

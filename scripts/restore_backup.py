@@ -87,6 +87,12 @@ def schema_columns():
 
         def execute(self, statement, params=()):
             self.statements.append(statement)
+            return self
+
+        def fetchall(self):
+            # Schema inspection has no business rows. Data backfills in a
+            # migration must remain inert while its CREATE statements are read.
+            return []
 
         def executescript(self, script):
             self.statements.extend(db.split_script(script))
@@ -255,6 +261,12 @@ def _empty_workspace(connection, tenant_id, allowed, *, lock=False):
                 for row in rows
             ):
                 raise RestoreError("目标机构已有业务实体，禁止覆盖。")
+        elif table == "entity_meta":
+            from backend.kernel.metadata import defaults
+
+            root = connection.execute("SELECT * FROM entities WHERE id=?", (tenant_id,)).fetchone()
+            if any(row["entity_id"] != tenant_id or root is None or dict(row) != defaults(dict(root)) for row in rows):
+                raise RestoreError("目标机构已有要素附加信息，禁止覆盖。")
         elif table == "workspace_meta":
             if any(row["meta_key"] != "schema_version" for row in rows):
                 raise RestoreError("目标机构已有工作区状态，禁止覆盖。")
@@ -353,7 +365,12 @@ def restore_snapshot(snapshot, archive, principal, reason):
                         if table == "workspace_meta":
                             # Deployment schema markers belong to the current program.
                             continue
-                        selected = [row for row in rows if not (table == "entities" and row["id"] == tenant_id)]
+                        selected = [
+                            row
+                            for row in rows
+                            if not (table == "entities" and row["id"] == tenant_id)
+                            and not (table == "entity_meta" and row["entity_id"] == tenant_id)
+                        ]
                         columns = sorted(allowed[table])
                         names = ",".join("`" + name + "`" for name in columns)
                         marks = ",".join("?" for _ in columns)
@@ -374,6 +391,9 @@ def restore_snapshot(snapshot, archive, principal, reason):
                     from backend.asset_kinds import migrate_skill_assets
 
                     migrate_skill_assets(connection)
+                    from backend.kernel.metadata import backfill_meta
+
+                    backfill_meta(connection)
                     if "skill_documents" in tables:
                         from backend.skills import demote_restored_skills
 

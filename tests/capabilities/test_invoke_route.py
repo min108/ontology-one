@@ -44,6 +44,24 @@ class InvokeTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertTrue(response.headers["X-Request-Id"])
 
+    def test_kinds_get_matches_capability_and_exposes_process_contract(self) -> None:
+        response = self.client.get("/api/v2/meta/kinds")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), self.invoke("meta.kinds").json())
+        process = next(item for item in response.json()["items"] if item["kind"] == "process")
+        self.assertEqual(process["id"], "process")
+        self.assertEqual(process["name"], "业务流程")
+        self.assertEqual(process["id_prefix"], "PRC-")
+        self.assertTrue(process["governed"])
+        self.assertTrue(process["module_eligible"])
+        self.assertEqual(process["payload_schema"], "schemas/process.json")
+
+    def test_kinds_get_requires_current_session_and_denies_unknown_role(self) -> None:
+        self.person = replace(self.person, role="invented")
+        self.assertEqual(self.client.get("/api/v2/meta/kinds").status_code, 403)
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get("/api/v2/meta/kinds").status_code, 401)
+
     def test_unknown_capability_returns_404(self) -> None:
         self.assertEqual(self.invoke("missing.read").json()["error"]["code"], "NOT_FOUND")
 

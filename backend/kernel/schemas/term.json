@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ontology-one:payload:term:1",
+  "title": "term",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "term/1"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "definition": {
+      "type": "string"
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "not_to_confuse": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "term": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "term"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "refers_to": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "domain_code": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "additionalProperties": true
+}

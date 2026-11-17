@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ontology-one:payload:link_type:1",
+  "title": "link_type",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "link_type/1"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "source_type": {
+      "type": "string"
+    },
+    "target_type": {
+      "type": "string"
+    },
+    "verb": {
+      "type": "string"
+    },
+    "inverse_verb": {
+      "type": "string"
+    },
+    "cardinality": {
+      "enum": [
+        "one_to_one",
+        "one_to_many",
+        "many_to_one",
+        "many_to_many"
+      ]
+    },
+    "definition": {
+      "type": "string"
+    },
+    "join": {
+      "type": "object",
+      "properties": {
+        "source_property": {
+          "type": "string"
+        },
+        "target_property": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_property",
+        "target_property"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "additionalProperties": true
+}
