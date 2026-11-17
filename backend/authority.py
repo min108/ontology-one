@@ -475,7 +475,11 @@ def create_asset(body: SaveRequest):
                 1,
             ),
         )
-        sync_relations(c, get_asset(c, eid))
+        entity = get_asset(c, eid)
+        sync_relations(c, entity)
+        from .kernel.elements import snapshot
+
+        snapshot(c, entity, "创建权责规范草稿")
         log(c, eid, "创建权责规范", body.title.strip())
     return asset_detail(eid)
 

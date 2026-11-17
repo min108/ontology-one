@@ -5,6 +5,7 @@ import os
 import secrets
 import unittest
 from contextlib import closing
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -161,6 +162,101 @@ class SpecializedGatesMySQL(unittest.TestCase):
         self.assertIn(
             "QG4", {item["code"] for item in rejected.json()["detail"]["gates"]["checks"] if item["status"] == "fail"}
         )
+
+    def complete_authority(self, builder: TestClient, title: str) -> dict:
+        return {
+            "title": title,
+            "org_id": "dept-01",
+            "spec": {
+                "type": "position",
+                "subtype": "合成职责",
+                "purpose": "逐项核对合成业务输入",
+                "basis": "R4合成制度",
+                "scope": "本机构合成业务",
+                "conditions": "办理所述合成业务时",
+                "exceptions": "无其他例外",
+                "effective_from": "2026-01-01",
+                "org_ids": ["dept-01"],
+                "sections": [{"id": "one", "title": "核对职责", "content": "逐项核对输入并形成结果"}],
+                "source_refs": [self.source(builder)],
+            },
+        }
+
+    def test_complete_authority_first_save_can_submit_without_intermediate_edit(self) -> None:
+        builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")
+        body = self.complete_authority(builder, "R4首次保存直接提交职责")
+        response = builder.post("/api/authority/assets", json=body)
+        self.assertEqual(response.status_code, 200, response.text)
+        entity = response.json()["entity"]
+        ident = entity["id"]
+        self.assertEqual(entity["version"], 1)
+        person = store.authenticate_session(builder.cookies.get("ontology_session"), "r2-test")[0]
+        with use_context(person), closing(db.connect()) as conn:
+            row = conn.execute("SELECT version,snapshot,reason FROM versions WHERE entity_id=?", (ident,)).fetchone()
+            self.assertIsNotNone(row)
+            saved = json.loads(row["snapshot"])
+            self.assertEqual(row["version"], 1)
+            self.assertEqual(saved["payload"]["authority_spec"]["conditions"], body["spec"]["conditions"])
+            self.assertEqual(saved["_meta"]["valid_from"], "2026-01-01")
+            self.assertEqual(saved["status"], "draft")
+            self.assertTrue(row["reason"].strip())
+        for actor, action in ((builder, "submit"), (reviewer, "approve"), (reviewer, "publish")):
+            response = actor.post(
+                "/api/entities/" + ident + "/action",
+                json={"action": action, "expected_version": entity["version"], "reason": "独立核对首次保存的完整规范"},
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            entity = response.json()
+        self.assertEqual(entity["status"], "published")
+        with self.assertRaises(AssertionError):
+            self.assertEqual(entity["status"], "draft")
+
+    def test_skill_creation_preserves_initial_metadata_snapshot(self) -> None:
+        builder = self.login("fixture.builder")
+        response = builder.post("/api/skills", json={"title": "R4首次技能保存", "package_name": "r4-first-skill"})
+        self.assertEqual(response.status_code, 200, response.text)
+        entity = response.json()["entity"]
+        person = store.authenticate_session(builder.cookies.get("ontology_session"), "r2-test")[0]
+        with use_context(person), closing(db.connect()) as conn:
+            rows = conn.execute(
+                "SELECT version,snapshot,reason FROM versions WHERE entity_id=?", (entity["id"],)
+            ).fetchall()
+        self.assertEqual(len(rows), 1)
+        saved = json.loads(rows[0]["snapshot"])
+        self.assertEqual(saved["version"], 1)
+        self.assertEqual(saved["status"], "draft")
+        self.assertIn("_meta", saved)
+        self.assertEqual(saved["payload"]["package_digest"], response.json()["digest"])
+        self.assertTrue(rows[0]["reason"].strip())
+        with self.assertRaises(AssertionError):
+            self.assertEqual(len([]), 1)
+
+    def test_initial_snapshot_failure_rolls_back_specialized_creation(self) -> None:
+        builder = self.login("fixture.builder")
+        title = "R4原子创建失败不得留存"
+        body = self.complete_authority(builder, title)
+        person = store.authenticate_session(builder.cookies.get("ontology_session"), "r2-test")[0]
+        for endpoint, request in (
+            ("/api/authority/assets", body),
+            ("/api/skills", {"title": title, "package_name": "r4-rollback-skill"}),
+        ):
+            with (
+                self.subTest(endpoint=endpoint),
+                patch(
+                    "backend.kernel.elements.snapshot", side_effect=RuntimeError("synthetic snapshot storage failure")
+                ),
+                self.assertLogs("backend.security.middleware", level="ERROR"),
+            ):
+                response = builder.post(endpoint, json=request)
+            self.assertEqual(response.status_code, 500, response.text)
+            with use_context(person), closing(db.connect()) as conn:
+                self.assertEqual(conn.execute("SELECT count(*) FROM entities WHERE title=?", (title,)).fetchone()[0], 0)
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT count(*) FROM versions WHERE json_extract(snapshot,'$.title')=?", (title,)
+                    ).fetchone()[0],
+                    0,
+                )
 
     def test_authority_actual_spec_facts_pass_and_missing_condition_blocks(self) -> None:
         builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")

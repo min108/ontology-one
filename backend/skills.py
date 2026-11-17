@@ -746,6 +746,9 @@ def _create_document(conn, title, summary, files, manifest, legacy_id=None):
     )
     entity, document = _document(conn, ident)
     _sync_relations(conn, entity, document)
+    from .kernel.elements import snapshot
+
+    snapshot(conn, entity, "创建技能草稿")
     _history_event(conn, entity, document, "创建技能草稿")
     log(conn, ident, "创建技能草稿", "登记Agent Skills包及本机构治理清单")
     return entity, document
