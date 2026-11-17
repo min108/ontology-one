@@ -423,13 +423,16 @@ for (
       )) {
         const description =
           item.after_data.title + " " + item.after_data.definition;
+        const title = item.after_data.title;
         const unit =
           item.after_data.unit ||
-          (/金额|款项|付款|支付/.test(description)
+          (/金额|款项|数额/.test(title)
             ? "元"
-            : /记录|依据|资料/.test(description)
+            : /记录|依据|资料/.test(title)
               ? "份"
-              : "");
+              : /金额|款项|付款|支付/.test(description)
+                ? "元"
+                : "");
         expect(
           unit,
           "synthetic source must explicitly support the repaired unit",
