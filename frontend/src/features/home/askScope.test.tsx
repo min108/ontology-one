@@ -1,17 +1,17 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
-import Applications from '../../legacy/pages/Applications';
-import { api, useApi } from '../../legacy/api';
+import Applications from '@legacy/pages/Applications';
+import { api, useApi } from '@legacy/api';
 import { terms } from '../../i18n/zh-CN';
 import { testSession } from '../build/testQuery';
-vi.mock('../../legacy/api', async (original) => ({
-  ...(await original<typeof import('../../legacy/api')>()),
+vi.mock('@legacy/api', async (original) => ({
+  ...(await original<typeof import('@legacy/api')>()),
   api: vi.fn(),
   request: vi.fn().mockResolvedValue(new Response()),
   useApi: vi.fn(),
 }));
-vi.mock('../../legacy/auth', () => ({
+vi.mock('@legacy/auth', () => ({
   useAuth: () => ({ session: { workspace: { tenant_id: 'tenant-test' } } }),
 }));
 const options = {
