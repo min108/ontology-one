@@ -87,3 +87,13 @@ def get_kind(kind: str) -> KindDefinition:
 
 def list_kinds() -> list[dict]:
     return [asdict(item) for item in KINDS.values()]
+
+
+def requires_quality_gates(kind: str) -> bool:
+    """Gate applicability is independent of asset workflow/module ownership.
+
+    Blueprint §4.9 also requires QG2 and QG5 for positions/external parties.
+    Their existing administrative write paths and role policy stay unchanged.
+    """
+    definition = get_kind(kind)
+    return definition.governed or definition.kind in {"position", "party"}

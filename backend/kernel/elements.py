@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from backend import db
 from backend.asset_kinds import canonical_entity, canonical_kind
 from backend.kernel import rules
-from backend.kernel.kinds import get_kind
+from backend.kernel.kinds import get_kind, requires_quality_gates
 from backend.kernel.metadata import SNAPSHOT_META_FIELDS, get_meta, sync_meta
 from backend.kernel.schemas import validate_payload
 from backend.security.context import require_context
@@ -196,6 +196,20 @@ def sync_after_write(conn: db.Connection, entity: dict, meta_updates: dict | Non
     return {**entity, "_meta": get_meta(conn, entity["id"]) or meta}
 
 
+def _enforce_identity_status(conn: db.Connection, entity: dict) -> None:
+    # Identity editors keep their existing direct-status authority, but a write
+    # into (or remaining in) a released/review state must satisfy QG2 and QG5.
+    # Reads never revoke legacy published content; restoring content is a draft.
+    if (
+        requires_quality_gates(entity["kind"])
+        and not get_kind(entity["kind"]).governed
+        and entity["status"] in {"review", "approved", "published"}
+    ):
+        from backend.kernel.gates import enforce
+
+        enforce(conn, entity)
+
+
 def create_draft(conn: db.Connection, body: dict) -> dict:
     _writable()
     kind = canonical_kind(body.get("kind", "knowledge"))
@@ -236,6 +250,7 @@ def create_draft(conn: db.Connection, body: dict) -> dict:
     )
     entity = sync_after_write(conn, entity, updates)
     snapshot(conn, entity, "创建草稿")
+    _enforce_identity_status(conn, entity)
     db.log(conn, ident, "创建", entity["title"])
     return entity
 
@@ -280,6 +295,7 @@ def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
         ),
     )
     entity = sync_after_write(conn, entity, updates)
+    _enforce_identity_status(conn, entity)
     db.log(conn, entity["id"], "修订", reason)
     return entity
 
@@ -296,6 +312,7 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
         (entity["status"], entity["version"], entity["updated_at"], entity["id"]),
     )
     entity = sync_after_write(conn, entity)
+    _enforce_identity_status(conn, entity)
     db.log(conn, entity["id"], STATUS_LABELS[target], reason, actor)
     return entity
 

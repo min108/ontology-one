@@ -368,7 +368,7 @@ def entity_action_in_transaction(c, eid, b):
     if not old:
         raise HTTPException(404, "未找到内容。")
     from ...kernel import elements as element_kernel
-    from ...kernel.kinds import get_kind
+    from ...kernel.kinds import requires_quality_gates
     from ...skills import guard_generic_entity
 
     element_kernel.check_version(old, b)
@@ -391,7 +391,7 @@ def entity_action_in_transaction(c, eid, b):
         raise HTTPException(400, "请先审核通过，再发布成果。")
     if act == "return" and not str(b.get("reason", "")).strip():
         raise HTTPException(400, "请填写需要补充或修改的内容。")
-    if act in {"submit", "approve", "publish"} and get_kind(old["kind"]).governed:
+    if act in {"submit", "approve", "publish"} and requires_quality_gates(old["kind"]):
         from ...kernel.gates import enforce
 
         enforce(c, old)
