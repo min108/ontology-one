@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import io
 import json
+import logging
 import re
 import uuid
 from bisect import bisect_right
@@ -1534,6 +1535,33 @@ def job_update(conn, job_id: str, status: str, progress: int, message: str, resu
     )
 
 
+_EXTRACTION_VALIDATION_CODES = {
+    "AI返回的候选结构不完整，请重试": "CANDIDATE_STRUCTURE_INVALID",
+    "AI未返回逐段覆盖记录，本批需重新识读": "COVERAGE_MISSING",
+    "AI未完整核对本批全部原文片段，请重试": "COVERAGE_INCOMPLETE",
+    "AI返回未识别的候选类型，请重试核对": "CANDIDATE_KIND_INVALID",
+    "AI候选引用了不存在的原文位置，本批结果未采纳，请重试": "SOURCE_CHUNK_INVALID",
+    "AI候选缺少逐字引用依据": "SOURCE_QUOTES_MISSING",
+    "AI候选的原文引用未通过逐字校验": "SOURCE_QUOTE_INVALID",
+    "AI候选的引用片段缺少对应引文": "SOURCE_QUOTE_COVERAGE_INCOMPLETE",
+    "AI候选条件或待核问题格式不正确": "CANDIDATE_ARRAY_FIELD_INVALID",
+    "AI候选发布条件须为业务文字，缺失内容应留空": "CANDIDATE_SCALAR_FIELD_INVALID",
+    "AI返回了缺少名称或正文的候选，请重试": "CANDIDATE_CONTENT_MISSING",
+}
+
+
+def _extraction_failure_code(error: Exception) -> str:
+    from .ai import AIError
+
+    if isinstance(error, json.JSONDecodeError):
+        return "JSON_PARSE_INVALID"
+    if isinstance(error, AIError):
+        return "MODEL_CALL_FAILED"
+    if isinstance(error, ValueError):
+        return _EXTRACTION_VALIDATION_CODES.get(str(error), "VALIDATION_UNKNOWN")
+    return "EXTRACTION_UNEXPECTED"
+
+
 async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
     try:
         with closing(connect()) as conn, conn:
@@ -1584,6 +1612,9 @@ async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
                 error = None
             except Exception as exc:
                 found = []
+                # Only an allowlisted code reaches server logs: no exception text,
+                # traceback, identifiers, model output, source content or credentials.
+                logging.getLogger(__name__).warning("material_extraction_failed code=%s", _extraction_failure_code(exc))
                 # AI client owns detailed diagnostics. Never expose provider payloads or credentials.
                 error = (
                     "在线识读未完成，请检查AI连接配置后重试；已有候选和原文均已保留。"

@@ -3,9 +3,11 @@
 import copy
 import json
 import unittest
-from unittest.mock import AsyncMock, patch
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend import materials
+from backend.ai import AIError
 
 SCALARS = ("definition", "scope", "exceptions", "valid_from", "valid_to", "unit", "grain", "boundary")
 QUOTE = "办理付款前应核对合同约定与验收资料。"
@@ -79,3 +81,55 @@ class ExtractionPromptContract(unittest.IsolatedAsyncioTestCase):
                 self.assertRaisesRegex(ValueError, "AI候选的原文引用未通过逐字校验"),
             ):
                 await materials.online_candidates("material-1", GROUP, {})
+
+
+class ExtractionSafeDiagnostics(unittest.IsolatedAsyncioTestCase):
+    async def test_actual_batch_failure_logs_only_fixed_codes_and_preserves_generic_errors(self) -> None:
+        secret = "synthetic-sensitive-token-not-for-logs"
+        provider = AIError("AI_PROVIDER_REJECTED")
+        provider.args = (secret,)
+        failures = [
+            (ValueError("AI候选发布条件须为业务文字，缺失内容应留空"), "CANDIDATE_SCALAR_FIELD_INVALID"),
+            (ValueError("AI候选的原文引用未通过逐字校验"), "SOURCE_QUOTE_INVALID"),
+            (json.JSONDecodeError(secret, secret, 0), "JSON_PARSE_INVALID"),
+            (provider, "MODEL_CALL_FAILED"),
+            (ValueError(secret), "VALIDATION_UNKNOWN"),
+            (RuntimeError(secret), "EXTRACTION_UNEXPECTED"),
+        ]
+        for failure, code in failures:
+            item = {"title": secret, "domain": secret, "org_id": secret, "source_kind": secret, "payload": {}}
+            with self.subTest(code=code), ExitStack() as stack:
+                stack.enter_context(patch("backend.materials.connect", return_value=MagicMock()))
+                stack.enter_context(patch("backend.materials.material", return_value=item))
+                stack.enter_context(patch("backend.materials.get_active_chunks", return_value=GROUP))
+                stack.enter_context(patch("backend.materials.online_candidates", AsyncMock(side_effect=failure)))
+                stack.enter_context(patch("backend.materials.save_payload"))
+                stack.enter_context(patch("backend.materials.activity"))
+                stack.enter_context(patch("backend.materials._active", MagicMock()))
+                job_update = stack.enter_context(patch("backend.materials.job_update"))
+                captured = stack.enter_context(self.assertLogs("backend.materials", level="WARNING"))
+                await materials.run_extraction(secret, secret, "online", False)
+                self.assertEqual(captured.output, ["WARNING:backend.materials:material_extraction_failed code=" + code])
+                record = captured.records[0]
+                self.assertIsNone(record.exc_info)
+                self.assertIsNone(record.exc_text)
+                self.assertIsNone(record.stack_info)
+                self.assertNotIn(secret, repr(record.__dict__))
+                self.assertNotIn(QUOTE, repr(record.__dict__))
+                expected = (
+                    "AI返回内容未通过结构或来源校核，本批未写入候选，请重试。"
+                    if isinstance(failure, ValueError)
+                    else "在线识读未完成，请检查AI连接配置后重试；已有候选和原文均已保留。"
+                )
+                self.assertEqual(item["payload"]["coverage"]["chunk-1"]["message"], expected)
+                self.assertEqual(item["payload"]["candidates"], [])
+                self.assertEqual(job_update.call_args.args[2], "failed")
+
+    def test_every_known_validation_reason_has_a_fixed_non_sensitive_code(self) -> None:
+        for reason, code in materials._EXTRACTION_VALIDATION_CODES.items():
+            with self.subTest(code=code):
+                self.assertRegex(code, r"^[A-Z_]+$")
+                self.assertEqual(materials._extraction_failure_code(ValueError(reason)), code)
+                self.assertEqual(
+                    materials._extraction_failure_code(ValueError(reason + " private-source")), "VALIDATION_UNKNOWN"
+                )
