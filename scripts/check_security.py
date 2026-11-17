@@ -147,16 +147,17 @@ class Session:
             payload.setdefault("scope", "本机构合成测试业务")
             payload.setdefault("conditions", "办理所述合成测试业务时")
             payload.setdefault("exceptions", "本合成测试制度无其他例外")
-            payload.setdefault("effective_from", "2026-01-01")
+            payload.setdefault("valid_from", "2026-01-01")
         elif entity["kind"] == "knowledge":
             payload.setdefault("conditions", "仅用于合成验收场景")
             payload.setdefault("boundary", "不作为真实业务结论")
         if not payload.get("source_refs"):
             text = "【合成验收制度】" + entity["title"] + "\n" + json.dumps(payload, ensure_ascii=False, sort_keys=True)
             payload["source_refs"] = [self.source_reference(text)]
-        self.ok(
-            "PATCH", "/entities/" + ident, json={"payload": payload, "reason": "补齐合成验收的定义、口径与真实锚点"}
-        )
+        changes = {"payload": payload, "reason": "补齐合成验收的定义、口径与真实锚点"}
+        if entity["kind"] == "rule":
+            changes["meta"] = {"valid_from": payload["valid_from"]}
+        self.ok("PATCH", "/entities/" + ident, json=changes)
         if entity["kind"] == "rule":
             database = self.sandbox.tenant_db(self.workspace)
             self.sandbox.sql(
