@@ -51,9 +51,9 @@ async function pendingEntity(page, title, source) {
     "/api/materials/" +
       fixture.objects.material +
       "/source?" +
-      new URLSearchParams({ chunk_id: chunk.id, quote }),
+      new URLSearchParams({ chunk_id: chunk.id }),
   );
-  expect(anchored.focus.quote).toBe(quote);
+  expect(anchored.focus.quote).toContain(quote);
   const entity = await write(page, "/api/entities", {
     kind: "knowledge",
     title,

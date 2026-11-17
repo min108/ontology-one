@@ -114,7 +114,9 @@ def reply(body: dict) -> dict:
             candidates.append(
                 {
                     "kind": "rule",
-                    "title": "付款申请时限" if "30日" in quote else "累计付款核对",
+                    # Different source clauses must not fabricate the same title
+                    # with different definitions under the real QG2 check.
+                    "title": "付款申请时限" if "30日" in quote else quote[:80],
                     "summary": quote,
                     "content": quote,
                     "source_chunk_ids": [chunk["id"]],
