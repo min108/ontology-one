@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from backend import ai, db, jobs, materials, provenance
 from backend.core.errors import ApiError
 from backend.kernel import gates
-from backend.kernel.metadata import sync_meta
+from backend.kernel.metadata import get_meta, sync_meta
 from backend.security.context import require_context
 
 JSON_FIELDS = {
@@ -306,10 +306,26 @@ def get(ident: str) -> dict:
         ]
         material = materials.material(conn, result["source_refs"][0]["material_id"])
         candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
+        stale = []
         for item in result["items"]:
             item["processed_elsewhere"] = item_processed_elsewhere(item, candidates)
             if item["processed_elsewhere"]:
                 item["decision"] = "processed_elsewhere"
+            if item["applied_entity_id"]:
+                current = db.entity_json(
+                    conn.execute("SELECT * FROM entities WHERE id=?", (item["applied_entity_id"],)).fetchone()
+                )
+                if current:
+                    if (
+                        current["status"] in {"draft", "returned"}
+                        and current["version"] != item["applied_version"]
+                        and not unchanged_return(conn, item, current)
+                        and item["decision"] in {"accepted", "edited"}
+                    ):
+                        stale.append(current["title"] + "：草稿已变化，请查看最新内容并保存“改一改”后再提交。")
+                    item["after_data"] = current_candidate(conn, item, current)
+                    item["applied_version"] = current["version"]
+                    item["applied_status"] = current["status"]
             item["gates"] = preview_item(conn, item)
         result["can_submit"] = any(
             item["decision"] in {"accepted", "edited"}
@@ -329,7 +345,7 @@ def get(ident: str) -> dict:
             if item["decision"] in {"accepted", "edited"}
             and not item["processed_elsewhere"]
             and not item["gates"]["passed"]
-        ]
+        ] + stale
         result["can_submit"] = result["can_submit"] and not result["submit_blockers"]
         ref = result["source_refs"][0]
         source = provenance.get_source_version(conn, ref["material_id"], ref.get("source_version"))
@@ -343,6 +359,57 @@ def lock_changeset(conn: db.Connection, ident: str) -> dict:
     if not row:
         raise ApiError("NOT_FOUND")
     return decode(row)
+
+
+def current_candidate(conn: db.Connection, item: dict, entity: dict) -> dict:
+    """Project current saved content; reading never accepts or rebases a stale decision."""
+    payload = entity["payload"]
+    result = dict(item["after_data"])
+    for key in ("content", "definition", "scope", "exceptions", "unit", "grain", "boundary"):
+        result[key] = gates.plain(payload.get(key))
+    conditions = payload.get("conditions") or []
+    result["conditions"] = conditions if isinstance(conditions, list) else [gates.plain(conditions)]
+    result.update(title=entity["title"], kind=entity["kind"], judgement=payload.get("judgement"))
+    meta = get_meta(conn, entity["id"]) or {}
+    result.update({key: str(meta.get(key) or "") for key in ("valid_from", "valid_to")})
+    target = conn.execute(
+        "SELECT e.id,e.title FROM relations r JOIN entities e ON e.id=r.target "
+        "WHERE r.source=? AND r.type='applies_to' AND r.status IN ('confirmed','source_verified') "
+        "ORDER BY r.id LIMIT 1",
+        (entity["id"],),
+    ).fetchone()
+    result.update(applies_to_id=target["id"] if target else "", applies_to_title=target["title"] if target else "")
+    return result
+
+
+def stale_draft() -> ApiError:
+    return ApiError("VERSION_CONFLICT", "草稿已变化，请刷新核对页，查看最新内容并保存“改一改”后再提交。")
+
+
+def unchanged_return(conn: db.Connection, item: dict, entity: dict) -> bool:
+    if entity["status"] != "returned" or not entity["payload"].get("r2_review", {}).get("submitted_by"):
+        return False
+    current = current_candidate(conn, item, entity)
+    previous = item["after_data"]
+    text_keys = (
+        "title",
+        "kind",
+        "content",
+        "definition",
+        "scope",
+        "exceptions",
+        "unit",
+        "grain",
+        "boundary",
+        "valid_from",
+        "valid_to",
+        "applies_to_id",
+    )
+    return (
+        all(gates.plain(previous.get(key)) == gates.plain(current.get(key)) for key in text_keys)
+        and (previous.get("conditions") or []) == current["conditions"]
+        and previous.get("judgement") == current["judgement"]
+    )
 
 
 def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict:
@@ -367,7 +434,25 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict
                 raise ApiError("ITEM_CHANGED", "这条内容已形成草稿，请在草稿页继续修改。")
             if decision in {"accepted", "edited"} and item["validation"]["level"] == "error":
                 raise ApiError("EVIDENCE_NOT_FOUND")
-            after = item["after_data"] | (edit or {})
+            changes = {key: value for key, value in (edit or {}).items() if key != "expected_version"}
+            old = None
+            if item["applied_entity_id"]:
+                old = db.entity_json(
+                    conn.execute(
+                        "SELECT * FROM entities WHERE id=? FOR UPDATE", (item["applied_entity_id"],)
+                    ).fetchone()
+                )
+                expected = (edit or {}).get("expected_version")
+                expected = item["applied_version"] if expected is None else expected
+                if not old or old["status"] not in {"draft", "returned"} or old["version"] != expected:
+                    raise stale_draft()
+            after = (current_candidate(conn, item, old) if old else item["after_data"]) | changes
+            if not old and after["kind"] == "rule" and item["after_data"]["kind"] != "rule":
+                source = provenance.get_source_version(
+                    conn, material_id, proposal["source_refs"][0].get("source_version")
+                )
+                ensure_org_root(conn)
+                after = enrich_candidate(conn, after, source["text"])
             if not str(after.get("title", "")).strip() or not str(after.get("content", "")).strip():
                 raise ApiError("VALIDATION_FAILED", "名称和正文不能为空。")
             validation = item["validation"]
@@ -376,16 +461,9 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None) -> dict
             if item["applied_entity_id"]:
                 from backend.kernel.elements import update_draft
 
-                old = db.entity_json(
-                    conn.execute(
-                        "SELECT * FROM entities WHERE id=? FOR UPDATE", (item["applied_entity_id"],)
-                    ).fetchone()
-                )
-                if not old or old["status"] not in {"draft", "returned"} or old["version"] != item["applied_version"]:
-                    raise ApiError("VERSION_CONFLICT")
                 if after["kind"] != old["kind"]:
                     raise ApiError("VALIDATION_FAILED", "已形成草稿的种类不能更换，请在要素页继续办理。")
-                payload = {**old["payload"], **candidate_payload(after, item["evidence"])}
+                payload = {**old["payload"], **candidate_payload(after, old["payload"].get("source_refs") or [])}
                 updated = update_draft(
                     conn,
                     old,
@@ -464,6 +542,7 @@ def apply(ident: str, *, submit: bool) -> dict:
                 confirm_applicability(conn, entity, item["after_data"])
                 sync_after_write(conn, entity, meta_updates=candidate_meta(item["after_data"]))
                 item["applied_entity_id"] = entity["id"]
+                item["applied_version"] = entity["version"]
                 conn.execute(
                     "UPDATE changeset_items SET applied_entity_id=?,applied_version=? WHERE id=?",
                     (entity["id"], entity["version"], item["id"]),
@@ -475,6 +554,9 @@ def apply(ident: str, *, submit: bool) -> dict:
             if not entity:
                 raise ApiError("NOT_FOUND")
             if submit and entity["status"] in {"draft", "returned"}:
+                if entity["version"] != item["applied_version"] and not unchanged_return(conn, item, entity):
+                    raise stale_draft()
+                conn.execute("UPDATE changeset_items SET applied_version=? WHERE id=?", (entity["version"], item["id"]))
                 entity_action_in_transaction(conn, entity_id, {"action": "submit", "reason": "建设方案核对后提交审核"})
             entity_ids.append(entity_id)
         if not entity_ids:
@@ -523,17 +605,21 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str) -> 
     patterns = {
         "scope": r"(?:适用范围[：:]|本(?:制度|办法)适用于)([^。\n；]+)",
         "exceptions": r"(?:例外[：:]|例外情形[：:])([^。\n；]+)",
-        "valid_from": r"(?:生效日期[：:]|自)(\d{4}[-年]\d{1,2}[-月]\d{1,2}日?)(?:起生效|起施行)?",
     }
     for name, pattern in patterns.items():
         if not result.get(name):
             match = re.search(pattern, source_text)
             if match:
                 value = match.group(1).strip()
-                if name == "valid_from":
-                    parts = re.findall(r"\d+", value)
-                    value = f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
                 result[name] = value
+    if not result.get("valid_from"):
+        date = r"(\d{4}[-年]\d{1,2}[-月]\d{1,2}日?)"
+        match = re.search(r"生效日期[：:]\s*" + date, source_text) or re.search(
+            r"(?:自|于)\s*" + date + r"\s*(?:起)?(?:生效|施行|实施)", source_text
+        )
+        if match:
+            parts = re.findall(r"\d+", match.group(1))
+            result["valid_from"] = f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
     if not result.get("conditions"):
         match = re.search(r"适用条件[：:]([^。\n；]+)", source_text)
         if match:
