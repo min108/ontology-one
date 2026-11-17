@@ -20,6 +20,11 @@ const stamp = (value?:string) => value && Number.isFinite(Date.parse(value)) ? n
 export function activityHref(item:HarnessActivityItem) {
   // Navigation targets come from the fixed task adapters, never external URLs.
   const href=item.href||'';
+  if(item.kind==='recipe_run'&&!/[\\\u0000-\u001f\u007f]/.test(href)){
+    const intake=href.match(/^\/build\/intake\?run=(RCP-[a-f0-9]{24})$/);
+    if(intake&&intake[1]===(item.run_id||item.id))return href;
+    if(/^\/build\/changesets\/CS-[a-f0-9]{24}$/.test(href))return href;
+  }
   if (/^\/(?:skill-development|applications|briefing|materials|experience|projects|tasks|authority|assets|datasets)(?:[/?#]|$)/.test(href) && !/[\\\u0000-\u001f]/.test(href)) {
     if(!LEGACY_HARNESS_KINDS.has(item.kind))return href;
     const url=new URL(href,window.location.origin);url.searchParams.set('harness_run',item.run_id||item.id);if(item.kind==='placement_suggest')url.searchParams.set('placement','1');return url.pathname+url.search+url.hash;
