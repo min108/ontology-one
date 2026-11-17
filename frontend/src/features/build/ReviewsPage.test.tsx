@@ -167,3 +167,10 @@ it('accepts null legacy sources while keeping the review decision boundary', asy
   expect(await screen.findByText('Historical business definition')).toBeVisible();
   expect(screen.getByText(terms.labels.r3_main_no_source)).toBeVisible();
 });
+
+it('keeps local-rule origin visible while the business content awaits review', async () => {
+  current.entity.payload.extraction_mode = 'local';
+  open();
+  expect(await screen.findByText(terms.labels.r3_ui_local)).toBeVisible();
+  expect(screen.queryByText('local')).not.toBeInTheDocument();
+});

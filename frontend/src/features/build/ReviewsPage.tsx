@@ -12,6 +12,7 @@ import {
   KindTag,
   StatusTag,
   TechnicalDetails,
+  OriginTag,
   formatDateTime,
   StateBlock,
 } from '../../ui';
@@ -250,6 +251,12 @@ function Inbox() {
                 <div className={styles.actions}>
                   <KindTag kind={current.entity.kind} />
                   <StatusTag status={current.entity.status} />
+                  {(current.entity.payload.extraction_mode === 'online' ||
+                    current.entity.payload.extraction_mode === 'local') && (
+                    <OriginTag
+                      origin={current.entity.payload.extraction_mode === 'online' ? 'ai' : 'local'}
+                    />
+                  )}
                 </div>
                 <h2>{current.entity.title}</h2>
                 <p className={styles.statement}>

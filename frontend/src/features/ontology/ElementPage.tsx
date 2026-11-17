@@ -12,6 +12,7 @@ import {
   StatusTag,
   formatDateTime,
   NextStepBar,
+  OriginTag,
 } from '../../ui';
 import { businessText, fieldLabels, sourceDescription } from '../build/businessText';
 import { SourceEvidence } from '../build/SourceEvidence';
@@ -54,6 +55,13 @@ export function BusinessCard({ detail }: { detail: ElementDetail }) {
   return (
     <article className={styles.card} aria-label={detail.entity.title}>
       <p className={styles.statement}>{detail.card.one_liner}</p>
+      {(detail.entity.payload.extraction_mode === 'online' ||
+        detail.entity.payload.extraction_mode === 'local') && (
+        <OriginTag
+          origin={detail.entity.payload.extraction_mode === 'online' ? 'ai' : 'local'}
+          reviewed={detail.entity.status === 'published'}
+        />
+      )}
       {detail.card.points.length > 0 && (
         <>
           <h2>{copy.r2_card_points}</h2>

@@ -220,3 +220,11 @@ it('uses the catalog return for a direct archive visit and ignores arbitrary fro
   );
   expect(screen.queryByRole('navigation', { name: terms.labels.r3_ui_next })).not.toBeInTheDocument();
 });
+
+it('carries known extraction origin into published and draft business cards', async () => {
+  const value = detail();
+  value.entity.payload.extraction_mode = 'online';
+  await openElement(value);
+  expect(screen.getByText(terms.labels.r3_ui_ai_reviewed)).toBeVisible();
+  expect(screen.queryByText('online')).not.toBeInTheDocument();
+});
