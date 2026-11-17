@@ -30,12 +30,14 @@ test("R3 A9 cross-role: editor A, submitter B, independent C; both review entrie
     await page.dispatchEvent("body", "drop", { dataTransfer: dropped });
     await button(page.getByRole("dialog"), "开始整理").click();
     await expect(
-      page.getByRole("link", { name: "核对建设方案", exact: true }),
+      page.getByRole("button", { name: "核对建设方案", exact: true }),
     ).toBeVisible({ timeout: 180_000 });
     const getting = page.waitForResponse((r) =>
       /\/api\/v2\/changesets\/CS-/.test(new URL(r.url()).pathname),
     );
-    await page.getByRole("link", { name: "核对建设方案", exact: true }).click();
+    await page
+      .getByRole("button", { name: "核对建设方案", exact: true })
+      .click();
     const proposal = (await (await getting).json()).data,
       url = page.url(),
       target = proposal.items[0];

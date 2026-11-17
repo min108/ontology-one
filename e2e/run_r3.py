@@ -177,19 +177,32 @@ def main() -> int:
                             f"http://127.0.0.1:{port}" + ("/internal/health" if name == "agent" else "/api/health"),
                             "ready" if name == "agent" else "ok",
                         )
-                    run_command(
-                        [
-                            "node",
-                            "frontend/node_modules/@playwright/test/cli.js",
-                            "test",
-                            "--config",
-                            "e2e/r3.config.mjs",
-                            *(["--grep", args.grep] if args.grep else []),
-                        ],
-                        ROOT,
-                        bootstrap,
-                        output / "browser.log",
-                    )
+                    browser_command = [
+                        "node",
+                        "frontend/node_modules/@playwright/test/cli.js",
+                        "test",
+                        "--config",
+                        "e2e/r3.config.mjs",
+                        *(["--grep", args.grep] if args.grep else []),
+                    ]
+                    if args.live:
+                        # Playwright assertion diagnostics can quote the real answer.
+                        # Keep stdout in memory from the outset; persist only a status.
+                        browser_result = subprocess.run(
+                            browser_command,
+                            cwd=ROOT,
+                            env=bootstrap,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            check=False,
+                        )
+                        (output / "browser.log").write_text(
+                            json.dumps({"channel": "browser_ui", "returncode": browser_result.returncode}) + "\n"
+                        )
+                        if browser_result.returncode:
+                            raise subprocess.CalledProcessError(browser_result.returncode, browser_command)
+                    else:
+                        run_command(browser_command, ROOT, bootstrap, output / "browser.log")
                     report["status"] = "passed"
                 finally:
                     terminate_processes(processes)

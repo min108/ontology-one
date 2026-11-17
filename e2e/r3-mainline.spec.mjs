@@ -149,7 +149,7 @@ for (
       await expect(trayItem).toContainText(/整理|提炼|完成|排队|处理/);
       await page.locator(".harness-activity summary").click();
       await expect(
-        page.getByRole("link", { name: "核对建设方案", exact: true }),
+        page.getByRole("button", { name: "核对建设方案", exact: true }),
       ).toBeVisible({ timeout: 180_000 });
       await expect(page.locator("[data-page-header]")).toContainText(
         /整理出\s*\d+\s*条/,
@@ -161,7 +161,7 @@ for (
         /\/api\/v2\/changesets\/CS-/.test(new URL(r.url()).pathname),
       );
       await page
-        .getByRole("link", { name: "核对建设方案", exact: true })
+        .getByRole("button", { name: "核对建设方案", exact: true })
         .click();
       const proposal = (await (await getting).json()).data;
       const changesetUrl = page.url();
@@ -193,6 +193,7 @@ for (
       await expect(drawer.locator("mark")).toHaveText(
         rejectedItem.evidence[0].quote,
       );
+      await assertNoLeaks(page, "A3 source drawer open");
       expect(page.url()).toBe(changesetUrl);
       await drawer.getByRole("button", { name: /关闭|Close/ }).click();
       await expect(drawer).not.toBeVisible();
@@ -410,6 +411,7 @@ for (
         });
         await fold.locator("summary").click();
         await expect(fold).toHaveAttribute("open", "");
+        await assertNoLeaks(page, "A13 open fold " + name);
         await fold.locator("summary").click();
       }
       await expect(page.locator("[data-technical-details]")).toHaveCount(0);
@@ -418,6 +420,9 @@ for (
         await expect(
           page.locator("summary").filter({ hasText: name }),
         ).toBeVisible();
+      await assertNoLeaks(page, "A13 professional outside technical", {
+        professional: true,
+      });
       await page.reload();
       expect(await readSavedViewMode(page)).toBe("pro");
       await openViewModeMenu(page);
@@ -510,6 +515,7 @@ for (
           await expect(compare).toContainText("31日");
           await expect(compare).toContainText("30日");
         }
+        await assertNoLeaks(page, "A11 revision comparison open");
         expect(artifact.spec.revision.before.length).toBeGreaterThan(0);
         expect(artifact.spec.revision.after.length).toBeGreaterThan(0);
         await compare.locator("summary").click();
@@ -521,6 +527,7 @@ for (
       const evidence = page.getByRole("dialog");
       await expect(evidence).toContainText("30日");
       await expect(evidence.locator("mark")).toBeVisible();
+      await assertNoLeaks(page, "A12 report evidence drawer open");
       await evidence.getByRole("button", { name: /关闭|Close/ }).click();
       record("A12 报告引用上标原文抽屉");
       for (const [label, format] of [
@@ -566,7 +573,10 @@ for (
         await download.delete();
       }
       const again = postResponse(page, "/artifacts/" + artifact.id + ":render");
-      await page.locator("summary").filter({ hasText: "版本记录" }).click();
+      await page
+        .locator("summary")
+        .filter({ hasText: c.r2_report_versions })
+        .click();
       await button(page, "再次生成").click();
       expect((await (await again).json()).data.current_version).toBe(2);
       await page

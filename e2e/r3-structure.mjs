@@ -62,9 +62,41 @@ export function leakedText(text) {
     [...text.matchAll(pattern)].map((match) => ({ kind, value: match[0] })),
   );
 }
-export async function assertNoLeaks(page, label) {
-  const text = await page.locator("body").innerText();
-  expect.soft(leakedText(text), `${label}: G3 simple view leakage`).toEqual([]);
+export async function assertNoLeaks(
+  page,
+  label,
+  { professional = false } = {},
+) {
+  const text = await page.evaluate(
+    ({ professional }) => {
+      const values = [],
+        walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode,
+          el = node.parentElement;
+        if (
+          !el ||
+          el.closest("script,style,svg,[aria-hidden=true]") ||
+          !el.getClientRects().length ||
+          getComputedStyle(el).visibility === "hidden"
+        )
+          continue;
+        if (el.closest("details:not([open])") && !el.closest("summary"))
+          continue;
+        if (professional && el.closest("[data-technical-details]")) continue;
+        values.push(node.textContent);
+      }
+      return values.join("\n");
+    },
+    { professional },
+  );
+  const leaks = leakedText(text);
+  expect
+    .soft(
+      live ? leaks.map(({ kind }) => ({ kind })) : leaks,
+      `${label}: G3 visible text leakage`,
+    )
+    .toEqual([]);
 }
 export async function checkStructure(
   page,
@@ -108,7 +140,15 @@ export async function checkStructure(
         const nav =
           document.querySelector("nav[aria-label='工作区导航']") ||
           document.querySelector("[data-primary-link]")?.closest("nav");
-        const firstBlock = content && [...content.children].find(shown);
+        const firstBlock =
+          content &&
+          [...content.children].find(
+            (el) =>
+              shown(el) &&
+              (!legacy ||
+                (!el.contains(title) &&
+                  !el.matches("nav,.page-head,.agent-page-heading"))),
+          );
         const textNodes = [];
         let first = 0,
           all = 0;
@@ -271,7 +311,7 @@ export async function checkStructure(
       },
       { SMALL_OK, legacy },
     );
-    const { visibleText, smallBad, ...measurements } = r;
+    const { visibleText, smallBad, bareTags, ...measurements } = r;
     appendFileSync(
       resolve(process.env.E2E_EVIDENCE_DIR, "structure.jsonl"),
       JSON.stringify({
@@ -279,6 +319,7 @@ export async function checkStructure(
         width,
         height,
         ...measurements,
+        bareTags: live ? bareTags.length : bareTags,
         smallBad: live
           ? smallBad.map(({ size, secondary }) => ({ size, secondary }))
           : smallBad,
@@ -329,8 +370,15 @@ export async function checkStructure(
       expect.soft(r.primaries, `${name} E2`).toBeLessThanOrEqual(1);
       expect.soft(r.columns, `${name} G1 columns`).toBeLessThanOrEqual(6);
       expect.soft(r.rowButtons, `${name} G1 actions`).toBeLessThanOrEqual(2);
-      expect.soft(r.bareTags, `${name} G2`).toEqual([]);
-      expect.soft(leakedText(r.visibleText), `${name} G3/G5`).toEqual([]);
+      expect.soft(r.bareTags.length, `${name} G2`).toBe(0);
+      expect
+        .soft(
+          live
+            ? leakedText(r.visibleText).map(({ kind }) => ({ kind }))
+            : leakedText(r.visibleText),
+          `${name} G3/G5`,
+        )
+        .toEqual([]);
       expect.soft(r.nativeDates, `${name} G5 date controls`).toBe(0);
       if (empty) {
         expect.soft(r.zeroMetrics, `${name} G4`).toBe(0);
