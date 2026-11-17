@@ -21,14 +21,64 @@
     "A17": "r3-administration: keyboard rail expansion and retained parent entries; 25 bookmarked/detail routes; A1/A2/B1/C1 legacy structure"
   },
   "changed_existing_assertions": [
-    {"decision":"D3", "files":["foundation-admin.spec.mjs","foundation-home.spec.mjs"], "before":"direct institution combobox", "after":"open topbar institution popover, select original combobox, retain workspace and permission assertions"},
-    {"decision":"D5", "files":["foundation-home.spec.mjs"], "before":"four metrics always visible including zero", "after":"populated parity in saved professional view retains all metric values and destinations; empty simple view has zero metric nodes, start text and same demo destination through navigation"},
-    {"decision":"D10", "files":["foundation-identity.spec.mjs"], "before":"accounts/grants tabs", "after":"same datasets via segmented radio; authorization and persistence assertions retained"},
-    {"decision":"D1", "files":["foundation-identity.spec.mjs"], "before":"all account action buttons inline", "after":"edit inline, reset/disable/enable in more menu; cancellation, self-disable and persistence assertions retained"},
-    {"decision":"D5", "files":["foundation-identity.spec.mjs","foundation-visual.spec.mjs","visual_baselines.py"], "before":"audit raw identifiers and JSON inline", "after":"same immutable record and exact API identity; business filters, simple drawer without identifiers, professional technical drawer with original JSON"},
-    {"decision":"D8/D9", "files":["foundation-visual.spec.mjs","r3-visual-diagnostics.mjs"], "before":"zero pixel snapshot difference gate", "after":"mandatory readable canonical baseline, hashes and dimensions recorded for review; no pixel-difference gate; 63-image inventory, canonical CI capture, native zoom, dimensions and axe gates retained"},
-    {"decision":"D3/D5/D10/D11", "files":["r2-mainline.spec.mjs","r3-mainline.spec.mjs"], "before":"R2 cards, tabs, direct publish and manual report correction", "after":"same mainline assertions shared through new selected details, fold rows, single confirmation and automatic correction; real 422 recovery now injects one stale extra request field because empty/oversize controls prevent sending invalid values"},
-    {"decision":"version 1.2.0", "files":["foundation-admin.spec.mjs"], "before":"hard-coded 1.1.0 system heading", "after":"heading equals tracked VERSION; existing health checks retained"}
+    {
+      "decision": "D3",
+      "files": ["foundation-admin.spec.mjs", "foundation-home.spec.mjs"],
+      "before": "direct institution combobox",
+      "after": "open topbar institution popover, select original combobox, retain workspace and permission assertions"
+    },
+    {
+      "decision": "D5",
+      "files": ["foundation-home.spec.mjs"],
+      "before": "four metrics always visible including zero",
+      "after": "populated parity in saved professional view retains all metric values and destinations; empty simple view has zero metric nodes, start text and same demo destination through navigation"
+    },
+    {
+      "decision": "D10",
+      "files": ["foundation-identity.spec.mjs"],
+      "before": "accounts/grants tabs",
+      "after": "same datasets via segmented radio; authorization and persistence assertions retained"
+    },
+    {
+      "decision": "D1",
+      "files": ["foundation-identity.spec.mjs"],
+      "before": "all account action buttons inline",
+      "after": "edit inline, reset/disable/enable in more menu; cancellation, self-disable and persistence assertions retained"
+    },
+    {
+      "decision": "D5",
+      "files": [
+        "foundation-identity.spec.mjs",
+        "foundation-visual.spec.mjs",
+        "visual_baselines.py"
+      ],
+      "before": "audit raw identifiers and JSON inline",
+      "after": "same immutable record and exact API identity; business filters, simple drawer without identifiers, professional technical drawer with original JSON"
+    },
+    {
+      "decision": "D8/D9",
+      "files": ["foundation-visual.spec.mjs", "r3-visual-diagnostics.mjs"],
+      "before": "zero pixel snapshot difference gate",
+      "after": "mandatory readable canonical baseline, hashes and dimensions recorded for review; no pixel-difference gate; 63-image inventory, canonical CI capture, native zoom, dimensions and axe gates retained"
+    },
+    {
+      "decision": "D3/D5/D10/D11",
+      "files": ["r2-mainline.spec.mjs", "r3-mainline.spec.mjs"],
+      "before": "R2 cards, tabs, direct publish and manual report correction",
+      "after": "same mainline assertions shared through new selected details, fold rows, single confirmation and automatic correction; real 422 recovery now injects one stale extra request field because empty/oversize controls prevent sending invalid values"
+    },
+    {
+      "decision": "version 1.2.0",
+      "files": ["foundation-admin.spec.mjs"],
+      "before": "hard-coded 1.1.0 system heading",
+      "after": "heading equals tracked VERSION; existing health checks retained"
+    },
+    {
+      "decision": "D3/D5",
+      "files": ["foundation-admin.spec.mjs"],
+      "before": "backup recovery text and source download always unfolded; secondary navigation directly available",
+      "after": "open retained recovery and Windows fold rows, keyboard-expand management navigation, retain exact instructions/release URL/download success/role rights/system version checks; VERSION read from exported application root"
+    }
   ],
   "cross_role_ui_constraint": "Existing edit-and-adopt behavior immediately applies the draft; UI case uses editor A then submitter B. Exact A-edit/B-adopt provenance combination is additionally covered by backend R3 tests."
 }

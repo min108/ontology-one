@@ -91,7 +91,12 @@ for (const role of roles) {
       });
       if (role === "admin") await expect(exportButton).toBeEnabled();
       else await expect(exportButton).toBeDisabled();
+      await page.locator("summary").filter({ hasText: "离线恢复说明" }).click();
       await expect(page.getByText(/恢复只能离线执行/)).toBeVisible();
+      await page
+        .locator("summary")
+        .filter({ hasText: "Windows 便携运行" })
+        .click();
       await expect(
         page.getByRole("link", { name: "查看平台发行包" }),
       ).toHaveAttribute(
@@ -101,6 +106,9 @@ for (const role of roles) {
       await expect(
         page.getByRole("button", { name: "导出程序源码包" }),
       ).toHaveCount(0);
+      const adminLink = page.locator('[data-primary-link][href="/admin"]');
+      await adminLink.focus();
+      await adminLink.press("ArrowRight");
       const integrations = page
         .getByRole("navigation", { name: "工作区内导航", exact: true })
         .getByRole("link", { name: "集成应用" });
@@ -108,7 +116,12 @@ for (const role of roles) {
       await ready(page, "/admin/system", "系统信息");
       await expect(
         page.getByRole("heading", {
-          name: "知元 " + readFileSync(resolve("VERSION"), "utf8").trim(),
+          name:
+            "知元 " +
+            readFileSync(
+              resolve(process.env.E2E_APPLICATION_ROOT || ".", "VERSION"),
+              "utf8",
+            ).trim(),
           exact: true,
         }),
       ).toBeVisible();
@@ -275,6 +288,10 @@ test.describe("headquarters superadministrator", () => {
   }) => {
     test.setTimeout(90000);
     await ready(page, "/admin/backup", "备份与升级");
+    await page
+      .locator("summary")
+      .filter({ hasText: "Windows 便携运行" })
+      .click();
     const pending = page.waitForEvent("download");
     await page
       .getByRole("button", { name: "导出程序源码包", exact: true })
