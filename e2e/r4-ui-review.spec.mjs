@@ -129,6 +129,10 @@ test("R4 review specialized authority and skill repair controls match legacy lay
     await page.getByLabel("例外情况", { exact: true }).fill("无");
     await checkStructure(page, "r4-authority-repair", { legacy: true });
     await shot(page, "r4-authority-repair");
+    await page
+      .getByRole("textbox", { name: "例外情况", exact: true })
+      .scrollIntoViewIfNeeded();
+    await shot(page, "r4-authority-conditions");
     // Save the edited draft before moving to the next specialized editor.
     const save = page.waitForResponse(
       (response) =>
@@ -155,7 +159,11 @@ test("R4 review specialized authority and skill repair controls match legacy lay
     });
     await page.goto("/skill-development/" + skill.entity.id);
     await expect(
-      page.getByRole("heading", { name: "合成核对技能", exact: true }),
+      page.getByRole("heading", {
+        name: "合成核对技能",
+        level: 1,
+        exact: true,
+      }),
     ).toBeVisible();
     await checkStructure(page, "r4-skill-page", { legacy: true });
     await button(page, "修改名称与业务说明").click();
@@ -166,10 +174,10 @@ test("R4 review specialized authority and skill repair controls match legacy lay
     await expect(button(dialog, "添加出处")).toBeEnabled();
     await button(dialog, "添加出处").click();
     await expect(
-      dialog.getByLabel("出处材料 1", { exact: true }),
+      dialog.getByRole("combobox", { name: "出处材料 1", exact: true }),
     ).toBeVisible();
     await expect(
-      dialog.getByLabel("原文引用 1", { exact: true }),
+      dialog.getByRole("textbox", { name: "原文引用 1", exact: true }),
     ).toBeEditable();
     await shot(page, "r4-skill-repair");
     await assertNoLeaks(page, "R4 skill repair");
