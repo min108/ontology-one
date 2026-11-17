@@ -134,6 +134,7 @@ def prepare(box, external):
             builder.create(
                 ident, prefix + "-" + title, payload={"definition": "已审核的业务数据标准", "unit": "无量纲"}
             )
+            builder.prepare_publication(ident)
             for actor, action in ((builder, "submit"), (reviewer, "approve"), (reviewer, "publish")):
                 actor.ok("POST", "/entities/" + ident + "/action", json={"action": action, "reason": "QA异人审核标准"})
         builder.create("MCP-HIDDEN", prefix + "-未发布内容", payload={"definition": "不能穿透未发布节点"})

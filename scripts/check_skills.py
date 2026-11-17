@@ -233,6 +233,17 @@ def skill(actor, name="qa-skill"):
 
 
 def save(actor, detail, *, files=None, profile=None, reason="QA明确保存草稿"):
+    profile = copy.deepcopy(profile if profile is not None else detail["manifest"])
+    if not profile.get("dependencies"):
+        profile["dependency_note"] = "本合成方法仅处理显式输入，不依赖其他本体要素。"
+    if not profile.get("source_refs"):
+        text = (
+            "【合成技能说明】"
+            + detail["entity"]["title"]
+            + "\n"
+            + json.dumps(profile, ensure_ascii=False, sort_keys=True)
+        )
+        profile["source_refs"] = [actor.source_reference(text)]
     return actor.ok(
         "PUT",
         "/skills/" + ident(detail),
@@ -241,7 +252,7 @@ def save(actor, detail, *, files=None, profile=None, reason="QA明确保存草�
             "title": detail["entity"]["title"],
             "summary": detail["entity"]["summary"],
             "files": files if files is not None else detail["files"],
-            "manifest": profile if profile is not None else detail["manifest"],
+            "manifest": profile,
             "reason": reason,
         },
     ).json()
@@ -362,6 +373,7 @@ def run_checks(box, *, smoke=False, runtime=None, external=None, ui_access=None,
             for kind in ("data", "rule", "knowledge"):
                 aid = "SKILL-DEP-" + kind.upper()
                 builder.create(aid, "QA已审" + kind, kind=kind, payload={"definition": "合成验收口径"})
+                builder.prepare_publication(aid)
                 for actor, name in ((builder, "submit"), (reviewer, "approve"), (reviewer, "publish")):
                     actor.ok("POST", "/entities/" + aid + "/action", json={"action": name, "reason": "QA独立审核发布"})
                 entity = builder.ok("GET", "/entities/" + aid).json()

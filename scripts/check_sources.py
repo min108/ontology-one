@@ -275,6 +275,7 @@ def run_checks(box, external, ui_access=None):
             ("SOURCE-TEXT", "QA业务文本"),
         ]:
             builders[tenant].create(ident, title, payload={"definition": "QA经过独立审核的字段口径", "unit": "无量纲"})
+            builders[tenant].prepare_publication(ident)
             for actor, action in (
                 (builders[tenant], "submit"),
                 (reviewers[tenant], "approve"),

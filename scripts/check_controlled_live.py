@@ -296,6 +296,7 @@ class LiveContext:
                 "active_asset": True,
             },
         )
+        self.builder.prepare_publication(rule_id)
         for actor, action in ((self.builder, "submit"), (self.reviewer, "approve"), (self.reviewer, "publish")):
             actor.ok("POST", "/entities/" + rule_id + "/action", json={"action": action, "reason": "合成验收独立审核"})
         before = self.box.business_snapshot("sub-01")

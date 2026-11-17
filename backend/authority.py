@@ -60,6 +60,8 @@ class Spec(BaseModel):
     purpose: str = Field(default="", max_length=3000)
     basis: str = Field(default="", max_length=5000)
     scope: str = Field(default="", max_length=3000)
+    conditions: str = Field(default="", max_length=3000)
+    exceptions: str = Field(default="", max_length=3000)
     effective_from: str = Field(default="", max_length=10)
     effective_to: str = Field(default="", max_length=10)
     org_ids: list[str] = Field(default_factory=list, max_length=60)
@@ -308,6 +310,9 @@ def make_payload(spec, old=None):
     return {
         **(old or {}),
         "authority_spec": spec,
+        "definition": spec["purpose"],
+        "conditions": spec.get("conditions", ""),
+        "exceptions": spec.get("exceptions", ""),
         "rule_type": TYPES[spec["type"]],
         "category": "权责规范",
         "subcategory": spec["subtype"],
@@ -317,21 +322,21 @@ def make_payload(spec, old=None):
         "basis": spec["basis"],
         "scope": spec["scope"],
         "effective_from": spec["effective_from"],
+        "effective_to": spec["effective_to"],
         "source_refs": spec["source_refs"],
         "active_asset": True,
     }
 
 
 def sync_relations(c, entity):
-    """Keep explicit adopted versions; draft links cannot look published."""
+    """Spec-owned links are confirmed with human save; publication still reviews the rule."""
+    from .kernel.metadata import sync_meta
+
     spec = entity["payload"]["authority_spec"]
-    status = (
-        "confirmed"
-        if entity["status"] in ("approved", "published")
-        else "rejected"
-        if entity["status"] == "archived"
-        else "candidate"
+    sync_meta(
+        c, entity, {"valid_from": spec.get("effective_from") or None, "valid_to": spec.get("effective_to") or None}
     )
+    status = "rejected" if entity["status"] == "archived" else "confirmed"
     desired = [(oid, "applies_to", "适用于组织") for oid in spec["org_ids"]]
     desired += [(pid, "applies_to", "适用于人员") for pid in spec["person_ids"]]
     desired += [(ref["material_id"], "derived_from", "提炼自") for ref in spec["source_refs"]]
@@ -351,6 +356,7 @@ def sync_relations(c, entity):
         related = get_entity(c, target)
         payload = {
             "authority_managed": True,
+            "derived": True,
             "source_version": entity["version"],
             "target_version": related["version"],
             "review_state": entity["status"],
@@ -399,6 +405,9 @@ def guard_action(c, old, body):
         issues = checks_for(spec)
         if issues["errors"]:
             raise HTTPException(422, "请先完成规范核对：" + "；".join(issues["errors"]))
+        from .kernel.gates import enforce
+
+        enforce(c, old)
 
 
 @router.get("/authority/catalog")

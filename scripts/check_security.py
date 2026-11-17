@@ -92,7 +92,90 @@ class Session:
             },
         ).json()
 
+    def source_reference(self, text):
+        """Install explicit synthetic evidence with a real version and exact quote hash."""
+        material = self.ok(
+            "POST",
+            "/materials/upload",
+            files={"file": ("QA合成制度依据.txt", text.encode("utf-8"), "text/plain")},
+        ).json()["id"]
+        database = self.sandbox.tenant_db(self.workspace)
+        source = self.sandbox.sql(
+            "SELECT id,text FROM source_versions WHERE material_id=%s ORDER BY version DESC LIMIT 1",
+            (material,),
+            database,
+        )[0]
+        assert source["text"] == text
+        anchor = "QA-ANCHOR-" + hashlib.sha256((source["id"] + text).encode()).hexdigest()[:24]
+        self.sandbox.sql(
+            "INSERT IGNORE INTO source_anchors(id,material_id,source_version,start,end,quote_sha256,locator,created_at) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                anchor,
+                material,
+                source["id"],
+                0,
+                len(text),
+                hashlib.sha256(text.encode()).hexdigest(),
+                "合成原文全文",
+                "2026-01-01",
+            ),
+            database,
+        )
+        self.sandbox.sql("UPDATE entities SET source_kind='regulation' WHERE id=%s", (material,), database)
+        self.sandbox.sql("UPDATE entity_meta SET subtype='regulation' WHERE entity_id=%s", (material,), database)
+        return {
+            "kind": "anchor",
+            "material_id": material,
+            "source_version": source["id"],
+            "anchor_id": anchor,
+            "quote": text,
+            "start": 0,
+            "end": len(text),
+            "locator": "合成原文全文",
+        }
+
+    def prepare_publication(self, ident):
+        """Strengthen synthetic success fixtures; the real release gates still execute."""
+        entity = self.ok("GET", "/entities/" + ident).json()
+        payload = dict(entity["payload"])
+        payload.setdefault("definition", entity.get("summary") or entity["title"] + "的合成验收定义")
+        if entity["kind"] == "data":
+            payload.setdefault("unit", "无量纲")
+            payload.setdefault("grain", payload.get("record_grain") or "每个合成业务对象一条记录")
+        elif entity["kind"] == "rule":
+            payload.setdefault("scope", "本机构合成测试业务")
+            payload.setdefault("conditions", "办理所述合成测试业务时")
+            payload.setdefault("exceptions", "本合成测试制度无其他例外")
+            payload.setdefault("effective_from", "2026-01-01")
+        elif entity["kind"] == "knowledge":
+            payload.setdefault("conditions", "仅用于合成验收场景")
+            payload.setdefault("boundary", "不作为真实业务结论")
+        if not payload.get("source_refs"):
+            text = "【合成验收制度】" + entity["title"] + "\n" + json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            payload["source_refs"] = [self.source_reference(text)]
+        self.ok(
+            "PATCH", "/entities/" + ident, json={"payload": payload, "reason": "补齐合成验收的定义、口径与真实锚点"}
+        )
+        if entity["kind"] == "rule":
+            database = self.sandbox.tenant_db(self.workspace)
+            self.sandbox.sql(
+                "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(%s,%s,%s,%s,%s,%s,%s) "
+                "ON DUPLICATE KEY UPDATE status=VALUES(status)",
+                (
+                    "QA-APPLIES-" + ident,
+                    ident,
+                    self.workspace,
+                    "applies_to",
+                    "适用于",
+                    "confirmed",
+                    json.dumps({"review_reason": "合成制度明确适用于本机构测试业务"}, ensure_ascii=False),
+                ),
+                database,
+            )
+
     def publish(self, ident):
+        self.prepare_publication(ident)
         for action in ("submit", "approve", "publish"):
             self.ok("POST", f"/entities/{ident}/action", json={"action": action})
 

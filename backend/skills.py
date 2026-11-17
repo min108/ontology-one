@@ -344,6 +344,8 @@ class Manifest(StrictModel):
     test_cases: Annotated[list[TestCase], Field(max_length=10)] = Field(default_factory=list)
     dependencies: Annotated[list[Dependency], Field(max_length=50)] = Field(default_factory=list)
     tool_dependencies: Annotated[list[ToolDependency], Field(max_length=10)] = Field(default_factory=list)
+    source_refs: Annotated[list[dict[str, Any]], Field(max_length=30)] = Field(default_factory=list)
+    dependency_note: Annotated[str, Field(max_length=2000)] = ""
 
     @field_validator("inputs", "outputs")
     @classmethod
@@ -660,13 +662,12 @@ def _detail(conn, entity, document):
 
 
 def _sync_relations(conn, entity, document):
-    status = (
-        "confirmed"
-        if entity["status"] == "published"
-        else "rejected"
-        if entity["status"] == "archived"
-        else "candidate"
-    )
+    from .kernel.metadata import sync_meta
+
+    sync_meta(conn, entity)
+    # The saved manifest owns these links; the entire package still requires
+    # independent review before it becomes executable/published.
+    status = "rejected" if entity["status"] == "archived" else "confirmed"
     existing = conn.execute(
         "SELECT * FROM relations WHERE source=? AND JSON_EXTRACT(payload,'$.skill_managed')=true", (entity["id"],)
     ).fetchall()
@@ -682,6 +683,7 @@ def _sync_relations(conn, entity, document):
         ident = "rel-skill-" + hashlib.sha256((entity["id"] + "\0" + dep["entity_id"]).encode()).hexdigest()[:32]
         payload = {
             "skill_managed": True,
+            "derived": True,
             "skill_dependency": True,
             "skill_id": entity["id"],
             "package_revision": document["current_revision"],
@@ -743,6 +745,7 @@ def _create_document(conn, title, summary, files, manifest, legacy_id=None):
         (ident, 1, _json(files), _json(manifest), package["digest"], principal.user_id, None, stamp),
     )
     entity, document = _document(conn, ident)
+    _sync_relations(conn, entity, document)
     _history_event(conn, entity, document, "创建技能草稿")
     log(conn, ident, "创建技能草稿", "登记Agent Skills包及本机构治理清单")
     return entity, document
@@ -1035,6 +1038,10 @@ def _save_skill(ident, body):
         if entity["status"] not in {"draft", "returned"}:
             _fail("skill_not_editable", "请先修订为草稿，再编辑技能。", 409)
         _dependency_state(conn, manifest)
+        if manifest.get("source_refs"):
+            from .authority import normalize_refs
+
+            manifest["source_refs"] = normalize_refs(conn, manifest["source_refs"])
         _snapshot_entity(conn, entity, body.reason)
         changed = document["digest"] != package["digest"] or document["manifest"] != manifest
         revision = document["current_revision"] + int(changed)
@@ -1060,6 +1067,59 @@ def _save_skill(ident, body):
         result = _detail(conn, entity, document)
     _audit("save", ident, revision=revision, digest=document["digest"])
     return result
+
+
+def gate_payload(entity, document):
+    """Project the current controlled package's declared facts; never invent evidence."""
+    from .skill_package import validate_files
+
+    manifest = document["manifest"]
+    package = validate_files(document["files"])
+    return {
+        **entity["payload"],
+        "definition": package["frontmatter"]["description"],
+        "inputs": manifest.get("inputs"),
+        "outputs": manifest.get("outputs"),
+        "steps": manifest.get("steps"),
+        "conditions": manifest.get("applicability", ""),
+        "source_refs": manifest.get("source_refs") or entity["payload"].get("source_refs", []),
+    }
+
+
+def skill_gate_facts(conn, entity):
+    """Fresh proof and pinned dependencies, retaining the package's own review boundary."""
+    _, document = _document(conn, entity["id"])
+    payload = gate_payload(entity, document)
+    tests = False
+    relations = False
+    try:
+        _validate_current(conn, entity, document, proof=True)
+        tests = True
+    except (HTTPException, ValueError):
+        pass
+    try:
+        checks, _ = _dependency_state(conn, document["manifest"])
+        dependencies = document["manifest"].get("dependencies", [])
+        declared = bool(dependencies) or bool(document["manifest"].get("dependency_note", "").strip())
+        rows = conn.execute("SELECT * FROM relations WHERE source=?", (entity["id"],)).fetchall()
+        matching = {}
+        for row in rows:
+            data = _decode(row["payload"] or "{}")
+            if (
+                data.get("skill_managed") is True
+                and data.get("package_revision") == document["current_revision"]
+                and data.get("derived") is True
+                and row["status"] == "confirmed"
+            ):
+                matching[row["target"]] = data.get("target_version")
+        relations = (
+            declared
+            and all(item["current"] for item in checks)
+            and all(matching.get(dep["entity_id"]) == dep["version"] for dep in dependencies)
+        )
+    except (HTTPException, ValueError):
+        pass
+    return {"payload": payload, "tests": tests, "relations": relations}
 
 
 def _validate_current(conn, entity, document, *, proof=False):
@@ -1311,6 +1371,9 @@ def _action(ident, body):
             _fail("skill_self_review", "编辑人和提交人不能审核自己的技能，管理员同样适用。", 403)
         if body.action in {"submit", "publish"}:
             _validate_current(conn, entity, document, proof=True)
+            from .kernel.gates import enforce
+
+            enforce(conn, entity)
         _snapshot_entity(conn, entity, body.reason)
         submitted = (
             principal.user_id

@@ -38,6 +38,8 @@ def run_checks(box):
         print(json.dumps(result, ensure_ascii=False), flush=True)
 
     def approve_asset(ident, authority=False):
+        if not authority:
+            builder.prepare_publication(ident)
         for actor, action in ((builder, "submit"), (reviewer, "approve"), (reviewer, "publish")):
             current = builder.ok("GET", "/entities/" + ident).json()
             body = {"action": action, "reason": "QA 已核对测试内容及业务范围"}
@@ -188,6 +190,8 @@ def run_checks(box):
                 {"id": "two", "source": "check", "target": "end"},
             ],
         }
+        spec.update(conditions="收到合成审批申请时", exceptions="无其他合成例外")
+        spec["source_refs"] = [builder.source_reference("【合成审批制度】" + json.dumps(spec, ensure_ascii=False))]
         body = {"title": "QA 文件审批流程", "summary": "QA三节点流程测试", "org_id": "sub-01", "spec": spec}
         result = builder.ok("POST", "/authority/assets", json=body).json()
         entity = result["entity"]
