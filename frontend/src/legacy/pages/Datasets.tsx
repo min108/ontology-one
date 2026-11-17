@@ -10,6 +10,7 @@ import {api,useApi,statusLabel,formatDate} from '../api';
 import {PageHeader,Card,Badge,Stat,Empty,Loading,Modal,useToast} from '../components/ui';
 import {FileIntake,Select} from '../components/workbench';
 import './datasets.css';
+import './data-sources.css';
 
 const number=(v:any)=>Number(v||0).toLocaleString('zh-CN');
 

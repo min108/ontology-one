@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { NavRail } from './NavRail';
 import { terms } from '../i18n/zh-CN';
+import styles from './NavRail.module.css';
 
 const entries = [
   {
@@ -54,4 +55,18 @@ it('filters denied secondary entries and does not intercept modified navigation'
   expect(screen.queryByRole('link', { name: 'Secret' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('link', { name: 'Build' }), { ctrlKey: true });
   expect(follow).not.toHaveBeenCalled();
+});
+it('Escape restores the current navigation group and its current item', () => {
+  render(<NavRail items={entries} permissions={{}} currentKey="build" currentHref="/build/intake" />);
+  fireEvent.keyDown(screen.getByRole('link', { name: 'Ontology' }), { key: 'ArrowRight' });
+  expect(screen.getByRole('link', { name: 'Catalog' })).toBeVisible();
+  fireEvent.keyDown(screen.getByRole('link', { name: 'Catalog' }), { key: 'Escape' });
+  expect(screen.getByRole('link', { name: 'Intake' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('link', { name: 'Intake' })).toHaveClass(styles.current);
+});
+it('a keyboard-collapsed current group still shows its current indicator', () => {
+  render(<NavRail items={entries} permissions={{}} currentKey="build" currentHref="/build/intake" />);
+  fireEvent.keyDown(screen.getByRole('link', { name: 'Intake' }), { key: 'ArrowLeft' });
+  expect(screen.queryByRole('link', { name: 'Intake' })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Build' })).toHaveClass(styles.current);
 });

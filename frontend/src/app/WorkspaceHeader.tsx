@@ -23,7 +23,6 @@ import { LegacyBlock } from '../ui/LegacyBlock';
 import { TopBar } from '../ui/TopBar';
 import { UserMenu } from './UserMenu';
 import { roleLabel } from './identity';
-import { requestRouteNavigation } from './guardedNavigation';
 import styles from './WorkspaceShell.module.css';
 
 export function WorkspaceHeader({
@@ -64,7 +63,7 @@ export function WorkspaceHeader({
       workspaceName={session.workspace.name}
       collapsed={navCollapsed ?? collapsed}
       onSearch={onSearch}
-      onHome={() => void requestRouteNavigation('/', navigate)}
+      onHome={() => void navigate('/')}
       identity={
         <>
           <Popover

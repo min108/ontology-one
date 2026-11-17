@@ -63,7 +63,7 @@ export function NavRail({
                 onMouseLeave={() => collapsed && setFlyout('')}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape' || event.key === 'ArrowLeft') {
-                    setExpanded('');
+                    setExpanded(event.key === 'Escape' ? undefined : '');
                     setFlyout('');
                   }
                   if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
@@ -79,7 +79,7 @@ export function NavRail({
                   aria-label={item.label}
                   aria-expanded={children.length ? open : undefined}
                   aria-current={selected ? 'page' : undefined}
-                  className={`${styles.item} ${selected && (collapsed || !children.length) ? styles.current : ''}`}
+                  className={`${styles.item} ${selected && (collapsed || !children.length || !open) ? styles.current : ''}`}
                   onClick={(event) => follow(event, item.href)}
                 >
                   <span className={styles.icon}>{item.icon ?? item.label.slice(0, 1)}</span>

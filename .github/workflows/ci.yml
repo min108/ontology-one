@@ -191,7 +191,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
   foundation:
-    if: "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev/r3-ui-foundation' && (contains(github.event.head_commit.message, '[R3-VISUAL]') || contains(github.event.head_commit.message, '[R3-REMAINING]') || contains(github.event.head_commit.message, '[R3-INTEGRATION]'))) }}"
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'push' && ((github.ref == 'refs/heads/dev/r2-sprint' && contains(github.event.head_commit.message, '[R2-FULL]')) || (github.ref == 'refs/heads/dev/r3-ui-foundation' && contains(github.event.head_commit.message, '[R3-FULL]'))))) && 60 || 15 }}
     services:

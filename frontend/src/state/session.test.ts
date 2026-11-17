@@ -79,6 +79,27 @@ it('maps whoami permissions without changing legacy boolean permissions', async 
   expect(useSessionStore.getState().session?.permissions).toEqual(auth.permissions);
   expect(useScopeStore.getState()).toMatchObject({ tenantId: 'a', scopeKey: 'local' });
 });
+it('retains a saved professional preference when a source-only identity resolves later', async () => {
+  const identity = deferred<Response>();
+  vi.mocked(fetch).mockImplementation(async (path) => {
+    if (String(path).includes('whoami')) return identity.promise;
+    if (String(path).endsWith('/v2/prefs'))
+      return new Response(JSON.stringify({ preferences: { view_mode: 'pro' } }));
+    return new Response(JSON.stringify(auth));
+  });
+  const state = await setup();
+  const loading = state.useSessionStore.getState().reload();
+  await vi.waitFor(() => expect(state.useSessionStore.getState().session).not.toBeNull());
+  const { loadPreferences } = await import('./preferences');
+  await loadPreferences('u1', 'a');
+  expect(state.useUiStore.getState().viewMode).toBe('professional');
+  identity.resolve(
+    new Response(JSON.stringify({ user_id: 'u1', tenant_id: 'a', permissions: ['source.submit'] })),
+  );
+  await loading;
+  expect(state.useSessionStore.getState().permission_keys).toEqual(['source.submit']);
+  expect(state.useUiStore.getState().viewMode).toBe('professional');
+});
 it('rejects permissions for a mismatched identity and defaults denied', async () => {
   const { useSessionStore } = await setup();
   vi.mocked(fetch).mockImplementation(

@@ -133,8 +133,6 @@ async function accept(next: AuthSession, token: number, signal: AbortSignal): Pr
     )
       throw new Error('Session identity mismatch');
     useSessionStore.setState({ permission_keys: [...identity.permissions] });
-    if (newIdentity && identity.permissions.length === 1 && identity.permissions[0] === 'source.submit')
-      useUiStore.getState().setViewMode('simple');
   } catch {
     if (current(token))
       useSessionStore.setState({

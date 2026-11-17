@@ -18,7 +18,6 @@ import { WorkspaceBreadcrumbs } from './WorkspaceBreadcrumbs';
 import { WorkspaceConfirmation } from './WorkspaceConfirmation';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { useDownloadWorkspace } from './useDownloadWorkspace';
-import { requestRouteNavigation } from './guardedNavigation';
 import { Link } from 'react-router-dom';
 import styles from './WorkspaceShell.module.css';
 
@@ -48,7 +47,30 @@ export function WorkspaceShell() {
     const update = () => setNarrowSplit(media.matches);
     media.addEventListener('change', update);
     const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setAssistantOpen(false);
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      // An inner dialog owns Escape, including when its handler unmounts it.
+      if (
+        event
+          .composedPath()
+          .some((node) => node instanceof Element && node.matches('[role=dialog], [role=alertdialog]'))
+      )
+        return;
+      const hasVisibleDialog = [
+        ...document.querySelectorAll('[role=dialog][aria-modal=true], [role=alertdialog][aria-modal=true]'),
+      ].some((dialog) => {
+        for (let node: Element | null = dialog; node; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (
+            style.display === 'none' ||
+            style.visibility === 'hidden' ||
+            node.getAttribute('aria-hidden') === 'true'
+          )
+            return false;
+        }
+        return true;
+      });
+      if (hasVisibleDialog) return;
+      setAssistantOpen(false);
     };
     const show = () => setAssistantOpen(true);
     window.addEventListener('keydown', close);
@@ -136,9 +158,9 @@ export function WorkspaceShell() {
             permissions={{}}
             currentKey={workspace}
             currentHref={navPath}
-            onNavigate={(href) => void requestRouteNavigation(href, navigate)}
+            onNavigate={navigate}
             collapsed={navCollapsed}
-            onCollapsedChange={setCollapsed}
+            onCollapsedChange={splitPage && narrowSplit ? undefined : setCollapsed}
           />
         </div>
       }
