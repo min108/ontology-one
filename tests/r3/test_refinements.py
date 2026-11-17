@@ -401,3 +401,47 @@ class RefinementsMySQL(unittest.TestCase):
         self.assertFalse(data["can_submit"])
         self.assertEqual(data["items"][0]["decision"], "processed_elsewhere")
         self.assertEqual(len(applied.json()["data"]["entity_ids"]), len(remaining))
+
+    @unittest.skipUnless(os.getenv("RUN_HARNESS_SDK_TESTS") == "1", "opt-in fixed SDK with synthetic provider")
+    def test_fixed_sdk_recipe_calls_provider_and_preserves_model_origin(self) -> None:
+        from e2e.r2_model import Provider
+
+        builder = self.login("fixture.builder")
+        person = store.authenticate_session(builder.cookies.get("ontology_session"), "r3-sdk-test")[0]
+        with (
+            Provider() as provider,
+            patch.dict(
+                os.environ,
+                {
+                    "DEEPSEEK_API_KEY": provider.key,
+                    "DEEPSEEK_BASE_URL": provider.url,
+                    "DEEPSEEK_MODEL": "synthetic-r2",
+                    "ONTOLOGY_MODEL_FROM_ENV": "1",
+                    "ONTOLOGY_MODEL_SOURCE": "mock",
+                    "ONTOLOGY_HARNESS_ALLOW_LOOPBACK_TEST": "1",
+                },
+            ),
+        ):
+            uploaded = builder.post(
+                "/api/materials/upload",
+                files={
+                    "file": (
+                        "synthetic-model.txt",
+                        "第一条 付款前必须核对合同约定及附件。\n第二条 累计付款不得超过合同金额。".encode(),
+                        "text/plain",
+                    )
+                },
+            )
+            self.assertEqual(uploaded.status_code, 200, uploaded.text)
+            run = self.invoke(builder, "recipe.start", {"material_id": uploaded.json()["id"]})
+            with use_context(person):
+                self.assertTrue(build.model_available())
+                asyncio.run(build.run_recipe(run["id"]))
+                result = build.status(run["id"])
+                proposal = build.get(result["changeset_id"])
+            self.assertGreater(provider.requests, 0)
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["used_model"], 1)
+            self.assertFalse(result["state"]["local"])
+            self.assertTrue(proposal["items"])
+            self.assertTrue(all(item["content_origin"] == "source" for item in proposal["items"]))

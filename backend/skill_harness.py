@@ -291,16 +291,32 @@ def _tmpfs_root():
     try:
         if sys.platform != "linux" or any(p.is_symlink() for p in (path, *path.parents)) or not path.is_dir():
             raise ValueError()
-        matches = []
-        for line in Path("/proc/self/mountinfo").read_text().splitlines():
-            left, right = line.split(" - ", 1)
+        # A namespace may retain covered mountinfo records. Resolve the mount
+        # actually containing this opened directory, not the longest path prefix.
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            mount_ids = [
+                line.split()[1]
+                for line in Path(f"/proc/self/fdinfo/{descriptor}").read_text().splitlines()
+                if line.startswith("mnt_id:")
+            ]
+            if len(mount_ids) != 1:
+                raise ValueError()
+            matches = [
+                line
+                for line in Path("/proc/self/mountinfo").read_text().splitlines()
+                if line.split()[0] == mount_ids[0]
+            ]
+            if len(matches) != 1:
+                raise ValueError()
+            left, right = matches[0].split(" - ", 1)
             fields = left.split()
             mount = Path(_unescape_mount(fields[4]))
-            if path == mount or path.is_relative_to(mount):
-                matches.append((len(str(mount)), fields[5].split(","), right.split()[0]))
-        _, options, filesystem = max(matches)
-        if filesystem != "tmpfs" or "rw" not in options:
-            raise ValueError()
+            options, filesystem = fields[5].split(","), right.split()[0]
+            if (path != mount and not path.is_relative_to(mount)) or filesystem != "tmpfs" or "rw" not in options:
+                raise ValueError()
+        finally:
+            os.close(descriptor)
         return path
     except (OSError, ValueError, IndexError):
         raise _error("HARNESS_UNAVAILABLE") from None

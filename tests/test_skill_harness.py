@@ -294,10 +294,14 @@ class ConfigurationTests(unittest.TestCase):
         # evidence explicitly and exercise the real filesystem decision code.
         for options, filesystem in (("rw", "ext4"), ("ro", "tmpfs")):
             evidence = f"1 0 0:1 / / {options},relatime - {filesystem} fixture {options}\n"
+
+            def mount_evidence(path, *args, **kwargs):
+                return "mnt_id:\t1\n" if str(path).startswith("/proc/self/fdinfo/") else evidence
+
             with (
                 self.subTest(options=options, filesystem=filesystem),
                 patch.dict(os.environ, {"ONTOLOGY_HARNESS_TMP_ROOT": self.temporary.name}),
-                patch.object(Path, "read_text", return_value=evidence),
+                patch.object(Path, "read_text", mount_evidence),
             ):
                 with self.assertRaises(HTTPException) as caught:
                     client._tmpfs_root()
