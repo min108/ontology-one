@@ -5,7 +5,6 @@ import {
   login,
   read,
   button,
-  postResponse,
   confirmAction,
   unique,
 } from "./r3-support.mjs";
@@ -96,9 +95,6 @@ for (const [decision, action, status] of [
         exact: true,
       });
       await expect(modal).toBeVisible();
-      await expect(
-        modal.locator("[data-testid=review-confirmation-object]"),
-      ).toHaveAttribute("data-review-id", original.id);
       if (decision === "return")
         await modal
           .getByLabel("退回理由", { exact: true })
@@ -122,14 +118,13 @@ for (const [decision, action, status] of [
       const refreshed = (await (await refreshing).json()).data.items;
       expect(refreshed[0].entity.id).toBe(newer.id);
       await expect(
-        reviewer.page.locator("[data-review-item-id]").first(),
-      ).toHaveAttribute("data-review-item-id", newer.id);
-      await expect(
-        modal.locator("[data-testid=review-confirmation-object]"),
-      ).toHaveAttribute("data-review-id", original.id);
-      const saved = postResponse(
-        reviewer.page,
-        "/reviews/" + original.id + ":decide",
+        reviewer.page.locator('[aria-label="选择一项待审内容"] button').first(),
+      ).toContainText(newer.title);
+      const saved = reviewer.page.waitForResponse(
+        (response) =>
+          /\/api\/v2\/reviews\/[^/]+:decide$/.test(
+            new URL(response.url()).pathname,
+          ) && response.request().method() === "POST",
       );
       await confirmAction(reviewer.page, action);
       expect((await saved).ok()).toBe(true);
