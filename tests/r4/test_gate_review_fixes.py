@@ -59,11 +59,11 @@ class GateReviewTable(unittest.TestCase):
             with self.subTest(expression=expression):
                 self.assertFalse(gates.hard_constraint(entity, expression_schema=SCHEMA))
 
-    def test_exception_formula_and_invalid_expression_cannot_hide_constraint(self) -> None:
+    def test_exception_and_invalid_expression_cannot_hide_constraint(self) -> None:
         entity = structured("approved")
         entity["payload"]["judgement"]["exceptions"] = [{"oxl": "amount == 0"}]
         self.assertTrue(gates.hard_constraint(entity, expression_schema=SCHEMA))
-        self.assertTrue(
+        self.assertFalse(
             gates.hard_constraint(
                 {"kind": "metric", "payload": {"formula": {"oxl": "amount - budget", "sentence": "金额之差"}}},
                 expression_schema=SCHEMA,
@@ -103,6 +103,30 @@ class GateReviewTable(unittest.TestCase):
         self.assertTrue(gates.hard_constraint(structured("amount <= 100000"), expression_schema=SCHEMA))
         # Missing declarations must not silently downgrade a rule's requirement.
         self.assertTrue(gates.hard_constraint(structured("amount <= 100000")))
+
+    def test_amount_definitions_are_not_limits_but_explicit_prose_constraints_remain_hard(self) -> None:
+        for kind in ("data", "metric", "rule", "object_type", "knowledge"):
+            for prose in (
+                "模拟合同约定的人民币金额，单位为元；不是付款金额。",
+                "累计已付款金额，以元记录。",
+                "本次付款金额，字段为payment_yuan。",
+                "金额之差",
+            ):
+                with self.subTest(kind=kind, prose=prose):
+                    self.assertFalse(gates.hard_constraint({"kind": kind, "payload": {"definition": prose}}))
+            for prose in (
+                "付款金额不得超过合同金额。",
+                "付款金额不超过合同金额。",
+                "累计付款金额上限为合同金额。",
+                "付款金额不能低于合同约定最低值。",
+                "审批权限按岗位确定。",
+                "应在30日内完成。",
+                "本次付款不得超过100万元。",
+                "金额阈值以正式制度为准。",
+            ):
+                with self.subTest(kind=kind, prose=prose):
+                    self.assertTrue(gates.hard_constraint({"kind": kind, "payload": {"definition": prose}}))
+        self.assertTrue(gates.hard_constraint({"kind": "rule", "payload": {"authority_spec": {"type": "workflow"}}}))
 
     def test_qg3_accepts_iso_dates_and_timestamps_and_compares_actual_instants(self) -> None:
         for meta in (
@@ -199,6 +223,62 @@ class GateReviewMySQL(unittest.TestCase):
         )
         checks = created["gates"]["checks"]
         self.assertEqual(next(item["status"] for item in checks if item["code"] == "QG1"), "pass")
+
+    def test_dataset_backed_amount_fields_pass_but_same_field_limit_requires_regulation(self) -> None:
+        client = self.login("fixture.builder")
+        ref = {
+            "kind": "dataset",
+            "dataset_id": "DEMO07-DATASET-CONTRACTS",
+            "sheet": "数据表",
+            "column": "合同金额（元）",
+        }
+        for field_name, title in (
+            ("amount_yuan", "合同金额"),
+            ("paid_yuan", "累计已付款金额"),
+            ("payment_yuan", "本次付款金额"),
+        ):
+            with self.subTest(field_name=field_name):
+                payload = {
+                    "data_form": "standard_field",
+                    "field_name": field_name,
+                    "definition": "模拟合同约定的人民币金额，单位为元；不是付款金额。",
+                    "unit": "元",
+                    "grain": "每份合同",
+                    "source_refs": [ref],
+                }
+                created = self.invoke(
+                    client,
+                    "element.create_draft",
+                    {
+                        "kind": "data",
+                        "title": "【演示】" + title + " · 出处核对用",
+                        "summary": payload["definition"],
+                        "payload": payload,
+                    },
+                )
+                ident = created["entity"]["id"]
+                checks = self.invoke(client, "quality.check_gates", {"entity_id": ident})
+                self.assertFalse(checks["hard_constraint"])
+                self.assertTrue(checks["passed"], checks)
+                self.assertEqual(next(c["status"] for c in checks["checks"] if c["code"] == "QG1"), "pass")
+                changed = self.invoke(
+                    client,
+                    "element.update_draft",
+                    {
+                        "entity_id": ident,
+                        "version": created["entity"]["version"],
+                        "payload": {**payload, "definition": "付款金额不得超过合同金额。"},
+                    },
+                )
+                self.assertEqual(changed["entity"]["id"], ident)
+                self.assertEqual(changed["entity"]["payload"]["source_refs"], [ref])
+                constrained = self.invoke(client, "quality.check_gates", {"entity_id": ident})
+                self.assertTrue(constrained["hard_constraint"])
+                self.assertEqual([c["code"] for c in constrained["checks"] if c["status"] == "fail"], ["QG1"])
+                denied = client.post("/api/entities/" + ident + "/action", json={"action": "submit"})
+                self.assertEqual(denied.status_code, 409, denied.text)
+                self.assertIn("出处可定位", denied.text)
+                self.assertEqual(client.get("/api/entities/" + ident).json()["status"], "draft")
 
     def test_structured_threshold_rejects_interview_and_accepts_regulation_with_iso_validity(self) -> None:
         client = self.login("fixture.builder")
