@@ -1,6 +1,11 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect } from "./runtime.mjs";
+import {
+  assertNoZeroHomeMetrics,
+  assertOneTitleLine,
+  homeMetricSnapshot,
+} from "./r3-assertion-contracts.mjs";
 
 // UI-BASELINE §11 / benchmarks/check-baseline.js. The three viewport measurements
 // preserve the benchmark's 1440 character budget while covering R3's 1366/1920 gate.
@@ -57,6 +62,8 @@ const leakPatterns = [
   ["internal field", /\b[a-z]+(?:_[a-z]+)+\b/g],
   ["JSON", /\{\s*"[^"\n]+"\s*:/g],
   ["raw time", /\d{4}-\d\d-\d\dT\d\d:\d\d[^\s]*|\bUTC\b/g],
+  ["source character offsets", /原文第\s*\d+\s*[–—−-]\s*\d+\s*字/g],
+  ["reading version", /阅读版\s*\d+/g],
   [
     "raw state",
     /\b(?:pending|published|returned|rejected|accepted|queued|running|completed|failed|waiting_user|provision_failed|draft|review)\b/g,
@@ -357,6 +364,9 @@ export async function checkStructure(
           ),
           smallBad: textNodes.filter((n) => n.size < 14 && !n.secondary),
           titleX,
+          navCollapsed: document
+            .querySelector("[data-topbar]")
+            ?.getAttribute("data-collapsed"),
           expectedX,
           blockX: round(firstBlock?.getBoundingClientRect().left),
           bodyY: round(content?.getBoundingClientRect().top),
@@ -395,19 +405,32 @@ export async function checkStructure(
           nativeDates: document.querySelectorAll(
             "input[type=date],input[type=datetime-local]",
           ).length,
-          zeroMetrics: [
-            ...document.querySelectorAll(
-              ".ant-statistic-content,[data-metric-value]",
-            ),
-          ].filter((el) => shown(el) && el.textContent.trim() === "0").length,
           visibleText: document.body.innerText,
         };
       },
       { SMALL_OK, legacy },
     );
+    const homeMetrics = await page.evaluate(homeMetricSnapshot);
+    r.zeroMetrics = homeMetrics.metrics.filter((value) => value === 0).length;
+    if (empty) assertNoZeroHomeMetrics(homeMetrics);
+    const structurePath = resolve(
+      process.env.E2E_EVIDENCE_DIR,
+      "structure.jsonl",
+    );
+    const prior = existsSync(structurePath)
+      ? readFileSync(structurePath, "utf8")
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+      : [];
+    assertOneTitleLine([
+      ...prior,
+      { width, height, navCollapsed: r.navCollapsed, titleX: r.titleX },
+    ]);
     const { visibleText, smallBad, bareTags, ...measurements } = r;
     appendFileSync(
-      resolve(process.env.E2E_EVIDENCE_DIR, "structure.jsonl"),
+      structurePath,
       JSON.stringify({
         label,
         width,

@@ -2,14 +2,14 @@
   "specification": "docs/blueprint/rounds/R3-PLAN.md §4",
   "execution_receipt": "work/<run>/runner.json and mainline-1.json; this map does not claim execution success",
   "actions": {
-    "A1": "r3-administration: UI-create institution and user; new login; simple default; zero metrics hidden; one start action",
+    "A1": "r3-administration: UI-create institution and user; new login; simple default; zero metrics hidden; one start action; r3-regressions proves actual data-home-count nodes match and injected visible zero fails",
     "A2": "r3-mainline: real drag/drop; zero-required dialog; start; task tray stage; completed count",
     "A3": "r3-mainline: selected source drawer mark equals evidence quote; same URL, selection and scroll after close",
     "A4": "r3-mainline: empty input blocked; real server 422 via stale-field request injection; retry; persisted content and editor",
     "A5": "r3-mainline: reject then single adopt; all pending high-confidence items adopt; decisions read back",
     "A6": "r3-mainline: disabled pending gate, all handled, one confirmation, persisted review status, next step",
     "A7": "r3-mainline: draft link opens new ontology element path with draft status",
-    "A8": "r3-mainline: reason required, confirm return, visible reason, persisted returned status, UI resubmit and inbox reappearance",
+    "A8": "r3-mainline: required reason; reviewer returns; builder separately reads persisted history and sees reason in reloaded element activity; UI resubmit and inbox reappearance",
     "A9": "r3-mainline and r3-cross-role: independent publish; A edits/applies, B submits, A blocked new UI and real legacy HTTP403; C publishes",
     "A10": "r3-mainline: click published element just-ask action; URL element parameter, auto-selection off and only current element checked; uncheck/recheck remains editable; submitted and persisted selected scope contains only that entity; ask, source link opens actual selected entity, simple answer leakage scan",
     "A11": "r3-mainline: automatic correction with no second click; before/after disclosure; python-docx title/table/30; offline HTML; version2; reopen and re-download",
@@ -80,5 +80,15 @@
       "after": "open retained recovery and Windows fold rows, keyboard-expand management navigation, retain exact instructions/release URL/download success/role rights/system version checks; verified model result uses its status role; VERSION read from exported application root"
     }
   ],
-  "cross_role_ui_constraint": "Existing edit-and-adopt behavior immediately applies the draft; UI case uses editor A then submitter B. Exact A-edit/B-adopt provenance combination is additionally covered by backend R3 tests."
+  "cross_role_ui_constraint": "Existing edit-and-adopt behavior immediately applies the draft; UI case uses editor A then submitter B. Exact A-edit/B-adopt provenance combination is additionally covered by backend R3 tests.",
+  "r31_regressions": {
+    "A2": "stage-only small node plus task-title-only/empty-stage counterexamples",
+    "A8": "builder server history and reloaded activity; blank saved reason counterexample",
+    "A1": "actual data-home-count node cloned as visible zero and rejected",
+    "U3": "reviewonly/crossorg actual identities; readonly display-only session response fixture; all without popovers; hiding each actual topbar label fails",
+    "B1": "all captured pages grouped by viewport and navigation state share one titleX; offset peer-page counterexample",
+    "leakage": "retains all existing patterns; source character offsets and reading version counterexamples",
+    "review_confirmation": "real server fixtures, open implicit-first confirmation, newer item submitted, focus/visibility refetch reorders, UI confirms original only; return and publish",
+    "authority_navigation": "real UI draft cancel preserves unsaved text; accepted navigation asks once and persisted title is unchanged"
+  }
 }

@@ -13,6 +13,7 @@ from contextlib import ExitStack, nullcontext
 from pathlib import Path
 
 from r3_model import Provider
+from r3_runner_metadata import model_metadata
 from run import (
     DatabaseScope,
     check_ports,
@@ -85,6 +86,7 @@ def main() -> int:
                 break
         summary = {
             "provider": "real_deepseek" if args.live else "synthetic_messages_real_sdk",
+            **(model_metadata(dict(os.environ)) if args.live else {}),
             "channel": "browser_ui",
             "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip(),
             "status": "passed"
@@ -148,6 +150,7 @@ def main() -> int:
                 DEEPSEEK_MODEL="synthetic-r2",
                 ONTOLOGY_HARNESS_ALLOW_LOOPBACK_TEST="1",
             )
+        report.update(model_metadata(environment))
         try:
             with scope:
                 try:

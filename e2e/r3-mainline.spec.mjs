@@ -6,6 +6,10 @@ import { c, login, read, postResponse, confirmAction } from "./r3-support.mjs";
 import { checkStructure, assertNoLeaks } from "./r3-structure.mjs";
 import { reportIssueSummary } from "./r3-report-diagnostics.mjs";
 import {
+  assertRecipeTrayStage,
+  assertReturnedReason,
+} from "./r3-assertion-contracts.mjs";
+import {
   selectSavedViewMode,
   readSavedViewMode,
   openViewModeMenu,
@@ -160,7 +164,9 @@ for (
         .filter({ hasText: "制度整理" })
         .first();
       await expect(trayItem).toBeVisible();
-      await expect(trayItem).toContainText(/整理|提炼|完成|排队|处理/);
+      const trayStage = trayItem.locator(".harness-activity-task > small");
+      await expect(trayStage).toBeVisible();
+      assertRecipeTrayStage(await trayStage.innerText());
       await page.locator(".harness-activity summary").click();
       await expect(
         page.getByRole("button", { name: "核对建设方案", exact: true }),
@@ -378,10 +384,16 @@ for (
       await expect(reviewer.page.getByRole("status")).toContainText(
         "请再次确认适用条件。",
       );
-      expect((await read(page, "/api/entities/" + editedId)).status).toBe(
-        "returned",
-      );
-      await page.reload();
+      const builderReturned = await read(page, "/api/entities/" + editedId);
+      assertReturnedReason(builderReturned, editedId, "请再次确认适用条件。");
+      // A separate builder session reloads the persisted history, not the reviewer's local toast.
+      await page.goto("/ontology/elements/" + editedId);
+      const returnedHistory = page.locator("details").filter({
+        has: page.locator("summary strong").filter({ hasText: "动态" }),
+      });
+      await returnedHistory.locator("summary").click();
+      await expect(returnedHistory).toContainText("请再次确认适用条件。");
+      await page.goto(changesetUrl);
       await submit(page);
       expect((await read(page, "/api/entities/" + editedId)).status).toBe(
         "review",
@@ -525,9 +537,16 @@ for (
       record("A10 就此提问自动选中、手动调整、回答出处可打开要素");
       await button(page, "生成报告").last().click();
       // R3's automatic correction must navigate with no second user click.
-      await expect.poll(() => reportResponses.at(-1)?.status() === 200 || reportResponses.length >= 2, {
-        timeout: 180_000,
-      }).toBe(true);
+      await expect
+        .poll(
+          () =>
+            reportResponses.at(-1)?.status() === 200 ||
+            reportResponses.length >= 2,
+          {
+            timeout: 180_000,
+          },
+        )
+        .toBe(true);
       expect(reportResponses.at(-1).status()).toBe(200);
       await expect(page).toHaveURL(/\/apply\/artifacts\//, {
         timeout: 180_000,
