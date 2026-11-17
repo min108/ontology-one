@@ -18,6 +18,41 @@ def command(args: list[str]) -> None:
     subprocess.run(args, check=True)
 
 
+def require_migrated_schema(kind: str, status: dict) -> dict:
+    version, table = {"control": (6, "job_schedule_state"), "tenant": (4, "entity_meta")}[kind]
+    if status["current"] != version or status["pending"]:
+        raise RuntimeError(f"Offline {kind} migration is incomplete: expected version {version}")
+    if table not in status["tables"]:
+        raise RuntimeError(f"Offline {kind} table is missing: {table}")
+    return {"version": version, "required_table": table}
+
+
+def migrated_schema_inventory() -> dict:
+    # This script is invoked by filename; make the extracted application importable.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from backend.infra.migrations import migration_status
+    from backend.security import store
+
+    control = store._config()["database"]
+    directory = store.list_tenants()
+    if not directory:
+        raise RuntimeError("Offline tenant directory is empty; tenant migrations were not verified")
+    inventory = {
+        "control": {"database": control, **require_migrated_schema("control", migration_status("control", control))},
+        "tenants": [],
+    }
+    for tenant in directory:
+        database = tenant["db_name"]
+        inventory["tenants"].append(
+            {
+                "tenant_id": tenant["id"],
+                "database": database,
+                **require_migrated_schema("tenant", migration_status("tenant", database)),
+            }
+        )
+    return inventory
+
+
 def main() -> int:
     evidence = Path("/evidence")
     with socket.socket() as probe:
@@ -38,7 +73,8 @@ def main() -> int:
     command(["npm", "--prefix", "frontend", "run", "build"])
     command([sys.executable, "scripts/checks/check_offline.py", "--require-dist"])
     command([sys.executable, "scripts/checks/check_policy_coverage.py"])
-    command([sys.executable, "scripts/migrate.py"])
+    command([sys.executable, "scripts/migrate.py", "--provision-all"])
+    schemas = migrated_schema_inventory()
     environment = dict(os.environ, ONTOLOGY_WORKER_ENABLED="0")
     with (evidence / "server.log").open("w") as server_log:
         server = subprocess.Popen(
@@ -76,6 +112,7 @@ def main() -> int:
                 "frontend_install": "passed (--offline)",
                 "frontend_build": "passed",
                 "migration": "passed",
+                "schemas": schemas,
                 "backend_startup": "passed with actual lifespan and MySQL",
                 "frontend_http": "passed",
                 "health": health,
