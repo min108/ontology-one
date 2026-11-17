@@ -165,9 +165,22 @@ def main(round_name: str = "r3") -> int:
                         [sys.executable, "tests/fixtures/v070/load.py"], ROOT, bootstrap, output / "fixture.log"
                     )
                     scope.record_created()
+                    if round_name == "r4" and not args.live and not args.mainline_only:
+                        run_command(
+                            [sys.executable, "e2e/r4_legacy_seed.py", "seed"],
+                            ROOT,
+                            bootstrap,
+                            output / "r4-legacy-seed.log",
+                        )
                     run_command([sys.executable, "scripts/migrate.py"], ROOT, bootstrap, output / "migrate.log")
                     scope.record_created()
                     if round_name == "r4" and not args.live and not args.mainline_only:
+                        run_command(
+                            [sys.executable, "e2e/r4_legacy_seed.py", "verify"],
+                            ROOT,
+                            bootstrap,
+                            output / "r4-legacy-verify.log",
+                        )
                         run_command([sys.executable, "e2e/r4_seed.py"], ROOT, bootstrap, output / "r4-seed.log")
                     for name, module, port in [
                         ("agent", "backend.agent_service:app", args.agent_port),
