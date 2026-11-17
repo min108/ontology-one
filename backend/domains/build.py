@@ -431,7 +431,9 @@ def apply(ident: str, *, submit: bool) -> dict:
             entity_ids.append(entity_id)
         if not entity_ids:
             raise ApiError("PRECONDITION_FAILED", "请先采纳需要保留的条目。")
-        pending = any(item["decision"] == "pending" for item in items)
+        pending = any(
+            item["decision"] == "pending" and not item_processed_elsewhere(item, candidates) for item in items
+        )
         conn.execute(
             "UPDATE changesets SET status=?,updated_at=? WHERE id=?",
             ("partially_applied" if pending else "applied", db.now(), ident),

@@ -288,3 +288,116 @@ class RefinementsMySQL(unittest.TestCase):
                 "SELECT COUNT(*) n FROM changeset_items WHERE changeset_id=?", (proposal["id"],)
             ).fetchone()["n"]
         self.assertEqual(count, len(proposal["items"]))
+
+    def test_queued_recipe_http_contract_preserves_null_progress(self) -> None:
+        client = self.login("fixture.builder")
+        uploaded = client.post(
+            "/api/materials/upload", files={"file": ("queued.txt", "付款前核对。".encode(), "text/plain")}
+        )
+        self.assertEqual(uploaded.status_code, 200, uploaded.text)
+        with patch("backend.domains.build.jobs.enqueue"):
+            started = client.post("/api/v2/recipes", json={"material_id": uploaded.json()["id"]})
+        self.assertEqual(started.status_code, 200, started.text)
+        run_id = started.json()["data"]["id"]
+        response = client.get("/api/v2/recipes/" + run_id)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["data"]["status"], "queued")
+        self.assertIsNone(response.json()["data"]["progress"])
+        self.assertIsNone(response.json()["data"]["changeset_id"])
+
+    def test_legacy_review_http_contract_preserves_business_payload_shapes(self) -> None:
+        builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")
+        cases = [
+            {"content": "付款前核对", "conditions": "付款前"},
+            {"content": ["核对合同", "核对附件"], "conditions": ["付款前", "有合同"]},
+            {
+                "content": {"description": "核对附件"},
+                "definition": {"description": "付款定义"},
+                "conditions": {"condition": "付款前"},
+            },
+            {"content": None, "definition": None, "conditions": None, "source_refs": None},
+            {
+                "content": "字典定义",
+                "source_refs": [
+                    {
+                        "id": "dataset-legacy",
+                        "kind": "dataset",
+                        "title": "旧数据台账",
+                        "locator": "工作表1",
+                        "href": "/datasets/dataset-legacy",
+                    }
+                ],
+            },
+            {
+                "content": "导入说明",
+                "source_refs": [
+                    {
+                        "material_id": "legacy-material",
+                        "id": "legacy-material",
+                        "title": "导入材料",
+                        "locator": "第1行",
+                        "chunk_id": "legacy-chunk",
+                        "excerpt": "付款前核对",
+                    }
+                ],
+            },
+        ]
+        for index, payload in enumerate(cases):
+            with self.subTest(index=index):
+                created = builder.post(
+                    "/api/entities", json={"kind": "rule", "title": f"旧契约形态{index}", "payload": payload}
+                )
+                self.assertEqual(created.status_code, 200, created.text)
+                ident = created.json()["id"]
+                submitted = builder.post(f"/api/entities/{ident}/action", json={"action": "submit"})
+                self.assertEqual(submitted.status_code, 200, submitted.text)
+                detail = reviewer.get("/api/v2/reviews/" + ident)
+                self.assertEqual(detail.status_code, 200, detail.text)
+                shown = detail.json()["data"]["entity"]["payload"]
+                for key in ("content", "definition", "conditions"):
+                    if key in payload:
+                        self.assertEqual(shown[key], payload[key])
+                if payload.get("source_refs"):
+                    for key, value in payload["source_refs"][0].items():
+                        self.assertEqual(shown["source_refs"][0][key], value)
+                    self.assertIsNone(shown["source_refs"][0]["anchor_id"])
+                inbox = reviewer.get("/api/v2/reviews")
+                self.assertEqual(inbox.status_code, 200, inbox.text)
+                self.assertIn(ident, [item["entity"]["id"] for item in inbox.json()["data"]["items"]])
+                if index == 4:
+                    blocked = reviewer.post(
+                        f"/api/v2/reviews/{ident}:decide", json={"decision": "approve_publish", "version": 2}
+                    )
+                    self.assertEqual(blocked.status_code, 422, blocked.text)
+                    self.assertEqual(blocked.json()["error"]["code"], "EVIDENCE_NOT_FOUND")
+                    self.assertEqual(
+                        reviewer.get("/api/v2/reviews/" + ident).json()["data"]["entity"]["status"], "review"
+                    )
+
+    def test_legacy_rejection_does_not_leave_completed_proposal_partially_applied(self) -> None:
+        client = self.login("fixture.builder")
+        proposal = self.proposal(client)
+        first, *remaining = proposal["items"]
+        rejected = client.patch(
+            f"/api/materials/{proposal['source_material_id']}/candidates/{first['after_data']['id']}",
+            json={"status": "rejected"},
+        )
+        self.assertEqual(rejected.status_code, 200, rejected.text)
+        decision = client.post(
+            f"/api/v2/changesets/{proposal['id']}/items:bulk-decide",
+            json={
+                "changeset_id": proposal["id"],
+                "item_ids": [item["id"] for item in remaining],
+                "decision": "accepted",
+            },
+        )
+        self.assertEqual(decision.status_code, 200, decision.text)
+        applied = client.post(f"/api/v2/changesets/{proposal['id']}:apply-and-submit")
+        self.assertEqual(applied.status_code, 200, applied.text)
+        refreshed = client.get(f"/api/v2/changesets/{proposal['id']}")
+        self.assertEqual(refreshed.status_code, 200, refreshed.text)
+        data = refreshed.json()["data"]
+        self.assertEqual(data["status"], "applied")
+        self.assertFalse(data["can_submit"])
+        self.assertEqual(data["items"][0]["decision"], "processed_elsewhere")
+        self.assertEqual(len(applied.json()["data"]["entity_ids"]), len(remaining))

@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class ReadModel(BaseModel):
@@ -67,7 +67,7 @@ class Recipe(ReadModel):
     status: str
     stage_message: str
     changeset_id: str | None = None
-    progress: dict[str, int] = Field(default_factory=dict)
+    progress: dict[str, int] | None = Field(default_factory=dict)
     used_model: int = 0
 
 
@@ -75,11 +75,31 @@ class RecipeResult(ReadModel):
     data: Recipe
 
 
+class LegacyEvidence(ReadModel):
+    """Read legacy dataset/import references without asserting a verified anchor."""
+
+    id: str | None = None
+    kind: str | None = None
+    title: str | None = None
+    material_id: str | None = None
+    anchor_id: str | None = None
+    source_version: str | int | None = None
+    quote: str | None = None
+    start: int | None = None
+    end: int | None = None
+    locator: str | None = None
+    href: str | None = None
+    chunk_id: str | None = None
+    excerpt: str | None = None
+
+
 class EntityPayload(ReadModel):
-    content: str | None = None
-    definition: str | None = None
-    conditions: list[str] = Field(default_factory=list)
-    source_refs: list[Evidence] = Field(default_factory=list)
+    # Legacy editors and importers intentionally preserve structured JSON values.
+    # This read schema must describe them; write/anchor verification stays separate.
+    content: JsonValue = None
+    definition: JsonValue = None
+    conditions: JsonValue = None
+    source_refs: list[LegacyEvidence] | None = Field(default_factory=list)
 
 
 class ReviewEntity(ReadModel):
@@ -98,7 +118,7 @@ class Review(ReadModel):
     submitted_at: str
     can_decide: bool
     blocked_reason: str
-    source_refs: list[Evidence]
+    source_refs: list[LegacyEvidence] | None
 
 
 class ReviewResult(ReadModel):

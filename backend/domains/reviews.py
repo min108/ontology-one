@@ -56,6 +56,8 @@ def guard_marked_action(conn: db.Connection, entity: dict, body: dict) -> None:
             if not refs:
                 raise ApiError("EVIDENCE_NOT_FOUND")
             for ref in refs:
+                if not isinstance(ref, dict) or not ref.get("material_id"):
+                    raise ApiError("EVIDENCE_NOT_FOUND")
                 provenance.normalize_source_ref(conn, ref["material_id"], ref)
 
 
@@ -146,6 +148,8 @@ def decide(ident: str, decision: str, version: int, reason: str) -> dict:
             if not refs:
                 raise ApiError("EVIDENCE_NOT_FOUND")
             for ref in refs:
+                if not isinstance(ref, dict) or not ref.get("material_id"):
+                    raise ApiError("EVIDENCE_NOT_FOUND")
                 provenance.normalize_source_ref(conn, ref["material_id"], ref)
             entity_action_in_transaction(
                 conn,

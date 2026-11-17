@@ -1203,40 +1203,27 @@
         "additionalProperties": true,
         "properties": {
           "conditions": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Conditions",
-            "type": "array"
+            "$ref": "#/components/schemas/JsonValue"
           },
           "content": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Content"
+            "$ref": "#/components/schemas/JsonValue"
           },
           "definition": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "source_refs": {
             "anyOf": [
               {
-                "type": "string"
+                "items": {
+                  "$ref": "#/components/schemas/LegacyEvidence"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Definition"
-          },
-          "source_refs": {
-            "items": {
-              "$ref": "#/components/schemas/Evidence"
-            },
-            "title": "Source Refs",
-            "type": "array"
+            "title": "Source Refs"
           }
         },
         "title": "EntityPayload",
@@ -1583,6 +1570,160 @@
           "name"
         ],
         "title": "Kind",
+        "type": "object"
+      },
+      "LegacyEvidence": {
+        "additionalProperties": true,
+        "description": "Read legacy dataset/import references without asserting a verified anchor.",
+        "properties": {
+          "anchor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id"
+          },
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Href"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "LegacyEvidence",
         "type": "object"
       },
       "ListResponse_Grant_": {
@@ -2217,11 +2358,18 @@
             "type": "string"
           },
           "progress": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Progress",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
           },
           "stage_message": {
             "title": "Stage Message",
@@ -2372,11 +2520,18 @@
             "$ref": "#/components/schemas/ReviewEntity"
           },
           "source_refs": {
-            "items": {
-              "$ref": "#/components/schemas/Evidence"
-            },
-            "title": "Source Refs",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LegacyEvidence"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Refs"
           },
           "submitted_at": {
             "title": "Submitted At",
