@@ -1,5 +1,23 @@
 import assert from "node:assert/strict";
 
+export function assertDataRepair(entity, expected) {
+  assert.equal(entity.kind, "data");
+  assert.equal(
+    entity.payload.unit,
+    expected.unit,
+    "the supported unit must persist",
+  );
+  assert.equal(
+    entity.payload.grain,
+    expected.grain,
+    "the declared grain must persist",
+  );
+  assert.ok(
+    entity.version > expected.before_version,
+    "the repair must create a new saved version",
+  );
+}
+
 export function assertUnwaivedChecks(gates) {
   assert.equal(gates.passed, true, "publication checks must pass");
   assert.equal(gates.checks.length, 5, "every publication check must run");

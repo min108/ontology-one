@@ -5,7 +5,10 @@ import { test, expect } from "./runtime.mjs";
 import { c, login, read, postResponse, confirmAction } from "./r3-support.mjs";
 import { checkStructure, assertNoLeaks } from "./r3-structure.mjs";
 import { reportIssueSummary } from "./r3-report-diagnostics.mjs";
-import { assertUnwaivedChecks } from "./r4-assertion-contracts.mjs";
+import {
+  assertUnwaivedChecks,
+  assertDataRepair,
+} from "./r4-assertion-contracts.mjs";
 import {
   assertRecipeTrayStage,
   assertReturnedReason,
@@ -21,7 +24,7 @@ const output = process.env.E2E_EVIDENCE_DIR;
 const live = (process.env.E2E_R3_LIVE || process.env.E2E_R2_LIVE) === "1";
 const documentText =
   "第一条 办理付款前应核对合同约定与验收资料；验收通过后30日内完成付款申请。\n第二条 累计付款不得超过合同金额；有异议的款项应记录原因并暂停支付。\n第三条 经办人员应保存验收记录，审核人员复核付款依据。" +
-  "\n第四条 适用范围：本机构合同付款；适用条件：验收完成；例外：存在争议时暂停付款；生效日期：2026-01-01。";
+  "\n第四条 适用范围：本机构合同付款；适用条件：验收完成；例外：存在争议时暂停付款；生效日期：2026-01-01。金额单位：元；验收记录与付款依据的单位：份；金额与资料的记录粒度：每份合同。";
 function safeFailure(error) {
   const frames = String(error?.stack || "")
     .split("\n")
@@ -79,6 +82,7 @@ for (
     mkdirSync(output, { recursive: true });
     const times = [],
       preSubmissionChecks = [],
+      gateRepairs = [],
       publicationChecks = [],
       reportChecks = [],
       reportReads = [],
@@ -412,6 +416,54 @@ for (
           ),
         })),
       );
+      for (const item of ready.items.filter(
+        (item) =>
+          item.after_data.kind === "data" &&
+          (!item.after_data.unit || !item.after_data.grain),
+      )) {
+        const description =
+          item.after_data.title + " " + item.after_data.definition;
+        const unit =
+          item.after_data.unit ||
+          (/金额|款项|付款|支付/.test(description)
+            ? "元"
+            : /记录|依据|资料/.test(description)
+              ? "份"
+              : "");
+        expect(
+          unit,
+          "synthetic source must explicitly support the repaired unit",
+        ).not.toBe("");
+        const grain = item.after_data.grain || "每份合同";
+        await pick(page, item);
+        await button(selected(page), "改一改").click();
+        const repair = page.getByRole("dialog", {
+          name: "改一改",
+          exact: true,
+        });
+        await repair
+          .getByLabel(c.r2_card_field_unit, { exact: true })
+          .fill(unit);
+        await repair.getByLabel(c.r4_rule_grain, { exact: true }).fill(grain);
+        const savedRepair = postResponse(page, "/changeset.apply:invoke");
+        await button(repair, "保存并采纳").click();
+        expect((await savedRepair).ok()).toBe(true);
+        await expect(repair).not.toBeVisible();
+        const persistedRepair = await read(
+          page,
+          "/api/entities/" + item.applied_entity_id,
+        );
+        assertDataRepair(persistedRepair, {
+          unit,
+          grain,
+          before_version: item.applied_version,
+        });
+        gateRepairs.push({
+          kind: "data",
+          fields: ["unit", "grain"],
+          persisted: true,
+        });
+      }
       await expect(button(page, "采纳并提交审核")).toBeEnabled();
       const applied = await submit(page);
       expect(applied.entity_ids).toHaveLength(proposal.items.length);
@@ -802,6 +854,7 @@ for (
             first_numeric_blocked: firstNumericBlocked,
             automatic_revision: revisionUsed,
             pre_submission_checks: preSubmissionChecks,
+            gate_repairs: gateRepairs,
             publication_checks: publicationChecks,
             report_checks: reportChecks,
             total_seconds: Math.round((Date.now() - started) / 1000),

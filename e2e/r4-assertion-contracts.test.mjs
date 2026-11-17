@@ -7,7 +7,23 @@ import {
   assertWaiverActivity,
   assertSubmissionBlocked,
   assertUnwaivedChecks,
+  assertDataRepair,
 } from "./r4-assertion-contracts.mjs";
+test("mainline data repair rejects a lost unit, wrong grain or unsaved version", () => {
+  const expected = { unit: "元", grain: "每份合同", before_version: 1 };
+  const entity = {
+    kind: "data",
+    version: 2,
+    payload: { unit: expected.unit, grain: expected.grain },
+  };
+  assertDataRepair(entity, expected);
+  for (const changed of [
+    { ...entity, payload: { ...entity.payload, unit: "" } },
+    { ...entity, payload: { ...entity.payload, grain: "每次付款" } },
+    { ...entity, version: 1 },
+  ])
+    assert.throws(() => assertDataRepair(changed, expected));
+});
 const checks = Array.from({ length: 5 }, (_, i) => ({
   code: `QG${i + 1}`,
   status: "pass",
