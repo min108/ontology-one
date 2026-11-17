@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { accounts, authDirectory, roles } from "./fixture.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
+import { selectHistoricalAudit } from "./visual-audit.mjs";
 
 const terms = JSON.parse(
   readFileSync(
@@ -656,4 +657,27 @@ test.describe("headquarters: isolated identity mutations", () => {
     const next = await read(page, "/api/v2/audit?page=2&page_size=30");
     await expect(page.locator("tbody tr")).toHaveCount(next.items.length);
   });
+});
+
+
+test("R3 historical audit fixture stays filterable in both business views", async ({ browser }) => {
+  test.setTimeout(60_000);
+  const context = await browser.newContext({
+    baseURL: process.env.E2E_BASE_URL,
+    storageState: resolve(authDirectory, "superadmin.json"),
+    viewport: { width: 1366, height: 768 },
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    for (const mode of ["simple", "professional"]) {
+      await selectSavedViewMode(page, mode);
+      await page.goto("/admin/audit");
+      await expect(page.getByRole("heading", { name: "审计记录", exact: true })).toBeVisible();
+      await selectHistoricalAudit(page, mode);
+      await page.getByRole("dialog").getByRole("button", { name: /关闭|Close/ }).click();
+    }
+  } finally {
+    await context.close();
+  }
 });
