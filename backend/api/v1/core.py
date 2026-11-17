@@ -168,41 +168,29 @@ def _create_entity(b):
             raise HTTPException(400, "新建任务请先保存为待办理，再从任务详情推进。")
         if (b.get("payload") or {}).get("task_type"):
             raise HTTPException(400, "请从专题工作档案按明确的任务类型分解工作。")
-    if b.get("kind") in ["data", "rule", "skill", "knowledge"] and b.get("status", "draft") != "draft":
+    from ...kernel.kinds import get_kind
+
+    try:
+        governed = get_kind(b["kind"]).governed
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    if governed and b.get("status", "draft") != "draft":
         raise HTTPException(400, "新建资产请先保存为草稿，再提交审核。")
-    eid = b.get("id") or f"{b.get('kind', 'ASSET').upper()}-USER-{uuid.uuid4().hex[:10]}"
-    t = now()
     with closing(connect()) as c, c:
         from ...skills import guard_generic_entity
+        from ...kernel import elements as element_kernel
 
         guard_generic_entity(c, body=b)
-        if c.execute("SELECT id FROM entities WHERE id=?", (eid,)).fetchone():
-            raise HTTPException(409, "该编号已存在。")
-        c.execute(
-            "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                eid,
-                b.get("kind", "knowledge"),
-                title,
-                b.get("summary", ""),
-                b.get("domain", "综合管理"),
-                current_org_id(),
-                b.get("status", "draft"),
-                b.get("source_kind", "user"),
-                json.dumps(b.get("payload", {}), ensure_ascii=False),
-                t,
-                t,
-                1,
-            ),
-        )
-        log(c, eid, "创建", title, b.get("actor", "本地体验用户"))
+        created = element_kernel.create_draft(c, b)
+        eid = created["id"]
         for parent_key in ["project_id", "case_id", "related_asset_id"]:
             parent = b.get("payload", {}).get(parent_key)
             if parent and c.execute("SELECT 1 FROM entities WHERE id=?", (parent,)).fetchone():
                 c.execute(
-                    "INSERT INTO relations VALUES(?,?,?,?,?,?,?)",
+                    "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
                     ("rel-" + uuid.uuid4().hex, parent, eid, "contains", "组织开展", "confirmed", "{}"),
                 )
+        element_kernel.sync_after_write(c, created)
         c.commit()
     return detail(eid)
 
@@ -264,6 +252,26 @@ def detail(eid: str, version: int = 0):
         return d
 
 
+def _guard_edit(c, old, b):
+    from ...skills import guard_generic_entity
+
+    guard_generic_entity(c, old, b)
+    if old["kind"] == "organization":
+        raise HTTPException(403, "机构根节点不能通过业务编辑修改。")
+    if b.get("org_id") and b["org_id"] != current_org_id():
+        raise HTTPException(403, "不能变更数据的机构归属。")
+    if (
+        old["payload"].get("authority_spec")
+        or (b.get("payload") or {}).get("authority_spec")
+        or old["kind"] == "person"
+    ):
+        raise HTTPException(400, "请从权责规范工作面编辑，保留版本、组织人员归属和流程校验。")
+    if old["kind"] in ["matter", "evidence"]:
+        raise HTTPException(400, "请从专项事项与依据工作面修改，确保归属、原文引用和办理状态一致。")
+    if old["payload"].get("active_asset") is False:
+        raise HTTPException(409, "这是保留追溯的历史条目。请打开整合后的成果开展修订。")
+
+
 @router.patch("/api/entities/{eid}")
 async def edit(eid: str, request: Request):
     b = await request.json()
@@ -271,23 +279,7 @@ async def edit(eid: str, request: Request):
         old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
         if not old:
             raise HTTPException(404, "未找到内容。")
-        from ...skills import guard_generic_entity
-
-        guard_generic_entity(c, old, b)
-        if old["kind"] == "organization":
-            raise HTTPException(403, "机构根节点不能通过业务编辑修改。")
-        if b.get("org_id") and b["org_id"] != current_org_id():
-            raise HTTPException(403, "不能变更数据的机构归属。")
-        if (
-            old["payload"].get("authority_spec")
-            or (b.get("payload") or {}).get("authority_spec")
-            or old["kind"] == "person"
-        ):
-            raise HTTPException(400, "请从权责规范工作面编辑，保留版本、组织人员归属和流程校验。")
-        if old["kind"] in ["matter", "evidence"]:
-            raise HTTPException(400, "请从专项事项与依据工作面修改，确保归属、原文引用和办理状态一致。")
-        if old["payload"].get("active_asset") is False:
-            raise HTTPException(409, "这是保留追溯的历史条目。请打开整合后的成果开展修订。")
+        _guard_edit(c, old, b)
         if old["kind"] == "task":
             from ...projects import edit_task
 
@@ -296,34 +288,20 @@ async def edit(eid: str, request: Request):
             from ...projects import edit_project
 
             return await edit_project(eid, request)
-        if (
-            old["kind"] in ["data", "rule", "skill", "knowledge"]
-            and "status" in b
-            and b["status"] not in [old["status"], "draft"]
-        ):
-            raise HTTPException(400, "请通过提交、审核和发布操作变更资产状态。")
-        if (
-            old["kind"] in ["data", "rule", "skill", "knowledge"]
-            and old["status"] in ["published", "approved", "review"]
-            and any(k in b for k in ["title", "summary", "domain", "org_id", "payload"])
-        ):
-            b["status"] = "draft"
-        c.execute(
-            "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-            (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), b.get("reason", "内容修订")),
-        )
-        if old["payload"].get("r2_review"):
-            from ...domains.reviews import preserve_review_identity
+    return await asyncio.to_thread(_edit_entity, eid, b)
 
-            b["payload"] = preserve_review_identity(old, b.get("payload", old["payload"]), b)
-        allowed = ["title", "summary", "domain", "org_id", "status", "payload"]
-        for k in allowed:
-            if k in b:
-                val = json.dumps(b[k], ensure_ascii=False) if k == "payload" else b[k]
-                c.execute(f"UPDATE entities SET {k}=? WHERE id=?", (val, eid))
-        c.execute("UPDATE entities SET version=version+1,updated_at=? WHERE id=?", (now(), eid))
-        log(c, eid, "修订", b.get("reason", "修订内容并保留原版本"))
-        c.commit()
+
+def _edit_entity(eid, b):
+    from ...kernel import elements as element_kernel
+
+    with closing(connect()) as c, c:
+        old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
+        if not old:
+            raise HTTPException(404, "未找到内容。")
+        _guard_edit(c, old, b)
+        if old["kind"] in {"task", "project"}:
+            raise HTTPException(400, "请通过任务或专题工作档案修改。")
+        element_kernel.update_draft(c, old, b)
     return detail(eid)
 
 
@@ -378,12 +356,18 @@ def entity_action_in_transaction(c, eid, b):
         "archive": "archived",
         "complete": "completed",
     }
+    if act not in targets:
+        raise HTTPException(400, "不支持此操作。")
     # The caller owns the transaction. Starting another BEGIN here would commit
     # an earlier approve in MySQL and leave a half-published authority rule.
     old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
     if not old:
         raise HTTPException(404, "未找到内容。")
+    from ...kernel import elements as element_kernel
+    from ...kernel.kinds import get_kind
     from ...skills import guard_generic_entity
+
+    element_kernel.check_version(old, b)
 
     guard_generic_entity(c, old)
     if old["payload"].get("active_asset") is False:
@@ -403,25 +387,21 @@ def entity_action_in_transaction(c, eid, b):
         raise HTTPException(400, "请先审核通过，再发布成果。")
     if act == "return" and not str(b.get("reason", "")).strip():
         raise HTTPException(400, "请填写需要补充或修改的内容。")
-    c.execute(
-        "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-        (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), b.get("reason", act)),
+    if act in {"submit", "approve", "publish"} and get_kind(old["kind"]).governed:
+        from ...kernel.gates import enforce
+
+        enforce(c, old)
+    element_kernel.transition(
+        c,
+        old,
+        targets[act],
+        b.get("reason") or element_kernel.STATUS_LABELS[targets[act]],
+        b.get("actor", "本地体验用户"),
     )
-    c.execute("UPDATE entities SET status=?,version=version+1,updated_at=? WHERE id=?", (targets[act], now(), eid))
     if old["payload"].get("authority_spec"):
         from ...authority import sync_relations
 
         sync_relations(c, entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone()))
-    labels = {
-        "submit": "提交审核",
-        "approve": "审核通过",
-        "return": "退回补充",
-        "publish": "发布成果",
-        "revise": "发起修订",
-        "archive": "归档停用",
-        "complete": "完成任务",
-    }
-    log(c, eid, labels[act], b.get("reason", ""), b.get("actor", "本地体验用户"))
     if act == "complete" and old["payload"].get("project_id"):
         project_id = old["payload"]["project_id"]
         project = entity_json(
@@ -454,7 +434,7 @@ def entity_action_in_transaction(c, eid, b):
         tid = "TASK-USER-" + uuid.uuid4().hex[:8]
         p = {"related_id": eid, "reason": b["reason"], "responsible": "资产整理人员"}
         c.execute(
-            "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 tid,
                 "task",
@@ -471,9 +451,11 @@ def entity_action_in_transaction(c, eid, b):
             ),
         )
         c.execute(
-            "INSERT INTO relations VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
             ("rel-" + uuid.uuid4().hex, eid, tid, "requires", "需要补充", "confirmed", "{}"),
         )
+        task = entity_json(c.execute("SELECT * FROM entities WHERE id=?", (tid,)).fetchone())
+        element_kernel.sync_after_write(c, task)
     return entity_json(c.execute("SELECT * FROM entities WHERE id=?", (eid,)).fetchone())
 
 
@@ -508,31 +490,11 @@ def _restore_entity(eid, body):
         guard_generic_entity(conn, old)
         if old["kind"] in ("organization", "person"):
             raise HTTPException(403, "组织与人员请通过专用管理入口维护。")
-        snapshot = canonical_entity(json.loads(previous["snapshot"]))
-        payload = snapshot.get("payload", {})
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-        if old["payload"].get("r2_review"):
-            from ...domains.reviews import preserve_review_identity
+        from ...kernel import elements as element_kernel
 
-            payload = preserve_review_identity(old, payload, snapshot)
-        conn.execute(
-            "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-            (eid, old["version"], json.dumps(old, ensure_ascii=False), now(), "还原前快照：" + reason),
-        )
-        conn.execute(
-            "UPDATE entities SET title=?,summary=?,domain=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?",
-            (
-                snapshot.get("title", old["title"]),
-                snapshot.get("summary", ""),
-                snapshot.get("domain", ""),
-                json.dumps(payload, ensure_ascii=False),
-                "draft",
-                now(),
-                eid,
-            ),
-        )
-        log(conn, eid, "还原历史版本", f"还原版本{version}为草稿：{reason}")
+        element_kernel.check_version(old, body)
+        snapshot = canonical_entity(json.loads(previous["snapshot"]))
+        element_kernel.restore(conn, old, snapshot, reason)
     return detail(eid)
 
 
