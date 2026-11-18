@@ -50,6 +50,58 @@ class SpecializedReviewHTTP(unittest.TestCase):
             },
         }
 
+    def test_manage_exact_authority_subjects_and_reject_other_kinds(self) -> None:
+        builder = self.login("fixture.builder")
+        people = [
+            self.request(
+                builder,
+                "POST",
+                "/api/authority/people",
+                json={"name": "职责经办" + secrets.token_hex(4), "org_id": "dept-01"},
+            )["entity"]["id"]
+            for _ in range(2)
+        ]
+        created = self.request(
+            builder,
+            "POST",
+            "/api/authority/assets",
+            json={
+                "title": "职责核对" + secrets.token_hex(4),
+                "spec": {"type": "position", "org_ids": ["dept-01"], "person_ids": [people[0]]},
+            },
+        )["entity"]
+        ident = created["id"]
+        options = self.invoke(builder, "element.get", {"entity_id": ident})["applicability_options"]
+        self.assertTrue({opt["kind"] for opt in options} <= {"organization", "person"})
+        saved = self.invoke(
+            builder,
+            "element.update_draft",
+            {
+                "entity_id": ident,
+                "version": created["version"],
+                "reason": "替换经办人",
+                "payload": {"applicable_subject_ids": ["dept-01", people[1]]},
+            },
+        )["entity"]
+        spec = saved["payload"]["authority_spec"]
+        self.assertEqual(spec["org_ids"], ["dept-01"])
+        self.assertEqual(spec["person_ids"], [people[1]])
+        invalid = self.invoke(
+            builder, "element.create_draft", {"kind": "data", "title": "不是权责主体" + secrets.token_hex(4)}
+        )["entity"]
+        rejected = builder.post(
+            "/api/v2/capabilities/element.update_draft:invoke",
+            json={
+                "entity_id": ident,
+                "version": saved["version"],
+                "reason": "校验主体类别",
+                "payload": {"applicable_subject_ids": [invalid["id"]]},
+            },
+        )
+        self.assertEqual(rejected.status_code, 422, rejected.text)
+        latest = self.request(builder, "GET", "/api/authority/assets/" + ident)["entity"]
+        self.assertEqual((latest["version"], latest["payload"]["authority_spec"]), (saved["version"], spec))
+
     def test_authority_original_and_intermediate_editors_cannot_review(self) -> None:
         admin, builder, reviewer = (
             self.login(name) for name in ("fixture.admin", "fixture.builder", "fixture.reviewer")

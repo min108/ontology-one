@@ -151,8 +151,10 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
                 for row in conn.execute(
                     "SELECT id,title,kind FROM entities "
                     "WHERE kind IN ('organization','position','person','party','object_type') "
+                    "AND (?=0 OR kind IN ('organization','person')) "
                     "AND status<>'archived' AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0 "
-                    "ORDER BY title,id LIMIT 500"
+                    "ORDER BY title,id LIMIT 500",
+                    (int(bool(entity["payload"].get("authority_spec"))),),
                 )
             ]
     if ctx.principal.readonly:

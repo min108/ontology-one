@@ -547,7 +547,7 @@ def repair_gate_fields(conn, old, changes):
     fields = {"definition": "purpose", "scope": "scope", "conditions": "conditions", "exceptions": "exceptions"}
     if (
         set(changes) - {"expected_version", "payload", "meta", "reason", "waiver_applications"}
-        or set(payload) - (fields.keys() | {"applies_to_id"})
+        or set(payload) - (fields.keys() | {"applies_to_id", "applicable_subject_ids"})
         or set(meta) - {"valid_from", "valid_to"}
     ):
         raise HTTPException(422, "流程、职责和依据材料请在权责规范工作面修改。")
@@ -561,15 +561,26 @@ def repair_gate_fields(conn, old, changes):
     for field, target in (("valid_from", "effective_from"), ("valid_to", "effective_to")):
         if field in meta:
             spec[target] = meta[field] or ""
-    if "applies_to_id" in payload:
-        subject = payload["applies_to_id"]
-        if not isinstance(subject, str) or not subject.strip():
-            raise HTTPException(422, "请选择适用的组织或人员。")
-        kind = get_entity(conn, subject)["kind"]
-        key = {"organization": "org_ids", "person": "person_ids"}.get(kind)
-        if key is None:
-            raise HTTPException(422, "权责规范的适用主体须为组织或人员。")
-        spec[key] = list(dict.fromkeys([*spec.get(key, []), subject]))
+    if "applicable_subject_ids" in payload or "applies_to_id" in payload:
+        replace = "applicable_subject_ids" in payload
+        if replace and "applies_to_id" in payload:
+            raise HTTPException(422, "请按同一份主体清单保存。")
+        subjects = payload["applicable_subject_ids"] if replace else [payload["applies_to_id"]]
+        if (
+            not isinstance(subjects, list)
+            or len(subjects) > 120
+            or not all(isinstance(subject, str) and subject.strip() for subject in subjects)
+        ):
+            raise HTTPException(422, "请选择有效的组织或人员。")
+        selected = {key: [] if replace else list(spec.get(key, [])) for key in ("org_ids", "person_ids")}
+        for subject in dict.fromkeys(subjects):
+            target = get_entity(conn, subject)
+            key = {"organization": "org_ids", "person": "person_ids"}.get(target["kind"])
+            if not key or target["status"] == "archived" or target["payload"].get("active_asset") in (0, False):
+                raise HTTPException(422, "权责规范的适用主体须为有效的组织或人员。")
+            if subject not in selected[key]:
+                selected[key].append(subject)
+        spec.update(selected)
     try:
         body = SaveRequest(
             title=old["title"],
