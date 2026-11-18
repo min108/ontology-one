@@ -3,7 +3,14 @@ import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { invokeCapability } from '../../api/client';
-import type { CandidatePatch, ChangesetGet, DecideItems, ProposalResult } from '../../api/generated/types';
+import type {
+  CandidatePatch,
+  ChangesetGet,
+  DecideItems,
+  ProposalResult,
+  ConfirmFacts,
+  ApplyResult,
+} from '../../api/generated/types';
 import {
   PageHeader,
   PageLayout,
@@ -30,9 +37,20 @@ import {
   useLifetime,
   BuildForbidden,
 } from './shared';
-import { changesetGate, groupItems, isHandledElsewhere, sentence } from './model';
+import {
+  changesetGate,
+  groupItems,
+  isHandledElsewhere,
+  isSubmitted,
+  readyForBulkAccept,
+  sentence,
+} from './model';
 import { sourceLocator } from './businessText';
 import { GateChecklist } from './GateChecklist';
+import { GovernanceFacts } from './GovernanceFacts';
+import { SubjectSelect } from '../ontology/SubjectSelect';
+import { GateApplications } from './GateApplications';
+import { ChangesetFacts, ChangesetOmissions, validCalendarDate } from './ChangesetFacts';
 import styles from './Build.module.css';
 
 export default function ChangesetPage() {
@@ -69,7 +87,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
     }, 8000);
     return () => clearTimeout(timer);
   }, [undo]);
-  async function perform(operation: () => Promise<unknown>, success: string) {
+  async function perform(operation: () => Promise<unknown>, success: string | (() => string)) {
     if (!canEdit || busy || resource.refreshing || resource.error || lifetime.current?.signal.aborted) return;
     const signal = lifetime.current?.signal;
     setBusy(true);
@@ -78,7 +96,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
     try {
       await operation();
       if (signal?.aborted) return;
-      setMessage(success);
+      setMessage(typeof success === 'function' ? success() : success);
       setEditing(undefined);
       setConfirm(false);
     } catch (failure) {
@@ -90,7 +108,12 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       }
     }
   }
-  function decide(items: Item[], decision: DecideItems['decision'], edit?: CandidatePatch) {
+  function decide(
+    items: Item[],
+    decision: DecideItems['decision'],
+    edit?: CandidatePatch,
+    onlyReady = false,
+  ) {
     const confirmRuleTarget = edit?.kind === 'rule' && items.some((item) => item.after_data.kind !== 'rule');
     return perform(
       async () => {
@@ -99,20 +122,50 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           item_ids: items.map((item) => item.id),
           decision,
           ...(edit ? { edit } : {}),
+          ...(onlyReady ? { only_ready: true } : {}),
         };
         const options = { signal: lifetime.current?.signal };
         await invokeCapability('changeset.decide_items', body, options);
         if (['accepted', 'edited'].includes(decision) && !confirmRuleTarget)
           await invokeCapability('changeset.apply', { changeset_id: id } satisfies ChangesetGet, options);
-        setUndo(decision === 'rejected' ? items : undefined);
+        setUndo(decision === 'rejected' && !items.some((item) => item.applied_entity_id) ? items : undefined);
       },
       confirmRuleTarget
         ? copy.r4_rule_target_saved
         : decision === 'rejected'
-          ? copy.r3_main_undo_saved
+          ? items.some((item) => item.applied_entity_id)
+            ? copy.r4a1_discarded
+            : copy.r3_main_undo_saved
           : decision === 'pending'
             ? copy.r2_saved
             : copy.r2_drafts,
+    );
+  }
+  function confirmFacts(body: ConfirmFacts) {
+    return perform(
+      () => invokeCapability('changeset.confirm_facts', body, { signal: lifetime.current?.signal }),
+      body.valid_from !== undefined ? copy.r4a1_file_facts_saved : copy.r4a1_omissions_saved,
+    );
+  }
+  function submitReady() {
+    let resultMessage = copy.r2_submitted;
+    return perform(
+      async () => {
+        const result = await invokeCapability<ApplyResult>(
+          'changeset.apply_and_submit',
+          { changeset_id: id } satisfies ChangesetGet,
+          { signal: lifetime.current?.signal },
+        );
+        if (
+          typeof result?.data.submitted_count === 'number' &&
+          typeof result.data.remaining_count === 'number'
+        )
+          resultMessage = sentence(copy.r4a1_partial_submitted, {
+            submitted: result.data.submitted_count,
+            remaining: result.data.remaining_count,
+          });
+      },
+      () => resultMessage,
     );
   }
   if (!proposal)
@@ -143,26 +196,17 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           (!item.applied_status || !['draft', 'returned'].includes(item.applied_status)),
       );
   const blocked = !canEdit || busy || resource.refreshing || !!resource.error;
-  const locked = blocked || !current || isHandledElsewhere(current) || submitted;
-  const sure = proposal.items.filter(
-    (item) =>
-      item.tier === 'sure' &&
-      item.decision === 'pending' &&
-      !isHandledElsewhere(item) &&
-      item.validation.level !== 'error',
-  );
+  const locked = blocked || !current || isHandledElsewhere(current) || isSubmitted(current) || submitted;
+  const sure = proposal.items.filter(readyForBulkAccept);
   const chosen = current?.evidence[0];
-  const note =
-    submitBlockers[0] ||
-    (!canEdit
-      ? copy.r3_main_read_only
-      : submitted
-        ? copy.r3_main_submitted
-        : gate.pending
-          ? sentence(copy.r3_main_pending, { count: gate.pending })
-          : !gate.accepted
-            ? copy.r3_main_no_adopted
-            : undefined);
+  const note = !canEdit
+    ? copy.r3_main_read_only
+    : submitted
+      ? copy.r3_main_submitted
+      : gate.allowed
+        ? sentence(copy.r4a1_ready_count, { count: gate.ready })
+        : submitBlockers[0] ||
+          (gate.pending ? sentence(copy.r3_main_pending, { count: gate.pending }) : copy.r4a1_no_ready);
   const lead = gate.pending
     ? proposal.title
     : sentence(copy.r3_main_done, {
@@ -182,7 +226,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           status={<StatusTag domain="proposal" status={proposal.status} />}
           primaryAction={{
             label: submitted ? copy.r3_main_submitted : actions.catalog_1_6,
-            disabled: blocked || !gate.allowed || !!submitBlockers.length || confirm || !!editing,
+            disabled: blocked || !gate.allowed || confirm || !!editing,
             onClick: () => setConfirm(true),
           }}
         />
@@ -210,6 +254,39 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           }
         />
       )}
+      {proposal.document_facts && (
+        <ChangesetFacts
+          key={proposal.document_facts.valid_from.value}
+          proposal={proposal}
+          disabled={blocked || submitted}
+          onConfirm={(body) => void confirmFacts(body)}
+        />
+      )}
+      {proposal.extraction_summary && (
+        <div
+          data-extraction-summary
+          data-fully-local={proposal.extraction_summary.fully_local}
+          data-discarded={proposal.extraction_summary.discarded_candidates}
+          data-retries={proposal.extraction_summary.retried_batches}
+        >
+          {proposal.extraction_summary.fully_local && (
+            <Alert
+              type="warning"
+              title={copy.r4a1_extraction_local}
+              description={copy.r4a1_extraction_local_hint}
+            />
+          )}
+          <p className={styles.muted}>
+            {sentence(copy.r4a1_extraction_summary, {
+              retries: proposal.extraction_summary.retried_batches || 0,
+              discarded: proposal.extraction_summary.discarded_candidates || 0,
+            })}
+          </p>
+          {(proposal.extraction_summary.discarded_candidates || 0) > 0 && (
+            <p>{copy.r4a1_extraction_discarded}</p>
+          )}
+        </div>
+      )}
       <SplitView
         list={
           <div className={styles['list-pane']}>
@@ -226,9 +303,19 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               {groups
                 .filter((group) => group.items.length)
                 .map((group) => (
-                  <section key={group.tier} aria-label={terms.statuses.confidence[group.tier]}>
+                  <section
+                    key={group.tier}
+                    aria-label={
+                      group.tier === 'incomplete'
+                        ? copy.r4a1_incomplete_group
+                        : terms.statuses.confidence[group.tier]
+                    }
+                  >
                     <h3 className={styles.group}>
-                      {terms.statuses.confidence[group.tier]} · {group.items.length}
+                      {group.tier === 'incomplete'
+                        ? copy.r4a1_incomplete_group
+                        : terms.statuses.confidence[group.tier]}{' '}
+                      · {group.items.length}
                     </h3>
                     {group.items.map((item) => (
                       <button
@@ -264,7 +351,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                 <Button
                   autoInsertSpace={false}
                   disabled={blocked}
-                  onClick={() => void decide(sure, 'accepted')}
+                  onClick={() => void decide(sure, 'accepted', undefined, true)}
                 >
                   {actions.catalog_1_4}
                 </Button>
@@ -277,20 +364,23 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             <h2>{copy.r3_main_source}</h2>
             <p>{proposal.title}</p>
             {chosen && sourceLocator(chosen.locator) && <p>{sourceLocator(chosen.locator)}</p>}
-            <h2>{copy.r3_main_checks}</h2>
-            <ul className={styles.checks}>
-              <li>
-                {copy.r3_main_source_check} · {chosen ? copy.r3_main_check_pass : copy.r3_main_check_pending}
-              </li>
-              <li>
-                {copy.r3_main_content_check} ·{' '}
-                {current?.validation.level === 'error' ? copy.r3_main_check_pending : copy.r3_main_check_pass}
-              </li>
-              <li>
-                {copy.r3_main_duplicate_check} ·{' '}
-                {current?.duplicate_of ? copy.r2_duplicate : copy.r3_main_no_duplicate}
-              </li>
-            </ul>
+            {proposal.document_facts?.scope.value && (
+              <>
+                <h2>{copy.r4a1_file_scope}</h2>
+                <p>{proposal.document_facts.scope.value}</p>
+                <p className={styles.muted}>
+                  {copy.r4a1_source_sentence}：{proposal.document_facts.scope.quote}
+                </p>
+              </>
+            )}
+            <h2>{copy.r3_main_duplicate_check}</h2>
+            <p>{current?.duplicate_of ? copy.r2_duplicate : copy.r3_main_no_duplicate}</p>
+            {current?.handoff && (
+              <>
+                <p>{copy.r4a1_specialized_hint}</p>
+                <Link to={current.handoff.href}>{current.handoff.label}</Link>
+              </>
+            )}
             {professional && current && (
               <FoldRow title={copy.r3_main_confidence} summary={terms.statuses.confidence[current.tier]}>
                 <p>{current.rationale || copy.r3_main_check_unknown}</p>
@@ -307,7 +397,13 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             onStep={(step) =>
               navigate(step === 1 ? intakeHref : '/build/changesets/' + encodeURIComponent(id))
             }
-            description={submitted ? copy.r3_main_wait_review : copy.r3_main_next_submit}
+            description={
+              submitted
+                ? copy.r3_main_wait_review
+                : gate.allowed
+                  ? copy.r3_main_next_submit
+                  : copy.r4a1_no_ready
+            }
             action={
               submitted
                 ? { label: copy.r2_review_link, onClick: () => navigate('/govern/reviews') }
@@ -319,12 +415,38 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         {current ? (
           <div className={styles.detail} data-selected-item-id={current.id}>
             <div className={styles['detail-body']}>
-              {!gate.pending && (
+              {!submitted && (
+                <ChangesetOmissions
+                  proposal={proposal}
+                  disabled={blocked}
+                  onConfirm={(body) => void confirmFacts(body)}
+                />
+              )}
+              {gate.remaining.length > 0 && (
+                <FoldRow
+                  title={copy.r4a1_remaining_title}
+                  summary={sentence(copy.r4a1_remaining_count, { count: gate.remaining.length })}
+                >
+                  <ul data-remaining-items className={styles.checks}>
+                    {gate.remaining.map((item) => (
+                      <li key={item.id}>
+                        <strong>{item.after_data.title}</strong>
+                        <ul>
+                          {(item.submit_blockers || item.gates?.blockers || []).map((reason) => (
+                            <li key={reason}>{reason}</li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </FoldRow>
+              )}
+              {(!gate.pending || gate.ready > 0) && (
                 <div className={styles.completed}>
                   <h2>{copy.r3_main_submit_content}</h2>
                   <p>
                     {sentence(submitted ? copy.r31_submitted_count : copy.r3_main_submit_count, {
-                      count: gate.accepted,
+                      count: submitted ? gate.accepted : gate.ready,
                     })}
                   </p>
                   <h3>{copy.r3_main_after_submit}</h3>
@@ -362,8 +484,53 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                   />
                 )
               )}
+              <GovernanceFacts gates={current.gates} />
               <GateChecklist key={current.id} gates={current.gates} professional={professional} />
-              {current.after_data.applies_to_title && (
+              {!locked && (
+                <GateApplications
+                  key={current.id + ':' + (current.applied_version || '')}
+                  item={current}
+                  disabled={blocked}
+                  onSave={(snapshot, applications) => {
+                    const {
+                      title,
+                      kind,
+                      content = '',
+                      definition,
+                      scope,
+                      conditions,
+                      exceptions,
+                      valid_from,
+                      valid_to,
+                      unit,
+                      grain,
+                      boundary,
+                      applies_to_id,
+                      judgement,
+                    } = snapshot.after_data;
+                    void decide([snapshot], 'edited', {
+                      title,
+                      kind,
+                      content,
+                      definition,
+                      scope,
+                      conditions,
+                      exceptions,
+                      valid_from,
+                      valid_to,
+                      unit,
+                      grain,
+                      boundary,
+                      applies_to_id,
+                      judgement,
+                      expected_version: snapshot.applied_version,
+                      waiver_applications: applications,
+                    });
+                  }}
+                />
+              )}
+
+              {current.after_data.kind === 'rule' && current.after_data.applies_to_title && (
                 <p>
                   {copy.r4_rule_applies_to}：{current.after_data.applies_to_title}。
                   {copy.r4_rule_relation_accept}
@@ -428,6 +595,8 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                           'unit',
                           'grain',
                           'boundary',
+                          'applies_to_id',
+                          'waiver_applications',
                         ] as const
                       )
                         .filter((key) => current.after_data[key] !== undefined)
@@ -458,16 +627,16 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                   >
                     {actions.catalog_1_0}
                   </Button>
-                  <Button
-                    autoInsertSpace={false}
-                    type="text"
-                    disabled={locked || current.decision === 'rejected'}
-                    onClick={() => void decide([current], 'rejected')}
-                  >
-                    {actions.catalog_1_2}
-                  </Button>
                 </>
               )}
+              <Button
+                autoInsertSpace={false}
+                type="text"
+                disabled={locked || current.decision === 'rejected'}
+                onClick={() => void decide([current], 'rejected')}
+              >
+                {actions.catalog_1_2}
+              </Button>
             </div>
           </div>
         ) : (
@@ -501,19 +670,11 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         okText={actions.catalog_1_6}
         cancelText={actions.r2_cancel}
         confirmLoading={busy}
-        okButtonProps={{ disabled: blocked || !gate.allowed || !!submitBlockers.length }}
-        onOk={() =>
-          void perform(
-            () =>
-              invokeCapability('changeset.apply_and_submit', { changeset_id: id } satisfies ChangesetGet, {
-                signal: lifetime.current?.signal,
-              }),
-            copy.r2_submitted,
-          )
-        }
+        okButtonProps={{ disabled: blocked || !gate.allowed }}
+        onOk={() => void submitReady()}
       >
         {error && <Alert type="error" title={error} role="alert" />}
-        <p>{sentence(copy.r3_main_submit_count, { count: gate.accepted })}</p>
+        <p>{sentence(copy.r3_main_submit_count, { count: gate.ready })}</p>
         <p>{copy.r3_main_submit_checks}</p>
         <p>{copy.r3_main_submit_impact}</p>
       </Modal>
@@ -623,10 +784,16 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             />
           </label>
         )}
-        {draft.kind === 'rule' && editing?.after_data.applies_to_title && (
-          <p>
-            {copy.r4_rule_applies_to}：{editing.after_data.applies_to_title}。{copy.r4_rule_relation_accept}
-          </p>
+        {draft.kind === 'rule' && (
+          <label className={styles.field}>
+            {copy.r4_rule_applies_to}
+            <SubjectSelect
+              value={draft.applies_to_id || ''}
+              options={proposal.applicability_options || []}
+              onChange={(applies_to_id) => setDraft({ ...draft, applies_to_id })}
+            />
+            <span className={styles.muted}>{copy.r4a1_target_hint}</span>
+          </label>
         )}
         {['rule', 'knowledge'].includes(draft.kind) && (
           <>
@@ -657,10 +824,15 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                 {copy.r4_rule_valid_from}
                 <DatePicker
                   aria-label={copy.r4_rule_valid_from}
-                  value={draft.valid_from ? dayjs(draft.valid_from) : null}
+                  value={
+                    draft.valid_from && validCalendarDate(draft.valid_from) ? dayjs(draft.valid_from) : null
+                  }
                   placeholder={copy.r4_rule_date_hint}
                   onChange={(value) => setDraft({ ...draft, valid_from: value?.format('YYYY-MM-DD') || '' })}
                 />
+                {draft.valid_from && !validCalendarDate(draft.valid_from) && (
+                  <span role="alert">{copy.r4a1_invalid_date}</span>
+                )}
               </label>
             )}
           </>

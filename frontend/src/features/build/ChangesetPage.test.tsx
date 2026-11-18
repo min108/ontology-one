@@ -347,3 +347,89 @@ it('requires a separate acceptance after converting content to a rule so its pro
     ).toHaveLength(1),
   );
 });
+
+it('bulk accepts only eligible high confidence rows and asks the server to enforce eligibility', async () => {
+  const ready = structuredClone(proposal.items[0]);
+  ready.id = 'ready';
+  ready.after_data.title = 'Ready rule';
+  const incomplete = proposal.items[0];
+  incomplete.gates = gates(['QG2']);
+  Object.assign(incomplete, { ready_for_bulk_accept: false });
+  Object.assign(ready, { ready_for_bulk_accept: true });
+  proposal.items.push(ready);
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_4 }));
+  await waitFor(() =>
+    expect(invokeCapability).toHaveBeenCalledWith(
+      'changeset.decide_items',
+      { changeset_id: 'CS-1', item_ids: ['ready'], decision: 'accepted', only_ready: true },
+      expect.anything(),
+    ),
+  );
+  expect(screen.getByRole('region', { name: terms.labels.r4a1_incomplete_group })).toHaveTextContent(
+    incomplete.after_data.title,
+  );
+});
+it('submits eligible adopted content while a blocked draft remains with its reason', async () => {
+  proposal.can_submit = true;
+  const ready = proposal.items[0];
+  ready.decision = 'accepted';
+  ready.applied_entity_id = 'R-1';
+  Object.assign(ready, { can_submit: true, applied_status: 'draft' });
+  const blocked = structuredClone(ready);
+  blocked.id = 'blocked';
+  blocked.after_data.title = 'Blocked draft';
+  blocked.applied_entity_id = 'R-2';
+  blocked.gates = gates(['QG2']);
+  Object.assign(blocked, { can_submit: false, submit_blockers: ['Missing unit'] });
+  proposal.items.push(blocked);
+  vi.mocked(invokeCapability).mockResolvedValue({
+    data: { submitted_count: 1, remaining_count: 1 },
+  } as never);
+  open();
+  const submit = await screen.findByRole('button', { name: terms.actions.catalog_1_6 });
+  expect(submit).toBeEnabled();
+  fireEvent.click(submit);
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveTextContent(sentence(terms.labels.r3_main_submit_count, { count: 1 }));
+  fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.catalog_1_6 }));
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    sentence(terms.labels.r4a1_partial_submitted, { submitted: 1, remaining: 1 }),
+  );
+  fireEvent.click(screen.getByText(terms.labels.r4a1_remaining_title).closest('summary')!);
+  expect(screen.getByText('Missing unit')).toBeVisible();
+});
+it('lets the builder discard an adopted draft without offering an invalid undo', async () => {
+  proposal.items[0].decision = 'accepted';
+  proposal.items[0].applied_entity_id = 'R-1';
+  Object.assign(proposal.items[0], { applied_status: 'draft', can_submit: false });
+  proposal.submit_blockers = ['Missing definition'];
+  vi.mocked(invokeCapability).mockResolvedValue({} as never);
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_2 }));
+  await waitFor(() =>
+    expect(invokeCapability).toHaveBeenCalledWith(
+      'changeset.decide_items',
+      expect.objectContaining({ decision: 'rejected', item_ids: ['item-1'] }),
+      expect.anything(),
+    ),
+  );
+  expect(await screen.findByText(terms.labels.r4a1_discarded)).toBeVisible();
+  expect(screen.queryByRole('button', { name: terms.labels.r3_main_undo })).not.toBeInTheDocument();
+});
+it('shows fully local extraction explicitly and retains safe retry and discarded counters', async () => {
+  Object.assign(proposal, {
+    extraction_summary: {
+      fully_local: true,
+      retried_batches: 1,
+      discarded_candidates: 2,
+      accepted_candidates: 0,
+      failed_batches: 1,
+    },
+  });
+  const { container } = open();
+  expect(await screen.findByText(terms.labels.r4a1_extraction_local)).toBeVisible();
+  expect(screen.getByText(terms.labels.r4a1_extraction_discarded)).toBeVisible();
+  expect(container.querySelector('[data-extraction-summary]')).toHaveAttribute('data-retries', '1');
+  expect(container.querySelector('[data-extraction-summary]')).toHaveAttribute('data-discarded', '2');
+});

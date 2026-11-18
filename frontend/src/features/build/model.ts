@@ -7,27 +7,43 @@ export function sentence(template: string, values: Record<string, string | numbe
 export function isHandledElsewhere(item: Item) {
   return item.processed_elsewhere === true || item.decision === 'processed_elsewhere';
 }
+export function isSubmitted(item: Item) {
+  return !!item.applied_entity_id && ['review', 'approved', 'published'].includes(item.applied_status || '');
+}
+export function readyForBulkAccept(item: Item) {
+  return (
+    item.decision === 'pending' &&
+    !isHandledElsewhere(item) &&
+    item.validation.level !== 'error' &&
+    item.tier === 'sure' &&
+    (item.ready_for_bulk_accept ?? item.gates?.passed ?? true)
+  );
+}
 export function groupItems(items: Item[]) {
-  return (['check', 'doubt', 'sure'] as const).map((tier) => ({
+  const incomplete = (item: Item) => !!item.gates && !item.gates.passed;
+  return (['incomplete', 'check', 'doubt', 'sure'] as const).map((tier) => ({
     tier,
-    items: items.filter((item) => item.tier === tier),
+    items: items.filter((item) =>
+      tier === 'incomplete' ? incomplete(item) : !incomplete(item) && item.tier === tier,
+    ),
   }));
 }
 export function changesetGate(proposal: Proposal, canEdit: boolean) {
-  const pending = proposal.items.filter(
-    (item) => !isHandledElsewhere(item) && item.decision === 'pending',
-  ).length;
-  const accepted = proposal.items.filter(
-    (item) => !isHandledElsewhere(item) && ['accepted', 'edited'].includes(item.decision),
-  ).length;
-  const rejected = proposal.items.filter(
-    (item) => !isHandledElsewhere(item) && item.decision === 'rejected',
-  ).length;
+  const active = proposal.items.filter((item) => !isHandledElsewhere(item));
+  const acceptedItems = active.filter((item) => ['accepted', 'edited'].includes(item.decision));
+  const ready = acceptedItems.filter(
+    (item) =>
+      !isSubmitted(item) &&
+      (item.can_submit ?? item.gates?.ready_to_submit ?? item.gates?.passed ?? proposal.can_submit),
+  );
   return {
-    pending,
-    accepted,
-    rejected,
-    allowed: canEdit && proposal.can_submit && pending === 0 && accepted > 0,
+    pending: active.filter((item) => item.decision === 'pending').length,
+    accepted: acceptedItems.length,
+    rejected: active.filter((item) => item.decision === 'rejected').length,
+    ready: ready.length,
+    remaining: acceptedItems.filter((item) => !isSubmitted(item) && !ready.includes(item)),
+    submitted: acceptedItems.filter(isSubmitted).length,
+    allowed: canEdit && proposal.can_submit && ready.length > 0,
   };
 }
 export const askHref = (id: string) => '/applications?' + new URLSearchParams({ element: id });

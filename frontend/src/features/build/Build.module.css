@@ -288,3 +288,12 @@
 .detail-body {
   padding: var(--zy-space-6);
 }
+
+.document-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--zy-space-2);
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+}
