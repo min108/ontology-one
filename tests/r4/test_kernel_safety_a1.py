@@ -8,7 +8,14 @@ import unittest
 from copy import deepcopy
 from unittest.mock import patch
 
-from backend.kernel import gates, kinds, metadata, oxl, rules
+from fastapi import HTTPException
+
+from backend import db
+from backend.core.errors import ApiError
+from backend.kernel import elements, gates, kinds, metadata, oxl, rules
+from backend.security.context import use_context
+from tests.r4.test_elements import Connection
+from tests.security.test_permissions import principal
 
 
 def judgement() -> dict:
@@ -92,6 +99,76 @@ with patch.object(sys, "platform", "win32"), missing_zone:
         with self.assertRaises(ValueError):
             kinds.get_kind("memo")
         self.assertEqual(entity, before)
+
+
+class KernelStoredSafety(unittest.TestCase):
+    def setUp(self) -> None:
+        self.conn = Connection()
+        self.addCleanup(self.conn.raw.close)
+        self.enterContext(use_context(principal()))
+
+    def read(self, ident: str) -> dict:
+        return db.entity_json(self.conn.execute("SELECT * FROM entities WHERE id=?", (ident,)).fetchone())
+
+    def test_rejected_judgement_updates_preserve_all_stored_rows(self) -> None:
+        with self.conn:
+            entity = elements.create_draft(self.conn, {"kind": "rule", "title": "核对规则", "payload": {}})
+
+        def snapshot() -> dict:
+            return {
+                table: [tuple(row) for row in self.conn.execute("SELECT * FROM " + table)]
+                for table in ("entities", "versions", "relations", "activities", "entity_meta")
+            }
+
+        before = snapshot()
+        for bad in (
+            {**judgement(), "applies_to": None},
+            {**judgement(), "exceptions": [None]},
+            {**judgement(), "requirement": {"oxl": "round(1, -4000000) == 0"}},
+        ):
+            with self.subTest(bad=bad), self.assertRaises((HTTPException, ApiError)) as rejected, self.conn:
+                elements.update_draft(self.conn, entity, {"payload": {"judgement": bad}})
+            self.assertEqual(rejected.exception.status_code, 422)
+            self.assertEqual(snapshot(), before)
+
+    def test_unknown_legacy_row_backfills_edits_and_remains_same_kind(self) -> None:
+        # Historical insertion precedes metadata backfill; new creation remains strict.
+        self.conn.execute(
+            "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,"
+            "created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "OLD-MEMO",
+                "memo",
+                "旧备忘",
+                "",
+                "综合管理",
+                "sub-01",
+                "draft",
+                "manual",
+                '{"content":"旧文"}',
+                "2026-01-01",
+                "2026-01-01",
+                1,
+            ),
+        )
+        self.conn.commit()
+        execute = self.conn.execute
+        with patch.object(
+            self.conn,
+            "execute",
+            side_effect=lambda sql, args=(): execute(sql.replace("INSERT IGNORE", "INSERT OR IGNORE"), args),
+        ):
+            self.assertEqual(metadata.backfill_meta(self.conn), 1)
+            self.assertEqual(metadata.backfill_meta(self.conn), 0)
+            self.assertEqual(metadata.backfill_meta(self.conn), 0)
+        old = self.read("OLD-MEMO")
+        self.assertEqual(old["payload"], {"content": "旧文"})
+        with self.conn:
+            updated = elements.update_draft(self.conn, old, {"payload": {"content": "修改后"}, "reason": "保留旧记录"})
+        self.assertEqual((updated["kind"], updated["version"]), ("memo", 2))
+        self.assertEqual(self.read("OLD-MEMO")["payload"], {"content": "修改后"})
+        with self.assertRaises(HTTPException), self.conn:
+            elements.create_draft(self.conn, {"kind": "memo", "title": "不允许新建未登记种类"})
 
 
 if __name__ == "__main__":

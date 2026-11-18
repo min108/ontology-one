@@ -81,6 +81,9 @@ def seed_legacy(names: dict[str, str]) -> None:
 
 
 def verify_legacy(names: dict[str, str]) -> dict:
+    from backend.infra.migrations import migrate_database
+
+    assert migrate_database("tenant", _database(names), tenant_id="hq") == []
     with closing(db._raw_connection(_database(names))) as raw:
         conn = db.Connection(raw)
         for example in _examples():
@@ -94,4 +97,10 @@ def verify_legacy(names: dict[str, str]) -> dict:
         assert before == after
         memo = next(row for row in after if row["entity_id"] == MEMO_ID)
         assert memo["pillar"] == "aux" and memo["module_id"] is None
-        return {"tenant": "hq", "ids": [MEMO_ID, BAD_RULE_ID], "unchanged": True, "backfill_runs": 2}
+        return {
+            "tenant": "hq",
+            "ids": [MEMO_ID, BAD_RULE_ID],
+            "unchanged": True,
+            "migration_repeated": True,
+            "backfill_runs": 2,
+        }
