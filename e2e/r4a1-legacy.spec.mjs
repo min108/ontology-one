@@ -168,6 +168,10 @@ async function publish(page, id) {
   await current
     .getByLabel(source.label + " · " + c.r4_gate_waiver, { exact: true })
     .fill(waiver);
+  await current
+    .locator("summary")
+    .filter({ hasText: c.r4a1_legacy_facts })
+    .click();
   await current.locator("[data-governance-facts]").scrollIntoViewIfNeeded();
   await screenshot(page, "r4a1-review-facts");
   await button(page, a.catalog_2_5).click();
