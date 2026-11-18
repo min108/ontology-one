@@ -48,11 +48,14 @@ class RunnerReceiptTests(unittest.TestCase):
                 manager = MagicMock()
                 manager.__enter__.return_value = provider
 
-                def run_command(command, *_args):
-                    if round_name == "r4" and mode != "missing_evidence" and "test" in command:
-                        (output / "a1-mainline-1.json").write_text(
-                            json.dumps({"success": True, "gate_repairs": [{"field": "exceptions"}]})
-                        )
+                def run_command(
+                    command: list[str],
+                    *_args: object,
+                    emit: bool = (round_name == "r4" and mode != "missing_evidence"),
+                    evidence: Path = output / "a1-mainline-1.json",
+                ) -> None:
+                    if emit and "test" in command:
+                        evidence.write_text(json.dumps({"success": True, "gate_repairs": [{"field": "exceptions"}]}))
 
                 with ExitStack() as stack, redirect_stdout(io.StringIO()):
                     for target, value in (
