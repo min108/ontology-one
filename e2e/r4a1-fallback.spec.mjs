@@ -44,6 +44,13 @@ test("R4-A.1 synthetic provider rejection: actual finished fallback stays explic
       path: resolve(output, "r4a1-intake-synthetic-fallback.png"),
     });
     await button(page, c.r3_main_intake_view).click();
+    await expect(page).toHaveURL(
+      (url) => url.pathname === "/build/changesets/" + proposal.id,
+    );
+    await expect(page.locator("[data-document-facts]")).toBeVisible();
+    await expect(page.locator("button[data-item-id]")).toHaveCount(
+      proposal.items.length,
+    );
     await expect(
       page.getByText(c.r4a1_extraction_local, { exact: true }),
     ).toBeVisible();
