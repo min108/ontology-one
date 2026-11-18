@@ -22,6 +22,38 @@ def _payload(entity: dict) -> dict:
     return payload
 
 
+def validate_judgement_shape(payload: dict) -> None:
+    """Reject malformed supplied structures before any candidate/entity write."""
+    judgement = payload.get("judgement")
+    if judgement is None:
+        return
+    if not isinstance(judgement, dict):
+        raise oxl.OXLError("rule", "判定式格式不正确，请重新填写核对条件。")
+    if "applies_to" in judgement:
+        applies = judgement["applies_to"]
+        if not isinstance(applies, dict):
+            raise oxl.OXLError("rule", "判定式的适用对象格式不正确，请填写对象或移除该项。")
+        for field in ("object_type", "subject_note"):
+            if field in applies and (not isinstance(applies[field], str) or not applies[field].strip()):
+                raise oxl.OXLError("rule", "判定式的适用对象和范围须为非空文字。")
+    expressions = [judgement.get("condition"), judgement.get("requirement")]
+    exceptions = judgement.get("exceptions", [])
+    if not isinstance(exceptions, list):
+        raise oxl.OXLError("rule", "判定式的例外条件须为清单。")
+    for expression in [*expressions, *exceptions]:
+        if (
+            not isinstance(expression, dict)
+            or not isinstance(expression.get("oxl"), str)
+            or not expression["oxl"].strip()
+        ):
+            raise oxl.OXLError("rule", "判定式的条件、要求和例外须填写有效表达式。")
+        if "sentence" in expression and not isinstance(expression["sentence"], str):
+            raise oxl.OXLError("rule", "判定式的业务说明须为文字。")
+    cases = judgement.get("test_cases", [])
+    if not isinstance(cases, list) or any(not isinstance(case, dict) for case in cases):
+        raise oxl.OXLError("cases", "判定式的测试用例须为记录清单。")
+
+
 def _expression(
     value: object,
     properties: oxl.PropertyDeclarations,
@@ -45,6 +77,8 @@ def prepare_payload(
     expression is parsed against the authorized object schema even in a draft.
     """
     result = deepcopy(payload)
+    if kind == "rule":
+        validate_judgement_shape(result)
     expressions = []
     if kind == "rule" and result.get("judgement") is not None:
         judgement = result["judgement"]

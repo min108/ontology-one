@@ -11,12 +11,23 @@ import operator
 import tokenize
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timedelta, timezone
 
 type PropertyDeclarations = Mapping[str, dict] | Iterable[str | dict]
 type RelationDeclarations = Mapping[str, PropertyDeclarations]
-BEIJING = ZoneInfo("Asia/Shanghai")
+# The business calendar uses current Beijing time, with no host tzdata dependency.
+BEIJING = timezone(timedelta(hours=8), "Asia/Shanghai")
+MAX_ROUND_DIGITS = 100
+
+
+def _round_digits(value: object) -> int:
+    if type(value) is not int:
+        raise OXLError("type", "保留小数位数需要整数。")
+    if not -MAX_ROUND_DIGITS <= value <= MAX_ROUND_DIGITS:
+        raise OXLError("range", "保留位数须在 -100 到 100 之间，请缩小范围。")
+    return value
+
+
 MAX_LENGTH = 500
 MAX_NODES = 200
 MAX_DEPTH = 12
@@ -263,6 +274,17 @@ def parse(
             minimum, maximum = _FUNCTIONS[name]
             if not minimum <= len(node.args) <= maximum:
                 raise OXLError("arity", "函数的参数数量不正确。")
+            if name == "round":
+                digits = node.args[1]
+                if isinstance(digits, ast.Constant):
+                    _round_digits(digits.value)
+                elif (
+                    isinstance(digits, ast.UnaryOp)
+                    and isinstance(digits.op, (ast.USub, ast.UAdd))
+                    and isinstance(digits.operand, ast.Constant)
+                    and type(digits.operand.value) in (int, float)
+                ):
+                    _round_digits(-digits.operand.value if isinstance(digits.op, ast.USub) else digits.operand.value)
             return Node("call", name, tuple(convert(arg, scope, link_scope) for arg in node.args))
         raise OXLError("syntax", "判定式或计算式中包含未支持的写法。")
 
@@ -439,9 +461,7 @@ def evaluate(
             if name == "abs":
                 return abs(_number(args[0]))
             if name == "round":
-                if type(args[1]) is not int:
-                    raise OXLError("type", "保留小数位数需要整数。")
-                return round(_number(args[0]), args[1])
+                return round(_number(args[0]), _round_digits(args[1]))
             if name == "len":
                 return len(_text(args[0]))
             if name == "contains":

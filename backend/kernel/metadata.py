@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from datetime import UTC, date, datetime
 
 from backend import db
-from backend.kernel.kinds import get_kind
+from backend.kernel.kinds import persisted_kind
 
 SNAPSHOT_META_FIELDS = ("module_id", "element_key", "valid_from", "valid_to", "sensitivity", "owner_user_id")
 EDITABLE_FIELDS = frozenset((*SNAPSHOT_META_FIELDS, "subtype", "provider_note", "gates", "card_text"))
@@ -38,7 +38,7 @@ def _date(value: object) -> str | None:
 
 def defaults(entity: Mapping) -> dict:
     """Derive safe migration defaults without changing an old entity or snapshot."""
-    kind = get_kind(entity["kind"])
+    kind = persisted_kind(entity["kind"])
     payload = _payload(entity)
     subtype = None
     if kind.kind == "material":
@@ -85,7 +85,7 @@ def get_meta(conn: db.Connection, entity_id: str) -> dict | None:
 
 
 def _validate(meta: dict, entity: Mapping) -> None:
-    kind = get_kind(entity["kind"])
+    kind = persisted_kind(entity["kind"])
     if kind.module_eligible and not meta.get("module_id"):
         raise ValueError("业务资产必须有所属公共部分或场景本体。")
     if not kind.module_eligible and meta.get("module_id") is not None:
@@ -130,7 +130,7 @@ def sync_meta(conn: db.Connection, entity: Mapping, updates: Mapping | None = No
     current = get_meta(conn, entity["id"])
     if current:
         values.update(current)
-        values["pillar"] = get_kind(entity["kind"]).pillar
+        values["pillar"] = persisted_kind(entity["kind"]).pillar
         if entity["kind"] in {"rule", "project"}:
             values["subtype"] = defaults(entity)["subtype"]
     if updates:

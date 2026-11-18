@@ -89,11 +89,19 @@ def list_kinds() -> list[dict]:
     return [asdict(item) for item in KINDS.values()]
 
 
+def persisted_kind(kind: str) -> KindDefinition:
+    """Read/edit an existing legacy row without registering new creation types."""
+    try:
+        return get_kind(kind)
+    except ValueError:
+        return _kind(kind, "aux", "历史内容", "LEGACY-")
+
+
 def requires_quality_gates(kind: str) -> bool:
     """Gate applicability is independent of asset workflow/module ownership.
 
     Blueprint §4.9 also requires QG2 and QG5 for positions/external parties.
     Their existing administrative write paths and role policy stay unchanged.
     """
-    definition = get_kind(kind)
+    definition = persisted_kind(kind)
     return definition.governed or definition.kind in {"position", "party"}

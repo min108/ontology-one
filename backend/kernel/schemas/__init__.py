@@ -6,7 +6,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from backend.kernel.kinds import get_kind
+from backend.kernel.kinds import get_kind, persisted_kind
 
 
 @lru_cache(maxsize=7)
@@ -23,14 +23,14 @@ def _unique(items: list[dict], field: str, label: str) -> set[str]:
     return set(values)
 
 
-def validate_payload(kind: str, payload: dict) -> None:
+def validate_payload(kind: str, payload: dict, *, allow_legacy: bool = False) -> None:
     """Validate a draft/save without requiring optional publication-gate fields.
 
     Old-kind payloads remain compatible. Cross-element reference authorization
     and expression validation are performed by the element service in its tenant
     transaction; this pure function checks only the local payload contract.
     """
-    definition = get_kind(kind)
+    definition = persisted_kind(kind) if allow_legacy else get_kind(kind)
     if not isinstance(payload, dict):
         raise ValueError("要素内容必须为对象。")
     if definition.payload_schema is None:
