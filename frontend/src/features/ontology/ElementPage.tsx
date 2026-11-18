@@ -1,10 +1,12 @@
-import { Button, Descriptions } from 'antd';
+import { Alert, Button, Descriptions } from 'antd';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { terms } from '../../i18n/zh-CN';
 import { invokeCapability } from '../../api/client';
 import { RuleEditor } from './RuleEditor';
 import { RuleTests } from './RuleTests';
+import { ElementRepair } from './ElementRepair';
+import { GovernanceFacts } from '../build/GovernanceFacts';
 import { useUiStore } from '../../state/ui';
 import {
   PageHeader,
@@ -42,6 +44,7 @@ const activityLabels: Record<string, string> = {
   complete: terms.actions.catalog_3_4,
   gate_waiver: copy.r4_gate_waiver,
   quality_waiver: copy.r4_gate_waiver,
+  gate_waiver_application: copy.r4a1_legacy_application_action,
 };
 function activityLabel(action: string): string {
   if (Object.hasOwn(activityLabels, action)) return activityLabels[action];
@@ -119,6 +122,7 @@ function Element({ id }: { id: string }) {
   const lifetime = useLifetime();
   const viewMode = useUiStore((state) => state.viewMode);
   const navigate = useNavigate();
+  const [notice, setNotice] = useState('');
   const [params] = useSearchParams();
   const from = params.get('from') || '';
   const fromChangeset = /^\/build\/changesets\/[^/?#]+$/.test(from);
@@ -144,6 +148,15 @@ function Element({ id }: { id: string }) {
     const label = activityLabel(event.action);
     return label ? [{ ...event, label }] : [];
   });
+  const canRepair =
+    detail.can_edit &&
+    ['draft', 'returned'].includes(entity.status) &&
+    !!detail.gates?.checks.some((check) => check.status !== 'not_applicable');
+  const openRepair = () => {
+    const panel = document.getElementById('element-repair');
+    panel?.scrollIntoView({ block: 'start' });
+    panel?.focus();
+  };
   return (
     <PageLayout
       variant="archive"
@@ -168,16 +181,18 @@ function Element({ id }: { id: string }) {
               : detail.can_edit
                 ? {
                     label: copy.r3_main_edit_draft,
-                    onClick: () => navigate('/assets/' + encodeURIComponent(id)),
+                    onClick: canRepair ? openRepair : () => navigate('/assets/' + encodeURIComponent(id)),
                   }
                 : undefined
           }
         />
       }
     >
+      {notice && <Alert type="success" role="status" title={notice} />}
       <div className={styles['archive-columns']}>
         <div className={styles.stack}>
           <BusinessCard detail={detail} />
+          <GovernanceFacts gates={detail.gates} />
           <div className={styles.folds}>
             {conditions.length > 0 && (
               <FoldRow
@@ -252,7 +267,22 @@ function Element({ id }: { id: string }) {
                 )}
               </>
             )}
-            <GateChecklist gates={detail.gates} professional={professional} />
+            <GateChecklist
+              gates={detail.gates}
+              professional={professional}
+              onRepair={canRepair ? openRepair : undefined}
+            />
+            {canRepair && (
+              <ElementRepair
+                key={entity.id + ':' + entity.version}
+                detail={detail}
+                disabled={!!query.refreshing || !!query.error}
+                onSaved={(message) => {
+                  setNotice(message);
+                  query.reload();
+                }}
+              />
+            )}
             {professional && ['rule', 'metric'].includes(entity.kind) && (
               <RuleTests
                 key={entity.id + ':' + entity.version}
@@ -300,6 +330,12 @@ function Element({ id }: { id: string }) {
           )}
           {detail.can_edit && entity.status === 'published' && (
             <Link to={'/assets/' + encodeURIComponent(id)}>{terms.actions.r2_card_edit}</Link>
+          )}
+          {entity.status === 'review' && (
+            <>
+              <p>{copy.r4a1_legacy_sod}</p>
+              <Link to="/govern/reviews">{copy.r4a1_legacy_review_link}</Link>
+            </>
           )}
         </aside>
       </div>

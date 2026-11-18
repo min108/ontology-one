@@ -62,3 +62,17 @@ it('warns the reviewer while proposing an evidence waiver for a hard constraint'
   rerender(<GateChecklist gates={result} waivers={{ QG1: ' ' }} onWaiver={() => undefined} />);
   expect(screen.queryByText(terms.labels.r4_waiver_basis_warning)).not.toBeInTheDocument();
 });
+
+it('offers a repair action for each failed gate but never a waiver for definition', () => {
+  const onRepair = vi.fn(),
+    result = gates(['QG1', 'QG2']);
+  result.checks[0].application_reason = '原件待归档，请独立核实';
+  const { container } = render(<GateChecklist gates={result} onRepair={onRepair} />);
+  const repairs = screen.getAllByRole('button', { name: terms.labels.r4a1_legacy_repair });
+  expect(repairs).toHaveLength(2);
+  fireEvent.click(repairs[1]);
+  expect(onRepair).toHaveBeenCalledWith('QG2');
+  expect(screen.getByText(/原件待归档，请独立核实/)).toBeVisible();
+  expect(container.querySelector('[data-gate-code="QG1"]')).toHaveAttribute('data-gate-status', 'fail');
+  expect(container.querySelector('[data-gate-code="QG2"] textarea')).toBeNull();
+});

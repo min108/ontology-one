@@ -318,3 +318,43 @@ it('cannot approve or waive a missing required relation but can return it', asyn
   expect(screen.getByText(terms.labels.r4_gate_cannot_waive)).toBeVisible();
   expect(screen.getByRole('button', { name: terms.actions.catalog_2_6 })).toBeEnabled();
 });
+
+it('shows source-tagged facts and application reasons again in publication confirmation', async () => {
+  current.gates = gates(['QG1']);
+  current.gates.checks[0].application_reason = '原件尚在归档，请先核对经办记录';
+  current.gates.fields = [
+    {
+      key: 'valid_from',
+      label: '生效日期',
+      value: '2026-01-01',
+      source: 'source',
+      source_quote: '本规定自2026年1月1日起施行。',
+      confirmed_by: '',
+      href: '',
+    },
+    {
+      key: 'exceptions',
+      label: '例外',
+      value: '无其他例外',
+      source: 'batch_confirmation',
+      source_quote: '',
+      confirmed_by: '核对人员',
+      href: '',
+    },
+  ];
+  open();
+  expect(await screen.findByText('2026-01-01')).toBeVisible();
+  expect(screen.getByText(/原件尚在归档，请先核对经办记录/)).toBeVisible();
+  const approve = screen.getByRole('button', { name: terms.actions.catalog_2_5 });
+  // A builder application is not a reviewer waiver.
+  expect(approve).toBeDisabled();
+  fireEvent.change(screen.getByLabelText(fixture.sourceLabel + ' · ' + terms.labels.r4_gate_waiver), {
+    target: { value: '已核对经办记录，批准本次出处豁免' },
+  });
+  fireEvent.click(approve);
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(within(dialog).getByText('2026-01-01')).toBeVisible());
+  expect(within(dialog).getByText('本规定自2026年1月1日起施行。')).toBeVisible();
+  expect(within(dialog).getByText(/原件尚在归档，请先核对经办记录/)).toBeVisible();
+  expect(within(dialog).getByText(/已核对经办记录，批准本次出处豁免/)).toBeVisible();
+});

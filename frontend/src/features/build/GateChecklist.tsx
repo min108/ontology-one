@@ -1,4 +1,4 @@
-import { Alert, Input } from 'antd';
+import { Alert, Button, Input } from 'antd';
 import type { ElementDetail, ReviewBody } from '../../api/generated/types';
 import { terms } from '../../i18n/zh-CN';
 import { FoldRow } from '../../ui';
@@ -25,12 +25,14 @@ export function GateChecklist({
   professional = false,
   waivers,
   onWaiver,
+  onRepair,
   disabled = false,
 }: {
   gates: Gates | null | undefined;
   professional?: boolean;
   waivers?: GateWaivers;
   onWaiver?: (code: 'QG1' | 'QG3', value: string) => void;
+  onRepair?: (code: string) => void;
   disabled?: boolean;
 }) {
   if (!gates) return null;
@@ -64,6 +66,16 @@ export function GateChecklist({
                 {check.label} · {statusLabels[check.status]}
               </strong>
               {check.reason && <p>{check.reason}</p>}
+              {check.application_reason && (
+                <p data-waiver-application>
+                  {copy.r4a1_legacy_application}：{check.application_reason}
+                </p>
+              )}
+              {onRepair && check.status === 'fail' && (
+                <Button autoInsertSpace={false} disabled={disabled} onClick={() => onRepair(check.code)}>
+                  {copy.r4a1_legacy_repair}
+                </Button>
+              )}
               {check.waiver_reason && (
                 <p>
                   {copy.r4_gate_waiver}：{check.waiver_reason}

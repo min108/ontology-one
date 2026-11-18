@@ -1,6 +1,6 @@
 import { Alert, Button, Input, Modal, Select } from 'antd';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import type { ReviewBody, ReviewListResult, ReviewResult } from '../../api/generated/types';
 import {
@@ -25,6 +25,7 @@ import { SourceEvidence } from './SourceEvidence';
 import { businessText, sourceDescription } from './businessText';
 import { isAnchoredEvidence } from './model';
 import { GateChecklist, gateBlockers, type GateWaivers } from './GateChecklist';
+import { GovernanceFacts } from './GovernanceFacts';
 import styles from './Build.module.css';
 
 export default function ReviewsPage() {
@@ -52,6 +53,7 @@ function Inbox() {
     reason: string;
   }>();
   const [waivers, setWaivers] = useState<GateWaivers>({});
+  const [denials, setDenials] = useState<GateWaivers>({});
   const [focus, setFocus] = useState<Evidence>();
   const lifetime = useLifetime(),
     navigate = useNavigate();
@@ -99,6 +101,7 @@ function Inbox() {
       decision,
     });
     setReason('');
+    setDenials({});
     setError('');
   }
   async function decide() {
@@ -117,6 +120,15 @@ function Inbox() {
       decision: confirmation.decision,
       version: confirmation.version,
       reason: reason.trim(),
+      ...(confirmation.decision === 'return' && Object.values(denials).some((value) => value?.trim())
+        ? {
+            waiver_denials: Object.fromEntries(
+              Object.entries(denials)
+                .filter(([, value]) => value?.trim())
+                .map(([code, value]) => [code, value?.trim()]),
+            ),
+          }
+        : {}),
       ...(confirmation.decision === 'approve_publish' && Object.values(waivers).some((value) => value?.trim())
         ? {
             waivers: Object.fromEntries(
@@ -313,7 +325,11 @@ function Inbox() {
                   <dt>{copy.r3_main_catalog_updated}</dt>
                   <dd>{formatDateTime(current.submitted_at)}</dd>
                 </dl>
-                {conditions.length > 0 && (
+                <Link to={'/ontology/elements/' + encodeURIComponent(current.entity.id)}>
+                  {copy.r4a1_legacy_details_link}
+                </Link>
+                <GovernanceFacts gates={current.gates} />
+                {!current.gates?.fields?.length && conditions.length > 0 && (
                   <FoldRow
                     title={copy.r3_main_scope}
                     summary={sentence(copy.r3_main_count, { count: conditions.length })}
@@ -404,20 +420,44 @@ function Inbox() {
           {confirmation?.decision === 'return' ? copy.r3_main_return_impact : copy.r3_main_approve_impact}
         </p>
         {confirmation?.decision === 'approve_publish' && (
-          <GateChecklist gates={confirmedRow?.gates} professional waivers={waivers} />
+          <>
+            <GovernanceFacts gates={confirmedRow?.gates} />
+            <GateChecklist gates={confirmedRow?.gates} professional waivers={waivers} />
+          </>
         )}
         {confirmation?.decision === 'return' && (
-          <label className={styles.field}>
-            {copy.r3_main_return_reason}
-            <Input.TextArea
-              autoFocus
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              rows={4}
-              maxLength={2000}
-              placeholder={copy.r3_main_return_hint}
-            />
-          </label>
+          <>
+            {(confirmedRow?.gates?.checks || [])
+              .filter((check) => check.application_reason && (check.code === 'QG1' || check.code === 'QG3'))
+              .map((check) => (
+                <label className={styles.field} key={check.code}>
+                  {check.label} · {copy.r4a1_legacy_denial}
+                  <p>
+                    {copy.r4a1_legacy_application}：{check.application_reason}
+                  </p>
+                  <Input.TextArea
+                    rows={2}
+                    maxLength={500}
+                    value={denials[check.code as 'QG1' | 'QG3'] || ''}
+                    placeholder={copy.r4a1_legacy_denial_hint}
+                    onChange={(event) =>
+                      setDenials((previous) => ({ ...previous, [check.code]: event.target.value }))
+                    }
+                  />
+                </label>
+              ))}
+            <label className={styles.field}>
+              {copy.r3_main_return_reason}
+              <Input.TextArea
+                autoFocus
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                rows={4}
+                maxLength={2000}
+                placeholder={copy.r3_main_return_hint}
+              />
+            </label>
+          </>
         )}
       </Modal>
     </PageLayout>
