@@ -5,9 +5,11 @@
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
 | R2 | 1.1.0 | 已验收（R2.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R2-REPORT](rounds/R2-REPORT.md)、[R2-ACCEPTANCE](rounds/R2-ACCEPTANCE.md) |
 | R3 | 1.2.0 | 已验收（R3.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R3-REPORT](rounds/R3-REPORT.md)、[R3-ACCEPTANCE](rounds/R3-ACCEPTANCE.md)、[R3-PLAN](rounds/R3-PLAN.md) |
-| R4 | 1.3.0 | A 段首次独立验收不通过（2026-11-18）：内核合格，门禁接入主线与旧入口需修复；R4-A.1 定向修复中，B 段未启动 | — | [R4-PLAN](rounds/R4-PLAN.md)、[R4-REPORT](rounds/R4-REPORT.md)、[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) |
+| R4 | 1.3.0 | A 段：首次验收不通过（2026-11-18），A.1 修复后复验有条件通过（2026-11-19），遗留 12 项列为 A.2；B 段分上、下两次交付，上半（A.2、机构本体与发布版本、检索）进行中 | — | [R4-PLAN](rounds/R4-PLAN.md)、[R4-REPORT](rounds/R4-REPORT.md)、[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) |
 
 ## 当前基线
+
+R4-A.1 交付 `5962caa` 经 Claude 复验（[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) 第 8 节）：有条件通过。三份普通写法的制度配真实 `deepseek-flash` 经界面共 11 次全部通过；旧页面修订的存量内容能补齐并重新发布；后端 1348、前端 542、合成模型全动作 41 项本地重跑通过。遗留 12 项（独立审核在两条旧路径上可绕开、核对页新写入口绕过技能包守卫、申请说明后补不齐、日期与例外识别换写法出错等）列为 A.2，按 R4-PLAN 第 8 节与 B 段（上）一起启动、最先完成。A.2 复验通过之前，R4-A 不记为已验收。规划起点为 `claude/affectionate-hopper-9bdpfg` 上的复验提交。以下各段是此前各次交付与验收时的记录。
 
 R4-A 交付 `577c9cb` 经 Claude 独立验收（[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md)）：既有用例、迁移、授权、表达式安全与交付 CI 核对无误；但普通写法的制度走不通默认路径、旧页面修订后无法再发布、生效日期会被错填并发布、真实模型经界面 8 次里 2 次在整理一步失败。按 R4-PLAN 第 7 节做 R4-A.1（裁决 D11–D16、动作清单 AB1–AB16），规划起点为 `claude/affectionate-hopper-9bdpfg` 上的验收提交。以下为实施方交付时的记录。
 
@@ -64,6 +66,8 @@ R1 独立验收通过：见 `rounds/R1-ACCEPTANCE.md`。
 1. **Windows 原生为主形态**：平台将以 Windows 原生运行为主形态，Linux 容器保留给开发与 CI。这调整了蓝图 §15.3 决策 D2（原定 Windows 便携包为体验形态、不作为架构约束）与 `SCOPE-TIERS.md` 中“Windows 原生回归属进阶”的定位。落实步骤见 R4-PLAN D16：新代码不得依赖 Linux 独有条件；A.1 验收后在开发分支上跑一次 Windows 原生流水线摸底（最近一次运行是 0.7.0，R1–R4-A 四轮未跑过），再定收敛节奏与分级调整。
 2. **规划分支更名**：规划与验收文档自本次起交付在 `claude/affectionate-hopper-9bdpfg`（原 `claude/gpt6-astra-project-planning-uf1ggp` 的内容已并入）。
 3. **旧入口的独立审核**（R4-PLAN D15）：升级到 1.3.0 后，旧页面上同一人不能审核自己编辑的内容。这是 0.7.0 行为变化，依据硬规则 G5 保留；负责人如不同意可否决。
+
+2026-11-19 规划方裁决（R4-PLAN D17–D22）：B 段分上、下两次交付；A.2 并入上半最先完成；真实模型验证由规划方在复验时执行（实施方环境不允许外发制度原文）；守则新增 §2 第 22 条（新写入口对照既有守卫）。Windows 原生流水线摸底待负责人授权开草稿 PR 后执行；已知 `backend/impact.py`（0.7.0 旧代码）运行期依赖系统时区库，记入摸底清单。
 
 ## 降级与延后记录
 
