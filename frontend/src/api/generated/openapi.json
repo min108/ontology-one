@@ -47,6 +47,94 @@
         "title": "AgentReportRun",
         "type": "object"
       },
+      "ApplicabilityOption": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind"
+        ],
+        "title": "ApplicabilityOption",
+        "type": "object"
+      },
+      "ApplyData": {
+        "additionalProperties": true,
+        "properties": {
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "remaining_count": {
+            "default": 0,
+            "title": "Remaining Count",
+            "type": "integer"
+          },
+          "remaining_items": {
+            "items": {
+              "$ref": "#/components/schemas/RemainingItem"
+            },
+            "title": "Remaining Items",
+            "type": "array"
+          },
+          "submitted": {
+            "title": "Submitted",
+            "type": "boolean"
+          },
+          "submitted_count": {
+            "default": 0,
+            "title": "Submitted Count",
+            "type": "integer"
+          },
+          "submitted_entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Submitted Entity Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "entity_ids",
+          "submitted"
+        ],
+        "title": "ApplyData",
+        "type": "object"
+      },
+      "ApplyResult": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ApplyData"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "ApplyResult",
+        "type": "object"
+      },
       "ArtifactBlock": {
         "additionalProperties": true,
         "properties": {
@@ -699,6 +787,11 @@
             "title": "Boundary",
             "type": "string"
           },
+          "bulk_confirmation_blocked": {
+            "default": false,
+            "title": "Bulk Confirmation Blocked",
+            "type": "boolean"
+          },
           "conditions": {
             "items": {
               "type": "string"
@@ -720,6 +813,13 @@
             "default": "",
             "title": "Exceptions",
             "type": "string"
+          },
+          "field_provenance": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldProvenance"
+            },
+            "title": "Field Provenance",
+            "type": "object"
           },
           "grain": {
             "default": "",
@@ -777,6 +877,13 @@
             "default": "",
             "title": "Valid To",
             "type": "string"
+          },
+          "waiver_applications": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Waiver Applications",
+            "type": "object"
           }
         },
         "required": [
@@ -899,6 +1006,16 @@
             "maxLength": 40,
             "title": "Valid To",
             "type": "string"
+          },
+          "waiver_applications": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateWaivers"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -923,6 +1040,58 @@
           "changeset_id"
         ],
         "title": "ChangesetGet",
+        "type": "object"
+      },
+      "ConfirmFacts": {
+        "additionalProperties": false,
+        "properties": {
+          "changeset_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Changeset Id",
+            "type": "string"
+          },
+          "confirm_no_exceptions_item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Confirm No Exceptions Item Ids",
+            "type": "array"
+          },
+          "confirm_unconditional_item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Confirm Unconditional Item Ids",
+            "type": "array"
+          },
+          "expected_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 200,
+            "title": "Expected Versions",
+            "type": "object"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          }
+        },
+        "required": [
+          "changeset_id"
+        ],
+        "title": "ConfirmFacts",
         "type": "object"
       },
       "DecideItems": {
@@ -962,6 +1131,11 @@
             "minItems": 1,
             "title": "Item Ids",
             "type": "array"
+          },
+          "only_ready": {
+            "default": false,
+            "title": "Only Ready",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1037,6 +1211,72 @@
           "citation"
         ],
         "title": "DescribeResult",
+        "type": "object"
+      },
+      "DocumentFact": {
+        "additionalProperties": true,
+        "properties": {
+          "actor_id": {
+            "default": "",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "anchor_id": {
+            "default": "",
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "default": "",
+            "title": "Confirmed At",
+            "type": "string"
+          },
+          "confirmed_by": {
+            "default": "",
+            "title": "Confirmed By",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "quote": {
+            "default": "",
+            "title": "Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "",
+            "title": "Source Version",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "title": "DocumentFact",
+        "type": "object"
+      },
+      "DocumentFacts": {
+        "additionalProperties": true,
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/DocumentFact"
+          },
+          "valid_from": {
+            "$ref": "#/components/schemas/DocumentFact"
+          }
+        },
+        "required": [
+          "valid_from",
+          "scope"
+        ],
+        "title": "DocumentFacts",
         "type": "object"
       },
       "ElementAction": {
@@ -1219,6 +1459,13 @@
       "ElementDetail": {
         "additionalProperties": true,
         "properties": {
+          "applicability_options": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicabilityOption"
+            },
+            "title": "Applicability Options",
+            "type": "array"
+          },
           "can_edit": {
             "title": "Can Edit",
             "type": "boolean"
@@ -1576,6 +1823,45 @@
         "title": "ElementRestore",
         "type": "object"
       },
+      "ElementSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "waiver_applications": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateWaivers"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "entity_id",
+          "version",
+          "reason"
+        ],
+        "title": "ElementSubmit",
+        "type": "object"
+      },
       "ElementUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -1596,6 +1882,19 @@
             "minLength": 1,
             "title": "Entity Id",
             "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
           },
           "meta": {
             "anyOf": [
@@ -1662,6 +1961,16 @@
             "minimum": 1.0,
             "title": "Version",
             "type": "integer"
+          },
+          "waiver_applications": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateWaivers"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1874,9 +2183,100 @@
         "title": "ExportOutput",
         "type": "object"
       },
+      "ExtractionSummary": {
+        "additionalProperties": true,
+        "properties": {
+          "accepted_candidates": {
+            "default": 0,
+            "title": "Accepted Candidates",
+            "type": "integer"
+          },
+          "discarded_candidates": {
+            "default": 0,
+            "title": "Discarded Candidates",
+            "type": "integer"
+          },
+          "failed_batches": {
+            "default": 0,
+            "title": "Failed Batches",
+            "type": "integer"
+          },
+          "fully_local": {
+            "default": true,
+            "title": "Fully Local",
+            "type": "boolean"
+          },
+          "retried_batches": {
+            "default": 0,
+            "title": "Retried Batches",
+            "type": "integer"
+          }
+        },
+        "title": "ExtractionSummary",
+        "type": "object"
+      },
+      "FieldProvenance": {
+        "additionalProperties": true,
+        "properties": {
+          "actor_id": {
+            "default": "",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "anchor_id": {
+            "default": "",
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "default": "",
+            "title": "Confirmed At",
+            "type": "string"
+          },
+          "confirmed_by": {
+            "default": "",
+            "title": "Confirmed By",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "quote": {
+            "default": "",
+            "title": "Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "",
+            "title": "Source Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "title": "FieldProvenance",
+        "type": "object"
+      },
       "GateCheck": {
         "additionalProperties": false,
         "properties": {
+          "application_at": {
+            "default": "",
+            "title": "Application At",
+            "type": "string"
+          },
+          "application_by": {
+            "default": "",
+            "title": "Application By",
+            "type": "string"
+          },
+          "application_reason": {
+            "default": "",
+            "title": "Application Reason",
+            "type": "string"
+          },
           "can_waive": {
             "title": "Can Waive",
             "type": "boolean"
@@ -1890,6 +2290,11 @@
               "QG5"
             ],
             "title": "Code",
+            "type": "string"
+          },
+          "denial_reason": {
+            "default": "",
+            "title": "Denial Reason",
             "type": "string"
           },
           "label": {
@@ -1926,6 +2331,57 @@
         "title": "GateCheck",
         "type": "object"
       },
+      "GateField": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed_by": {
+            "default": "",
+            "title": "Confirmed By",
+            "type": "string"
+          },
+          "href": {
+            "default": "",
+            "title": "Href",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "source",
+              "editor",
+              "batch_confirmation",
+              "legacy",
+              "missing"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_quote": {
+            "default": "",
+            "title": "Source Quote",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value",
+          "source"
+        ],
+        "title": "GateField",
+        "type": "object"
+      },
       "GateResult": {
         "additionalProperties": false,
         "properties": {
@@ -1943,6 +2399,13 @@
             "title": "Checks",
             "type": "array"
           },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/GateField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
           "hard_constraint": {
             "default": false,
             "title": "Hard Constraint",
@@ -1951,6 +2414,18 @@
           "passed": {
             "title": "Passed",
             "type": "boolean"
+          },
+          "ready_to_submit": {
+            "default": false,
+            "title": "Ready To Submit",
+            "type": "boolean"
+          },
+          "submission_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Submission Blockers",
+            "type": "array"
           }
         },
         "required": [
@@ -2137,6 +2612,25 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Handoff": {
+        "additionalProperties": true,
+        "properties": {
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "href",
+          "label"
+        ],
+        "title": "Handoff",
         "type": "object"
       },
       "IdentityOutput": {
@@ -2853,9 +3347,22 @@
       "Proposal": {
         "additionalProperties": true,
         "properties": {
+          "applicability_options": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalApplicabilityOption"
+            },
+            "title": "Applicability Options",
+            "type": "array"
+          },
           "can_submit": {
             "title": "Can Submit",
             "type": "boolean"
+          },
+          "document_facts": {
+            "$ref": "#/components/schemas/DocumentFacts"
+          },
+          "extraction_summary": {
+            "$ref": "#/components/schemas/ExtractionSummary"
           },
           "id": {
             "title": "Id",
@@ -2909,6 +3416,30 @@
         "title": "Proposal",
         "type": "object"
       },
+      "ProposalApplicabilityOption": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind"
+        ],
+        "title": "ProposalApplicabilityOption",
+        "type": "object"
+      },
       "ProposalItem": {
         "additionalProperties": true,
         "properties": {
@@ -2948,6 +3479,11 @@
             ],
             "title": "Applied Version"
           },
+          "can_submit": {
+            "default": false,
+            "title": "Can Submit",
+            "type": "boolean"
+          },
           "content_origin": {
             "title": "Content Origin",
             "type": "string"
@@ -2984,6 +3520,16 @@
               }
             ]
           },
+          "handoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Handoff"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -3000,6 +3546,18 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "ready_for_bulk_accept": {
+            "default": false,
+            "title": "Ready For Bulk Accept",
+            "type": "boolean"
+          },
+          "submit_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Submit Blockers",
+            "type": "array"
           },
           "tier": {
             "enum": [
@@ -3284,6 +3842,33 @@
         "title": "RelationPropose",
         "type": "object"
       },
+      "RemainingItem": {
+        "additionalProperties": true,
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "title",
+          "reasons"
+        ],
+        "title": "RemainingItem",
+        "type": "object"
+      },
       "Report": {
         "additionalProperties": false,
         "properties": {
@@ -3425,6 +4010,16 @@
             "title": "Version",
             "type": "integer"
           },
+          "waiver_denials": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateWaivers"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "waivers": {
             "anyOf": [
               {
@@ -3470,6 +4065,16 @@
             "minimum": 1.0,
             "title": "Version",
             "type": "integer"
+          },
+          "waiver_denials": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateWaivers"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "waivers": {
             "anyOf": [
@@ -4770,6 +5375,9 @@
                     "$ref": "#/components/schemas/DecideItems"
                   },
                   {
+                    "$ref": "#/components/schemas/ConfirmFacts"
+                  },
+                  {
                     "$ref": "#/components/schemas/ReviewList"
                   },
                   {
@@ -4801,6 +5409,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ElementUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ElementSubmit"
                   },
                   {
                     "$ref": "#/components/schemas/ElementAction"
@@ -5001,6 +5612,55 @@
         "summary": "Get Changeset"
       }
     },
+    "/api/v2/changesets/{id}/facts:confirm": {
+      "post": {
+        "operationId": "confirm_facts_api_v2_changesets__id__facts_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmFacts"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Facts"
+      }
+    },
     "/api/v2/changesets/{id}/items:bulk-decide": {
       "post": {
         "operationId": "decide_items_api_v2_changesets__id__items_bulk_decide_post",
@@ -5069,7 +5729,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BuildResult"
+                  "$ref": "#/components/schemas/ApplyResult"
                 }
               }
             },
@@ -5108,7 +5768,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BuildResult"
+                  "$ref": "#/components/schemas/ApplyResult"
                 }
               }
             },

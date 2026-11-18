@@ -1946,7 +1946,6 @@ def adopt_candidate_in_transaction(conn, material_id: str, candidate_id: str):
                 "grain",
                 "boundary",
                 "judgement",
-                "field_provenance",
             )
             if key in candidate
         }

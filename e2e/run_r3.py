@@ -57,7 +57,11 @@ def main(round_name: str = "r3") -> int:
         raise ValueError("Use a new directory under work/")
     output.mkdir(parents=True)
     check_ports(args.api_port, args.agent_port)
-    clean_env = {key: value for key, value in os.environ.items() if not key.upper().startswith("DEEPSEEK_")}
+    clean_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() != "DEEPSEEK" and not key.upper().startswith("DEEPSEEK_")
+    }
     if not args.skip_build:
         run_command(["npm", "--prefix", "frontend", "run", "build"], ROOT, clean_env, output / "build.log")
     if repetitions > 1:
@@ -87,27 +91,6 @@ def main(round_name: str = "r3") -> int:
             ]
             completed = subprocess.run(command, cwd=ROOT, env=dict(os.environ), check=False)
             receipt = json.loads((destination / "runner.json").read_text())
-            mainline = destination / "mainline-1.json"
-            if mainline.exists():
-                details = json.loads(mainline.read_text())
-                receipt.update(
-                    {
-                        key: details[key]
-                        for key in (
-                            "first_numeric_blocked",
-                            "automatic_revision",
-                            "steps",
-                            "total_seconds",
-                            "publication_checks",
-                            "gate_repairs",
-                            "extraction_summary",
-                            "document_date",
-                            "submitted_count",
-                            "remaining_count",
-                        )
-                        if key in details
-                    }
-                )
             runs.append(receipt)
             if completed.returncode or receipt["status"] != "passed":
                 break
@@ -188,7 +171,11 @@ def main(round_name: str = "r3") -> int:
         try:
             with scope:
                 try:
-                    bootstrap = {key: value for key, value in environment.items() if not key.startswith("DEEPSEEK_")}
+                    bootstrap = {
+                        key: value
+                        for key, value in environment.items()
+                        if key.upper() != "DEEPSEEK" and not key.upper().startswith("DEEPSEEK_")
+                    }
                     run_command(
                         [sys.executable, "tests/fixtures/v070/load.py"], ROOT, bootstrap, output / "fixture.log"
                     )
@@ -270,6 +257,29 @@ def main(round_name: str = "r3") -> int:
             )
             if not report["services_stopped"] or not report["databases_removed"]:
                 report["status"] = "failed"
+            mainline = output / ("a1-mainline-1.json" if round_name == "r4" else "mainline-1.json")
+            if mainline.is_file():
+                details = json.loads(mainline.read_text())
+                for key in (
+                    "first_numeric_blocked",
+                    "automatic_revision",
+                    "steps",
+                    "total_seconds",
+                    "publication_checks",
+                    "gate_repairs",
+                    "extraction_summary",
+                    "document_date",
+                    "submitted_count",
+                    "remaining_count",
+                    "failure",
+                ):
+                    if key in details:
+                        report[key] = details[key]
+                if not details.get("success"):
+                    report["status"] = "failed"
+            elif args.mainline_only or args.live:
+                report["status"] = "failed"
+                report.setdefault("error_type", "MissingBrowserReceipt")
             if args.live:
                 shutil.rmtree(output / "test-results", ignore_errors=True)
             (output / "runner.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")

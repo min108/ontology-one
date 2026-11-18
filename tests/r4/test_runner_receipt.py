@@ -22,7 +22,14 @@ class RunnerReceiptTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         with patch.object(sys, "path", [str(root / "e2e"), *sys.path]):
             runner = importlib.import_module("e2e.run_r2" if round_name == "r2" else "e2e.run_r3")
-        for mode in ("complete", "exception", "exception_after_clean", "incomplete", "service_running"):
+        for mode in (
+            "complete",
+            "exception",
+            "exception_after_clean",
+            "incomplete",
+            "service_running",
+            *(["missing_evidence"] if round_name == "r4" else []),
+        ):
             work = root / "work"
             work.mkdir(exist_ok=True)
             with self.subTest(mode=mode), tempfile.TemporaryDirectory(dir=work) as temporary:
@@ -40,12 +47,19 @@ class RunnerReceiptTests(unittest.TestCase):
                 provider = MagicMock(requests=0, key="synthetic-only", url="http://127.0.0.1:1")
                 manager = MagicMock()
                 manager.__enter__.return_value = provider
+
+                def run_command(command, *_args):
+                    if round_name == "r4" and mode != "missing_evidence" and "test" in command:
+                        (output / "a1-mainline-1.json").write_text(
+                            json.dumps({"success": True, "gate_repairs": [{"field": "exceptions"}]})
+                        )
+
                 with ExitStack() as stack, redirect_stdout(io.StringIO()):
                     for target, value in (
                         ("DatabaseScope", MagicMock(return_value=scope)),
                         ("Provider", MagicMock(return_value=manager)),
                         ("check_ports", MagicMock()),
-                        ("run_command", MagicMock()),
+                        ("run_command", run_command),
                         ("wait_health", MagicMock()),
                         ("terminate_processes", MagicMock()),
                     ):
@@ -62,5 +76,9 @@ class RunnerReceiptTests(unittest.TestCase):
                 self.assertEqual(receipt["status"], "passed" if mode == "complete" else "failed")
                 self.assertEqual(receipt["databases_removed"], databases_removed)
                 self.assertEqual(receipt["services_stopped"], mode != "service_running")
+                if mode == "missing_evidence":
+                    self.assertEqual(receipt["error_type"], "MissingBrowserReceipt")
+                if mode == "complete" and round_name == "r4":
+                    self.assertEqual(receipt["gate_repairs"], [{"field": "exceptions"}])
                 if mode in {"exception", "exception_after_clean"}:
                     self.assertEqual(receipt["error_type"], "OSError")
