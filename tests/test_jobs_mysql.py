@@ -324,7 +324,8 @@ class JobsMySQLTests(unittest.TestCase):
             entered = asyncio.Event()
             release = asyncio.Event()
 
-            async def controlled(*args):
+            async def controlled(*args, diagnostics=None):
+                assert isinstance(diagnostics, dict)
                 entered.set()
                 await release.wait()
                 return [], {}

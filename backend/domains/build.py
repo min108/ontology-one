@@ -5,6 +5,8 @@ import re
 import uuid
 from contextlib import closing
 from datetime import date
+from urllib.parse import quote as url_quote
+from urllib.parse import urlencode
 
 from fastapi import HTTPException
 
@@ -384,16 +386,18 @@ def get(ident: str) -> dict:
             )
             if not item["gates"]["passed"] and item["tier"] == "sure":
                 item["tier"] = "check"
-            item["handoff"] = (
-                {
-                    "href": "/skill-development/" + item["applied_entity_id"]
-                    if item["applied_entity_id"]
-                    else "/skill-development",
-                    "label": "前往技能工作台完善",
-                }
-                if item["after_data"]["kind"] == "skill"
-                else None
-            )
+            item["handoff"] = None
+            if item["after_data"]["kind"] == "skill":
+                skill_id = item["applied_entity_id"]
+                href = "/skill-development"
+                if skill_id:
+                    managed = conn.execute(
+                        "SELECT 1 FROM skill_documents d JOIN entities e ON e.id=d.entity_id "
+                        "WHERE d.entity_id=? AND json_extract(e.payload,'$.managed_skill')=true",
+                        (skill_id,),
+                    ).fetchone()
+                    href += "/" + url_quote(skill_id, safe="") if managed else "?" + urlencode({"legacy": skill_id})
+                item["handoff"] = {"href": href, "label": "前往技能工作台完善"}
         result["can_submit"] = any(item["can_submit"] for item in result["items"])
         result["submit_blockers"] = [
             item["after_data"]["title"] + "：" + "；".join(reason.rstrip("。；") for reason in item["submit_blockers"])
