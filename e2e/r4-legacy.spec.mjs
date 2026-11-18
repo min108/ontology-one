@@ -63,7 +63,9 @@ test("R4 AA1-AA2 and AB16: preserve original rows and open 200 old-format cards 
           one_liner: await sentence.textContent(),
           visible: !!box && box.y >= 0 && box.y + box.height <= 768,
         });
-        await assertNoLeaks(page, `AA2 ${item.origin} ${item.id}`);
+        await assertNoLeaks(page, `AA2 ${item.origin} ${item.id}`, {
+          hard: true,
+        });
         if (!cardCounterexample) {
           await sentence.evaluate((node) => {
             node.textContent = "";
@@ -132,7 +134,9 @@ test("R4 AA1-AA2 and AB16: preserve original rows and open 200 old-format cards 
             });
             savedScreenshot = true;
           }
-          await assertNoLeaks(page, `AA2 original source ${item.id}`);
+          await assertNoLeaks(page, `AA2 original source ${item.id}`, {
+            hard: true,
+          });
           if (!sourceCounterexample) {
             expect(() =>
               assertLegacyHighlight(item.source, source, {

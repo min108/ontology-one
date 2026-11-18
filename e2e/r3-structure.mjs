@@ -133,7 +133,7 @@ export async function visibleLeakText(page, { professional = false } = {}) {
 export async function assertNoLeaks(
   page,
   label,
-  { professional = false } = {},
+  { professional = false, hard = false } = {},
 ) {
   const text = await visibleLeakText(page, { professional });
   const leaks = leakedText(text);
@@ -147,12 +147,11 @@ export async function assertNoLeaks(
       JSON.stringify({ label, counts }) + "\n",
     );
   }
-  expect
-    .soft(
-      live ? leaks.map(({ kind }) => ({ kind })) : leaks,
-      `${label}: G3 visible text leakage`,
-    )
-    .toEqual([]);
+  const check = hard ? expect : expect.soft;
+  check(
+    live ? leaks.map(({ kind }) => ({ kind })) : leaks,
+    `${label}: G3 visible text leakage`,
+  ).toEqual([]);
 }
 function violationCodes(r, width, { legacy, empty }) {
   const codes = [];
