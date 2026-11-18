@@ -20,6 +20,75 @@ import {
   assertDocumentScope,
 } from "./r4a1-changeset-contracts.mjs";
 const output = process.env.E2E_EVIDENCE_DIR;
+
+test("R4-A.1 AB1: clearing a declared exception never re-enlists it and the remaining selection saves", async ({
+  browser,
+}) => {
+  const owner = await login(browser, "modeler");
+  const page = owner.page;
+  try {
+    const { proposal } = await startRegulation(page, "regulation-plain");
+    const explicit = proposal.items.find((item) =>
+      item.after_data.exceptions?.includes("资料不齐全"),
+    );
+    expect(explicit).toBeTruthy();
+    await pickItem(page, explicit);
+    await button(selected(page), a.catalog_1_1).click();
+    const modal = page.getByRole("dialog");
+    await modal.getByLabel(c.r4_rule_exceptions, { exact: true }).fill("");
+    const [applied] = await Promise.all([
+      postResponse(page, "/changeset.apply:invoke"),
+      button(modal, a.r2_save).click(),
+    ]);
+    expect(applied.ok()).toBe(true);
+    await expect(modal).not.toBeVisible();
+    await page.reload();
+    const group = page.locator('[data-omission-group="exceptions"]');
+    const rows = group.locator("[data-omission-item]");
+    await expect(rows.first()).toBeVisible();
+    await expect(
+      group.locator(`[data-omission-item="${explicit.id}"]`),
+    ).toHaveCount(0);
+    const [unselected, selectedId] = await rows.evaluateAll((items) =>
+      items.map((li) => li.dataset.omissionItem),
+    );
+    expect(selectedId).toBeTruthy();
+    const keptOut = group.locator(`[data-omission-item="${unselected}"]`);
+    await keptOut.locator("summary").click();
+    const original = proposal.items.find((item) => item.id === unselected);
+    await expect(keptOut).toContainText(original.evidence[0].quote);
+    await keptOut.getByRole("checkbox").uncheck();
+    const [saved] = await Promise.all([
+      postResponse(page, "/changeset.confirm_facts:invoke"),
+      group.locator("[data-confirm-no-exceptions]").click(),
+    ]);
+    expect(saved.status()).toBe(200);
+    const updated = (await readProposal(page, proposal.id)).items;
+    expect(
+      updated.find((item) => item.id === explicit.id).after_data,
+    ).toMatchObject({
+      exceptions: "",
+      source_declared_fields: expect.arrayContaining(["exceptions"]),
+    });
+    expect(
+      updated.find((item) => item.id === unselected).after_data.exceptions,
+    ).toBe("");
+    expect(
+      updated.find((item) => item.id === selectedId).after_data,
+    ).toMatchObject({
+      exceptions: "无例外",
+      field_provenance: { exceptions: { origin: "bulk_confirmation" } },
+    });
+    await evidence(page, "r4a1-omissions-reviewed", {
+      declared: explicit.id,
+      unselected,
+      selected: selectedId,
+    });
+  } finally {
+    await owner.context.close();
+  }
+});
+
 async function evidence(page, name, data) {
   mkdirSync(output, { recursive: true });
   await page.screenshot({
