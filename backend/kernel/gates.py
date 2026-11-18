@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from backend import db
 from backend.core.errors import ApiError
 from backend.kernel.cards import plain
-from backend.security.context import require_context
+from backend.security.context import get_context, require_context
 
 ASSETS = frozenset({"term", "object_type", "link_type", "data", "metric", "rule", "skill", "process", "knowledge"})
 LABELS = ("出处可定位", "口径无歧义", "条件完整", "关系经审定", "版本可还原")
@@ -585,9 +585,12 @@ def check_entity(
             item.update(status="waived", waiver_reason=waiver["reason"], reason="审核人员已记录豁免理由。")
     from backend.kernel.gate_fields import project
 
-    person = require_context()
+    person = get_context()
     can_read_package_facts = (
-        person.identity_kind == "session" and person.role in {"admin", "modeler", "reviewer"} and not person.readonly
+        person is not None
+        and person.identity_kind == "session"
+        and person.role in {"admin", "modeler", "reviewer"}
+        and not person.readonly
     )
     return {
         **_result(result["checks"], hard_constraint=result["hard_constraint"]),

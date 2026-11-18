@@ -5,6 +5,7 @@ import os
 import secrets
 import unittest
 from contextlib import closing
+from contextvars import Context
 from dataclasses import replace
 from unittest.mock import patch
 
@@ -13,7 +14,21 @@ from backend.kernel import gates
 from backend.security import store
 from backend.security.context import use_context
 from tests.r4 import test_a1_specialized_review as specialized
+from tests.r4 import test_elements
 from tests.test_skills import MANIFEST
+
+
+class BackgroundGateChecks(unittest.TestCase):
+    setUp = test_elements.ElementWrites.setUp
+    create = test_elements.ElementWrites.create
+
+    def test_nonmanaged_background_check_needs_no_request_identity(self) -> None:
+        entity = self.create(kind="data", payload={"definition": "合同金额", "unit": "元", "grain": "每份合同"})
+        result = Context().run(gates.check_entity, self.conn, entity)
+        self.assertEqual(len(result["checks"]), 5)
+        fields = {item["key"]: item for item in result["fields"]}
+        self.assertEqual(fields["unit"]["value"], "元")
+        self.assertEqual(fields["unit"]["source"], "editor")
 
 
 @unittest.skipUnless(os.getenv("RUN_JOBS_MYSQL_TESTS") == "1", "opt-in managed-skill HTTP/MySQL workflow")
@@ -92,6 +107,13 @@ class ManagedDecisionsHTTP(unittest.TestCase):
         with use_context(replace(person, readonly=True)), closing(db.connect()) as conn:
             entity = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (ident,)).fetchone())
             self.assertEqual(gates.check_entity(conn, entity)["fields"], [])
+            offline = Context().run(gates.check_entity, conn, entity)
+            self.assertEqual(len(offline["checks"]), 5)
+            self.assertEqual(offline["fields"], [])
+            # Exercise projection with an already-authorized tenant connection;
+            # this synthetic context is not an application login credential.
+            with use_context(replace(person, identity_kind="application")):
+                self.assertEqual(gates.check_entity(conn, entity)["fields"], [])
         result = self.request(
             reviewer,
             "POST",
