@@ -5,6 +5,7 @@ import { test, expect } from "./runtime.mjs";
 import { c, login, read, postResponse, confirmAction } from "./r3-support.mjs";
 import { checkStructure, assertNoLeaks } from "./r3-structure.mjs";
 import { reportIssueSummary } from "./r3-report-diagnostics.mjs";
+import { confirmOmissions } from "./r4a1-changeset-support.mjs";
 import {
   assertUnwaivedChecks,
   assertDataRepair,
@@ -24,8 +25,13 @@ import {
 const output = process.env.E2E_EVIDENCE_DIR;
 const live = (process.env.E2E_R3_LIVE || process.env.E2E_R2_LIVE) === "1";
 const documentText =
-  "第一条 办理付款前应核对合同约定与验收资料；验收通过后30日内完成付款申请。\n第二条 累计付款不得超过合同金额；有异议的款项应记录原因并暂停支付。\n第三条 经办人员应保存验收记录，审核人员复核付款依据。" +
-  "\n第四条 适用范围：本机构合同付款；适用条件：验收完成；例外：存在争议时暂停付款；生效日期：2026-01-01。金额单位：元；验收记录与付款依据的单位：份；金额与资料的记录粒度：每份合同。";
+  "第一条 本办法适用于本机构办理的合同付款。\n" +
+  "第二条 办理付款前应核对合同约定与验收资料；验收通过后30日内完成付款申请。\n" +
+  "第三条 累计付款不得超过合同金额；有异议的款项应记录原因并暂停支付。\n" +
+  "第四条 经办人员应保存验收记录，审核人员复核付款依据。\n" +
+  "第五条 对存在争议的付款，经办人员应保存异议记录并交审核人员复核。\n" +
+  "第六条 合同付款台账逐份合同记录付款金额，以元计量；验收记录和付款依据按份登记。\n" +
+  "第七条 本办法自2026年1月1日起施行。";
 function safeFailure(error) {
   const frames = String(error?.stack || "")
     .split("\n")
@@ -192,7 +198,7 @@ for (
       await page
         .getByRole("button", { name: "核对建设方案", exact: true })
         .click();
-      const proposal = (await (await getting).json()).data;
+      let proposal = (await (await getting).json()).data;
       let changesetUrl = page.url();
       expect(proposal.items.length).toBeGreaterThan(1);
       expect(
@@ -241,6 +247,20 @@ for (
         /还有\s*\d+\s*条没处理/,
       );
       await checkStructure(page, `changeset-${iteration}`);
+      await expect(page.locator("[data-file-valid-from]")).toHaveValue(
+        "2026-01-01",
+      );
+      proposal = await confirmOmissions(page, proposal.id);
+      if (!live) {
+        expect(
+          proposal.items.some(
+            (item) =>
+              item.after_data.kind === "data" &&
+              !item.after_data.unit &&
+              !item.after_data.grain,
+          ),
+        ).toBe(true);
+      }
       // This synthetic document states obligations, not an executable skill.
       // Review model classification before adopting a draft; retain every item.
       for (const item of proposal.items.filter(
@@ -280,7 +300,12 @@ for (
         assertRuleClassification(savedClassification);
         await expect(classification).not.toBeVisible();
         await expect(selected(page)).toContainText(c.r4_rule_applies_to);
-        await decide(page, savedClassification, "采纳");
+        proposal = await confirmOmissions(page, proposal.id);
+        await decide(
+          page,
+          proposal.items.find((row) => row.id === item.id),
+          "采纳",
+        );
         proposal.items = (
           await read(page, "/api/v2/changesets/" + proposal.id)
         ).data.items;
@@ -415,7 +440,8 @@ for (
           item.id !== editedItem.id &&
           item.tier === "sure" &&
           item.decision === "pending" &&
-          item.validation.level !== "error",
+          item.validation.level !== "error" &&
+          item.gates.passed,
       );
       expect(sure.length).toBeGreaterThan(0);
       const bulk = postResponse(page, "/changeset.decide_items:invoke"),
@@ -521,6 +547,18 @@ for (
           persisted: true,
         });
       }
+      if (!live) {
+        expect(
+          gateRepairs.some(
+            (repair) => repair.kind === "data" && repair.persisted,
+          ),
+        ).toBe(true);
+        expect(
+          gateRepairs.some(
+            (repair) => repair.reclassified_as === "rule" && repair.persisted,
+          ),
+        ).toBe(true);
+      }
       await expect(button(page, "采纳并提交审核")).toBeEnabled();
       const applied = await submit(page);
       expect(applied.entity_ids).toHaveLength(proposal.items.length);
@@ -534,7 +572,9 @@ for (
             code,
             status,
           })),
-          waived: false,
+          waived: detail.gates.checks.some(
+            (check) => check.status === "waived",
+          ),
         });
       }
       await expect(button(page, "已提交审核")).toBeDisabled();
@@ -613,7 +653,9 @@ for (
           code,
           status,
         })),
-        waived: false,
+        waived: publishedDetail.gates.checks.some(
+          (check) => check.status === "waived",
+        ),
       });
       record("A9 独立审核并发布");
       await page.goto("/ontology/catalog");

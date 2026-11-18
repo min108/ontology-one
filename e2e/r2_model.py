@@ -111,19 +111,32 @@ def reply(body: dict) -> dict:
         candidates, coverage = [], []
         for chunk in source["chunks"]:
             quote = chunk["content"].strip()
+            if re.search(r"本办法自\d{4}年\d+月\d+日起施行", quote):
+                coverage.append({"chunk_id": chunk["id"], "reason": "施行日期属于文件事实，不单独生成规则"})
+                continue
+            data_field = "合同付款台账逐份合同记录付款金额" in quote
             candidates.append(
                 {
                     # Deliberately misclassify one normative clause so the UI
                     # acceptance path must review it before adopting a draft.
-                    "kind": "skill" if "经办人员应保存验收记录" in quote else "rule",
+                    "kind": "data" if data_field else "skill" if "经办人员应保存验收记录" in quote else "rule",
                     # Different source clauses must not fabricate the same title
                     # with different definitions under the real QG2 check.
                     "title": "付款申请时限" if "30日" in quote else quote[:24],
                     "summary": quote,
                     "content": quote,
+                    "definition": quote,
                     "source_chunk_ids": [chunk["id"]],
                     "source_quotes": [{"chunk_id": chunk["id"], "quote": quote}],
-                    "conditions": [],
+                    "conditions": [
+                        condition
+                        for condition in ("验收通过后", "有异议的款项", "对存在争议的付款")
+                        if condition in quote
+                    ],
+                    # Deliberately incomplete extraction: the original prose supports
+                    # these facts, but the browser must supply and persist the repair.
+                    "unit": "",
+                    "grain": "",
                     "questions": [],
                 }
             )
