@@ -87,7 +87,7 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
     const entity = (
       await read(page, "/api/v2/elements/" + saved.applied_entity_id)
     ).data;
-    expect(entity.meta.valid_from).toBe("2026-01-01");
+    expect(entity.entity.meta.valid_from).toBe("2026-01-01");
     expect(entity.gates.passed).toBe(true);
     await evidence(page, "r4a1-ab1-facts", {
       changeset_id: proposal.id,
@@ -190,7 +190,7 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
     const archived = (
       await read(page, "/api/v2/elements/" + skill.applied_entity_id)
     ).data;
-    expect(archived.status).toBe("archived");
+    expect(archived.entity.status).toBe("archived");
     await acceptItem(page, ready);
     proposal = await readProposal(page, initial.id);
     const blockedSaved = proposal.items.find((item) => item.id === blocked.id);

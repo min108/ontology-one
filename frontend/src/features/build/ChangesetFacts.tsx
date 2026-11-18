@@ -65,7 +65,11 @@ export function ChangesetOmissions({
   onConfirm: (body: ConfirmFacts) => void;
 }) {
   const rules = proposal.items.filter(
-    (item) => item.after_data.kind === 'rule' && item.decision !== 'rejected' && !isSubmitted(item),
+    (item) =>
+      item.after_data.kind === 'rule' &&
+      !item.after_data.bulk_confirmation_blocked &&
+      item.decision !== 'rejected' &&
+      !isSubmitted(item),
   );
   const groups = [
     {

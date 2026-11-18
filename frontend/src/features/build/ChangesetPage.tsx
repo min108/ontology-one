@@ -484,6 +484,9 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                   />
                 )
               )}
+              {current.after_data.bulk_confirmation_blocked && (
+                <Alert type="warning" title={copy.r4a1_ambiguous_facts} />
+              )}
               <GovernanceFacts gates={current.gates} />
               <GateChecklist key={current.id} gates={current.gates} professional={professional} />
               {!locked && (

@@ -60,6 +60,10 @@ it('explicit batch confirmation sends only missing active rules and their versio
   value.items[1].after_data.exceptions = 'A specific exception';
   value.items.push(
     { ...item('rejected'), decision: 'rejected' },
+    {
+      ...item('ambiguous'),
+      after_data: { ...item('ambiguous').after_data, bulk_confirmation_blocked: true },
+    },
     { ...item('submitted'), applied_entity_id: 'R-2', applied_status: 'review' },
     { ...item('data'), after_data: { ...item('data').after_data, kind: 'data' } },
   );
