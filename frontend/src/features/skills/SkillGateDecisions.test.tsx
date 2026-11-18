@@ -1,10 +1,70 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
 import fixture from '../../../test-fixtures/r4-semantic-content.json';
+import schemaFixture from '../../../test-fixtures/r4a1-schema-facts.json';
 import legacy from '../../../test-fixtures/r4a1-legacy-content.json';
 import { terms } from '../../i18n/zh-CN';
 import { gates } from '../build/gateFixtures';
 import { SkillGateDecisions, SkillGateRecords, skillDecisionBlocked } from './SkillGateDecisions';
+import { GovernanceFacts } from '../build/GovernanceFacts';
+
+it('shows every exact skill fact and Chinese source inside the publication dialog, never relying on duplicate background content', () => {
+  const result = gates();
+  result.fields = ['definition', 'inputs', 'outputs', 'steps', 'usage_conditions'].map((key) => ({
+    key,
+    label: key,
+    value: key === 'inputs' || key === 'outputs' ? JSON.stringify(schemaFixture[key]) : `Actual saved ${key}`,
+    source: 'editor' as const,
+    source_quote: '',
+    confirmed_by: 'Reviewer',
+    href: '',
+  }));
+  const props = {
+    action: 'publish',
+    waivers: {},
+    denials: {},
+    disabled: false,
+    onWaiver: vi.fn(),
+    onDenial: vi.fn(),
+  };
+  const surface = (dialogGates: typeof result) => (
+    <MemoryRouter>
+      <GovernanceFacts gates={result} />
+      <section role="dialog">
+        <SkillGateDecisions {...props} gates={dialogGates} />
+      </section>
+    </MemoryRouter>
+  );
+  const { rerender } = render(surface(result));
+  const assertDialog = () => {
+    const dialog = screen.getByRole('dialog');
+    for (const field of result.fields!) {
+      const rows = dialog.querySelectorAll(`[data-governance-field="${field.key}"]`);
+      expect(rows).toHaveLength(1);
+      if (field.key === 'inputs' || field.key === 'outputs') {
+        expect(
+          within(rows[0] as HTMLElement).getByText(
+            field.key === 'inputs' ? schemaFixture.amountLabel : schemaFixture.resultLabel,
+          ),
+        ).toBeVisible();
+        expect(rows[0]).not.toHaveTextContent(field.value);
+      } else expect(within(rows[0] as HTMLElement).getByText(field.value)).toBeVisible();
+      expect(rows[0].querySelector('[data-fact-origin]')).toHaveTextContent(
+        terms.labels.r4a1_legacy_origin_editor,
+      );
+    }
+  };
+  assertDialog();
+  rerender(surface({ ...result, fields: result.fields!.filter((field) => field.key !== 'inputs') }));
+  expect(() => assertDialog()).toThrow();
+  // The unchanged valid background card cannot make the missing dialog value pass.
+  expect(screen.getByText(schemaFixture.amountLabel)).toBeVisible();
+  rerender(
+    surface({ ...result, fields: result.fields!.map((field) => ({ ...field, source: 'legacy' as const })) }),
+  );
+  expect(() => assertDialog()).toThrow();
+});
 
 it('requires independent permission, current package proof and every non-waivable check for publication', () => {
   const waiver = { QG1: fixture.paperVerified };

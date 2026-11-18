@@ -1,0 +1,9 @@
+{
+  "definition": "核对合同付款资料并输出结论",
+  "usage": "收到完整合同付款资料时",
+  "steps": "核对资料：逐项核对合同金额与付款金额",
+  "amountLabel": "付款金额",
+  "resultLabel": "是否完成核对",
+  "inputs": {"type":"object","additionalProperties":false,"properties":{"amount":{"type":"number","description":"付款金额","minimum":0,"maximum":100}},"required":["amount"]},
+  "outputs": {"type":"object","properties":{"checked":{"type":"boolean","description":"是否完成核对"}},"required":[]}
+}

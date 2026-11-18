@@ -1,8 +1,22 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { login, button, read, postResponse, c } from "./r3-support.mjs";
-import { assertPublishedSkillReview } from "./r4a1-skill-review-contracts.mjs";
+import {
+  assertPublishedSkillReview,
+  assertSkillDialogFacts,
+} from "./r4a1-skill-review-contracts.mjs";
+import { assertNoLeaks } from "./r3-structure.mjs";
+const schemaFixture = JSON.parse(
+  readFileSync(
+    resolve(
+      process.env.E2E_APPLICATION_ROOT || ".",
+      "frontend/test-fixtures/r4a1-schema-facts.json",
+    ),
+    "utf8",
+  ),
+);
 
 const application =
   "合成技能来自经办经验，纸质方法说明待归档，请独立核对验证样例。";
@@ -21,15 +35,21 @@ function skillArchive() {
   const name = "r4a1-review-" + Date.now();
   const manifest = {
     schema_version: "1.0",
-    applicability: "用于内部经办资料核对",
-    inputs: { type: "object" },
-    outputs: { type: "object" },
-    steps: [{ title: "核对资料", instruction: "检查经办输入并形成核对结果。" }],
+    applicability: schemaFixture.usage,
+    inputs: schemaFixture.inputs,
+    outputs: schemaFixture.outputs,
+    steps: [{ title: "核对资料", instruction: "逐项核对合同金额与付款金额" }],
     entrypoint: null,
-    test_cases: [{ name: "空资料核对", input: {}, expected_output: {} }],
+    test_cases: [
+      {
+        name: "资料核对",
+        input: { amount: 10 },
+        expected_output: { checked: true },
+      },
+    ],
   };
   const files = {
-    "SKILL.md": `---\nname: ${name}\ndescription: 根据经办输入逐项核对资料并形成结果\nmetadata:\n  ontology-one.manifest: assets/ontology-one.json\n---\n\n# 内部资料核对\n\n按声明步骤核对输入，保留经办记录。\n`,
+    "SKILL.md": `---\nname: ${name}\ndescription: ${schemaFixture.definition}\nmetadata:\n  ontology-one.manifest: assets/ontology-one.json\n---\n\n# 内部资料核对\n\n按声明步骤核对输入，保留经办记录。\n`,
     "assets/ontology-one.json": JSON.stringify(manifest),
   };
   return execFileSync(
@@ -180,6 +200,79 @@ test("R4-A.1 managed skill: independent reviewer returns an application then wai
     await expect(publishing.locator("[data-waiver-application]")).toContainText(
       renewed,
     );
+
+    const expectedFacts = [
+      { key: "definition", values: [schemaFixture.definition] },
+      {
+        key: "inputs",
+        values: [
+          schemaFixture.amountLabel,
+          c.r4a1_schema_number,
+          c.r4a1_schema_required,
+          "0",
+          "100",
+        ],
+      },
+      {
+        key: "outputs",
+        values: [
+          schemaFixture.resultLabel,
+          c.r4a1_schema_boolean,
+          c.r4a1_schema_optional,
+        ],
+      },
+      { key: "steps", values: [schemaFixture.steps] },
+      { key: "usage_conditions", values: [schemaFixture.usage] },
+    ].map((field) => ({
+      ...field,
+      source: "editor",
+      originLabel: c.r4a1_legacy_origin_editor,
+    }));
+    const renderedFacts = () =>
+      publishing
+        .locator("[data-governance-field]")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => ({
+            key: node.dataset.governanceField,
+            text: node.textContent,
+            source:
+              node.querySelector("[data-fact-origin]")?.dataset.factOrigin,
+            originText:
+              node.querySelector("[data-fact-origin]")?.textContent || "",
+          })),
+        );
+    await expect(publishing.locator("[data-governance-facts]")).toHaveCount(1);
+    assertSkillDialogFacts(await renderedFacts(), expectedFacts);
+    for (const field of expectedFacts) {
+      const row = publishing.locator(`[data-governance-field="${field.key}"]`);
+      await expect(row).toHaveCount(1);
+      await row.scrollIntoViewIfNeeded();
+      await expect(row.locator("[data-fact-origin]")).toContainText(
+        c.r4a1_legacy_origin_editor,
+      );
+    }
+    const origin = publishing.locator(
+      '[data-governance-field="inputs"] [data-fact-origin]',
+    );
+    const originalOrigin = await origin.textContent();
+    await origin.evaluate((node) => {
+      node.textContent = "未记录来源";
+    });
+    const corrupted = await renderedFacts();
+    expect(() => assertSkillDialogFacts(corrupted, expectedFacts)).toThrow();
+    await origin.evaluate((node, value) => {
+      node.textContent = value;
+    }, originalOrigin);
+    assertSkillDialogFacts(await renderedFacts(), expectedFacts);
+    await assertNoLeaks(
+      reviewer.page,
+      "managed skill publication business facts",
+    );
+    await publishing
+      .locator('[data-governance-field="definition"]')
+      .scrollIntoViewIfNeeded();
+    await shot(reviewer.page, "r4a1-managed-skill-facts");
+
     await publishing
       .getByLabel("技能审核办理意见", { exact: true })
       .fill("已独立核对技能方法、当前验证记录和无需依赖其他要素的声明。");

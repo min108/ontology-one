@@ -2,6 +2,7 @@ import { Alert, Input } from 'antd';
 import type { GateResult, GateWaivers } from '../../api/generated/types';
 import { terms } from '../../i18n/zh-CN';
 import { GateChecklist, gateBlockers } from '../build/GateChecklist';
+import { GovernanceFacts } from '../build/GovernanceFacts';
 import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
@@ -44,6 +45,7 @@ export function SkillGateDecisions({
   const conflict = (['QG1', 'QG3'] as const).some((code) => waivers[code]?.trim() && denials[code]?.trim());
   return (
     <section aria-label={copy.r3_main_five_checks} className={styles.stack}>
+      {action === 'publish' && <GovernanceFacts gates={gates} />}
       <GateChecklist gates={gates} professional waivers={waivers} onWaiver={onWaiver} disabled={disabled} />
       {conflict && <Alert type="warning" title={copy.r4a1_legacy_decision_conflict} />}
       {action === 'return' &&

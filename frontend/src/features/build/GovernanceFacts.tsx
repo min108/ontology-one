@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { GateResult } from '../../api/generated/types';
 import { terms } from '../../i18n/zh-CN';
 import styles from './Build.module.css';
+import { SchemaFacts } from './SchemaFacts';
 
 const copy = terms.labels;
 const origins = {
@@ -28,7 +29,9 @@ export function GovernanceFacts({
           <div key={field.key} className={styles.metadata} data-governance-field={field.key}>
             <dt>{field.label}</dt>
             <dd>
-              {field.href?.startsWith('/assets/') ? (
+              {field.key === 'inputs' || field.key === 'outputs' ? (
+                <SchemaFacts value={field.value} direction={field.key} />
+              ) : field.href?.startsWith('/assets/') ? (
                 <Link to={field.href}>{field.value || copy.r4a1_legacy_empty}</Link>
               ) : (
                 <span className={styles.paragraph}>{field.value || copy.r4a1_legacy_empty}</span>
