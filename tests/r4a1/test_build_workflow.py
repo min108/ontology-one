@@ -97,6 +97,103 @@ class BuildWorkflow(unittest.TestCase):
         # Reversing expected success to all-or-nothing must fail.
         self.assertNotEqual(result["submitted_count"], len(proposal["items"]))
 
+    def test_external_edit_keeps_its_version_while_other_items_submit_once(self) -> None:
+        client = self.login("fixture.builder")
+        proposal = self.confirm(client, self.proposal(client))
+        selected = [item["id"] for item in proposal["items"] if item["gates"]["passed"]][:2]
+        self.assertEqual(len(selected), 2)
+        self.accept(client, proposal, selected)
+        request = {"changeset_id": proposal["id"]}
+        first, second = self.invoke(client, "changeset.apply", request)["entity_ids"]
+        changed = self.invoke(
+            client,
+            "element.update_draft",
+            {"entity_id": second, "version": 1, "title": "另一入口补充的制度标题", "reason": "外部编辑"},
+        )["entity"]
+        state = self.invoke(client, "changeset.get", request)
+        self.assertTrue(state["can_submit"])
+        self.assertTrue(next(item for item in state["items"] if item["applied_entity_id"] == second)["stale_draft"])
+        submitted = self.invoke(client, "changeset.apply_and_submit", request)
+        self.assertEqual(submitted["submitted_entity_ids"], [first])
+        self.assertEqual(submitted["submitted_count"], 1)
+        self.assertEqual(submitted["remaining_count"], 1)
+        self.assertIn("刷新", submitted["remaining_items"][0]["reasons"][0])
+        self.assertEqual(client.get("/api/entities/" + first).json()["status"], "review")
+        current = client.get("/api/entities/" + second).json()
+        self.assertEqual(
+            (current["status"], current["version"], current["title"]), ("draft", changed["version"], changed["title"])
+        )
+        again = client.post("/api/v2/capabilities/changeset.apply_and_submit:invoke", json=request)
+        self.assertEqual(again.status_code, 409, again.text)
+
+    def test_cleared_subject_is_a_repairable_draft_and_second_submission_counts_only_new_items(self) -> None:
+        client = self.login("fixture.builder")
+        proposal = self.confirm(client, self.proposal(client))
+        ready = [item for item in proposal["items"] if item["gates"]["passed"]][:3]
+        self.assertEqual(len(ready), 3)
+        queued, incomplete, later = ready
+        request = {"changeset_id": proposal["id"]}
+        self.accept(client, proposal, [queued["id"]])
+        fields = {key: incomplete["after_data"][key] for key in ("title", "content", "kind")}
+        self.invoke(
+            client,
+            "changeset.decide_items",
+            {**request, "decision": "edited", "item_ids": [incomplete["id"]], "edit": {**fields, "applies_to_id": ""}},
+        )
+        first = self.invoke(client, "changeset.apply_and_submit", request)
+        self.assertEqual(
+            (first["submitted_count"], first["remaining_count"], first["pending_count"]),
+            (1, 1, len(proposal["items"]) - 2),
+        )
+        current = self.invoke(client, "changeset.get", request)
+        kept = next(item for item in current["items"] if item["id"] == incomplete["id"])
+        self.assertEqual(kept["applied_status"], "draft")
+        self.assertEqual(next(check["status"] for check in kept["gates"]["checks"] if check["code"] == "QG4"), "fail")
+        self.accept(client, proposal, [later["id"]])
+        second = self.invoke(client, "changeset.apply_and_submit", request)
+        self.assertEqual(
+            (second["submitted_count"], second["remaining_count"], second["pending_count"]),
+            (1, 1, len(proposal["items"]) - 3),
+        )
+        self.assertTrue(set(first["submitted_entity_ids"]).isdisjoint(second["submitted_entity_ids"]))
+
+    def test_rest_partial_edits_preserve_facts_and_can_read_an_old_malformed_value(self) -> None:
+        client = self.login("fixture.builder")
+        proposal = self.confirm(client, self.proposal(client))
+        item = proposal["items"][0]
+        original = item["after_data"]
+        path = "/api/v2/changesets/" + proposal["id"]
+        edit = {key: original[key] for key in ("title", "content", "kind")}
+        edit["title"] += "（核对版）"
+        for changes in (edit, {**edit, "waiver_applications": None}):
+            saved = client.post(
+                path + "/items:bulk-decide",
+                json={"changeset_id": proposal["id"], "item_ids": [item["id"]], "decision": "edited", "edit": changes},
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            data = next(row["after_data"] for row in saved.json()["data"]["items"] if row["id"] == item["id"])
+            for key in ("scope", "conditions", "valid_from", "applies_to_id"):
+                self.assertEqual(data[key], original[key])
+            self.assertEqual(data["waiver_applications"], {})
+        ident = self.invoke(client, "changeset.apply", {"changeset_id": proposal["id"]})["entity_ids"][0]
+        # Model a corrupt historical record; this deliberately makes its gate fail.
+        person = store.authenticate_session(client.cookies.get("ontology_session"), "a1-build")[0]
+        with use_context(person), closing(db.connect()) as conn, conn:
+            conn.execute(
+                "UPDATE entities SET payload=JSON_SET(payload,'$.judgement','旧判定文本') WHERE id=?", (ident,)
+            )
+            conn.execute(
+                "UPDATE changeset_items SET after_data=JSON_SET(after_data,'$.waiver_applications',CAST('null' AS JSON)) WHERE id=?",
+                (item["id"],),
+            )
+        reopened = client.get(path)
+        self.assertEqual(reopened.status_code, 200, reopened.text)
+        row = next(r for r in reopened.json()["data"]["items"] if r["id"] == item["id"])
+        self.assertEqual(row["after_data"]["waiver_applications"], {})
+        self.assertIsNone(row["after_data"]["judgement"])
+        self.assertIn("原有判定式", " ".join(row["validation"]["issues"]))
+        self.assertEqual(next(check["status"] for check in row["gates"]["checks"] if check["code"] == "QG3"), "fail")
+
     def test_applied_draft_can_change_kind_and_be_discarded(self) -> None:
         client = self.login("fixture.builder")
         proposal = self.confirm(client, self.proposal(client))

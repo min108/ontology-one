@@ -285,12 +285,17 @@ class DerivedRelations(unittest.TestCase):
         )
 
     def test_proposal_creates_candidate_and_snapshot(self) -> None:
+        from backend.security.context import use_context
+
+        builder = principal("modeler")
         with (
+            use_context(builder),
             patch("backend.kernel.relations.db.connect", return_value=self.conn),
             patch("backend.skills.guard_generic_entity") as guard,
             patch("backend.kernel.relations.db.log"),
         ):
             result = propose("O", "D", "references", "口径相关")
+        self.assertEqual(result["payload"]["proposed_by"], builder.user_id)
         row = self.conn.execute("SELECT * FROM relations WHERE id=?", (result["id"],)).fetchone()
         self.assertEqual(row["status"], "candidate")
         self.assertEqual(json.loads(row["payload"])["proposal_reason"], "口径相关")

@@ -2,7 +2,7 @@
 
 export type AgentReportRun = { "answer"?: string; "id": string; "report_revision_id"?: string | null; "revision_of"?: string | null; "status": string; [key: string]: unknown; };
 export type ApplicabilityOption = { "id": string; "kind": string; "title": string; [key: string]: unknown; };
-export type ApplyData = { "entity_ids": Array<string>; "id": string; "remaining_count"?: number; "remaining_items"?: Array<RemainingItem>; "submitted": boolean; "submitted_count"?: number; "submitted_entity_ids"?: Array<string>; [key: string]: unknown; };
+export type ApplyData = { "entity_ids": Array<string>; "id": string; "pending_count"?: number; "remaining_count"?: number; "remaining_items"?: Array<RemainingItem>; "submitted": boolean; "submitted_count"?: number; "submitted_entity_ids"?: Array<string>; [key: string]: unknown; };
 export type ApplyResult = { "data": ApplyData; [key: string]: unknown; };
 export type ArtifactBlock = { "citations": Array<string>; "columns"?: Array<string>; "rows"?: Array<Array<string>>; "text"?: string; "type": "paragraph" | "table"; [key: string]: unknown; };
 export type ArtifactCreate = { "run_id": string; "session_id": string; "title"?: string; };

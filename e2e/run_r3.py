@@ -271,13 +271,14 @@ def main(round_name: str = "r3") -> int:
                     "document_date",
                     "submitted_count",
                     "remaining_count",
+                    "pending_count",
                     "failure",
                 ):
                     if key in details:
                         report[key] = details[key]
                 if not details.get("success"):
                     report["status"] = "failed"
-            elif args.mainline_only or args.live:
+            elif args.mainline_only or args.live or not args.grep:
                 report["status"] = "failed"
                 report.setdefault("error_type", "MissingBrowserReceipt")
             if args.live:

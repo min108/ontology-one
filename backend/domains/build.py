@@ -35,6 +35,9 @@ def decode(row: db.Row) -> dict:
     for key in JSON_FIELDS & value.keys():
         if isinstance(value[key], str):
             value[key] = json.loads(value[key])
+    after = value.get("after_data")
+    if isinstance(after, dict) and after.get("waiver_applications") is None:
+        after["waiver_applications"] = {}
     if value.get("confidence") is not None:
         value["confidence"] = float(value["confidence"])
     return value
@@ -349,6 +352,15 @@ def get(ident: str) -> dict:
                     item["applied_version"] = current["version"]
                     item["applied_status"] = current["status"]
             item["gates"] = preview_item(conn, item)
+            judgement = item["after_data"].get("judgement")
+            if judgement is not None and not isinstance(judgement, dict):
+                # Evaluate the stored historical value above so QG3 still reports the fault.
+                # The form can open with an empty editor and an actionable explanation.
+                item["after_data"]["judgement"] = None
+                item["validation"]["issues"] = [
+                    *item["validation"].get("issues", []),
+                    "原有判定式格式异常，请在“改一改”中核对并重新保存。",
+                ]
             eligible = (
                 item["decision"] in {"accepted", "edited"}
                 and not item["processed_elsewhere"]
@@ -504,6 +516,8 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None, *, only
             if decision in {"accepted", "edited"} and item["validation"]["level"] == "error":
                 raise ApiError("EVIDENCE_NOT_FOUND")
             changes = {key: value for key, value in (edit or {}).items() if key != "expected_version"}
+            if "waiver_applications" in changes and changes["waiver_applications"] is None:
+                changes["waiver_applications"] = {}
             old = None
             if item["applied_entity_id"]:
                 old = db.entity_json(
@@ -597,6 +611,7 @@ def apply(ident: str, *, submit: bool) -> dict:
         material = materials.material(conn, material_id)
         candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
         entity_ids, submitted_ids, remaining = [], [], []
+        stale_items = 0
         for item in items:
             if item_processed_elsewhere(item, candidates):
                 continue
@@ -612,7 +627,15 @@ def apply(ident: str, *, submit: bool) -> dict:
                         }
                     )
                     continue
-                validate_candidate(conn, item, item["after_data"])
+                try:
+                    validate_candidate(conn, item, item["after_data"])
+                except ApiError as exc:
+                    if not submit or exc.code != "VALIDATION_FAILED":
+                        raise
+                    remaining.append(
+                        {"item_id": item["id"], "title": item["after_data"]["title"], "reasons": [exc.message]}
+                    )
+                    continue
                 for ref in item["evidence"]:
                     provenance.normalize_source_ref(conn, material_id, ref)
                 material = materials.material(conn, material_id)
@@ -647,8 +670,10 @@ def apply(ident: str, *, submit: bool) -> dict:
                 continue
             if submit and entity["status"] in {"draft", "returned"}:
                 if entity["version"] != item["applied_version"] and not unchanged_return(conn, item, entity):
-                    raise stale_draft()
-                blockers = submission_blockers(gates.check_entity(conn, entity))
+                    stale_items += 1
+                    blockers = [stale_draft().message]
+                else:
+                    blockers = submission_blockers(gates.check_entity(conn, entity))
                 if blockers:
                     remaining.append({"item_id": item["id"], "title": entity["title"], "reasons": blockers})
                     entity_ids.append(entity_id)
@@ -656,12 +681,13 @@ def apply(ident: str, *, submit: bool) -> dict:
                 conn.execute("UPDATE changeset_items SET applied_version=? WHERE id=?", (entity["version"], item["id"]))
                 entity_action_in_transaction(conn, entity_id, {"action": "submit", "reason": "建设方案核对后提交审核"})
                 submitted_ids.append(entity_id)
-            elif submit and entity["status"] in {"review", "approved", "published"}:
-                submitted_ids.append(entity_id)
             entity_ids.append(entity_id)
+        if stale_items and stale_items == len(remaining) and not submitted_ids:
+            # Preserve the historical conflict when every outstanding draft needs a fresh version.
+            raise stale_draft()
         if not entity_ids and not remaining:
             raise ApiError("PRECONDITION_FAILED", "请先采纳需要保留的条目。")
-        pending = any(
+        pending = sum(
             item["decision"] == "pending" and not item_processed_elsewhere(item, candidates) for item in items
         )
         conn.execute(
@@ -676,6 +702,7 @@ def apply(ident: str, *, submit: bool) -> dict:
         "submitted_count": len(submitted_ids),
         "remaining_items": remaining,
         "remaining_count": len(remaining),
+        "pending_count": pending,
     }
 
 
@@ -875,7 +902,11 @@ def candidate_payload(candidate: dict, evidence: list[dict]) -> dict:
 def suggested_relation(conn: db.Connection, entity: dict, candidate: dict) -> dict | None:
     if entity["kind"] != "rule":
         return None
-    target = conn.execute("SELECT id,title,kind FROM entities WHERE id=?", (candidate.get("applies_to_id"),)).fetchone()
+    target = conn.execute(
+        "SELECT id,title,kind FROM entities WHERE id=? AND status<>'archived' "
+        "AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0",
+        (candidate.get("applies_to_id"),),
+    ).fetchone()
     if not target or target["kind"] not in {"organization", "position", "party", "person", "object_type"}:
         return None
     return {
@@ -893,17 +924,20 @@ def confirm_applicability(conn: db.Connection, entity: dict, candidate: dict) ->
     relation = suggested_relation(conn, entity, candidate)
     if entity["kind"] != "rule":
         return
-    if not relation:
+    if candidate.get("applies_to_id") and not relation:
         raise ApiError("VALIDATION_FAILED", "请选择本机构中已有的适用主体或业务对象。")
     existing = conn.execute(
         "SELECT id,target,status,payload FROM relations WHERE source=? AND type='applies_to'", (entity["id"],)
     ).fetchall()
     for row in existing:
         if json.loads(row["payload"] or "{}").get("recipe_applicability"):
-            if row["target"] == relation["target"] and row["status"] == "confirmed":
+            if relation and row["target"] == relation["target"] and row["status"] == "confirmed":
                 return
             # Keep the previous human confirmation trace when applicability changes.
             conn.execute("UPDATE relations SET status='rejected' WHERE id=?", (row["id"],))
+    if not relation:
+        # An incomplete draft can be saved; QG4 still blocks its submission.
+        return
     payload = {"recipe_applicability": True, "confirmed_by": require_context().user_id, "confirmed_at": db.now()}
     conn.execute(
         "INSERT INTO relations(id,source,target,type,label,status,payload) "
@@ -959,6 +993,12 @@ def submission_blockers(result: dict, applications: dict | None = None) -> list[
 def validate_candidate(conn: db.Connection, item: dict, candidate: dict) -> None:
     from backend.kernel.rules import prepare_payload, validate_judgement_shape
 
+    if (
+        candidate["kind"] == "rule"
+        and candidate.get("applies_to_id")
+        and not suggested_relation(conn, {"kind": "rule", "id": item["id"]}, candidate)
+    ):
+        raise ApiError("VALIDATION_FAILED", candidate["title"] + "：请选择本机构中有效的适用主体或业务对象。")
     for key in ("valid_from", "valid_to"):
         value = candidate.get(key)
         if value:

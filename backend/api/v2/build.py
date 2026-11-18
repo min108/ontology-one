@@ -39,7 +39,7 @@ def decide_items(id: str, body: DecideItems) -> BuildResult:
 
     if body.changeset_id != id:
         raise ApiError("VALIDATION_FAILED")
-    return call("changeset.decide_items", body.model_dump())
+    return call("changeset.decide_items", body.model_dump(exclude_unset=True))
 
 
 @router.post("/changesets/{id}/facts:confirm", response_model=ProposalResult)

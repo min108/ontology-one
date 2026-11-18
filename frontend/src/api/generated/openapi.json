@@ -85,6 +85,11 @@
             "title": "Id",
             "type": "string"
           },
+          "pending_count": {
+            "default": 0,
+            "title": "Pending Count",
+            "type": "integer"
+          },
           "remaining_count": {
             "default": 0,
             "title": "Remaining Count",

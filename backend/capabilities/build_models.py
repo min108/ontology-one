@@ -162,6 +162,7 @@ class ApplyData(ReadModel):
     submitted_count: int = 0
     remaining_items: list[RemainingItem] = Field(default_factory=list)
     remaining_count: int = 0
+    pending_count: int = 0
 
 
 class ApplyResult(ReadModel):

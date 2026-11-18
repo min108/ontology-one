@@ -203,6 +203,7 @@ test("R4-A.1 AB15: ordinary policy through independent publication and verified 
     const submitted = await submitReady(page);
     receipt.submitted_count = submitted.submitted_count;
     receipt.remaining_count = submitted.remaining_count;
+    receipt.pending_count = submitted.pending_count;
     const queued = (await readProposal(page, proposal.id)).items.find(
       (item) => item.id === rule.id,
     );
