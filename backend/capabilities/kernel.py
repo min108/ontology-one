@@ -121,7 +121,8 @@ def create_draft(ctx: CapabilityContext, body: ElementCreate) -> ElementDetailRe
 def update_draft(ctx: CapabilityContext, body: ElementUpdate) -> ElementDetailResult:
     changes = body.model_dump(exclude_unset=True, exclude_none=True, exclude={"entity_id", "version"})
     changes["expected_version"] = body.version
-    core._edit_entity(body.entity_id, changes)
+    changes.setdefault("reason", body.reason)
+    core._edit_entity(body.entity_id, changes, repair_gates=True)
     return get_element(ctx, ElementGet(entity_id=body.entity_id))
 
 

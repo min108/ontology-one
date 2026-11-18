@@ -695,6 +695,30 @@ def _sync_relations(conn, entity, document):
         )
 
 
+def _record_skill_editor(payload, principal, *, fresh=False):
+    from .domains.reviews import record_editor
+
+    record_editor({"payload": payload}, principal.user_id, fresh_revision=fresh)
+
+
+def apply_gate_notes(conn, entity, changes):
+    """Accept only governance notes here. Package mutations retain their separate proof and version checks."""
+    from .kernel import gates
+
+    _role(BUILD)
+    _expected(entity, changes["expected_version"])
+    if (
+        changes.get("payload")
+        or changes.get("meta")
+        or set(changes) - {"expected_version", "reason", "waiver_applications", "payload", "meta"}
+    ):
+        _fail("managed_skill_route", "技能包内容请在技能开发页编辑和测试。", 409)
+    _snapshot_entity(conn, entity, changes["reason"])
+    conn.execute("UPDATE entities SET version=version+1,updated_at=? WHERE id=?", (now(), entity["id"]))
+    entity["version"] += 1
+    gates.apply_for_waiver(conn, entity, changes["waiver_applications"])
+
+
 def _create_document(conn, title, summary, files, manifest, legacy_id=None):
     principal = _role(BUILD)
     files, package = _coherent_files(files, manifest)
@@ -712,6 +736,7 @@ def _create_document(conn, title, summary, files, manifest, legacy_id=None):
             "package_revision": 1,
             "package_digest": package["digest"],
         }
+        _record_skill_editor(payload, principal, fresh=entity["status"] in {"published", "archived"})
         conn.execute(
             "UPDATE entities SET title=?,summary=?,status='draft',payload=?,version=version+1,updated_at=? WHERE id=?",
             (title, summary, _json(payload), stamp, ident),
@@ -723,6 +748,7 @@ def _create_document(conn, title, summary, files, manifest, legacy_id=None):
             "package_revision": 1,
             "package_digest": package["digest"],
         }
+        _record_skill_editor(payload, principal, fresh=True)
         conn.execute(
             "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (
@@ -1055,6 +1081,7 @@ def _save_skill(ident, body):
             "package_revision": revision,
             "package_digest": package["digest"],
         }
+        _record_skill_editor(payload, principal)
         conn.execute(
             "UPDATE entities SET title=?,summary=?,payload=?,status='draft',version=version+1,updated_at=? WHERE id=?",
             (body.title, body.summary, _json(payload), now(), ident),
@@ -1371,16 +1398,21 @@ def _action(ident, body):
         _expected(entity, body.expected_version)
         if entity["status"] not in allowed[body.action]:
             _fail("skill_transition_invalid", "当前技能状态不允许此操作。", 409)
-        if body.action in {"publish", "return"} and principal.user_id in {
+        from .domains.reviews import editor_ids
+
+        if body.action in {"publish", "return"} and principal.user_id in editor_ids(entity) | {
             document["last_editor_id"],
             document["submitted_by"],
         }:
-            _fail("skill_self_review", "编辑人和提交人不能审核自己的技能，管理员同样适用。", 403)
+            _fail("skill_self_review", "本次修订的编辑人和提交人需由其他审核人员办理。", 403)
         if body.action in {"submit", "publish"}:
             _validate_current(conn, entity, document, proof=True)
             from .kernel.gates import enforce
 
-            enforce(conn, entity)
+            if body.action == "submit":
+                enforce(conn, entity, stage="submit")
+            else:
+                enforce(conn, entity)
         _snapshot_entity(conn, entity, body.reason)
         submitted = (
             principal.user_id
@@ -1389,9 +1421,15 @@ def _action(ident, body):
             if body.action == "revise"
             else document["submitted_by"]
         )
+        if body.action == "revise":
+            _record_skill_editor(entity["payload"], principal, fresh=entity["status"] in {"published", "archived"})
+        if body.action == "submit":
+            entity["payload"].setdefault("r2_review", {}).update(
+                submitted_by=principal.user_id, submitted_name=principal.username, submitted_at=now()
+            )
         conn.execute(
-            "UPDATE entities SET status=?,version=version+1,updated_at=? WHERE id=?",
-            (statuses[body.action], now(), ident),
+            "UPDATE entities SET status=?,payload=?,version=version+1,updated_at=? WHERE id=?",
+            (statuses[body.action], _json(entity["payload"]), now(), ident),
         )
         conn.execute(
             "UPDATE skill_documents SET submitted_by=?,updated_at=? WHERE entity_id=?", (submitted, now(), ident)

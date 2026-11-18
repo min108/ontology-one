@@ -9,12 +9,13 @@ from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, ValidationError
 
 from . import ai
 from .db import connect, entity_json, log, now
 from .provenance import ensure_source_version, get_source_version, normalize_source_ref
 from .authority_local import build_local_proposal
+from .security.context import require_context
 
 router = APIRouter()
 TYPES = {"workflow": "业务审批流程", "position": "岗位权责规范"}
@@ -407,7 +408,10 @@ def guard_action(c, old, body):
             raise HTTPException(422, "请先完成规范核对：" + "；".join(issues["errors"]))
         from .kernel.gates import enforce
 
-        enforce(c, old)
+        if act == "submit":
+            enforce(c, old, stage="submit")
+        else:
+            enforce(c, old)
 
 
 @router.get("/authority/catalog")
@@ -457,7 +461,11 @@ def create_asset(body: SaveRequest):
         raise HTTPException(422, "请填写规范名称。")
     with closing(connect()) as c, c:
         spec = validate_refs(c, body.spec.model_dump(), body.org_id)
+        from .domains.reviews import record_editor
+
         eid, stamp = "R-AUTH-" + uuid.uuid4().hex[:12], now()
+        payload = make_payload(spec)
+        record_editor({"payload": payload}, require_context().user_id, fresh_revision=True)
         c.execute(
             "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (
@@ -469,7 +477,7 @@ def create_asset(body: SaveRequest):
                 body.org_id or (spec["org_ids"][0] if spec["org_ids"] else ""),
                 "draft",
                 body.source_kind,
-                dump(make_payload(spec)),
+                dump(payload),
                 stamp,
                 stamp,
                 1,
@@ -477,6 +485,9 @@ def create_asset(body: SaveRequest):
         )
         entity = get_asset(c, eid)
         sync_relations(c, entity)
+        from .kernel.gate_fields import record_editor_changes
+
+        record_editor_changes(c, entity, None)
         from .kernel.elements import snapshot
 
         snapshot(c, entity, "创建权责规范草稿")
@@ -484,37 +495,95 @@ def create_asset(body: SaveRequest):
     return asset_detail(eid)
 
 
+def _save_draft(c, old, body, reason):
+    from .domains.reviews import record_editor
+    from .kernel.elements import snapshot
+    from .kernel.gate_fields import field_values, record_editor_changes
+    from .kernel.metadata import get_meta
+
+    if old["status"] not in ("draft", "returned"):
+        raise HTTPException(409, "请先发起修订，再编辑权责规范。")
+    if body.expected_version != old["version"]:
+        raise HTTPException(409, "内容已被其他操作修改，请刷新后重新保存。")
+    if not body.title.strip():
+        raise HTTPException(422, "请填写规范名称。")
+    spec = validate_refs(c, body.spec.model_dump(), body.org_id)
+    previous = field_values(c, old, get_meta(c, old["id"]) or {})
+    snapshot(c, old, reason)
+    payload = make_payload(spec, old["payload"])
+    record_editor({"payload": payload}, require_context().user_id)
+    c.execute(
+        "UPDATE entities SET title=?,summary=?,domain=?,org_id=?,payload=?,version=version+1,updated_at=? WHERE id=?",
+        (
+            body.title.strip(),
+            body.summary,
+            body.domain,
+            body.org_id or (spec["org_ids"][0] if spec["org_ids"] else ""),
+            dump(payload),
+            now(),
+            old["id"],
+        ),
+    )
+    saved = get_asset(c, old["id"])
+    sync_relations(c, saved)
+    record_editor_changes(c, saved, previous)
+    log(c, old["id"], "编辑权责规范", reason)
+    return saved
+
+
 @router.put("/authority/assets/{eid}")
 def update_asset(eid: str, body: SaveRequest):
     with closing(connect()) as c, c:
-        c.execute("BEGIN IMMEDIATE")
-        old = get_asset(c, eid)
-        if old["status"] not in ("draft", "returned"):
-            raise HTTPException(409, "请先发起修订，再编辑权责规范。")
-        if body.expected_version != old["version"]:
-            raise HTTPException(409, "内容已被其他操作修改，请刷新后重新保存。")
-        if not body.title.strip():
-            raise HTTPException(422, "请填写规范名称。")
-        spec = validate_refs(c, body.spec.model_dump(), body.org_id)
-        c.execute(
-            "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-            (eid, old["version"], dump(old), now(), "编辑权责规范"),
-        )
-        c.execute(
-            "UPDATE entities SET title=?,summary=?,domain=?,org_id=?,payload=?,version=version+1,updated_at=? WHERE id=?",
-            (
-                body.title.strip(),
-                body.summary,
-                body.domain,
-                body.org_id or (spec["org_ids"][0] if spec["org_ids"] else ""),
-                dump(make_payload(spec, old["payload"])),
-                now(),
-                eid,
-            ),
-        )
-        sync_relations(c, get_asset(c, eid))
-        log(c, eid, "编辑权责规范", body.title.strip())
+        c.execute("SELECT id FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone()
+        _save_draft(c, get_asset(c, eid), body, "编辑权责规范")
     return asset_detail(eid)
+
+
+def repair_gate_fields(conn, old, changes):
+    """Map the element form's limited repairs onto the specialized, validated authority draft."""
+    from .kernel import gates
+
+    payload, meta = changes.get("payload", {}), changes.get("meta", {})
+    fields = {"definition": "purpose", "scope": "scope", "conditions": "conditions", "exceptions": "exceptions"}
+    if (
+        set(changes) - {"expected_version", "payload", "meta", "reason", "waiver_applications"}
+        or set(payload) - (fields.keys() | {"applies_to_id"})
+        or set(meta) - {"valid_from", "valid_to"}
+    ):
+        raise HTTPException(422, "流程、职责和依据材料请在权责规范工作面修改。")
+    spec = dict(old["payload"]["authority_spec"])
+    for field, target in fields.items():
+        if field in payload:
+            value = payload[field]
+            if field == "conditions" and isinstance(value, list) and all(isinstance(v, str) for v in value):
+                value = "；".join(value)
+            spec[target] = value
+    for field, target in (("valid_from", "effective_from"), ("valid_to", "effective_to")):
+        if field in meta:
+            spec[target] = meta[field] or ""
+    if "applies_to_id" in payload:
+        subject = payload["applies_to_id"]
+        if not isinstance(subject, str) or not subject.strip():
+            raise HTTPException(422, "请选择适用的组织或人员。")
+        kind = get_entity(conn, subject)["kind"]
+        key = {"organization": "org_ids", "person": "person_ids"}.get(kind)
+        if key is None:
+            raise HTTPException(422, "权责规范的适用主体须为组织或人员。")
+        spec[key] = list(dict.fromkeys([*spec.get(key, []), subject]))
+    try:
+        body = SaveRequest(
+            title=old["title"],
+            summary=old["summary"],
+            domain=old["domain"],
+            org_id=old["org_id"],
+            expected_version=changes["expected_version"],
+            spec=spec,
+        )
+    except ValidationError as err:
+        raise HTTPException(422, "补充内容的类型、日期或长度不符合权责规范要求。") from err
+    saved = _save_draft(conn, old, body, changes["reason"])
+    if "waiver_applications" in changes:
+        gates.apply_for_waiver(conn, saved, changes["waiver_applications"])
 
 
 @router.post("/authority/people")

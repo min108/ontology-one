@@ -295,17 +295,25 @@ async def edit(eid: str, request: Request):
     return await asyncio.to_thread(_edit_entity, eid, b)
 
 
-def _edit_entity(eid, b):
+def _edit_entity(eid, b, *, repair_gates=False):
+    from ... import skills
     from ...kernel import elements as element_kernel
 
     with closing(connect()) as c, c:
         old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
         if not old:
             raise HTTPException(404, "未找到内容。")
-        _guard_edit(c, old, b)
-        if old["kind"] in {"task", "project"}:
-            raise HTTPException(400, "请通过任务或专题工作档案修改。")
-        element_kernel.update_draft(c, old, b)
+        if repair_gates and old["payload"].get("authority_spec"):
+            from ...authority import repair_gate_fields
+
+            repair_gate_fields(c, old, b)
+        elif repair_gates and old["kind"] == "skill" and "waiver_applications" in b and skills.is_managed_skill(c, old):
+            skills.apply_gate_notes(c, old, b)
+        else:
+            _guard_edit(c, old, b)
+            if old["kind"] in {"task", "project"}:
+                raise HTTPException(400, "请通过任务或专题工作档案修改。")
+            element_kernel.update_draft(c, old, b)
     return detail(eid)
 
 
