@@ -9,6 +9,7 @@ from backend import db
 from backend.kernel import gates
 from backend.security import store
 from backend.security.context import use_context
+from scripts.check_security import upload_evidence
 from tests.r2 import test_build as construction
 
 SCHEMA = {
@@ -289,7 +290,6 @@ class GateReviewMySQL(unittest.TestCase):
 
     def test_structured_threshold_rejects_interview_and_accepts_regulation_with_iso_validity(self) -> None:
         client = self.login("fixture.builder")
-        person = store.authenticate_session(client.cookies.get("ontology_session"), "constraint-proof")[0]
         object_row = self.invoke(
             client,
             "element.create_draft",
@@ -302,18 +302,11 @@ class GateReviewMySQL(unittest.TestCase):
                 },
             },
         )["entity"]
-        with use_context(person), closing(db.connect()) as conn:
-            anchor = conn.execute(
-                "SELECT a.*,s.text FROM source_anchors a JOIN source_versions s ON s.id=a.source_version LIMIT 1"
-            ).fetchone()
-        quote = anchor["text"][anchor["start"] : anchor["end"]]
-        ref = {
-            "kind": "anchor",
-            "material_id": anchor["material_id"],
-            "source_version": anchor["source_version"],
-            "anchor_id": anchor["id"],
-            "quote": quote,
-        }
+        ref = upload_evidence(
+            lambda method, path, **kw: client.request(method, "/api" + path, **kw),
+            "访谈中提出每次登记的值不超过100000，仍需核对正式依据。",
+            regulation=False,
+        )
         created = self.invoke(
             client,
             "element.create_draft",
@@ -342,44 +335,46 @@ class GateReviewMySQL(unittest.TestCase):
             },
         )
         ident = created["entity"]["id"]
-        with use_context(person), closing(db.connect()) as conn, conn:
-            subtype = conn.execute(
-                "SELECT subtype FROM entity_meta WHERE entity_id=?", (anchor["material_id"],)
-            ).fetchone()["subtype"]
-            conn.execute("UPDATE entity_meta SET subtype='interview' WHERE entity_id=?", (anchor["material_id"],))
-        try:
-            rejected = self.invoke(client, "quality.check_gates", {"entity_id": ident})
-            self.assertTrue(rejected["hard_constraint"])
-            self.assertEqual(next(c["status"] for c in rejected["checks"] if c["code"] == "QG1"), "fail")
-            self.assertEqual(next(c["status"] for c in rejected["checks"] if c["code"] == "QG3"), "pass")
-            response = client.post(
-                "/api/entities/" + ident + "/action", json={"action": "submit", "reason": "核对出处"}
-            )
-            self.assertEqual(response.status_code, 409, response.text)
-            self.assertEqual(client.get("/api/entities/" + ident).json()["status"], "draft")
-            reviewer = self.login("fixture.reviewer")
-            waived = self.invoke(
-                reviewer,
-                "quality.waive_gates",
-                {
-                    "entity_id": ident,
-                    "version": 1,
-                    "reason": "核对试行要求",
-                    "waivers": {"QG1": "试行阶段接受访谈依据，发布后补制度原文"},
-                },
-            )
-            self.assertTrue(waived["hard_constraint"])
-            self.assertEqual(next(c["status"] for c in waived["checks"] if c["code"] == "QG1"), "waived")
-            self.assertTrue(self.invoke(client, "quality.check_gates", {"entity_id": ident})["hard_constraint"])
-            with use_context(person), closing(db.connect()) as conn, conn:
-                conn.execute("UPDATE entity_meta SET subtype='regulation' WHERE entity_id=?", (anchor["material_id"],))
-            accepted = self.invoke(client, "quality.check_gates", {"entity_id": ident})
-            self.assertTrue(accepted["hard_constraint"])
-            self.assertEqual(next(c["status"] for c in accepted["checks"] if c["code"] == "QG1"), "pass")
-            broken = copy.deepcopy(accepted)
-            broken["hard_constraint"] = False
-            with self.assertRaises(AssertionError):
-                self.assertTrue(broken["hard_constraint"])
-        finally:
-            with use_context(person), closing(db.connect()) as conn, conn:
-                conn.execute("UPDATE entity_meta SET subtype=? WHERE entity_id=?", (subtype, anchor["material_id"]))
+        rejected = self.invoke(client, "quality.check_gates", {"entity_id": ident})
+        self.assertTrue(rejected["hard_constraint"])
+        self.assertEqual(next(c["status"] for c in rejected["checks"] if c["code"] == "QG1"), "fail")
+        self.assertEqual(next(c["status"] for c in rejected["checks"] if c["code"] == "QG3"), "pass")
+        response = client.post("/api/entities/" + ident + "/action", json={"action": "submit", "reason": "核对出处"})
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(client.get("/api/entities/" + ident).json()["status"], "draft")
+        reviewer = self.login("fixture.reviewer")
+        waived = self.invoke(
+            reviewer,
+            "quality.waive_gates",
+            {
+                "entity_id": ident,
+                "version": 1,
+                "reason": "核对试行要求",
+                "waivers": {"QG1": "试行阶段接受访谈依据，发布后补制度原文"},
+            },
+        )
+        self.assertTrue(waived["hard_constraint"])
+        self.assertEqual(next(c["status"] for c in waived["checks"] if c["code"] == "QG1"), "waived")
+        self.assertTrue(self.invoke(client, "quality.check_gates", {"entity_id": ident})["hard_constraint"])
+        regulation = upload_evidence(
+            lambda method, path, **kw: client.request(method, "/api" + path, **kw),
+            "登记管理办法规定，每次核对时记录值不得超过100000。",
+        )
+        latest = client.get("/api/entities/" + ident).json()
+        self.invoke(
+            client,
+            "element.update_draft",
+            {
+                "entity_id": ident,
+                "version": latest["version"],
+                "reason": "补充正式制度依据",
+                "payload": {**latest["payload"], "source_refs": [regulation]},
+            },
+        )
+        accepted = self.invoke(client, "quality.check_gates", {"entity_id": ident})
+        self.assertTrue(accepted["hard_constraint"])
+        self.assertEqual(next(c["status"] for c in accepted["checks"] if c["code"] == "QG1"), "pass")
+        broken = copy.deepcopy(accepted)
+        broken["hard_constraint"] = False
+        with self.assertRaises(AssertionError):
+            self.assertTrue(broken["hard_constraint"])

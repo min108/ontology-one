@@ -23,7 +23,9 @@ class RunnerReceiptTests(unittest.TestCase):
         with patch.object(sys, "path", [str(root / "e2e"), *sys.path]):
             runner = importlib.import_module("e2e.run_r2" if round_name == "r2" else "e2e.run_r3")
         for mode in ("complete", "exception", "exception_after_clean", "incomplete", "service_running"):
-            with self.subTest(mode=mode), tempfile.TemporaryDirectory(dir=root / "work") as temporary:
+            work = root / "work"
+            work.mkdir(exist_ok=True)
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory(dir=work) as temporary:
                 output = Path(temporary) / "receipt"
                 scope = MagicMock()
                 scope.created = {"owned"}

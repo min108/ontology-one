@@ -11,10 +11,9 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from backend import authority, db, skills
-from backend.kernel.metadata import sync_meta
-from backend.provenance import normalize_source_ref
 from backend.security import store
 from backend.security.context import use_context
+from scripts.check_security import upload_evidence
 from tests.r2 import test_build as build_tests
 from tests.test_skills import MANIFEST
 
@@ -56,20 +55,7 @@ class SpecializedGatesMySQL(unittest.TestCase):
 
     def source(self, client: TestClient) -> dict:
         quote = "【合成制度】本机构办理合成业务时逐项核对输入并形成结果，无其他例外，自2026年1月1日起生效。"
-        response = client.post(
-            "/api/materials/upload", files={"file": ("R4合成制度.txt", quote.encode(), "text/plain")}
-        )
-        self.assertEqual(response.status_code, 200, response.text)
-        material_id = response.json()["id"]
-        person = store.authenticate_session(client.cookies.get("ontology_session"), "r2-test")[0]
-        with use_context(person), closing(db.connect()) as conn, conn:
-            conn.execute("UPDATE entities SET source_kind='regulation' WHERE id=?", (material_id,))
-            material = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (material_id,)).fetchone())
-            sync_meta(conn, material, {"subtype": "regulation"})
-            version = conn.execute("SELECT id FROM source_versions WHERE material_id=?", (material_id,)).fetchone()[0]
-            return normalize_source_ref(
-                conn, material_id, {"source_version": version, "quote": quote, "start": 0, "end": len(quote)}
-            )
+        return upload_evidence(lambda method, path, **kw: client.request(method, "/api" + path, **kw), quote)
 
     def skill(
         self, client: TestClient, *, evidence: bool = True, declaration: bool = True, dependency: dict | None = None
