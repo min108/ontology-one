@@ -26,6 +26,7 @@ R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁
 
 - R4-A：`kernel/kinds/metadata/elements/relations/cards/oxl/rules/gates` 统一种类、侧表、写入、派生关系、卡片、表达式与五项检查；新能力与 v1 共用内核。岗位/外部主体的检查适用性独立于业务资产分类。配方 A 在 `domains/build.py` 提出适用关系并从明确原文补条件，有外部编辑时必须显式版本确认；豁免只由独立审核人记录。`e2e/run_r4.py` 复用隔离生命周期，完整动作包含原 R3 用例；AA2 的 200 条中合成扩充与原始夹具必须区分。
 
+- R4-A.1 按 D11–D16 办理。出处、条件各自允许申请、审核人员须逐项决定；口径、关系、版本缺项继续拦截。核对页保留普通制度原句、核对人填值及批量确认来源，分列本次送审、留存草稿、待核对数。旧资产与要素页共用草稿，权责规范、技能包仍从专用入口核验和发布。本次修订的编辑人及提交人均需其他审核人员办理，升级前已待审的历史件沿用原独立性规则。回归证据由真实上传、定位和公开业务操作取得。受验材料、运行渠道和复验进度见 [R4 演练](docs/blueprint/rounds/R4-DEMO.md) 与 [R4 报告](docs/blueprint/rounds/R4-REPORT.md)。
 - R2：`domains/build.py`复用原材料分段/提炼/采纳；`domains/reviews.py`保护新提案的独立审核；`domains/artifacts`从已完成会话生成私有版本化报告。`kernel/cards.py`生成确定性业务卡，`capabilities/elements.py`复用本地与联邦检索；`features/ontology`提供本体目录与统一要素页。`features/build`与`features/artifacts`为新主线页面，旧页继续保留。`DEEPSEEK_API_KEY`仅运行环境读取，设置与测试操作不得将环境密钥写入文件。
 
 - R3 集成应用使用 `features/admin/integrations` 展示适配器提供共享骨架，仍复用旧业务体及原请求/授权/一次性令牌清理；旧路由和文件未退役。只在专业技术详情显示内部标识，普通视图按业务名称展示。
