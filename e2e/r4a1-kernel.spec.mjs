@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { c, a, login, read, button, postResponse } from "./r3-support.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
+import { startRegulation, readProposal } from "./r4a1-changeset-support.mjs";
 import {
   assertRejectedWrite,
   assertLegacyEdit,
@@ -30,6 +31,7 @@ test("R4-A.1 AB11 bounded judgement and long numeric body preserve saved state",
   const owner = await login(browser, "modeler"),
     page = owner.page;
   try {
+    const identity = await read(page, "/api/auth/session");
     await page.goto("/assets?kind=rule");
     await button(page, "手工新建").click();
     const modal = page.getByRole("dialog", { name: "手工新建业务资产" });
@@ -79,6 +81,22 @@ test("R4-A.1 AB11 bounded judgement and long numeric body preserve saved state",
     ).toBeVisible();
     expect((await element(page, created.id)).entity.payload.content).toBe(
       content,
+    );
+    const { proposal } = await startRegulation(page, "regulation-plain");
+    await expect(page.locator("[data-selected-item-id]")).toHaveAttribute(
+      "data-selected-item-id",
+      proposal.items[0].id,
+    );
+    await expect(page.locator("[data-selected-item-id]")).toContainText(
+      proposal.items[0].after_data.content,
+    );
+    const savedProposal = await readProposal(page, proposal.id);
+    expect(savedProposal.id).toBe(proposal.id);
+    expect(savedProposal.items).toEqual(proposal.items);
+    const currentIdentity = await read(page, "/api/auth/session");
+    expect(currentIdentity.user.id).toBe(identity.user.id);
+    expect(currentIdentity.workspace.tenant_id).toBe(
+      identity.workspace.tenant_id,
     );
     await page.goto("/govern/reviews");
     await expect(page.locator("[data-page-header]")).toBeVisible();
