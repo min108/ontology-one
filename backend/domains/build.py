@@ -840,15 +840,17 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
             match = re.search(pattern, own)
             value = match.group(1).strip() if match else ""
         if field == "exceptions" and not value:
-            match = re.search(r"[^。\n；]*(?:除外|确需|但)[^。\n；]*", own)
-            if not match:
-                # A negative conditional branch after a semicolon changes the
-                # ordinary rule even without an explicit “exception” label.
+            for clause in re.split(r"[。；;\n]", own):
+                if re.search(r"除外|除非|确需|但|另有规定|除[^，,。；;\n]{1,100}?(?:以外|之外|外[，,])", clause):
+                    value = clause.strip()
+                    break
+            if not value:
+                # A subordinate negative branch can prescribe an exception without naming it.
                 match = re.search(
                     r"(?<=[；;])\s*[^。；;\n]{0,60}(?:不|未|缺|无法|不能|不足|争议|异议|逾期)[^。；;\n]{0,60}?的[，,][^。；;\n]{1,160}",
                     own,
                 )
-            value = match.group().strip() if match else ""
+                value = match.group().strip() if match else ""
         result[field] = value
         if value:
             origins[field] = {"origin": "source", "quote": next(quote for quote in quotes if value in quote)}
@@ -866,21 +868,22 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
         match = re.search(r"适用条件[：:]([^。\n；]+)", own)
         if match:
             conditions = [match.group(1).strip()]
-    if not conditions:
-        # Ordinary trigger clauses are copied literally from this item's quote.
-        # They must not be presented as "the source has no condition" merely
-        # because the model returned a paraphrase or omitted the field.
+    # Separate branches can have different triggers, including two amounts in the same article.
+    for clause in re.split(r"[。；;\n]", own):
+        clause = re.sub(r"^\s*第[一二三四五六七八九十百零\d]+条\s*", "", clause)
+        if any(value in clause for value in conditions):
+            continue
         trigger = re.search(
-            r"(?:在|当|若|如果)[^，。；\n]{1,80}?(?:后|时|前)|[^，。；\n]{1,80}的(?=[，,])|(?:期满|完成|通过|收到)[^，。；\n]{0,60}?(?:后|时)",
-            own,
+            r"(?:在|当|若|如果)[^，,。；;\n]{1,80}?(?:后|时|前)|[^，,。；;\n]{1,80}的(?=[，,])|(?:期满|完成|通过|收到)[^，,。；;\n]{0,60}?(?:后|时)",
+            clause,
         )
         if not trigger:
             trigger = re.search(
                 r"(?:发现|存在|发生|出现|遇到|未经|未按|未取得|不符合|不满足|符合|满足)[^，。；;\n]{1,80}?(?:的|者)(?=不予|不得|不应|不再|应|须|必须|予以)",
-                own,
+                clause,
             )
         if trigger:
-            conditions = [trigger.group().strip()]
+            conditions.append(trigger.group().strip())
     result["conditions"] = conditions
     if conditions:
         origins["conditions"] = {"origin": "source", "quote": next(quote for quote in quotes if conditions[0] in quote)}

@@ -126,6 +126,20 @@ class BuildFacts(unittest.TestCase):
                 self.assertTrue(result[field])
                 self.assertEqual(result["field_provenance"][field]["origin"], "source")
 
+    def test_except_constructions_and_second_threshold_keep_their_own_wording(self) -> None:
+        for clause in ("除抢险救灾情形以外，一律先行核对凭证。", "除紧急事项外，申请人应保存记录。"):
+            result = self.enrich({"kind": "rule", "content": clause, "source_quotes": [{"quote": clause}]}, clause)
+            self.assertIn("除", result["exceptions"])
+            self.assertIn(result["exceptions"], clause)
+        clause = "第六条 单笔付款金额超过100万元的，须经分管领导审批；超过500万元的，须经总经理办公会审议。"
+        result = self.enrich(
+            {"kind": "rule", "content": clause, "conditions": ["超过100万元的"], "source_quotes": [{"quote": clause}]},
+            clause,
+        )
+        self.assertTrue(any("100万元" in value for value in result["conditions"]))
+        self.assertTrue(any("500万元" in value for value in result["conditions"]))
+        self.assertTrue(all(value in clause for value in result["conditions"]))
+
     def test_submission_plan_respects_shared_denial_and_nonwaivable_policy(self) -> None:
         check = {
             "code": "QG3",
