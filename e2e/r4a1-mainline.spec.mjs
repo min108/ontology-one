@@ -224,7 +224,9 @@ test("R4-A.1 AB15: ordinary policy through independent publication and verified 
     expect((await deciding).ok()).toBe(true);
     const detail = (await read(page, "/api/v2/elements/" + id)).data;
     expect(detail.entity.status).toBe("published");
-    expect(detail.entity.meta.valid_from).toBe(date);
+    expect(
+      detail.gates.fields.find((field) => field.key === "valid_from")?.value,
+    ).toBe(date);
     receipt.publication_checks = detail.gates.checks.map(
       ({ code, status, reason }) => ({ code, status, reason }),
     );

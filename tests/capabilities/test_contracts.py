@@ -21,6 +21,7 @@ class ContractTests(unittest.TestCase):
                 "recipe.start",
                 "recipe.status",
                 "changeset.get",
+                "changeset.confirm_facts",
                 "changeset.decide_items",
                 "changeset.apply",
                 "changeset.apply_and_submit",
@@ -33,6 +34,7 @@ class ContractTests(unittest.TestCase):
                 "artifact.list",
                 "element.list",
                 "element.get",
+                "element.submit_draft",
                 "element.create_draft",
                 "element.update_draft",
                 "element.start_revision",
@@ -66,6 +68,7 @@ class ContractTests(unittest.TestCase):
                 "relation.decide",
             }
             draft = item.id in {
+                "changeset.confirm_facts",
                 "recipe.start",
                 "changeset.decide_items",
                 "changeset.apply",
@@ -82,13 +85,19 @@ class ContractTests(unittest.TestCase):
             proposal = item.id == "relation.propose"
             self.assertEqual(
                 item.effect,
-                "state_change" if mutation else "write_draft" if draft else "propose" if proposal else "read",
+                "state_change"
+                if mutation or item.id == "element.submit_draft"
+                else "write_draft"
+                if draft
+                else "propose"
+                if proposal
+                else "read",
             )
             confirmation = (
                 "L3"
                 if mutation or item.id == "backup.export"
                 else "L2"
-                if item.id == "changeset.apply_and_submit"
+                if item.id in {"changeset.apply_and_submit", "element.submit_draft"}
                 else "L1"
                 if draft or proposal
                 else "L0"
@@ -98,6 +107,8 @@ class ContractTests(unittest.TestCase):
 
     def test_r4_permission_contracts(self) -> None:
         expected = {
+            "element.submit_draft": ("build.submit",),
+            "changeset.confirm_facts": ("build.edit",),
             "element.create_draft": ("build.edit",),
             "element.update_draft": ("build.edit",),
             "element.start_revision": ("build.edit",),
@@ -136,6 +147,8 @@ class ContractTests(unittest.TestCase):
                             {
                                 "recipe.start": {"material_id": "material"},
                                 "recipe.status": {"run_id": "run"},
+                                "changeset.confirm_facts": {"changeset_id": "proposal", "valid_from": "2026-01-01"},
+                                "element.submit_draft": {"entity_id": "entity", "version": 1, "reason": "Submit"},
                                 "changeset.get": {"changeset_id": "proposal"},
                                 "changeset.decide_items": {
                                     "changeset_id": "proposal",

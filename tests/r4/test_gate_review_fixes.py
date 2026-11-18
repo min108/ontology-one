@@ -302,11 +302,26 @@ class GateReviewMySQL(unittest.TestCase):
                 },
             },
         )["entity"]
-        ref = upload_evidence(
-            lambda method, path, **kw: client.request(method, "/api" + path, **kw),
-            "访谈中提出每次登记的值不超过100000，仍需核对正式依据。",
-            regulation=False,
+        text = "访谈中提出每次登记的值不超过100000，仍需核对正式依据。"
+        interview = client.post(
+            "/api/experience/sessions", json={"title": "登记工作访谈", "context": text, "mode": "structured"}
         )
+        self.assertEqual(interview.status_code, 200, interview.text)
+        session = interview.json()
+        self.assertEqual(session["entity"]["payload"]["material_type"], "经验访谈记录")
+        evidence = client.get(
+            f"/api/materials/{session['entity']['id']}/source", params={"chunk_id": session["chunks"][0]["id"]}
+        )
+        self.assertEqual(evidence.status_code, 200, evidence.text)
+        focus = evidence.json()["focus"]
+        self.assertEqual(focus["quote"], text)
+        ref = {
+            "kind": "anchor",
+            **{
+                key: focus[key]
+                for key in ("material_id", "source_version", "anchor_id", "start", "end", "quote", "locator")
+            },
+        }
         created = self.invoke(
             client,
             "element.create_draft",
@@ -343,12 +358,23 @@ class GateReviewMySQL(unittest.TestCase):
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(client.get("/api/entities/" + ident).json()["status"], "draft")
         reviewer = self.login("fixture.reviewer")
+        queued = self.invoke(
+            client,
+            "element.submit_draft",
+            {
+                "entity_id": ident,
+                "version": 1,
+                "reason": "请独立核对访谈依据",
+                "waiver_applications": {"QG1": "试行阶段只有真实访谈记录，申请单项核对"},
+            },
+        )
+        self.assertEqual(queued["entity"]["status"], "review")
         waived = self.invoke(
             reviewer,
             "quality.waive_gates",
             {
                 "entity_id": ident,
-                "version": 1,
+                "version": queued["entity"]["version"],
                 "reason": "核对试行要求",
                 "waivers": {"QG1": "试行阶段接受访谈依据，发布后补制度原文"},
             },
@@ -356,6 +382,15 @@ class GateReviewMySQL(unittest.TestCase):
         self.assertTrue(waived["hard_constraint"])
         self.assertEqual(next(c["status"] for c in waived["checks"] if c["code"] == "QG1"), "waived")
         self.assertTrue(self.invoke(client, "quality.check_gates", {"entity_id": ident})["hard_constraint"])
+        returned = reviewer.post(
+            f"/api/v2/reviews/{ident}:decide",
+            json={
+                "decision": "return",
+                "version": queued["entity"]["version"],
+                "reason": "请保存正式制度原文，再次送审",
+            },
+        )
+        self.assertEqual(returned.status_code, 200, returned.text)
         regulation = upload_evidence(
             lambda method, path, **kw: client.request(method, "/api" + path, **kw),
             "登记管理办法规定，每次核对时记录值不得超过100000。",
