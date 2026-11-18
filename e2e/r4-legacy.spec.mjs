@@ -9,7 +9,7 @@ import {
   assertLegacyHighlight,
 } from "./r4-legacy-contracts.mjs";
 
-test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with resolved source highlights", async ({
+test("R4 AA1-AA2 and AB16: preserve original rows and open 200 old-format cards with resolved source highlights", async ({
   browser,
 }) => {
   const folder = process.env.E2E_EVIDENCE_DIR;
@@ -29,6 +29,7 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
   const owner = await login(browser, "modeler"),
     page = owner.page;
   const results = [];
+  const partialRanges = new Set();
   let savedScreenshot = false;
   let passed = false;
   let cardCounterexample = false,
@@ -98,10 +99,27 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
           await expect(
             drawer.locator("[data-source-viewer] mark"),
           ).toBeInViewport({ ratio: 0.99 });
+          const renderedRange = await drawer
+            .locator("[data-source-viewer] mark")
+            .evaluate((mark) => {
+              const range = document.createRange();
+              range.selectNodeContents(mark.closest("blockquote"));
+              range.setEndBefore(mark);
+              const start = Array.from(range.toString()).length;
+              return {
+                mark: mark.textContent,
+                start,
+                end: start + Array.from(mark.textContent).length,
+              };
+            });
+          expect(item.source.end - item.source.start).toBeLessThan(
+            Array.from(source.text).length,
+          );
+          partialRanges.add(
+            `${item.source.source_version}:${renderedRange.start}:${renderedRange.end}`,
+          );
           assertLegacyHighlight(item.source, source, {
-            mark: await drawer
-              .locator("[data-source-viewer] mark")
-              .textContent(),
+            ...renderedRange,
             unmatched:
               (await drawer
                 .getByText(c.r3_ui_quote_unmatched, { exact: true })
@@ -116,6 +134,14 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
           }
           await assertNoLeaks(page, `AA2 original source ${item.id}`);
           if (!sourceCounterexample) {
+            expect(() =>
+              assertLegacyHighlight(item.source, source, {
+                ...renderedRange,
+                start: renderedRange.start + 1,
+                end: renderedRange.end + 1,
+                unmatched: false,
+              }),
+            ).toThrow();
             await drawer
               .locator("[data-source-viewer] mark")
               .evaluate((node) =>
@@ -126,6 +152,7 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
             ).toBe(0);
             expect(() =>
               assertLegacyHighlight(item.source, source, {
+                ...renderedRange,
                 mark: "",
                 unmatched: false,
               }),
@@ -148,6 +175,7 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
     expect(
       results.filter((item) => item.source_highlight === "passed"),
     ).toHaveLength(fixture.sourced_synthetic_count);
+    expect(partialRanges.size).toBeGreaterThanOrEqual(3);
     expect(cardCounterexample).toBe(true);
     expect(sourceCounterexample).toBe(true);
     passed = true;
@@ -161,6 +189,7 @@ test("R4 AA1-AA2: preserve original rows and open 200 old-format cards with reso
           original_records: fixture.browser_original_count,
           synthetic_legacy_copies: fixture.browser_synthetic_count,
           expected: 200,
+          distinct_partial_anchors: partialRanges.size,
           completed: results.length,
           card_sentence_counterexample_rejected: cardCounterexample,
           source_highlight_counterexample_rejected: sourceCounterexample,

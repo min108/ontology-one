@@ -42,6 +42,16 @@ export function assertLegacyHighlight(expected, response, rendered) {
     expected.quote,
   );
   assert.equal(
+    rendered.start,
+    expected.start,
+    "rendered highlight starts at the exact original position",
+  );
+  assert.equal(
+    rendered.end,
+    expected.end,
+    "rendered highlight ends at the exact original position",
+  );
+  assert.equal(
     rendered.mark,
     expected.quote,
     "the original excerpt must be highlighted, not only echoed",

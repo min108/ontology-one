@@ -40,7 +40,14 @@ test("AA2 source assertion rejects removed highlighting and an incorrect origina
     text: "据原文核对",
     focus: expected,
   };
-  const rendered = { mark: "原文", unmatched: false };
+  const rendered = { mark: "原文", start: 1, end: 3, unmatched: false };
+  assert.throws(() =>
+    assertLegacyHighlight(expected, response, {
+      ...rendered,
+      start: 0,
+      end: 2,
+    }),
+  );
   assertLegacyHighlight(expected, response, rendered);
   assert.throws(() =>
     assertLegacyHighlight(expected, response, { ...rendered, mark: "" }),

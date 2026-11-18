@@ -17,6 +17,7 @@ from pathlib import Path
 
 from backend import db
 from backend.infra.backup import canonical, snapshot_database
+from backend.provenance import normalize_source_ref
 from backend.security import store
 
 TABLES = ("entities", "relations", "versions", "activities")
@@ -59,21 +60,9 @@ def seed(path: Path) -> None:
     rows = sorted(dept["tables"]["entities"], key=lambda row: row["id"])
     if len(rows) >= TARGET or any(row["id"].startswith("R4-LEGACY-COPY-") for row in rows):
         raise ValueError("Unexpected original fixture population")
-    anchor = dept["tables"]["source_anchors"][0]
-    source = next(row for row in dept["tables"]["source_versions"] if row["id"] == anchor["source_version"])
-    quote = source["text"][anchor["start"] : anchor["end"]]
-    if hashlib.sha256(quote.encode()).hexdigest() != anchor["quote_sha256"]:
-        raise AssertionError("The retained original anchor no longer matches its original text")
-    reference = {
-        "kind": "anchor",
-        "material_id": anchor["material_id"],
-        "source_version": source["id"],
-        "anchor_id": anchor["id"],
-        "quote": quote,
-        "start": anchor["start"],
-        "end": anchor["end"],
-        "locator": anchor["locator"],
-    }
+    source = next(row for row in dept["tables"]["source_versions"] if row["material_id"] == "DEMO07-MATERIAL-RULES")
+    # Use distinct, immutable excerpts of the original fixture, including text following an earlier number.
+    quotes = ("应核实审批依据", "累计付款金额与合同金额应按同一合同编号比较。", "附件信息为空只表示尚未核实")
     items = [
         {"id": row["id"], "title": row["title"], "status": row["status"], "origin": "original_v070", "source": None}
         for row in rows
@@ -81,6 +70,20 @@ def seed(path: Path) -> None:
     columns = dept["columns"]["entities"]
     with closing(db._raw_connection(names["dept-01"])) as raw:
         conn = db.Connection(raw)
+        references = []
+        for quote in quotes:
+            start = source["text"].index(quote)
+            ref = normalize_source_ref(
+                conn,
+                source["material_id"],
+                {
+                    "source_version": source["id"],
+                    "quote": quote,
+                    "start": start,
+                    "end": start + len(quote),
+                },
+            )
+            references.append({"kind": "anchor", **ref})
         for index in range(TARGET - len(rows)):
             original_row = rows[index % len(rows)]
             clone = copy.deepcopy(original_row)
@@ -88,6 +91,7 @@ def seed(path: Path) -> None:
             clone["title"] = f"合成旧格式副本{index + 1:03d} · {original_row['title']}"
             payload = json.loads(clone["payload"]) if isinstance(clone["payload"], str) else clone["payload"]
             anchored = index % 4 == 0
+            reference = references[index // 4 % len(references)]
             if anchored:
                 payload["source_refs"] = [reference]
             clone["payload"] = json.dumps(payload, ensure_ascii=False)
