@@ -16,6 +16,7 @@ import {
   assertDocumentDate,
   assertPartialSubmission,
   assertBatchExcluded,
+  assertAllOrdinaryRulesReady,
 } from "./r4a1-changeset-contracts.mjs";
 const output = process.env.E2E_EVIDENCE_DIR;
 async function evidence(page, name, data) {
@@ -75,6 +76,18 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
     expect(missing.length).toBeGreaterThan(0);
     expect(await page.locator("[data-confirm-no-exceptions]").count()).toBe(1);
     const confirmed = await confirmOmissions(page, proposal.id);
+    const expectedArticles = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(
+        (line) => /^第[^条]+条/.test(line) && !/^第(?:六|九|十二)条/.test(line),
+      );
+    const readyRuleIds = assertAllOrdinaryRulesReady(
+      proposal,
+      confirmed,
+      expectedArticles,
+    );
+
     for (const item of missing) {
       const saved = confirmed.items.find((row) => row.id === item.id);
       expect(saved.after_data.exceptions).toBeTruthy();
@@ -82,9 +95,7 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
         "bulk_confirmation",
       );
     }
-    const ready = confirmed.items.find(
-      (item) => item.after_data.kind === "rule" && item.gates?.passed,
-    );
+    const ready = confirmed.items.find((item) => item.id === readyRuleIds[0]);
     expect(ready).toBeTruthy();
     await pickItem(page, ready);
     await expect(
@@ -103,6 +114,8 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
       changeset_id: proposal.id,
       rule_id: saved.applied_entity_id,
       missing_count: missing.length,
+      verified_rule_ids: readyRuleIds,
+      expected_rule_count: expectedArticles.length,
       passed: true,
     });
   } finally {
@@ -219,6 +232,25 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
     await expect(
       page.getByRole("link", { name: skill.handoff.label, exact: true }),
     ).toHaveAttribute("href", skill.handoff.href);
+    const changesetUrl = page.url();
+    await page
+      .getByRole("link", { name: skill.handoff.label, exact: true })
+      .click();
+    await expect(page).toHaveURL((url) => url.pathname === skill.handoff.href);
+    await expect(
+      page.getByRole("heading", {
+        name: skill.after_data.title,
+        exact: true,
+        level: 1,
+      }),
+    ).toBeVisible();
+    await evidence(page, "r4a1-specialized-handoff", {
+      entity_id: skill.applied_entity_id,
+      passed: true,
+    });
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.goto(changesetUrl);
+    await pickItem(page, skill);
     const rejecting = postResponse(page, "/changeset.decide_items:invoke");
     await button(selected(page), a.catalog_1_2).click();
     expect((await rejecting).ok()).toBe(true);
@@ -258,9 +290,18 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
       after.items.find((item) => item.id === blocked.id).applied_status,
     ).toBe("draft");
     await expect(page.getByRole("status")).toContainText(
-      c.r4a1_partial_submitted
-        .replace("{submitted}", String(eligible.length))
-        .replace("{remaining}", String(remaining.length)),
+      c.r4a1_submit_totals
+        .replace("{s}", String(eligible.length))
+        .replace("{r}", String(remaining.length))
+        .replace(
+          "{p}",
+          String(
+            proposal.items.filter(
+              (item) =>
+                item.decision === "pending" && !item.processed_elsewhere,
+            ).length,
+          ),
+        ),
     );
     await evidence(page, "r4a1-ab4-ab6-partial", {
       changeset_id: initial.id,

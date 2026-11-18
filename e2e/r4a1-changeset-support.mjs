@@ -14,7 +14,11 @@ export async function readProposal(page, id) {
   return (await read(page, "/api/v2/changesets/" + encodeURIComponent(id)))
     .data;
 }
-export async function startRegulation(page, name) {
+export async function startRegulation(
+  page,
+  name,
+  { filenamePrefix = "", stopAtIntake = false } = {},
+) {
   const text = readFileSync(
     resolve(
       process.env.E2E_APPLICATION_ROOT || ".",
@@ -29,14 +33,16 @@ export async function startRegulation(page, name) {
   ).toBeVisible();
   await expect(button(page, "选择文件")).toBeVisible();
   const data = await page.evaluateHandle(
-    ({ text, name }) => {
+    ({ text, name, filenamePrefix }) => {
       const data = new DataTransfer();
       data.items.add(
-        new File([text], `${name}-${Date.now()}.txt`, { type: "text/plain" }),
+        new File([text], `${filenamePrefix}${name}-${Date.now()}.txt`, {
+          type: "text/plain",
+        }),
       );
       return data;
     },
-    { text, name },
+    { text, name, filenamePrefix },
   );
   await page.dispatchEvent("body", "dragenter", { dataTransfer: data });
   await page.dispatchEvent("body", "drop", { dataTransfer: data });
@@ -46,6 +52,15 @@ export async function startRegulation(page, name) {
   await button(dialog, "开始整理").click();
   expect((await starting).ok()).toBe(true);
   await expect(button(page, "核对建设方案")).toBeVisible({ timeout: 180_000 });
+  if (stopAtIntake) {
+    const runId = new URL(page.url()).searchParams.get("run");
+    const recipe = (await read(page, "/api/v2/recipes/" + runId)).data;
+    return {
+      proposal: await readProposal(page, recipe.changeset_id),
+      text,
+      recipe,
+    };
+  }
   const getting = page.waitForResponse((response) =>
     /\/api\/v2\/changesets\/CS-/.test(new URL(response.url()).pathname),
   );

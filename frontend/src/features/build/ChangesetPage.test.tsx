@@ -374,35 +374,46 @@ it('bulk accepts only eligible high confidence rows and asks the server to enfor
     incomplete.after_data.title,
   );
 });
-it('submits eligible adopted content while a blocked draft remains with its reason', async () => {
-  proposal.can_submit = true;
-  const ready = proposal.items[0];
-  ready.decision = 'accepted';
-  ready.applied_entity_id = 'R-1';
-  Object.assign(ready, { can_submit: true, applied_status: 'draft' });
-  const blocked = structuredClone(ready);
-  blocked.id = 'blocked';
-  blocked.after_data.title = 'Blocked draft';
-  blocked.applied_entity_id = 'R-2';
-  blocked.gates = gates(['QG2']);
-  Object.assign(blocked, { can_submit: false, submit_blockers: ['Missing unit'] });
-  proposal.items.push(blocked);
-  vi.mocked(invokeCapability).mockResolvedValue({
-    data: { submitted_count: 1, remaining_count: 1 },
-  } as never);
-  open();
-  const submit = await screen.findByRole('button', { name: terms.actions.catalog_1_6 });
-  expect(submit).toBeEnabled();
-  fireEvent.click(submit);
-  const dialog = screen.getByRole('dialog');
-  expect(dialog).toHaveTextContent(sentence(terms.labels.r3_main_submit_count, { count: 1 }));
-  fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.catalog_1_6 }));
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    sentence(terms.labels.r4a1_partial_submitted, { submitted: 1, remaining: 1 }),
-  );
-  fireEvent.click(screen.getByText(terms.labels.r4a1_remaining_title).closest('summary')!);
-  expect(screen.getByText('Missing unit')).toBeVisible();
-});
+it.each([true, false])(
+  'submits eligible content and reports blocked and pending counts (typed count: %s)',
+  async (typedCount) => {
+    proposal.can_submit = true;
+    const ready = proposal.items[0];
+    ready.decision = 'accepted';
+    ready.applied_entity_id = 'R-1';
+    Object.assign(ready, { can_submit: true, applied_status: 'draft' });
+    const blocked = structuredClone(ready);
+    blocked.id = 'blocked';
+    blocked.after_data.title = 'Blocked draft';
+    blocked.applied_entity_id = 'R-2';
+    blocked.gates = gates(['QG2']);
+    Object.assign(blocked, { can_submit: false, submit_blockers: ['Missing unit'] });
+    proposal.items.push(blocked);
+    for (const id of ['pending-one', 'pending-two'])
+      proposal.items.push({
+        ...structuredClone(blocked),
+        id,
+        decision: 'pending',
+        applied_entity_id: '',
+        after_data: { ...blocked.after_data, title: id },
+      });
+    vi.mocked(invokeCapability).mockResolvedValue({
+      data: { submitted_count: 1, remaining_count: 1, ...(typedCount ? { pending_count: 2 } : {}) },
+    } as never);
+    open();
+    const submit = await screen.findByRole('button', { name: terms.actions.catalog_1_6 });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(sentence(terms.labels.r3_main_submit_count, { count: 1 }));
+    fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.catalog_1_6 }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      sentence(terms.labels.r4a1_submit_totals, { s: 1, r: 1, p: 2 }),
+    );
+    fireEvent.click(screen.getByText(terms.labels.r4a1_remaining_title).closest('summary')!);
+    expect(screen.getByText('Missing unit')).toBeVisible();
+  },
+);
 it('lets the builder discard an adopted draft without offering an invalid undo', async () => {
   proposal.items[0].decision = 'accepted';
   proposal.items[0].applied_entity_id = 'R-1';
@@ -469,4 +480,14 @@ it('requires an explicit visible subject when converting an adopted specialized 
       expect.anything(),
     ),
   );
+});
+
+it('blocks saving a malformed existing effective date at the date field', async () => {
+  Object.assign(proposal.items[0].after_data, { valid_from: '2026-02-31' });
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
+  const modal = screen.getByRole('dialog');
+  expect(within(modal).getByLabelText(terms.labels.r4_rule_valid_from)).toHaveValue('');
+  expect(within(modal).getByRole('alert')).toHaveTextContent(terms.labels.r4a1_invalid_date);
+  expect(within(modal).getByRole('button', { name: terms.actions.r2_save })).toBeDisabled();
 });

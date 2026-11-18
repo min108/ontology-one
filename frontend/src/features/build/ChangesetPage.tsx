@@ -2,7 +2,7 @@ import { Alert, Button, DatePicker, Input, Modal, Select } from 'antd';
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { invokeCapability } from '../../api/client';
+import { api, invokeCapability } from '../../api/client';
 import type {
   CandidatePatch,
   ChangesetGet,
@@ -164,11 +164,20 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         if (
           typeof result?.data.submitted_count === 'number' &&
           typeof result.data.remaining_count === 'number'
-        )
-          resultMessage = sentence(copy.r4a1_partial_submitted, {
-            submitted: result.data.submitted_count,
-            remaining: result.data.remaining_count,
+        ) {
+          let pendingCount = result.data.pending_count;
+          if (typeof pendingCount !== 'number') {
+            const latest = await api<ProposalResult>('/v2/changesets/' + encodeURIComponent(id), {
+              signal: lifetime.current?.signal,
+            });
+            pendingCount = changesetGate(latest.data, canEdit).pending;
+          }
+          resultMessage = sentence(copy.r4a1_submit_totals, {
+            s: result.data.submitted_count,
+            r: result.data.remaining_count,
+            p: pendingCount as number,
           });
+        }
       },
       () => resultMessage,
     );
@@ -409,14 +418,18 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               navigate(step === 1 ? intakeHref : '/build/changesets/' + encodeURIComponent(id))
             }
             description={
-              submitted
-                ? copy.r3_main_wait_review
+              gate.submitted > 0 || submitted
+                ? sentence(copy.r4a1_submit_totals, {
+                    s: gate.submitted || gate.accepted,
+                    r: gate.remaining.length,
+                    p: gate.pending,
+                  })
                 : gate.allowed
                   ? copy.r3_main_next_submit
                   : copy.r4a1_no_ready
             }
             action={
-              submitted
+              submitted || gate.submitted > 0
                 ? { label: copy.r2_review_link, onClick: () => navigate('/govern/reviews') }
                 : undefined
             }
@@ -715,6 +728,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
             !!resource.error ||
             !draft.title.trim() ||
             !draft.content.trim() ||
+            (!!draft.valid_from && !validCalendarDate(draft.valid_from)) ||
             (draft.kind === 'rule' &&
               editing?.after_data.kind !== 'rule' &&
               !!editing?.applied_entity_id &&

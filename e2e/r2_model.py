@@ -109,6 +109,32 @@ def reply(body: dict) -> dict:
     }
     if "submit_task_result" in names and "submit_task_result" not in used:
         source = json.loads(next(message["content"] for message in reversed(messages) if message["role"] == "user"))
+        # Synthetic-only failure injection: the uploaded source stays byte-for-byte
+        # unchanged; only an explicit test filename selects unusable model output.
+        if str(source.get("material", {}).get("title", "")).startswith("R4A1-unusable-"):
+            chunk = source["chunks"][0]
+            invalid = {
+                "candidates": [
+                    {
+                        "kind": "rule",
+                        "title": "Synthetic rejected candidate",
+                        "content": chunk["content"],
+                        "source_chunk_ids": [chunk["id"]],
+                        "source_quotes": [{"chunk_id": chunk["id"], "quote": "short"}],
+                        "conditions": [],
+                        "questions": [],
+                    }
+                ],
+                "coverage": [
+                    {"chunk_id": item["id"], "reason": "Synthetic invalid quote case"} for item in source["chunks"]
+                ],
+            }
+            return {
+                "type": "tool_use",
+                "id": "r4a1-unusable",
+                "name": "submit_task_result",
+                "input": {"text": json.dumps(invalid)},
+            }
         candidates, coverage = [], []
         for chunk in source["chunks"]:
             article_starts = [

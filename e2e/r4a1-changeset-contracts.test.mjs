@@ -50,3 +50,52 @@ test("bulk assertion rejects a supposedly excluded row that was accepted or mate
     assert.throws(() => assertBatchExcluded(before, after));
   }
 });
+
+test("every expected rule must pass and facts cannot leak from its neighbor", async () => {
+  const { assertAllOrdinaryRulesReady } =
+    await import("./r4a1-changeset-contracts.mjs");
+  const articles = [
+    "first subject if approved no exception",
+    "second subject if delivered no exception",
+  ];
+  const before = {
+    items: articles.map((quote, index) => ({
+      id: String(index),
+      evidence: [{ quote }],
+      after_data: {
+        kind: "rule",
+        scope: index === 0 ? "first subject" : "second subject",
+        conditions: [index === 0 ? "if approved" : "if delivered"],
+        exceptions: "no exception",
+      },
+    })),
+  };
+  const after = structuredClone(before);
+  for (const item of after.items) {
+    item.gates = { passed: true };
+    item.after_data.valid_from = "2026-01-01";
+    item.after_data.field_provenance = Object.fromEntries(
+      ["scope", "conditions", "exceptions"].map((key) => [
+        key,
+        { origin: "source", quote: item.evidence[0].quote },
+      ]),
+    );
+  }
+  assert.deepEqual(assertAllOrdinaryRulesReady(before, after, articles), [
+    "0",
+    "1",
+  ]);
+  const blocked = structuredClone(after);
+  blocked.items[1].gates.passed = false;
+  assert.throws(() => assertAllOrdinaryRulesReady(before, blocked, articles));
+  const inherited = structuredClone(after);
+  inherited.items[1].after_data.conditions = ["if approved"];
+  inherited.items[1].after_data.field_provenance.conditions.quote = articles[0];
+  assert.throws(() => assertAllOrdinaryRulesReady(before, inherited, articles));
+  const fakeDocumentCondition = structuredClone(after);
+  fakeDocumentCondition.items[1].after_data.field_provenance.conditions.origin =
+    "document";
+  assert.throws(() =>
+    assertAllOrdinaryRulesReady(before, fakeDocumentCondition, articles),
+  );
+});

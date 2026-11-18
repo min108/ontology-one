@@ -59,3 +59,81 @@ export function assertBatchExcluded(before, after) {
     );
   }
 }
+
+export function assertAllOrdinaryRulesReady(before, after, expectedArticles) {
+  assert.ok(
+    expectedArticles.length > 1,
+    "ordinary rule coverage includes multiple articles",
+  );
+  const expected = [];
+  for (const article of expectedArticles) {
+    const matches = before.items.filter(
+      (item) =>
+        item.after_data.kind === "rule" &&
+        item.evidence.some((evidence) => evidence.quote === article),
+    );
+    assert.equal(
+      matches.length,
+      1,
+      "each expected original article has its own rule candidate",
+    );
+    const original = matches[0],
+      saved = after.items.find((item) => item.id === original.id);
+    expected.push(saved.id);
+    assert.equal(
+      saved.gates.passed,
+      true,
+      "every expected ordinary rule becomes ready",
+    );
+    assert.equal(saved.after_data.valid_from, "2026-01-01");
+    const ownQuotes = saved.evidence.map((evidence) => evidence.quote);
+    for (const field of ["scope", "conditions", "exceptions"]) {
+      const value = saved.after_data[field],
+        previous = original.after_data[field];
+      assert.ok(
+        Array.isArray(value)
+          ? value.length > 0
+          : typeof value === "string" && value.trim(),
+        "required facts are explicit",
+      );
+      const provenance = saved.after_data.field_provenance[field];
+      assert.ok(provenance, "each required fact has provenance");
+      if (provenance.origin === "document") {
+        assert.equal(
+          field,
+          "scope",
+          "conditions and exceptions never inherit document/neighbor facts",
+        );
+        assert.equal(value, after.document_facts.scope.value);
+        assert.equal(provenance.quote, after.document_facts.scope.quote);
+      } else if (provenance.origin === "source") {
+        assert.ok(
+          provenance.quote &&
+            ownQuotes.some((quote) => quote.includes(provenance.quote)),
+          "source fact cites this rule own evidence",
+        );
+        for (const part of Array.isArray(value) ? value : [value])
+          assert.ok(
+            ownQuotes.some((quote) => quote.includes(part)),
+            "source value belongs to this rule own quote",
+          );
+      } else {
+        assert.equal(
+          provenance.origin,
+          "bulk_confirmation",
+          "only explicit missing-fact confirmation is added",
+        );
+        assert.ok(field === "conditions" || field === "exceptions");
+        assert.ok(
+          Array.isArray(previous) ? previous.length === 0 : !previous,
+          "existing source facts are not overwritten by blanket confirmation",
+        );
+        assert.ok(
+          provenance.actor_id && provenance.confirmed_at,
+          "batch confirmation records actor and time",
+        );
+      }
+    }
+  }
+  return expected;
+}
