@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
-import { login, button, c } from "./r3-support.mjs";
+import { login, button, c, a } from "./r3-support.mjs";
 import { startRegulation } from "./r4a1-changeset-support.mjs";
 
 test("R4-A.1 synthetic provider rejection: actual finished fallback stays explicit and never high confidence", async ({
@@ -55,6 +55,8 @@ test("R4-A.1 synthetic provider rejection: actual finished fallback stays explic
       page.getByText(c.r4a1_extraction_local, { exact: true }),
     ).toBeVisible();
     await expect(button(page, "全部采纳高把握")).toHaveCount(0);
+    await expect(button(page, a.catalog_1_1)).toBeEnabled();
+    await expect(button(page, a.catalog_1_6)).toBeDisabled();
     await page.screenshot({
       path: resolve(output, "r4a1-changeset-synthetic-fallback.png"),
     });
