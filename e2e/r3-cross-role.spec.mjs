@@ -7,6 +7,7 @@ import {
   confirmAction,
 } from "./r3-support.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
+import { confirmOmissions } from "./r4a1-changeset-support.mjs";
 
 test("R3 A9 cross-role: editor A, submitter B, independent C; both review entries reject A", async ({
   browser,
@@ -18,7 +19,10 @@ test("R3 A9 cross-role: editor A, submitter B, independent C; both review entrie
     const page = editor.page;
     await selectSavedViewMode(page, "simple");
     const text =
-      "第一条 付款前经办人应核对交叉审核依据；验收通过后30日内提交付款。\n第二条 审核人员独立核对原始材料。\n第三条 适用范围：本机构付款；适用条件：验收通过；例外：有争议时暂停付款；生效日期：2026-01-01。";
+      "第一条 本办法适用于本机构办理的付款。\n" +
+      "第二条 付款前经办人应核对交叉审核依据；验收通过后30日内提交付款。\n" +
+      "第三条 审核人员独立核对原始材料。\n" +
+      "第四条 本办法自2026年1月1日起施行。";
     const dropped = await page.evaluateHandle((text) => {
       const data = new DataTransfer();
       data.items.add(
@@ -38,9 +42,16 @@ test("R3 A9 cross-role: editor A, submitter B, independent C; both review entrie
     await page
       .getByRole("button", { name: "核对建设方案", exact: true })
       .click();
-    const proposal = (await (await getting).json()).data,
-      url = page.url(),
-      target = proposal.items[0];
+    let proposal = (await (await getting).json()).data;
+    const url = page.url();
+    await expect(page.locator("[data-file-valid-from]")).toHaveValue(
+      "2026-01-01",
+    );
+    proposal = await confirmOmissions(page, proposal.id);
+    const target = proposal.items.find((item) =>
+      item.after_data.content.includes("30日"),
+    );
+    expect(target).toBeTruthy();
     await page.locator(`button[data-item-id="${target.id}"]`).click();
     await button(page.locator("[data-selected-item-id]"), "改一改").click();
     const modal = page.getByRole("dialog", { name: "改一改", exact: true });
@@ -120,14 +131,13 @@ test("R3 A9 cross-role: editor A, submitter B, independent C; both review entrie
     await button(page.getByRole("dialog"), "确认办理").click();
     const deniedResponse = await denied;
     expect(deniedResponse.status()).toBe(403);
-    expect((await deniedResponse.json()).detail).toMatch(/提交人|最后编辑人/);
+    const denialReason = (await deniedResponse.json()).detail;
+    expect(denialReason).toMatch(/提交人|最后编辑人/);
+    await expect(page.getByText(denialReason, { exact: true })).toBeVisible();
     expect((await read(page, "/api/entities/" + entityId)).status).toBe(
       "review",
     );
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(
-      page.getByText(/不能审核|最后编辑|独立审核/).last(),
-    ).toBeVisible();
     await reviewer.page.goto("/govern/reviews");
     await reviewer.page
       .locator('[aria-label="选择一项待审内容"] button')
