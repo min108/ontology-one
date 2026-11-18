@@ -236,6 +236,8 @@ test("R4-A.1 AB15: ordinary policy through independent publication and verified 
     stage = "就已发布的条款提问";
     await page.goto("/ontology/elements/" + id);
     await button(page, c.r3_main_ask).click();
+    await expect(page.locator(".agent-scope-picker input:checked")).toHaveCount(1);
+    await button(page, "收起参考范围").click();
     await page
       .getByLabel("说说你希望完成的任务", { exact: true })
       .fill(
