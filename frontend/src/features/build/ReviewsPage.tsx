@@ -332,6 +332,11 @@ function Inbox() {
                 <Link to={'/ontology/elements/' + encodeURIComponent(current.entity.id)}>
                   {copy.r4a1_legacy_details_link}
                 </Link>
+                {!!current.entity.payload.managed_skill && (
+                  <Link to={'/skill-development/' + encodeURIComponent(current.entity.id)}>
+                    {copy.r4a1_legacy_skill_link}
+                  </Link>
+                )}
                 {!!current.gates?.fields?.length && (
                   <FoldRow
                     title={copy.r4a1_legacy_facts}

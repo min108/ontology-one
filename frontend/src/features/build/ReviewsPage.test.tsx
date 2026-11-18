@@ -83,6 +83,19 @@ function open() {
     { wrapper: testQuery() },
   );
 }
+it('hands managed skills to the dedicated workbench without enabling generic publication', async () => {
+  current.entity.kind = 'skill';
+  current.entity.payload.managed_skill = true;
+  current.can_decide = false;
+  open();
+  expect(await screen.findByRole('link', { name: terms.labels.r4a1_legacy_skill_link })).toHaveAttribute(
+    'href',
+    '/skill-development/rule-1',
+  );
+  expect(screen.getByRole('button', { name: terms.actions.catalog_2_5 })).toBeDisabled();
+  expect(screen.getByRole('button', { name: terms.actions.catalog_2_6 })).toBeDisabled();
+  expect(vi.mocked(api).mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true);
+});
 it('shows a clear self-review reason and blocks both decision paths', async () => {
   current.can_decide = false;
   current.blocked_reason = terms.labels.r3_main_review_self_detail;
