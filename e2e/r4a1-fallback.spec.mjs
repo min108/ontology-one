@@ -5,7 +5,7 @@ import { test, expect } from "./runtime.mjs";
 import { login, button, c } from "./r3-support.mjs";
 import { startRegulation } from "./r4a1-changeset-support.mjs";
 
-test("R4-A.1 synthetic provider rejection: actual completed fallback stays explicit and never high confidence", async ({
+test("R4-A.1 synthetic provider rejection: actual finished fallback stays explicit and never high confidence", async ({
   browser,
 }) => {
   const { page, context } = await login(browser, "modeler");
@@ -15,7 +15,7 @@ test("R4-A.1 synthetic provider rejection: actual completed fallback stays expli
       "regulation-plain",
       { filenamePrefix: "R4A1-unusable-", stopAtIntake: true },
     );
-    expect(recipe.status).toBe("completed");
+    expect(recipe.status).toBe("partial");
     expect(recipe.used_model).toBe(0);
     expect(proposal.source_text.trim()).toBe(text.trim());
     expect(proposal.extraction_summary.fully_local).toBe(true);

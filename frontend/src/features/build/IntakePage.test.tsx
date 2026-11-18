@@ -93,12 +93,15 @@ it('offers an explicit fresh file path after a terminal run fails without a prop
   expect(invokeCapability).not.toHaveBeenCalled();
 });
 
-it.each(['local', 'mock'])('labels a completed %s-only result as not organized by AI', async (origin) => {
+it.each([
+  ['local', 'partial'],
+  ['mock', 'completed'],
+])('labels a finished %s-only result as not organized by AI', async (origin, status) => {
   vi.mocked(api).mockImplementation(
     async (path) =>
       ({
         data: path.startsWith('/v2/recipes/')
-          ? { ...recipe, used_model: 0 }
+          ? { ...recipe, status, used_model: 0 }
           : {
               items: [{ tier: 'check', content_origin: origin }],
               extraction_summary: { fully_local: true, retried_batches: 1, discarded_candidates: 2 },

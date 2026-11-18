@@ -491,3 +491,42 @@ it('blocks saving a malformed existing effective date at the date field', async 
   expect(within(modal).getByRole('alert')).toHaveTextContent(terms.labels.r4a1_invalid_date);
   expect(within(modal).getByRole('button', { name: terms.actions.r2_save })).toBeDisabled();
 });
+
+it('keeps two untouched candidates explicit after nine drafts submit with zero blocked drafts', async () => {
+  const base = structuredClone(proposal.items[0]);
+  proposal.items = Array.from({ length: 9 }, (_, index) => ({
+    ...structuredClone(base),
+    id: 'ready-' + index,
+    decision: 'accepted',
+    applied_entity_id: 'R-' + index,
+    after_data: { ...base.after_data, title: 'Ready ' + index },
+  }));
+  for (const item of proposal.items) Object.assign(item, { applied_status: 'draft', can_submit: true });
+  for (const id of ['untouched-one', 'untouched-two'])
+    proposal.items.push({
+      ...structuredClone(base),
+      id,
+      after_data: { ...base.after_data, title: id },
+      gates: gates(['QG2']),
+    });
+  proposal.can_submit = true;
+  vi.mocked(invokeCapability).mockImplementation(async () => {
+    for (const item of proposal.items.filter((item) => item.decision === 'accepted'))
+      Object.assign(item, { applied_status: 'review', can_submit: false });
+    proposal.can_submit = false;
+    return { data: { submitted_count: 9, remaining_count: 0, pending_count: 2 } } as never;
+  });
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_6 }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: terms.actions.catalog_1_6 }),
+  );
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    sentence(terms.labels.r4a1_submit_totals, { s: 9, r: 0, p: 2 }),
+  );
+  await waitFor(() => expect(screen.getByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled());
+  expect(screen.queryByRole('button', { name: terms.labels.r3_main_submitted })).not.toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: terms.labels.r3_ui_next })).toHaveTextContent(
+    sentence(terms.labels.r4a1_submit_totals, { s: 9, r: 0, p: 2 }),
+  );
+});

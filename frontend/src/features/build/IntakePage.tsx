@@ -50,7 +50,7 @@ function Intake({ canEdit }: { canEdit: boolean }) {
     !!run?.changeset_id,
   );
   const extraction = result.data?.data.extraction_summary;
-  const completed = run?.status === 'completed' && !!run.changeset_id;
+  const completed = !!run?.changeset_id && ['completed', 'partial'].includes(run.status);
   const fullyLocal = extraction?.fully_local ?? !run?.used_model;
   const itemCount = result.data?.data.items.length;
   const checkCount =
