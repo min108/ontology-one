@@ -14,7 +14,7 @@ import { terms } from '../../i18n/zh-CN';
 import { BusinessDatePicker } from '../../ui/BusinessDatePicker';
 import { useLifetime } from '../build/shared';
 import { businessText } from '../build/businessText';
-import { SubjectSelect } from './SubjectSelect';
+import { AuthoritySubjectSelect, SubjectSelect } from './SubjectSelect';
 import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
@@ -48,6 +48,21 @@ export function ElementRepair({
     Object.fromEntries(fields.map((field) => [field.key, field.value])),
   );
   const [subject, setSubject] = useState(businessText(entity.payload.applies_to_id));
+  const spec = entity.payload.authority_spec;
+  const authority = spec && typeof spec === 'object' && !Array.isArray(spec) ? spec : null;
+  const originalSubjects = authority
+    ? [
+        ...new Set(
+          ['org_ids', 'person_ids'].flatMap((key) => {
+            const ids = (authority as Record<string, unknown>)[key];
+            return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+          }),
+        ),
+      ]
+    : [];
+  const [subjects, setSubjects] = useState(originalSubjects);
+  const subjectsChanged =
+    JSON.stringify([...subjects].sort()) !== JSON.stringify([...originalSubjects].sort());
   const [applications, setApplications] = useState<GateWaivers>(() =>
     Object.fromEntries(
       (gates?.checks || [])
@@ -62,6 +77,7 @@ export function ElementRepair({
   const changed =
     fields.some((field) => values[field.key] !== field.value) ||
     subject !== businessText(entity.payload.applies_to_id) ||
+    subjectsChanged ||
     (gates?.checks || []).some(
       (check) =>
         (check.code === 'QG1' || check.code === 'QG3') &&
@@ -89,7 +105,8 @@ export function ElementRepair({
                 .filter(Boolean)
             : value;
     }
-    if (entity.kind === 'rule' && subject !== businessText(entity.payload.applies_to_id))
+    if (entity.kind === 'rule' && authority && subjectsChanged) payload.applicable_subject_ids = subjects;
+    else if (entity.kind === 'rule' && !authority && subject !== businessText(entity.payload.applies_to_id))
       payload.applies_to_id = subject;
     try {
       await invokeCapability<ElementDetailResult>(
@@ -180,12 +197,21 @@ export function ElementRepair({
       {entity.kind === 'rule' && (
         <label className={styles.field}>
           {copy.r4a1_legacy_subject}
-          <SubjectSelect
-            value={subject}
-            options={detail.applicability_options || []}
-            disabled={disabled || busy}
-            onChange={setSubject}
-          />
+          {authority ? (
+            <AuthoritySubjectSelect
+              value={subjects}
+              options={detail.applicability_options || []}
+              disabled={disabled || busy}
+              onChange={setSubjects}
+            />
+          ) : (
+            <SubjectSelect
+              value={subject}
+              options={detail.applicability_options || []}
+              disabled={disabled || busy}
+              onChange={setSubject}
+            />
+          )}
         </label>
       )}
       {(gates?.checks || [])

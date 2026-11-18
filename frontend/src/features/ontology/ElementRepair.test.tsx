@@ -47,6 +47,44 @@ function detail(): ElementDetail {
   };
 }
 beforeEach(() => vi.clearAllMocks());
+it('keeps every authority subject visible, replaces only the changed set and excludes unsupported kinds', async () => {
+  const current = detail();
+  current.entity.kind = 'rule';
+  current.entity.payload.authority_spec = { org_ids: ['org-a', 'org-b'], person_ids: ['person-a'] };
+  current.applicability_options = [
+    { id: 'org-a', title: 'Department A', kind: 'organization' },
+    { id: 'org-b', title: 'Department B', kind: 'organization' },
+    { id: 'person-a', title: 'Reviewer A', kind: 'person' },
+    { id: 'object-a', title: 'Business object', kind: 'object_type' },
+    { id: 'position-a', title: 'Position A', kind: 'position' },
+  ];
+  const onSaved = vi.fn();
+  const { container } = render(
+    <MemoryRouter>
+      <ElementRepair detail={current} disabled={false} onSaved={onSaved} />
+    </MemoryRouter>,
+  );
+  for (const title of ['Department A', 'Department B', 'Reviewer A'])
+    expect(container.querySelector(`.ant-select-selection-item[title="${title}"]`)).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: copy.r4a1_legacy_save }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(invokeCapability).mock.calls[0][1]).toEqual(expect.objectContaining({ payload: {} }));
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: copy.r4a1_legacy_subject }));
+  expect(screen.queryByTitle('Business object')).not.toBeInTheDocument();
+  expect(screen.queryByTitle('Position A')).not.toBeInTheDocument();
+  fireEvent.click(
+    container.querySelector(
+      '.ant-select-selection-item[title="Department A"] .ant-select-selection-item-remove',
+    )!,
+  );
+  fireEvent.click(screen.getByRole('button', { name: copy.r4a1_legacy_save }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(invokeCapability).mock.calls[1][1]).toEqual(
+    expect.objectContaining({ payload: { applicable_subject_ids: ['org-b', 'person-a'] } }),
+  );
+  expect(container.querySelector('.ant-select-selection-item[title="Department A"]')).toBeNull();
+  expect(container.querySelectorAll('.ant-select-selection-item')).toHaveLength(2);
+});
 it('uses the shared calendar and saves the selected date as metadata, never as payload', async () => {
   const current = detail();
   current.gates!.fields!.push({

@@ -84,6 +84,25 @@ async function blockedToRepair(page, id) {
 async function repair(page, id) {
   const before = await detail(page, id);
   const panel = page.getByRole("region", { name: c.r4a1_legacy_repair_title });
+  const authority = before.entity.payload.authority_spec;
+  if (authority) {
+    const ids = [...authority.org_ids, ...authority.person_ids];
+    expect(ids.length).toBeGreaterThan(0);
+    for (const subjectId of ids) {
+      const option = before.applicability_options.find(
+        (item) => item.id === subjectId,
+      );
+      expect(option).toBeTruthy();
+      await expect(
+        panel
+          .locator(".ant-select-selection-item")
+          .filter({ hasText: option.title }),
+      ).toBeVisible();
+    }
+    await expect(panel.locator(".ant-select-selection-item")).toHaveCount(
+      ids.length,
+    );
+  }
   const values = {
     definition:
       before.entity.kind === "data"
@@ -131,6 +150,14 @@ async function repair(page, id) {
   expect(response.status(), await response.text()).toBe(200);
   await expect(page.getByRole("status")).toContainText(c.r4a1_legacy_saved);
   const repaired = await detail(page, id);
+  if (authority) {
+    expect(repaired.entity.payload.authority_spec.org_ids).toEqual(
+      authority.org_ids,
+    );
+    expect(repaired.entity.payload.authority_spec.person_ids).toEqual(
+      authority.person_ids,
+    );
+  }
   expect(
     repaired.gates.checks.find((check) => check.code === "QG1").status,
   ).toBe("fail");
