@@ -125,3 +125,16 @@ class BuildFacts(unittest.TestCase):
                 result = self.enrich({"kind": "rule", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
                 self.assertTrue(result[field])
                 self.assertEqual(result["field_provenance"][field]["origin"], "source")
+
+    def test_submission_plan_respects_shared_denial_and_nonwaivable_policy(self) -> None:
+        check = {
+            "code": "QG3",
+            "status": "fail",
+            "can_waive": True,
+            "reason": "缺少例外",
+            "application_reason": "原文未写明",
+        }
+        self.assertEqual(build.submission_blockers({"checks": [check]}), [])
+        self.assertEqual(build.submission_blockers({"checks": [{**check, "denial_reason": "请先补齐"}]}), ["请先补齐"])
+        hard = {**check, "code": "QG2", "can_waive": False}
+        self.assertEqual(build.submission_blockers({"checks": [hard]}, {"QG2": "强行提交"}), ["缺少例外"])

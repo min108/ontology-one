@@ -949,15 +949,10 @@ def manual_provenance(origin: str = "manual") -> dict:
 
 
 def submission_blockers(result: dict, applications: dict | None = None) -> list[str]:
-    applications = applications or {}
     return [
-        check["reason"]
+        check.get("denial_reason") or check["reason"]
         for check in result["checks"]
-        if check["status"] == "fail"
-        and not (
-            check["code"] in {"QG1", "QG3"}
-            and str(applications.get(check["code"]) or check.get("application_reason") or "").strip()
-        )
+        if check["status"] == "fail" and not gates.submission_eligibility({"checks": [check]}, applications)
     ]
 
 
