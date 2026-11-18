@@ -92,3 +92,62 @@ it('offers an explicit fresh file path after a terminal run fails without a prop
   expect(screen.getByRole('button', { name: terms.actions.r2_start })).toBeEnabled();
   expect(invokeCapability).not.toHaveBeenCalled();
 });
+
+it.each(['local', 'mock'])('labels a completed %s-only result as not organized by AI', async (origin) => {
+  vi.mocked(api).mockImplementation(
+    async (path) =>
+      ({
+        data: path.startsWith('/v2/recipes/')
+          ? { ...recipe, used_model: 0 }
+          : {
+              items: [{ tier: 'check', content_origin: origin }],
+              extraction_summary: { fully_local: true, retried_batches: 1, discarded_candidates: 2 },
+            },
+      }) as never,
+  );
+  const { container } = render(
+    <MemoryRouter initialEntries={['/build/intake?run=run-1']}>
+      <IntakePage />
+    </MemoryRouter>,
+    { wrapper: testQuery() },
+  );
+  expect(await screen.findByText(terms.labels.r4a1_extraction_local)).toBeVisible();
+  await waitFor(() =>
+    expect(container.querySelector('[data-extraction-summary]')).toHaveAttribute('data-retries', '1'),
+  );
+  expect(container.querySelector('[data-extraction-summary]')).toHaveAttribute('data-fully-local', 'true');
+});
+it('does not label online results or unfinished extraction as fully local', async () => {
+  vi.mocked(api).mockImplementation(
+    async (path) =>
+      ({
+        data: path.startsWith('/v2/recipes/')
+          ? { ...recipe, used_model: 1 }
+          : {
+              items: [{ tier: 'sure' }],
+              extraction_summary: { fully_local: false, retried_batches: 0, discarded_candidates: 0 },
+            },
+      }) as never,
+  );
+  const view = render(
+    <MemoryRouter initialEntries={['/build/intake?run=online']}>
+      <IntakePage />
+    </MemoryRouter>,
+    { wrapper: testQuery() },
+  );
+  await screen.findByText(sentence(terms.labels.r3_main_intake_done, { count: 1, check: 0 }));
+  expect(screen.queryByText(terms.labels.r4a1_extraction_local)).not.toBeInTheDocument();
+  view.unmount();
+  vi.mocked(api).mockResolvedValue({
+    data: { ...recipe, status: 'running', changeset_id: null, used_model: 0 },
+  } as never);
+  const pending = render(
+    <MemoryRouter initialEntries={['/build/intake?run=running']}>
+      <IntakePage />
+    </MemoryRouter>,
+    { wrapper: testQuery() },
+  );
+  await screen.findByText(terms.labels.r3_main_intake_running);
+  expect(pending.container.querySelector('[data-extraction-summary]')).not.toBeInTheDocument();
+  expect(screen.queryByText(terms.labels.r4a1_extraction_local)).not.toBeInTheDocument();
+});

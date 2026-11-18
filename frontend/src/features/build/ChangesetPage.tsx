@@ -119,11 +119,14 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       items.some((item) => item.after_data.kind !== 'rule' && !item.applied_entity_id);
     return perform(
       async () => {
+        const candidateEdit = edit ? { ...edit } : undefined;
+        if (confirmRuleTarget && candidateEdit && !candidateEdit.applies_to_id)
+          delete candidateEdit.applies_to_id;
         const body: DecideItems = {
           changeset_id: id,
           item_ids: items.map((item) => item.id),
           decision,
-          ...(edit ? { edit } : {}),
+          ...(candidateEdit ? { edit: candidateEdit } : {}),
           ...(onlyReady ? { only_ready: true } : {}),
         };
         const options = { signal: lifetime.current?.signal };

@@ -93,11 +93,11 @@ export function ChangesetOmissions({
     <>
       {groups
         .filter((group) => group.ids.length)
-        .map((group) => (
+        .map((group, index) => (
           <FoldRow
             key={group.field}
             title={sentence(group.label, { count: group.ids.length })}
-            summary={copy.r4a1_omissions_hint}
+            summary={index === 0 ? copy.r4a1_omissions_hint : null}
             defaultOpen
           >
             <ul className={styles.checks}>

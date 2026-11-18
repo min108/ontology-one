@@ -49,6 +49,9 @@ function Intake({ canEdit }: { canEdit: boolean }) {
     '/v2/changesets/' + encodeURIComponent(run?.changeset_id || ''),
     !!run?.changeset_id,
   );
+  const extraction = result.data?.data.extraction_summary;
+  const completed = run?.status === 'completed' && !!run.changeset_id;
+  const fullyLocal = extraction?.fully_local ?? !run?.used_model;
   const itemCount = result.data?.data.items.length;
   const checkCount =
     result.data?.data.items.filter((item) => item.tier !== 'sure' && !item.processed_elsewhere).length || 0;
@@ -195,7 +198,31 @@ function Intake({ canEdit }: { canEdit: boolean }) {
           <StatusTag domain="recipe" status={run.status} />
           {(!terminal || !!run.changeset_id) && <p>{run.stage_message}</p>}
           <Progress percent={Math.round(((run.progress?.done || 0) / (run.progress?.total || 4)) * 100)} />
-          <OriginTag origin={run.used_model ? 'ai' : 'local'} />
+          {completed && (
+            <div
+              data-extraction-summary
+              data-fully-local={fullyLocal}
+              data-retries={extraction?.retried_batches || 0}
+              data-discarded={extraction?.discarded_candidates || 0}
+            >
+              <OriginTag origin={fullyLocal ? 'local' : 'ai'} />
+              {fullyLocal && (
+                <Alert
+                  type="warning"
+                  title={copy.r4a1_extraction_local}
+                  description={copy.r4a1_extraction_local_hint}
+                />
+              )}
+              {extraction && (
+                <p>
+                  {sentence(copy.r4a1_extraction_summary, {
+                    retries: extraction.retried_batches || 0,
+                    discarded: extraction.discarded_candidates || 0,
+                  })}
+                </p>
+              )}
+            </div>
+          )}
           {run.changeset_id && (
             <Button type="text" onClick={resetIntake}>
               {copy.r3_main_intake_new}

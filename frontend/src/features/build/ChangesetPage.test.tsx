@@ -318,6 +318,7 @@ it('sends the version shown when editing began, even if a refocus refresh finds 
 
 it('requires a separate acceptance after converting content to a rule so its proposed target is visible first', async () => {
   proposal.items[0].after_data.kind = 'knowledge';
+  Object.assign(proposal.items[0].after_data, { applies_to_id: '' });
   vi.mocked(invokeCapability).mockImplementation(async (operation) => {
     if (operation === 'changeset.decide_items') {
       proposal.items[0].after_data.kind = 'rule';
@@ -336,6 +337,9 @@ it('requires a separate acceptance after converting content to a rule so its pro
   fireEvent.click(await screen.findByText(terms.kinds.rule, { selector: '.ant-select-item-option-content' }));
   fireEvent.click(within(modal).getByRole('button', { name: terms.labels.r4_rule_save_target }));
   expect(await screen.findByText(terms.labels.r4_rule_target_saved)).toBeVisible();
+  expect(
+    vi.mocked(invokeCapability).mock.calls.find(([name]) => name === 'changeset.decide_items')?.[1],
+  ).toMatchObject({ edit: expect.not.objectContaining({ applies_to_id: '' }) });
   expect(screen.getByText(/适用主体或对象：本机构办公室/)).toBeVisible();
   expect(vi.mocked(invokeCapability).mock.calls.filter(([name]) => name === 'changeset.apply')).toHaveLength(
     0,
