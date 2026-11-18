@@ -20,6 +20,7 @@ WORKFLOW_ACTIONS = (
     "发布检查豁免",
     "申请发布检查豁免",
     "拒绝发布检查豁免",
+    "关联核对",
 )
 
 
@@ -226,3 +227,18 @@ def decide(
                 conn, ident, {"action": "publish", "reason": "独立审核通过并发布", "expected_version": version + 1}
             )
     return get(ident)
+
+
+def record_relation_editor(conn: db.Connection, entity: dict, editor_id: str) -> None:
+    """A proposal author edits the revision; an independent relation decision does not."""
+    from backend.kernel.kinds import persisted_kind
+
+    if not persisted_kind(entity["kind"]).governed:
+        return
+    previous = dict(entity["payload"].get("r2_review") or {})
+    submission = {key: previous[key] for key in ("submitted_by", "submitted_at", "submitted_name") if key in previous}
+    meta = record_editor(entity, editor_id)
+    meta.update(submission)
+    conn.execute(
+        "UPDATE entities SET payload=? WHERE id=?", (json.dumps(entity["payload"], ensure_ascii=False), entity["id"])
+    )

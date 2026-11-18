@@ -11,7 +11,6 @@ from backend.relation_semantics import RELATION_SEMANTICS
 
 DERIVED_TYPES = frozenset(
     {
-        "applies_to",
         "has_property",
         "link_source",
         "link_target",
@@ -208,6 +207,8 @@ def sync_derived(conn: db.Connection, entity: dict) -> list[dict]:
 def propose(source: str, target: str, typ: str, reason: str) -> dict:
     """Propose a manual relation using the legacy specialized-workflow boundaries."""
     from backend.api.v1.core import relation_work_entry
+    from backend.domains.reviews import record_relation_editor
+    from backend.security.context import require_context
     from backend.skills import guard_generic_entity
 
     if typ not in RELATION_SEMANTICS or typ in DERIVED_TYPES:
@@ -230,7 +231,14 @@ def propose(source: str, target: str, typ: str, reason: str) -> dict:
             "type": typ,
             "label": RELATION_SEMANTICS[typ][0],
             "status": "candidate",
-            "payload": json.dumps({"proposal_reason": reason}, ensure_ascii=False),
+            "payload": json.dumps(
+                {
+                    "proposal_reason": reason,
+                    "proposed_by": require_context().user_id,
+                    "proposed_name": require_context().username,
+                },
+                ensure_ascii=False,
+            ),
         }
         entry = relation_work_entry(conn, row)
         if entry:
@@ -249,6 +257,7 @@ def propose(source: str, target: str, typ: str, reason: str) -> dict:
             "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
             tuple(row[key] for key in ("id", "source", "target", "type", "label", "status", "payload")),
         )
+        record_relation_editor(conn, current, require_context().user_id)
         conn.execute("UPDATE entities SET version=version+1,updated_at=? WHERE id=?", (stamp, source))
         db.log(conn, source, "提出关联", reason)
     return {**row, "payload": _payload(row["payload"])}

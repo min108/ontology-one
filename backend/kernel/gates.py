@@ -453,12 +453,28 @@ def run_cases(conn: db.Connection, entity: dict) -> dict:
     return run_test_cases(entity["kind"], entity.get("payload") or {}, **context)
 
 
-def _fingerprint(entity: dict, meta: dict) -> str:
+def _fingerprint(entity: dict, meta: dict, conn: db.Connection | None = None) -> str:
     data = {key: entity.get(key) for key in ("id", "kind", "title", "summary", "domain")}
     data["payload"] = {key: value for key, value in entity.get("payload", {}).items() if key != "r2_review"}
     data["meta"] = {key: meta.get(key) for key in ("valid_from", "valid_to", "module_id", "subtype")}
     data["revision_id"] = _object(entity.get("payload", {}).get("r2_review")).get("revision_id")
     data["field_sources"] = _object(meta.get("gates")).get("field_sources", {})
+    if conn is not None:
+        # A candidate's independent confirmation changes approval, not authored
+        # content. Changing an endpoint/type or rejecting it changes the binding.
+        # A return-generated follow-up task is workflow history, not authored content.
+        data["relations"] = sorted(
+            {
+                (row["source"], row["target"], row["type"])
+                for row in conn.execute(
+                    "SELECT r.source,r.target,r.type FROM relations r JOIN entities t ON t.id=r.target "
+                    "WHERE (r.source=? OR r.target=?) "
+                    "AND r.status IN ('candidate','confirmed','source_verified') "
+                    "AND NOT (r.type='requires' AND t.kind='task')",
+                    (entity["id"], entity["id"]),
+                )
+            }
+        )
     return hashlib.sha256(
         json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -547,7 +563,7 @@ def check_entity(
     }
     result = evaluate_checks(entity, meta, facts)
     stored = _object(meta.get("gates"))
-    fingerprint = _fingerprint(original, meta)
+    fingerprint = _fingerprint(original, meta, conn)
     for item in result["checks"]:
         application = _object(_object(stored.get("applications")).get(item["code"]))
         if item["can_waive"] and item["status"] == "fail" and application.get("fingerprint") == fingerprint:
@@ -644,7 +660,7 @@ def waive(conn: db.Connection, entity: dict, reasons: dict[str, str]) -> dict:
         if identity.get("revision_id") and not current[code].get("application_reason"):
             raise ApiError("PRECONDITION_FAILED", "建设人员尚未为此项缺口提交有效申请说明。")
     waivers = stored.setdefault("waivers", {})
-    fingerprint = _fingerprint(entity, meta)
+    fingerprint = _fingerprint(entity, meta, conn)
     for code, reason in reasons.items():
         waivers[code] = {
             "reason": reason.strip(),
@@ -706,7 +722,7 @@ def apply_for_waiver(conn: db.Connection, entity: dict, applications: dict) -> d
     meta = get_meta(conn, entity["id"]) or sync_meta(conn, entity)
     stored = _object(meta.get("gates"))
     stored["applications"] = {}
-    fingerprint = _fingerprint(entity, meta)
+    fingerprint = _fingerprint(entity, meta, conn)
     for code, reason in applications.items():
         stored["applications"][code] = {
             "reason": reason,
@@ -740,7 +756,7 @@ def deny_applications(conn: db.Connection, entity: dict, reasons: dict) -> None:
             raise ApiError("PRECONDITION_FAILED", "这项申请不存在或内容已变更，请刷新后重新核对。")
         stored.setdefault("denials", {})[code] = {
             "reason": reason,
-            "fingerprint": _fingerprint(entity, meta),
+            "fingerprint": _fingerprint(entity, meta, conn),
             "by": require_context().user_id,
             "at": db.now(),
         }

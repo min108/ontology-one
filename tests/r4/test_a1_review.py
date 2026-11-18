@@ -400,3 +400,87 @@ class ReviewHTTP(unittest.TestCase):
         checks = {item["code"]: item for item in result["gates"]["checks"]}
         self.assertEqual(checks["QG1"]["status"], "waived")
         self.assertEqual(checks["QG3"]["denial_reason"], "不能接受缺少例外说明")
+
+    def test_relation_author_is_editor_but_independent_confirmation_is_not_an_edit(self) -> None:
+        author, builder, reviewer = (
+            self.login("fixture.admin"),
+            self.login("fixture.builder"),
+            self.login("fixture.reviewer"),
+        )
+        reference = self.invoke(builder, "element.get", {"entity_id": self.manual(builder)["id"]})
+        target = next(item for item in reference["applicability_options"] if item["kind"] == "organization")
+        entity = self.invoke(
+            builder,
+            "element.create_draft",
+            {
+                "kind": "rule",
+                "title": "独立核对关联后的工作规则",
+                "meta": {"valid_from": "2026-01-01"},
+                "payload": {
+                    "definition": "收到材料后按分工核对",
+                    "scope": "本机构",
+                    "conditions": "收到材料时",
+                    "exceptions": "无例外",
+                },
+            },
+        )["entity"]
+        relation = self.invoke(
+            author,
+            "relation.propose",
+            {"source": entity["id"], "target": target["id"], "type": "applies_to", "reason": "适用于本机构"},
+        )
+        for path, body in (
+            (f"/api/relations/{relation['id']}", {"status": "confirmed", "reason": "提出人自审"}),
+            (
+                "/api/v2/capabilities/relation.decide:invoke",
+                {"relation_id": relation["id"], "status": "confirmed", "reason": "提出人自审"},
+            ),
+        ):
+            response = (
+                author.patch(path, json=body) if path.startswith("/api/relations/") else author.post(path, json=body)
+            )
+            self.assertEqual(response.status_code, 403, response.text)
+        self.invoke(
+            builder,
+            "element.update_draft",
+            {"entity_id": entity["id"], "version": 2, "waiver_applications": {"QG1": "手工记录待补"}},
+        )
+        self.invoke(
+            reviewer,
+            "relation.decide",
+            {"relation_id": relation["id"], "status": "confirmed", "reason": "独立核对关联"},
+        )
+        current = self.invoke(builder, "element.get", {"entity_id": entity["id"]})
+        self.assertTrue(current["gates"]["ready_to_submit"])
+        self.assertEqual(current["gates"]["checks"][0]["application_reason"], "手工记录待补")
+        self.invoke(builder, "element.submit_draft", {"entity_id": entity["id"], "version": 4, "reason": "提交"})
+        denied = author.post(
+            f"/api/v2/reviews/{entity['id']}:decide",
+            json={"decision": "approve_publish", "version": 5, "waivers": {"QG1": "作者不得办理"}},
+        )
+        self.assertEqual(denied.status_code, 403, denied.text)
+        response = reviewer.post(
+            f"/api/v2/reviews/{entity['id']}:decide",
+            json={"decision": "approve_publish", "version": 5, "waivers": {"QG1": "独立核对后接受"}},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["data"]["entity"]["status"], "published")
+
+    def test_relation_change_invalidates_existing_application_without_payload_edit(self) -> None:
+        builder = self.login("fixture.builder")
+        entity, target = self.manual(builder), self.manual(builder)
+        self.invoke(
+            builder,
+            "element.update_draft",
+            {"entity_id": entity["id"], "version": 1, "waiver_applications": {"QG1": "仅针对当前内容申请"}},
+        )
+        before = self.invoke(builder, "element.get", {"entity_id": entity["id"]})
+        self.assertTrue(before["gates"]["ready_to_submit"])
+        self.invoke(
+            builder,
+            "relation.propose",
+            {"source": entity["id"], "target": target["id"], "type": "related_to", "reason": "增加一项业务关联"},
+        )
+        after = self.invoke(builder, "element.get", {"entity_id": entity["id"]})
+        self.assertFalse(after["gates"]["ready_to_submit"])
+        self.assertEqual(after["gates"]["checks"][0]["application_reason"], "")

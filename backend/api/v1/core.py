@@ -629,6 +629,11 @@ def _confirm_relation(rid, b):
         if entry:
             raise HTTPException(400, entry["reason"])
         p = json.loads(row["payload"] or "{}")
+        from ...security.context import require_context
+        from ...core.errors import ApiError
+
+        if b["status"] in {"confirmed", "rejected"} and p.get("proposed_by") == require_context().user_id:
+            raise ApiError("SEPARATION_OF_DUTIES", "提出关联的人需由其他审核人员核对。")
         if p.get("proposal_job_id") and b["status"] != "rejected":
             raise HTTPException(
                 400, "这条关联已经过版本绑定审定。若需重新建立，请从资产档案的关联定位重新核对两端内容。"
