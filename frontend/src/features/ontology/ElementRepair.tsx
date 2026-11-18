@@ -63,6 +63,12 @@ export function ElementRepair({
   const [subjects, setSubjects] = useState(originalSubjects);
   const subjectsChanged =
     JSON.stringify([...subjects].sort()) !== JSON.stringify([...originalSubjects].sort());
+  const missingAuthorityOrg =
+    !!authority &&
+    subjectsChanged &&
+    !subjects.some((id) =>
+      detail.applicability_options?.some((option) => option.id === id && option.kind === 'organization'),
+    );
   const [applications, setApplications] = useState<GateWaivers>(() =>
     Object.fromEntries(
       (gates?.checks || [])
@@ -86,7 +92,7 @@ export function ElementRepair({
   useWorkspaceGuard(changed);
   async function save() {
     const signal = lifetime.current?.signal;
-    if (busy || disabled || !reason.trim() || signal?.aborted) return;
+    if (busy || disabled || missingAuthorityOrg || !reason.trim() || signal?.aborted) return;
     setBusy(true);
     setError('');
     const payload: ElementDetail['entity']['payload'] =
@@ -214,6 +220,15 @@ export function ElementRepair({
           )}
         </label>
       )}
+      {authority && (
+        <p>
+          {copy.r4a1_authority_subject_hint}{' '}
+          <Link to={'/authority/' + encodeURIComponent(entity.id)}>{copy.shell_authority}</Link>
+        </p>
+      )}
+      {missingAuthorityOrg && (
+        <Alert type="warning" title={copy.r4a1_authority_subject_required} role="alert" />
+      )}
       {(gates?.checks || [])
         .filter(
           (check) =>
@@ -251,7 +266,7 @@ export function ElementRepair({
       <div className={styles.actions}>
         <Button
           autoInsertSpace={false}
-          disabled={disabled || busy || !reason.trim()}
+          disabled={disabled || busy || missingAuthorityOrg || !reason.trim()}
           onClick={() => void save()}
         >
           {copy.r4a1_legacy_save}

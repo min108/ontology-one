@@ -552,6 +552,7 @@ def repair_gate_fields(conn, old, changes):
     ):
         raise HTTPException(422, "流程、职责和依据材料请在权责规范工作面修改。")
     spec = dict(old["payload"]["authority_spec"])
+    save_org_id = old["org_id"]
     for field, target in fields.items():
         if field in payload:
             value = payload[field]
@@ -580,13 +581,26 @@ def repair_gate_fields(conn, old, changes):
                 raise HTTPException(422, "权责规范的适用主体须为有效的组织或人员。")
             if subject not in selected[key]:
                 selected[key].append(subject)
+        if replace:
+            if not selected["org_ids"]:
+                raise HTTPException(422, "请至少选择一个适用组织；人员不能替代组织范围。")
+            for node in spec.get("nodes", []):
+                if any(
+                    node.get(field) and node[field] not in selected[key]
+                    for field, key in (("org_id", "org_ids"), ("person_id", "person_ids"))
+                ):
+                    raise HTTPException(422, "流程节点仍关联该主体，请先到权责规范工作面调整节点。")
+            # The replacement is authoritative. Do not silently restore the old
+            # business organization; tenant ownership remains untouched.
+            if save_org_id not in selected["org_ids"]:
+                save_org_id = selected["org_ids"][0]
         spec.update(selected)
     try:
         body = SaveRequest(
             title=old["title"],
             summary=old["summary"],
             domain=old["domain"],
-            org_id=old["org_id"],
+            org_id=save_org_id,
             expected_version=changes["expected_version"],
             spec=spec,
         )

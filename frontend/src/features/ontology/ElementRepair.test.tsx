@@ -85,6 +85,48 @@ it('keeps every authority subject visible, replaces only the changed set and exc
   expect(container.querySelector('.ant-select-selection-item[title="Department A"]')).toBeNull();
   expect(container.querySelectorAll('.ant-select-selection-item')).toHaveLength(2);
 });
+it('explains and blocks empty or person-only authority scope, preserving selected Chinese names', async () => {
+  const current = detail();
+  current.entity.kind = 'rule';
+  current.entity.payload.authority_spec = { org_ids: ['org-a'], person_ids: ['person-a'] };
+  current.applicability_options = [
+    { id: 'org-a', title: legacyFixture.subjectValue, kind: 'organization' },
+    { id: 'person-a', title: legacyFixture.reviewer, kind: 'person' },
+  ];
+  const { container } = render(
+    <MemoryRouter>
+      <ElementRepair detail={current} disabled={false} onSaved={vi.fn()} />
+    </MemoryRouter>,
+  );
+  const save = screen.getByRole('button', { name: copy.r4a1_legacy_save });
+  expect(save).toBeEnabled();
+  const remove = (title: string) =>
+    fireEvent.click(
+      container.querySelector(
+        `.ant-select-selection-item[title="${title}"] .ant-select-selection-item-remove`,
+      )!,
+    );
+  remove(legacyFixture.subjectValue);
+  expect(screen.getByRole('alert')).toHaveTextContent(copy.r4a1_authority_subject_required);
+  expect(
+    container.querySelector(`.ant-select-selection-item[title="${legacyFixture.reviewer}"]`),
+  ).not.toBeNull();
+  expect(save).toBeDisabled();
+  fireEvent.click(save);
+  expect(invokeCapability).not.toHaveBeenCalled();
+  remove(legacyFixture.reviewer);
+  expect(save).toBeDisabled();
+  expect(screen.getByRole('alert')).toHaveTextContent(copy.r4a1_authority_subject_required);
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: copy.r4a1_legacy_subject }));
+  fireEvent.click(screen.getByTitle(legacyFixture.subjectValue));
+  expect(save).toBeEnabled();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.click(save);
+  await waitFor(() => expect(invokeCapability).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(invokeCapability).mock.calls[0][1]).toEqual(
+    expect.objectContaining({ payload: { applicable_subject_ids: ['org-a'] } }),
+  );
+});
 it('uses the shared calendar and saves the selected date as metadata, never as payload', async () => {
   const current = detail();
   current.gates!.fields!.push({

@@ -16,6 +16,8 @@ from backend.kernel.cards import build_card
 from backend.kernel.kinds import KINDS
 from backend.kernel.metadata import get_meta
 
+APPLICABILITY_OPTION_LIMIT = 500
+
 
 class ElementList(StrictModel):
     q: str = Field(default="", max_length=300)
@@ -145,6 +147,18 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
             gate_result = gates.check_entity(conn, original)
     options = []
     if "build.edit" in ctx.permissions and not ctx.principal.readonly:
+        authority = entity["payload"].get("authority_spec")
+        selected = list(
+            dict.fromkeys(
+                ident
+                for key in ("org_ids", "person_ids")
+                for ident in (authority.get(key, []) if isinstance(authority, dict) else [])
+                if isinstance(ident, str)
+            )
+        )
+        # Keep already selected subjects on the bounded page, using the same
+        # tenant, kind and active-record restrictions as every other option.
+        priority = f"CASE WHEN id IN ({','.join('?' for _ in selected)}) THEN 0 ELSE 1 END," if selected else ""
         with closing(db.connect()) as conn:
             options = [
                 dict(row)
@@ -153,8 +167,8 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
                     "WHERE kind IN ('organization','position','person','party','object_type') "
                     "AND (?=0 OR kind IN ('organization','person')) "
                     "AND status<>'archived' AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0 "
-                    "ORDER BY title,id LIMIT 500",
-                    (int(bool(entity["payload"].get("authority_spec"))),),
+                    f"ORDER BY {priority}title,id LIMIT ?",
+                    (int(bool(authority)), *selected, APPLICABILITY_OPTION_LIMIT),
                 )
             ]
     if ctx.principal.readonly:
