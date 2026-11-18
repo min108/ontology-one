@@ -182,7 +182,7 @@ async function publish(page, id) {
 test("R4-A.1 AB7: manual data application reaches independent review but missing meaning cannot be waived", async ({
   browser,
 }) => {
-  const builder = await login(browser, "modeler"),
+  const builder = await login(browser, "admin"),
     reviewer = await login(browser, "reviewer");
   try {
     const created = await createOld(builder.page, "data");
