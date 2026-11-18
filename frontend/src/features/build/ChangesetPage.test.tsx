@@ -433,3 +433,36 @@ it('shows fully local extraction explicitly and retains safe retry and discarded
   expect(container.querySelector('[data-extraction-summary]')).toHaveAttribute('data-retries', '1');
   expect(container.querySelector('[data-extraction-summary]')).toHaveAttribute('data-discarded', '2');
 });
+
+it('requires an explicit visible subject when converting an adopted specialized draft to a rule', async () => {
+  proposal.items[0].after_data.kind = 'skill';
+  proposal.items[0].decision = 'accepted';
+  proposal.items[0].applied_entity_id = 'SK-1';
+  Object.assign(proposal.items[0], { applied_status: 'draft', applied_version: 3 });
+  proposal.submit_blockers = ['Needs specialized fields'];
+  Object.assign(proposal, {
+    applicability_options: [{ id: 'ORG-1', title: 'Actual organization', kind: 'organization' }],
+  });
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
+  const modal = screen.getByRole('dialog');
+  fireEvent.mouseDown(within(modal).getByLabelText(terms.labels.r2_kind));
+  fireEvent.click(await screen.findByText(terms.kinds.rule, { selector: '.ant-select-item-option-content' }));
+  const save = within(modal).getByRole('button', { name: terms.actions.r2_save });
+  expect(save).toBeDisabled();
+  fireEvent.mouseDown(within(modal).getByLabelText(terms.labels.r4a1_legacy_subject));
+  fireEvent.click(
+    await screen.findByText('Actual organization', { selector: '.ant-select-item-option-content' }),
+  );
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+  await waitFor(() =>
+    expect(invokeCapability).toHaveBeenCalledWith(
+      'changeset.decide_items',
+      expect.objectContaining({
+        edit: expect.objectContaining({ kind: 'rule', applies_to_id: 'ORG-1', expected_version: 3 }),
+      }),
+      expect.anything(),
+    ),
+  );
+});

@@ -26,7 +26,7 @@ async function evidence(page, name, data) {
   });
   writeFileSync(resolve(output, name + ".json"), JSON.stringify(data, null, 2));
 }
-async function editKind(page, item, kind, fields = {}) {
+async function editKind(page, item, kind, fields = {}, subjectTitle) {
   await pickItem(page, item);
   await button(selected(page), a.catalog_1_1).click();
   const modal = page.getByRole("dialog");
@@ -37,8 +37,18 @@ async function editKind(page, item, kind, fields = {}) {
       hasText: kind === "data" ? "数据" : kind === "skill" ? "技能" : "规则",
     })
     .click();
-  for (const [label, value] of Object.entries(fields))
-    await modal.getByLabel(label, { exact: true }).fill(value);
+  for (const [label, value] of Object.entries(fields)) {
+    const input = modal.getByLabel(label, { exact: true });
+    await input.fill(value);
+    if (label === c.r4_rule_valid_from) await input.press("Enter");
+  }
+  if (subjectTitle) {
+    await modal.getByLabel(c.r4a1_legacy_subject, { exact: true }).click();
+    await page
+      .locator(".ant-select-item-option-content")
+      .getByText(subjectTitle, { exact: true })
+      .click();
+  }
   const decided = postResponse(page, "/changeset.decide_items:invoke");
   const applied = postResponse(page, "/changeset.apply:invoke");
   await button(modal, a.r2_save).click();
@@ -80,7 +90,7 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
     await expect(
       selected(page).locator("[data-governance-facts]"),
     ).toBeVisible();
-    await acceptItem(page, ready);
+    await pickItem(page, ready);
     const saved = (await readProposal(page, proposal.id)).items.find(
       (item) => item.id === ready.id,
     );
@@ -150,32 +160,57 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
     );
     expect(incomplete.length).toBeGreaterThan(0);
     for (const item of incomplete) expect(item.tier).not.toBe("sure");
+    const beforeBulk = await confirmOmissions(page, initial.id);
     const bulk = button(page, a.catalog_1_4);
-    if (await bulk.count()) {
-      const decided = postResponse(page, "/changeset.decide_items:invoke"),
-        applied = postResponse(page, "/changeset.apply:invoke");
-      await bulk.click();
-      expect((await decided).request().postDataJSON().only_ready).toBe(
-        true,
-      );
-      expect((await applied).ok()).toBe(true);
-    }
-    assertBatchExcluded(initial, await readProposal(page, initial.id));
-    let proposal = await confirmOmissions(page, initial.id);
+    await expect(bulk).toBeVisible();
+    const decided = postResponse(page, "/changeset.decide_items:invoke"),
+      applied = postResponse(page, "/changeset.apply:invoke");
+    await bulk.click();
+    expect((await decided).request().postDataJSON().only_ready).toBe(true);
+    expect((await applied).ok()).toBe(true);
+    let proposal = await readProposal(page, initial.id);
+    assertBatchExcluded(beforeBulk, proposal);
+    const misclassified = proposal.items.find(
+      (item) => item.after_data.kind === "skill" && item.decision === "pending",
+    );
+    expect(misclassified).toBeTruthy();
+    await acceptItem(page, misclassified);
+    const adopted = (await readProposal(page, initial.id)).items.find(
+      (item) => item.id === misclassified.id,
+    );
+    await editKind(
+      page,
+      adopted,
+      "rule",
+      {
+        [c.r4_rule_scope]: proposal.document_facts.scope.value,
+        [c.r4_rule_conditions]: "无附加适用条件",
+        [c.r4_rule_exceptions]: "无例外",
+        [c.r4_rule_valid_from]: "2026-01-01",
+      },
+      proposal.applicability_options[0].title,
+    );
+    const corrected = (await readProposal(page, initial.id)).items.find(
+      (item) => item.id === adopted.id,
+    );
+    expect(corrected.applied_entity_id).toBe(adopted.applied_entity_id);
+    expect(corrected.after_data.kind).toBe("rule");
+    expect(corrected.after_data.applies_to_id).toBe(
+      proposal.applicability_options[0].id,
+    );
+    expect(corrected.can_submit).toBe(true);
     const candidates = proposal.items.filter(
       (item) =>
         item.after_data.kind === "rule" &&
         item.gates?.passed &&
-        !item.applied_entity_id,
+        item.applied_entity_id,
     );
     expect(candidates.length).toBeGreaterThanOrEqual(3);
     const [blocked, discarded, ready] = candidates;
-    await acceptItem(page, blocked);
     await editKind(page, blocked, "data", {
       [c.r2_card_field_unit]: "",
       [c.r4_rule_grain]: "",
     });
-    await acceptItem(page, discarded);
     await editKind(page, discarded, "skill");
     proposal = await readProposal(page, initial.id);
     const skill = proposal.items.find((item) => item.id === discarded.id);
@@ -191,7 +226,7 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
       await read(page, "/api/v2/elements/" + skill.applied_entity_id)
     ).data;
     expect(archived.entity.status).toBe("archived");
-    await acceptItem(page, ready);
+    await pickItem(page, ready);
     proposal = await readProposal(page, initial.id);
     const blockedSaved = proposal.items.find((item) => item.id === blocked.id);
     expect(blockedSaved.can_submit).toBe(false);

@@ -114,7 +114,9 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
     edit?: CandidatePatch,
     onlyReady = false,
   ) {
-    const confirmRuleTarget = edit?.kind === 'rule' && items.some((item) => item.after_data.kind !== 'rule');
+    const confirmRuleTarget =
+      edit?.kind === 'rule' &&
+      items.some((item) => item.after_data.kind !== 'rule' && !item.applied_entity_id);
     return perform(
       async () => {
         const body: DecideItems = {
@@ -686,16 +688,24 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         open={!!editing}
         onCancel={() => !busy && setEditing(undefined)}
         okText={
-          draft.kind === 'rule' && editing?.after_data.kind !== 'rule'
+          draft.kind === 'rule' && editing?.after_data.kind !== 'rule' && !editing?.applied_entity_id
             ? copy.r4_rule_save_target
             : actions.r2_save
         }
         cancelText={actions.r2_cancel}
         confirmLoading={busy}
         okButtonProps={{
-          disabled: !!resource.refreshing || !!resource.error || !draft.title.trim() || !draft.content.trim(),
+          disabled:
+            !!resource.refreshing ||
+            !!resource.error ||
+            !draft.title.trim() ||
+            !draft.content.trim() ||
+            (draft.kind === 'rule' &&
+              editing?.after_data.kind !== 'rule' &&
+              !!editing?.applied_entity_id &&
+              !draft.applies_to_id),
           'aria-label':
-            draft.kind === 'rule' && editing?.after_data.kind !== 'rule'
+            draft.kind === 'rule' && editing?.after_data.kind !== 'rule' && !editing?.applied_entity_id
               ? copy.r4_rule_save_target
               : actions.r2_save,
         }}
