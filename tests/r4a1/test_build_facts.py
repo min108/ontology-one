@@ -138,3 +138,104 @@ class BuildFacts(unittest.TestCase):
         self.assertEqual(build.submission_blockers({"checks": [{**check, "denial_reason": "请先补齐"}]}), ["请先补齐"])
         hard = {**check, "code": "QG2", "can_waive": False}
         self.assertEqual(build.submission_blockers({"checks": [hard]}, {"QG2": "强行提交"}), ["缺少例外"])
+
+    def test_conditional_branches_are_not_absent_when_model_omits_fields(self) -> None:
+        cases = [
+            ("财务人员应及时审核；资料不齐全的，应通知补正。", "exceptions", "资料不齐全的，应通知补正"),
+            ("申请符合要求时办理；证明缺失的，须先补交。", "exceptions", "证明缺失的，须先补交"),
+            ("发现虚假票据的不予报销。", "conditions", "发现虚假票据的"),
+            ("存在安全隐患的必须暂停作业。", "conditions", "存在安全隐患的"),
+        ]
+        for quote, field, expected in cases:
+            with self.subTest(quote=quote):
+                result = self.enrich({"kind": "rule", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
+                self.assertIn(expected, result[field])
+                self.assertEqual(result["field_provenance"][field]["origin"], "source")
+
+    def test_model_governance_fields_require_own_locatable_evidence(self) -> None:
+        quote = "登记付款办理情况。"
+        for kind in ("data", "knowledge"):
+            with self.subTest(kind=kind):
+                result = self.enrich(
+                    {
+                        "kind": kind,
+                        "content": quote,
+                        "source_quotes": [{"quote": quote}],
+                        "definition": "每笔必须收十万元",
+                        "unit": "美元",
+                        "grain": "每日每部门",
+                        "boundary": "禁止非金融机构使用",
+                    },
+                    quote,
+                )
+                self.assertEqual(result["definition"], "登记付款办理情况")
+                self.assertEqual(result["unit"], "")
+                self.assertEqual(result["grain"], "")
+                self.assertEqual(result["boundary"], "")
+                for field in ("unit", "grain", "boundary"):
+                    self.assertNotIn(field, result["field_provenance"])
+                self.assertIn(result["definition"], result["field_provenance"]["definition"]["quote"])
+
+    def test_supported_measurement_and_boundary_have_individual_sources(self) -> None:
+        quote = "台账按份登记，以元计量，仅供合同付款核对使用。"
+        result = self.enrich(
+            {
+                "kind": "data",
+                "content": quote,
+                "source_quotes": [{"quote": quote}],
+                "definition": "台账",
+                "unit": "元",
+                "grain": "按份登记",
+                "boundary": "仅供合同付款核对使用",
+            },
+            quote,
+        )
+        for field in ("definition", "unit", "grain", "boundary"):
+            self.assertTrue(result[field])
+            self.assertEqual(result["field_provenance"][field]["origin"], "source")
+            self.assertIn(result[field], result["field_provenance"][field]["quote"])
+        missing = self.enrich({"kind": "data", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
+        self.assertEqual(missing["unit"], "")
+        self.assertEqual(missing["grain"], "")
+
+    def test_measurement_cannot_borrow_another_article_or_document(self) -> None:
+        quote = "第一条 登记付款办理情况。第二条 外汇结算以美元计量，每日每部门登记。"
+        result = self.enrich(
+            {
+                "kind": "data",
+                "content": "登记付款办理情况。",
+                "source_quotes": [{"quote": quote}],
+                "unit": "美元",
+                "grain": "每日每部门",
+                "boundary": "外汇结算",
+            },
+            quote,
+        )
+        self.assertEqual((result["unit"], result["grain"], result["boundary"]), ("", "", ""))
+        result = self.enrich(
+            {
+                "kind": "data",
+                "content": "登记付款办理情况。",
+                "source_quotes": [{"quote": "登记付款办理情况。"}],
+                "unit": "美元",
+            },
+            quote,
+        )
+        self.assertEqual(result["unit"], "")
+
+    def test_current_operative_date_survives_same_sentence_repeal(self) -> None:
+        positives = [
+            "本办法自2027年2月3日起施行，原办法同时废止。",
+            "第八条 本规定于2027-02-03生效；原规定（自2019年3月1日起施行）同时废止。",
+        ]
+        for text in positives:
+            fact = build.document_facts(text)["valid_from"]
+            self.assertEqual(fact["value"], "2027-02-03")
+            self.assertEqual(text[fact["start"] : fact["end"]], fact["quote"])
+            self.assertNotIn("2019", fact["quote"])
+        for text in [
+            "本办法自发布之日起施行，原办法自2019年3月1日起施行。",
+            "原办法自2019年3月1日起施行，本办法自发布之日起施行。",
+            "原文件说明（本办法自2019年3月1日起施行），现予废止。",
+        ]:
+            self.assertEqual(build.document_facts(text)["valid_from"]["value"], "")

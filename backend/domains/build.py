@@ -739,8 +739,9 @@ def document_facts(source_text: str) -> dict:
     for sentence in re.finditer(r"[^。\n]+(?:。|$)", source_text):
         quote = sentence.group().strip()
         start = sentence.start() + len(sentence.group()) - len(sentence.group().lstrip())
-        match = re.fullmatch(
-            prefix + r"(?:自|于)\s*(\d{4})[年-](\d{1,2})[月-](\d{1,2})日?\s*起?(?:施行|实施|执行|生效)[。；;]?", quote
+        match = re.match(
+            prefix + r"(?:自|于)\s*(\d{4})[年-](\d{1,2})[月-](\d{1,2})日?\s*起?(?:施行|实施|执行|生效)(?=$|[。；;，,])",
+            quote,
         )
         if match and not facts["valid_from"]["value"]:
             try:
@@ -750,9 +751,9 @@ def document_facts(source_text: str) -> dict:
             facts["valid_from"] = {
                 "value": value,
                 "origin": "document",
-                "quote": quote,
+                "quote": match.group(),
                 "start": start,
-                "end": start + len(quote),
+                "end": start + len(match.group()),
             }
         scope = re.fullmatch(prefix + r"适用于(.+?)[。]?", quote)
         if scope and not facts["scope"]["value"]:
@@ -810,8 +811,19 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
     own = "\n".join(quotes)
     result["bulk_confirmation_blocked"] = ambiguous
     origins = {}
-    if not result.get("definition") or candidate.get("extraction_mode") == "local":
-        result["definition"] = candidate.get("content", "").split("。", 1)[0]
+    # A generated paraphrase is not a source fact. Keep only a literal own-quote
+    # definition, otherwise use a short original sentence (never model content).
+    for field in ("definition", "unit", "grain", "boundary"):
+        value = result.get(field)
+        support = next((quote for quote in quotes if isinstance(value, str) and value.strip() and value in quote), "")
+        if not support:
+            value = ""
+            if field == "definition" and quotes:
+                value = re.split(r"[。；;\n]", quotes[0], maxsplit=1)[0].strip()[:250]
+                support = quotes[0] if value else ""
+        result[field] = value
+        if support:
+            origins[field] = {"origin": "source", "quote": support}
     for field in ("scope", "exceptions"):
         value = result.get(field)
         value = value if isinstance(value, str) and value.strip() and any(value in quote for quote in quotes) else ""
@@ -825,6 +837,13 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
             value = match.group(1).strip() if match else ""
         if field == "exceptions" and not value:
             match = re.search(r"[^。\n；]*(?:除外|确需|但)[^。\n；]*", own)
+            if not match:
+                # A negative conditional branch after a semicolon changes the
+                # ordinary rule even without an explicit “exception” label.
+                match = re.search(
+                    r"(?<=[；;])\s*[^。；;\n]{0,60}(?:不|未|缺|无法|不能|不足|争议|异议|逾期)[^。；;\n]{0,60}?的[，,][^。；;\n]{1,160}",
+                    own,
+                )
             value = match.group().strip() if match else ""
         result[field] = value
         if value:
@@ -851,6 +870,11 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
             r"(?:在|当|若|如果)[^，。；\n]{1,80}?(?:后|时|前)|[^，。；\n]{1,80}的(?=[，,])|(?:期满|完成|通过|收到)[^，。；\n]{0,60}?(?:后|时)",
             own,
         )
+        if not trigger:
+            trigger = re.search(
+                r"(?:发现|存在|发生|出现|遇到|未经|未按|未取得|不符合|不满足|符合|满足)[^，。；;\n]{1,80}?(?:的|者)(?=不予|不得|不应|不再|应|须|必须|予以)",
+                own,
+            )
         if trigger:
             conditions = [trigger.group().strip()]
     result["conditions"] = conditions
@@ -864,8 +888,6 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
     result["valid_to"] = ""
     if result["valid_from"]:
         origins["valid_from"] = dict(facts["valid_from"])
-    if result.get("definition") and quotes:
-        origins["definition"] = {"origin": "source", "quote": quotes[0]}
     result["field_provenance"] = origins
     if candidate["kind"] == "rule":
         suggest_applicability(conn, result)
