@@ -391,11 +391,12 @@ def get(ident: str) -> dict:
                 skill_id = item["applied_entity_id"]
                 href = "/skill-development"
                 if skill_id:
-                    managed = conn.execute(
-                        "SELECT 1 FROM skill_documents d JOIN entities e ON e.id=d.entity_id "
-                        "WHERE d.entity_id=? AND json_extract(e.payload,'$.managed_skill')=true",
+                    document = conn.execute(
+                        "SELECT e.payload FROM skill_documents d JOIN entities e ON e.id=d.entity_id "
+                        "WHERE d.entity_id=?",
                         (skill_id,),
                     ).fetchone()
+                    managed = bool(document and json.loads(document["payload"] or "{}").get("managed_skill"))
                     href += "/" + url_quote(skill_id, safe="") if managed else "?" + urlencode({"legacy": skill_id})
                 item["handoff"] = {"href": href, "label": "前往技能工作台完善"}
         result["can_submit"] = any(item["can_submit"] for item in result["items"])
