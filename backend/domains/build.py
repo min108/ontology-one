@@ -781,6 +781,31 @@ def anchored_document_facts(conn: db.Connection, material_id: str, source: dict)
     return facts
 
 
+def source_exception(own: str) -> tuple[str, bool]:
+    """Return a literal exception, or flag a possible alternative for individual review."""
+    unresolved = False
+    for clause in re.split(r"[。；;\n]", own):
+        # Explicit exclusion, relaxation or substitution of an obligation.
+        if re.search(
+            r"确需|(?<!不)但|另有规定|免予|免于|豁免|"
+            r"(?<![清消排扣解剔去切])除(?:外|非|[^，,。；;\n]{1,100}?外)|"
+            r"(?:可以|可|准予)免除|不受[^，,。；;\n]{1,80}?限制|"
+            r"(?:无|毋|勿)(?:需|须)|不(?:必|需要|用再|再要求)|"
+            r"(?:可以|可|允许)(?:不(?:经|再|予|履行|提交|执行)|省略|跳过|免[办审核报签检交缴])|不适用",
+            clause,
+        ):
+            return clause.strip(), False
+        # A separate special procedure can be described without an exemption verb.
+        # Its presence is enough to withhold a bulk negative; the reviewer determines the value.
+        if re.search(r"特殊(?:情况|情形|事项)|紧急|抢险|抢救|救灾|另行|另按|酌情|视情|变通|绿色通道", clause):
+            unresolved = True
+    negative_branch = re.search(
+        r"(?<=[；;])\s*[^。；;\n]{0,60}(?:不|未|缺|无法|不能|不足|争议|异议|逾期)[^。；;\n]{0,60}?的[，,][^。；;\n]{1,160}",
+        own,
+    )
+    return (negative_branch.group().strip(), False) if negative_branch else ("", unresolved)
+
+
 def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, facts: dict | None = None) -> dict:
     """Item facts must be literal own-quote facts; only file scope/date are shared."""
     result = dict(candidate)
@@ -839,23 +864,10 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
             )
             match = re.search(pattern, own)
             value = match.group(1).strip() if match else ""
-        if field == "exceptions" and not value:
-            for clause in re.split(r"[。；;\n]", own):
-                if re.search(
-                    r"除外|除非|确需|但|另有规定|免予|免于|豁免|"
-                    r"(?<![清消排扣解剔去切])除[^，,。；;\n]{1,100}?外|"
-                    r"(?:可以|可|准予)免除|不受[^，,。；;\n]{1,80}?限制",
-                    clause,
-                ):
-                    value = clause.strip()
-                    break
-            if not value:
-                # A subordinate negative branch can prescribe an exception without naming it.
-                match = re.search(
-                    r"(?<=[；;])\s*[^。；;\n]{0,60}(?:不|未|缺|无法|不能|不足|争议|异议|逾期)[^。；;\n]{0,60}?的[，,][^。；;\n]{1,160}",
-                    own,
-                )
-                value = match.group().strip() if match else ""
+        if field == "exceptions" and (not value or value in {"无例外", "没有例外"}):
+            literal, unresolved = source_exception(own)
+            value = literal or ("" if unresolved else value)
+            ambiguous |= unresolved
         result[field] = value
         if value:
             origins[field] = {"origin": "source", "quote": next(quote for quote in quotes if value in quote)}

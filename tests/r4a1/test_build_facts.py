@@ -164,6 +164,9 @@ class BuildFacts(unittest.TestCase):
             ("除紧急抢救外一律按顺序处理。", "exceptions", "除紧急抢救外一律按顺序处理"),
             ("所有申请须经复核，抢险救灾情形可免予复核。", "exceptions", "抢险救灾情形可免予复核"),
             ("临时通行证不受上述期限限制。", "exceptions", "临时通行证不受上述期限限制"),
+            ("所有申请均须复核，抢险救灾无需复核。", "exceptions", "抢险救灾无需复核"),
+            ("缴费凭证均需附卷；已核验电子凭证的不必重复提交。", "exceptions", "不必重复提交"),
+            ("常规事项逐级审查，危急时允许跳过初审。", "exceptions", "允许跳过初审"),
         ]
         for quote, field, expected in cases:
             with self.subTest(quote=quote):
@@ -172,7 +175,11 @@ class BuildFacts(unittest.TestCase):
                 self.assertEqual(result["field_provenance"][field]["origin"], "source")
 
     def test_unresolved_conditional_needs_human_and_unrelated_word_remains_ordinary(self) -> None:
-        for quote, blocked in [("若申请资料尚待核实。", True), ("清除合同外包装，登记办理情况。", False)]:
+        for quote, blocked in [
+            ("若申请资料尚待核实。", True),
+            ("常规事项逐级办理，紧急事项走绿色通道。", True),
+            ("清除合同外包装，登记办理情况。", False),
+        ]:
             with self.subTest(quote=quote):
                 result = self.enrich({"kind": "rule", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
                 self.assertFalse(result["conditions"])

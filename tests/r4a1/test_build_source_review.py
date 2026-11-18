@@ -114,6 +114,8 @@ class SourceReviewMySQL(unittest.TestCase):
         client = self.login("fixture.builder")
         for text, key, request, expected in [
             ("除紧急抢救外一律按顺序处理。", "exceptions", "confirm_no_exceptions_item_ids", "原文中已写明"),
+            ("所有申请均须复核，抢险救灾无需复核。", "exceptions", "confirm_no_exceptions_item_ids", "原文中已写明"),
+            ("一般事项逐级办理，紧急事项走绿色通道。", "exceptions", "confirm_no_exceptions_item_ids", "请先逐条核对"),
             (
                 "所有申请须经复核，抢险救灾情形可免予复核。",
                 "exceptions",
