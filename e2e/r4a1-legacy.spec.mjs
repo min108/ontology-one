@@ -14,6 +14,7 @@ import {
   assertDialogActionsVisible,
   assertPublishedRepair,
   assertVisibleFacts,
+  assertReviewOrigins,
 } from "./r4a1-legacy-contracts.mjs";
 
 const application =
@@ -350,6 +351,20 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
       "ordinary regulation must yield a submit-ready rule after batch confirmation",
     ).toBeTruthy();
     await acceptItem(builder.page, rule);
+    const manualScope =
+      "公司总部及所属单位的采购、工程和服务合同付款，按经办部门分别核对";
+    const selectedRule = builder.page.locator("[data-selected-item-id]");
+    await button(selectedRule, a.catalog_1_1).click();
+    const editing = builder.page.getByRole("dialog", { name: a.catalog_1_1 });
+    await editing
+      .getByLabel(c.r4_rule_scope, { exact: true })
+      .fill(manualScope);
+    const edited = postResponse(builder.page, "/changeset.decide_items:invoke");
+    const reapplied = postResponse(builder.page, "/changeset.apply:invoke");
+    await button(editing, a.r2_save).click();
+    expect((await edited).ok()).toBe(true);
+    expect((await reapplied).ok()).toBe(true);
+    await expect(editing).not.toBeVisible();
     await submitReady(builder.page);
     const submitted = await readProposal(builder.page, proposal.id);
     const applied = submitted.items.find((item) => item.id === rule.id);
@@ -358,6 +373,10 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
     await reviewer.page.goto("/govern/reviews");
     await reviewer.page.locator(`[data-review-item-id="${id}"]`).click();
     const current = reviewer.page.locator(`[data-review-id="${id}"]`);
+    await current
+      .locator("summary")
+      .filter({ hasText: c.r4a1_legacy_facts })
+      .click();
     const saved = await detail(reviewer.page, id);
     const fields = saved.gates.fields.filter(
       (field) =>
@@ -366,6 +385,7 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
         ) || field.key.startsWith("subject:"),
     );
     expect(fields.filter((field) => field.value)).toHaveLength(5);
+    assertReviewOrigins(fields, manualScope);
     expect(fields.find((field) => field.key === "valid_from").value).toBe(
       "2026-01-01",
     );
@@ -378,6 +398,14 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
         })),
       );
     assertVisibleFacts(fields, await visible(current));
+    await expect(
+      current.locator('[data-governance-field="scope"]'),
+    ).toContainText(manualScope);
+    await expect(
+      current.locator(
+        '[data-governance-field="scope"] [data-fact-origin="editor"]',
+      ),
+    ).toBeVisible();
     expect(fields.some((field) => field.source === "source")).toBe(true);
     expect(fields.some((field) => field.source === "batch_confirmation")).toBe(
       true,
@@ -386,6 +414,14 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
     await button(reviewer.page, a.catalog_2_5).click();
     const modal = reviewer.page.getByRole("dialog", { name: a.catalog_2_5 });
     assertVisibleFacts(fields, await visible(modal));
+    await expect(
+      modal.locator('[data-governance-field="scope"]'),
+    ).toContainText(manualScope);
+    await expect(
+      modal.locator(
+        '[data-governance-field="scope"] [data-fact-origin="editor"]',
+      ),
+    ).toBeVisible();
     await expect(modal.getByText("2026-01-01", { exact: true })).toBeVisible();
     await assertNoLeaks(reviewer.page, "AB10 review and publication facts");
     await expect(button(modal, a.catalog_2_5)).toBeInViewport({ ratio: 1 });

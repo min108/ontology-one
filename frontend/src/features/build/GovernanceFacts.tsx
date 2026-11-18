@@ -12,11 +12,17 @@ const origins = {
   missing: copy.r4a1_legacy_origin_missing,
 };
 
-export function GovernanceFacts({ gates }: { gates?: GateResult | null }) {
+export function GovernanceFacts({
+  gates,
+  showHeading = true,
+}: {
+  gates?: GateResult | null;
+  showHeading?: boolean;
+}) {
   if (!gates?.fields?.length) return null;
   return (
     <section aria-label={copy.r4a1_legacy_facts} data-governance-facts>
-      <h3>{copy.r4a1_legacy_facts}</h3>
+      {showHeading && <h3>{copy.r4a1_legacy_facts}</h3>}
       <dl className={styles.stack}>
         {gates.fields.map((field) => (
           <div key={field.key} className={styles.metadata} data-governance-field={field.key}>

@@ -51,6 +51,23 @@ export function assertVisibleFacts(fields, rows) {
   }
 }
 
+export function assertReviewOrigins(fields, manualScope) {
+  assert.equal(
+    fields.find((field) => field.key === "scope")?.value,
+    manualScope,
+  );
+  assert.equal(fields.find((field) => field.key === "scope")?.source, "editor");
+  assert.equal(
+    fields.find((field) => field.key === "valid_from")?.value,
+    "2026-01-01",
+  );
+  assert.equal(
+    fields.find((field) => field.key === "valid_from")?.source,
+    "source",
+  );
+  assert.ok(fields.some((field) => field.source === "batch_confirmation"));
+}
+
 export function assertDialogActionsVisible(boxes, viewport) {
   assert.ok(boxes.length >= 2, "Both confirmation actions must exist");
   for (const box of boxes) {

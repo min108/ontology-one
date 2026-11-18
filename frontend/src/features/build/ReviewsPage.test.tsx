@@ -344,7 +344,9 @@ it('shows source-tagged facts and application reasons again in publication confi
     },
   ];
   open();
-  expect(await screen.findByText('2026-01-01')).toBeVisible();
+  expect(await screen.findByText('2026-01-01')).not.toBeVisible();
+  fireEvent.click(screen.getByText(terms.labels.r4a1_legacy_facts));
+  expect(screen.getByText('2026-01-01')).toBeVisible();
   expect(screen.getByText(/原件尚在归档，请先核对经办记录/)).toBeVisible();
   const approve = screen.getByRole('button', { name: terms.actions.catalog_2_5 });
   // A builder application is not a reviewer waiver.

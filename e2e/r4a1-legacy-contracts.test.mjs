@@ -4,6 +4,7 @@ import {
   assertDialogActionsVisible,
   assertPublishedRepair,
   assertVisibleFacts,
+  assertReviewOrigins,
 } from "./r4a1-legacy-contracts.mjs";
 
 test("AB7–9 counterexamples reject draft state, identity loss and missing application or waiver activity", () => {
@@ -89,4 +90,30 @@ test("publication footer counterexample rejects actions below the viewport", () 
   assert.throws(() =>
     assertDialogActionsVisible([boxes[0], null], { height: 768 }),
   );
+});
+
+test("AB10 requires an actual manual scope alongside extracted date and confirmed omissions", () => {
+  const scope = "总部采购与所属单位工程合同付款";
+  const fields = [
+    { key: "scope", value: scope, source: "editor" },
+    { key: "valid_from", value: "2026-01-01", source: "source" },
+    { key: "exceptions", value: "无例外", source: "batch_confirmation" },
+  ];
+  assertReviewOrigins(fields, scope);
+  for (const broken of [
+    fields.slice(1),
+    fields.map((field) =>
+      field.key === "scope" ? { ...field, source: "source" } : field,
+    ),
+    fields.map((field) =>
+      field.key === "scope"
+        ? { ...field, value: "unchanged extraction" }
+        : field,
+    ),
+    fields.map((field) =>
+      field.key === "valid_from" ? { ...field, source: "editor" } : field,
+    ),
+    fields.filter((field) => field.source !== "batch_confirmation"),
+  ])
+    assert.throws(() => assertReviewOrigins(broken, scope));
 });

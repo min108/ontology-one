@@ -332,7 +332,14 @@ function Inbox() {
                 <Link to={'/ontology/elements/' + encodeURIComponent(current.entity.id)}>
                   {copy.r4a1_legacy_details_link}
                 </Link>
-                <GovernanceFacts gates={current.gates} />
+                {!!current.gates?.fields?.length && (
+                  <FoldRow
+                    title={copy.r4a1_legacy_facts}
+                    summary={sentence(copy.r3_main_count, { count: current.gates.fields.length })}
+                  >
+                    <GovernanceFacts gates={current.gates} showHeading={false} />
+                  </FoldRow>
+                )}
                 {!current.gates?.fields?.length && conditions.length > 0 && (
                   <FoldRow
                     title={copy.r3_main_scope}
