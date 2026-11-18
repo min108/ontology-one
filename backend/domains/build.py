@@ -813,7 +813,6 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
         local_quotes.extend(grounded)
     quotes = local_quotes
     own = "\n".join(quotes)
-    result["bulk_confirmation_blocked"] = ambiguous
     origins = {}
     # A generated paraphrase is not a source fact. Keep only a literal own-quote
     # definition, otherwise use a short original sentence (never model content).
@@ -841,7 +840,12 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
             value = match.group(1).strip() if match else ""
         if field == "exceptions" and not value:
             for clause in re.split(r"[。；;\n]", own):
-                if re.search(r"除外|除非|确需|但|另有规定|除[^，,。；;\n]{1,100}?(?:以外|之外|外[，,])", clause):
+                if re.search(
+                    r"除外|除非|确需|但|另有规定|免予|免于|豁免|"
+                    r"(?<![清消排扣解剔去切])除[^，,。；;\n]{1,100}?外|"
+                    r"(?:可以|可|准予)免除|不受[^，,。；;\n]{1,80}?限制",
+                    clause,
+                ):
                     value = clause.strip()
                     break
             if not value:
@@ -869,9 +873,14 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
         if match:
             conditions = [match.group(1).strip()]
     # Separate branches can have different triggers, including two amounts in the same article.
+    conditional = r"(?:如果|假如|若|一旦|倘若|倘使|凡是|凡|如(?:遇|有|需|发现|发生|无法|未|不)|当(?!(?:事人|前|月|地)))"
     for clause in re.split(r"[。；;\n]", own):
         clause = re.sub(r"^\s*第[一二三四五六七八九十百零\d]+条\s*", "", clause)
         if any(value in clause for value in conditions):
+            continue
+        introduced = re.search(r"(?:^|(?<=[，,]))\s*(" + conditional + r"[^，,。；;\n]{1,100})(?=[，,])", clause)
+        if introduced:
+            conditions.append(introduced.group(1))
             continue
         trigger = re.search(
             r"(?:在|当|若|如果)[^，,。；;\n]{1,80}?(?:后|时|前)|[^，,。；;\n]{1,80}的(?=[，,])|(?:期满|完成|通过|收到)[^，,。；;\n]{0,60}?(?:后|时)",
@@ -884,6 +893,10 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
             )
         if trigger:
             conditions.append(trigger.group().strip())
+        elif re.search(r"(?:^|[，,])\s*" + conditional, clause):
+            # An explicit conditional without a reliable boundary needs a human reading.
+            ambiguous = True
+    result["bulk_confirmation_blocked"] = ambiguous
     result["conditions"] = conditions
     if conditions:
         origins["conditions"] = {"origin": "source", "quote": next(quote for quote in quotes if conditions[0] in quote)}
@@ -1168,9 +1181,7 @@ def confirm_facts(ident: str, body: dict) -> dict:
             ):
                 if item["id"] in selected:
                     if source_candidate.get("bulk_confirmation_blocked"):
-                        raise ApiError(
-                            "VALIDATION_FAILED", "引文包含多条要求，请先逐条核对条件和例外，不可批量确认为无。"
-                        )
+                        raise ApiError("VALIDATION_FAILED", "请先逐条核对引文中的条件和例外，不可批量确认为无。")
                     if source_candidate.get(key):
                         raise ApiError("VALIDATION_FAILED", "原文中已写明条件或例外，请逐条核对，不可批量确认为无。")
                     if after.get(key):

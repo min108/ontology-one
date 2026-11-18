@@ -110,6 +110,42 @@ class SourceReviewMySQL(unittest.TestCase):
             self.assertEqual(facts[key]["source"], "missing")
             self.assertEqual(facts[key]["value"], "")
 
+    def test_explicit_exemptions_and_conditions_reject_negative_confirmation_on_reread(self) -> None:
+        client = self.login("fixture.builder")
+        for text, key, request, expected in [
+            ("除紧急抢救外一律按顺序处理。", "exceptions", "confirm_no_exceptions_item_ids", "原文中已写明"),
+            (
+                "所有申请须经复核，抢险救灾情形可免予复核。",
+                "exceptions",
+                "confirm_no_exceptions_item_ids",
+                "原文中已写明",
+            ),
+            (
+                "若发现虚假票据，财务部门一律退回报销申请。",
+                "conditions",
+                "confirm_unconditional_item_ids",
+                "原文中已写明",
+            ),
+            ("若申请资料尚待核实。", "conditions", "confirm_unconditional_item_ids", "请先逐条核对"),
+        ]:
+            with self.subTest(text=text):
+                proposal = self.synthetic_proposal(client, "rule", text, {})
+                item = proposal["items"][0]
+                after = item["after_data"]
+                if after[key]:
+                    self.assertEqual(after["field_provenance"][key]["origin"], "source")
+                    self.assertIn(after["field_provenance"][key]["quote"], text)
+                else:
+                    self.assertTrue(after["bulk_confirmation_blocked"])
+                response = client.post(
+                    "/api/v2/capabilities/changeset.confirm_facts:invoke",
+                    json={"changeset_id": proposal["id"], request: [item["id"]]},
+                )
+                self.assertEqual(response.status_code, 422, response.text)
+                self.assertIn(expected, response.text)
+                saved = self.invoke(client, "changeset.get", {"changeset_id": proposal["id"]})
+                self.assertEqual(saved["items"][0]["after_data"], after)
+
     def test_supported_fields_persist_individual_source_and_knowledge_mapping(self) -> None:
         client = self.login("fixture.builder")
         cases = [

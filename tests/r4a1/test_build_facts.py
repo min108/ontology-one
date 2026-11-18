@@ -159,12 +159,25 @@ class BuildFacts(unittest.TestCase):
             ("申请符合要求时办理；证明缺失的，须先补交。", "exceptions", "证明缺失的，须先补交"),
             ("发现虚假票据的不予报销。", "conditions", "发现虚假票据的"),
             ("存在安全隐患的必须暂停作业。", "conditions", "存在安全隐患的"),
+            ("若发现虚假票据，财务部门一律退回报销申请。", "conditions", "若发现虚假票据"),
+            ("一旦发生账户冻结，出纳须通知经办人。", "conditions", "一旦发生账户冻结"),
+            ("除紧急抢救外一律按顺序处理。", "exceptions", "除紧急抢救外一律按顺序处理"),
+            ("所有申请须经复核，抢险救灾情形可免予复核。", "exceptions", "抢险救灾情形可免予复核"),
+            ("临时通行证不受上述期限限制。", "exceptions", "临时通行证不受上述期限限制"),
         ]
         for quote, field, expected in cases:
             with self.subTest(quote=quote):
                 result = self.enrich({"kind": "rule", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
                 self.assertIn(expected, result[field])
                 self.assertEqual(result["field_provenance"][field]["origin"], "source")
+
+    def test_unresolved_conditional_needs_human_and_unrelated_word_remains_ordinary(self) -> None:
+        for quote, blocked in [("若申请资料尚待核实。", True), ("清除合同外包装，登记办理情况。", False)]:
+            with self.subTest(quote=quote):
+                result = self.enrich({"kind": "rule", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
+                self.assertFalse(result["conditions"])
+                self.assertFalse(result["exceptions"])
+                self.assertIs(result["bulk_confirmation_blocked"], blocked)
 
     def test_model_governance_fields_require_own_locatable_evidence(self) -> None:
         quote = "登记付款办理情况。"

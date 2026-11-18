@@ -803,7 +803,7 @@ TERMS = json.loads(
     'r4a1_extraction_summary":"自动重试 {retries} 批，弃用 {d'
     'iscarded} 条候选。","r4a1_extraction_discarded":"未通过'
     '逐字引用或格式校验的候选未进入本方案；请对照原文检查是否还有遗漏。","r4a1_ambiguo'
-    'us_facts":"原文跨越多条，请逐条核对条件和例外后填写。","r4a1_legacy_r'
+    'us_facts":"请逐条核对引文中的条件和例外，再填写本条。","r4a1_legacy_r'
     'ule_cases_hint":"用例预期结果可填写“符合、不符、不适用、待核实”。","r4a'
     '1_legacy_decision_conflict":"同一项不能同时豁免和拒绝，请保留一种决'
     '定及其理由。","r4a1_submit_totals":"已提交 {s} 条；待补充 {r} '
