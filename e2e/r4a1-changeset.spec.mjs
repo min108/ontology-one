@@ -97,7 +97,7 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
     const entity = (
       await read(page, "/api/v2/elements/" + saved.applied_entity_id)
     ).data;
-    expect(entity.entity.meta.valid_from).toBe("2026-01-01");
+    expect(entity.entity._meta.valid_from).toBe("2026-01-01");
     expect(entity.gates.passed).toBe(true);
     await evidence(page, "r4a1-ab1-facts", {
       changeset_id: proposal.id,

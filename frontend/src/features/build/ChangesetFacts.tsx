@@ -50,7 +50,9 @@ export function ChangesetFacts({
         {copy.r4a1_file_date_apply}
       </Button>
       {date && !validCalendarDate(date) && <span role="alert">{copy.r4a1_invalid_date}</span>}
-      <span className={styles.muted}>{fact?.quote || copy.r4a1_file_date_missing}</span>
+      <span className={styles.muted}>
+        {fact?.quote || (fact?.value ? copy.r4a1_origin_manual : copy.r4a1_file_date_missing)}
+      </span>
     </div>
   );
 }

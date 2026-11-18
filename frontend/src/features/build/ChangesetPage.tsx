@@ -334,11 +334,17 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                           {terms.kinds[item.after_data.kind as keyof typeof terms.kinds] || copy.unknown_kind}
                         </span>
                         <span className={styles['pick-state']}>
-                          {isHandledElsewhere(item)
-                            ? copy.r3_main_elsewhere
-                            : terms.statuses.decision[
-                                item.decision as keyof typeof terms.statuses.decision
-                              ] || copy.unknown_status}
+                          {isSubmitted(item)
+                            ? copy.r4a1_item_submitted
+                            : isHandledElsewhere(item)
+                              ? copy.r3_main_elsewhere
+                              : item.applied_entity_id && item.can_submit
+                                ? copy.r4a1_item_ready
+                                : item.applied_entity_id && item.decision !== 'rejected'
+                                  ? copy.r4a1_item_applied
+                                  : terms.statuses.decision[
+                                      item.decision as keyof typeof terms.statuses.decision
+                                    ] || copy.unknown_status}
                         </span>
                         {item.gates && !item.gates.passed && (
                           <span>{item.gates.blockers?.[0] || copy.r4_gates_fail}</span>
@@ -458,8 +464,14 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               <div className={styles.actions}>
                 <KindTag kind={current.after_data.kind} />
                 <StatusTag
-                  domain="decision"
-                  status={isHandledElsewhere(current) ? 'processed_elsewhere' : current.decision}
+                  domain={isSubmitted(current) ? 'element' : 'decision'}
+                  status={
+                    isSubmitted(current)
+                      ? current.applied_status!
+                      : isHandledElsewhere(current)
+                        ? 'processed_elsewhere'
+                        : current.decision
+                  }
                 />
               </div>
               <h2>{current.after_data.title}</h2>

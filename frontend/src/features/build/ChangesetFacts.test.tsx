@@ -52,6 +52,10 @@ it('does not invent a file date and displays the source quote for an extracted d
   rerender(<ChangesetFacts key="extracted" proposal={value} disabled={false} onConfirm={confirm} />);
   expect(screen.getByLabelText(terms.labels.r4a1_file_date)).toHaveValue('2026-01-01');
   expect(screen.getByText(value.document_facts!.valid_from.quote!)).toBeVisible();
+  value.document_facts!.valid_from = { value: '2026-02-01', origin: 'manual', actor_id: 'builder' };
+  rerender(<ChangesetFacts key="manual" proposal={value} disabled={false} onConfirm={confirm} />);
+  expect(screen.getByText(terms.labels.r4a1_origin_manual)).toBeVisible();
+  expect(screen.queryByText(terms.labels.r4a1_file_date_missing)).not.toBeInTheDocument();
 });
 it('explicit batch confirmation sends only missing active rules and their version guards', () => {
   const value = proposal();
