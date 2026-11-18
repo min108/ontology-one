@@ -97,13 +97,10 @@ test("R4-A.1 AB12 AB14 migrated unknown kind edits normally and malformed old ru
     const id = "R4A1-OLD-MEMO",
       before = await entity(page, id);
     expect(before.kind).toBe("memo");
-    await page.goto(`/ontology/elements/${id}`);
+    await page.goto(`/assets/${id}`);
     await expect(
       page.getByRole("heading", { name: before.title, exact: true }),
     ).toBeVisible();
-    await page
-      .getByRole("link", { name: c.r3_main_edit_draft, exact: true })
-      .click();
     await button(page, "编辑内容").click();
     const edit = page.getByRole("dialog"),
       content = before.payload.content + " 已核对。";
@@ -190,7 +187,8 @@ test("R4-A.1 AB14 malformed candidate edit is rejected atomically and its review
       item,
       after.items.find((value) => value.id === item.id),
     );
-    await button(edit, "取消").click();
+    await edit.getByRole("button", { name: /^取\s*消$/ }).click();
+    await expect(edit).not.toBeVisible();
     await page.reload();
     await expect(
       page.locator(`button[data-item-id="${item.id}"]`),
