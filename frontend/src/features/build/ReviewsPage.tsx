@@ -72,6 +72,9 @@ function Inbox() {
   const approvalBlocked = blocked || failedChecks.length > 0;
   const confirmedGatesBlocked =
     confirmation?.decision === 'approve_publish' && gateBlockers(confirmedRow?.gates, waivers).length > 0;
+  const decisionConflict =
+    confirmation?.decision === 'return' &&
+    (['QG1', 'QG3'] as const).some((code) => !!waivers[code]?.trim() && !!denials[code]?.trim());
   const sources = current?.source_refs || [];
   const conditionValue: unknown = current?.entity.payload.conditions;
   const conditions = (Array.isArray(conditionValue) ? conditionValue : [conditionValue])
@@ -109,6 +112,7 @@ function Inbox() {
     if (
       confirmationBlocked ||
       confirmedGatesBlocked ||
+      decisionConflict ||
       !confirmation ||
       (confirmation.decision === 'return' && !reason.trim()) ||
       signal?.aborted
@@ -129,7 +133,7 @@ function Inbox() {
             ),
           }
         : {}),
-      ...(confirmation.decision === 'approve_publish' && Object.values(waivers).some((value) => value?.trim())
+      ...(Object.values(waivers).some((value) => value?.trim())
         ? {
             waivers: Object.fromEntries(
               Object.entries(waivers)
@@ -406,6 +410,7 @@ function Inbox() {
           disabled:
             confirmationBlocked ||
             confirmedGatesBlocked ||
+            decisionConflict ||
             (confirmation?.decision === 'return' && !reason.trim()),
         }}
       >
@@ -427,15 +432,22 @@ function Inbox() {
         )}
         {confirmation?.decision === 'return' && (
           <>
+            {decisionConflict && <Alert type="warning" title={copy.r4a1_legacy_decision_conflict} />}
             {(confirmedRow?.gates?.checks || [])
               .filter((check) => check.application_reason && (check.code === 'QG1' || check.code === 'QG3'))
               .map((check) => (
                 <label className={styles.field} key={check.code}>
                   {check.label} · {copy.r4a1_legacy_denial}
+                  {waivers[check.code as 'QG1' | 'QG3']?.trim() && (
+                    <p>
+                      {copy.r4_gate_waiver}：{waivers[check.code as 'QG1' | 'QG3']}
+                    </p>
+                  )}
                   <p>
                     {copy.r4a1_legacy_application}：{check.application_reason}
                   </p>
                   <Input.TextArea
+                    aria-label={`${check.label} · ${copy.r4a1_legacy_denial}`}
                     rows={2}
                     maxLength={500}
                     value={denials[check.code as 'QG1' | 'QG3'] || ''}

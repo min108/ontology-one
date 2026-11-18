@@ -359,3 +359,42 @@ it('shows source-tagged facts and application reasons again in publication confi
   expect(within(dialog).getByText(/原件尚在归档，请先核对经办记录/)).toBeVisible();
   expect(within(dialog).getByText(/已核对经办记录，批准本次出处豁免/)).toBeVisible();
 });
+
+it('keeps per-check waiver and refusal decisions disjoint when returning an application', async () => {
+  current.gates = gates(['QG1', 'QG3']);
+  current.gates.checks[0].application_reason = legacyFixture.reviewApplication;
+  current.gates.checks[2].application_reason = legacyFixture.manualApplication;
+  open();
+  await screen.findByRole('button', { name: terms.actions.catalog_2_6 });
+  fireEvent.change(screen.getByLabelText(fixture.sourceLabel + ' · ' + terms.labels.r4_gate_waiver), {
+    target: { value: legacyFixture.reviewWaiver },
+  });
+  fireEvent.click(screen.getByRole('button', { name: terms.actions.catalog_2_6 }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.change(within(dialog).getByLabelText(terms.labels.r3_main_return_reason), {
+    target: { value: 'Complete the applicability conditions' },
+  });
+  fireEvent.change(
+    within(dialog).getByLabelText(fixture.sourceLabel + ' · ' + terms.labels.r4a1_legacy_denial),
+    { target: { value: 'Conflicting decision' } },
+  );
+  const confirm = within(dialog).getByRole('button', { name: terms.actions.catalog_2_6 });
+  expect(confirm).toBeDisabled();
+  fireEvent.click(confirm);
+  expect(vi.mocked(api).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+  fireEvent.change(
+    within(dialog).getByLabelText(fixture.sourceLabel + ' · ' + terms.labels.r4a1_legacy_denial),
+    { target: { value: '' } },
+  );
+  fireEvent.change(
+    within(dialog).getByLabelText(fixture.conditionsLabel + ' · ' + terms.labels.r4a1_legacy_denial),
+    { target: { value: 'Missing applicability boundary' } },
+  );
+  fireEvent.click(confirm);
+  await waitFor(() => expect(current.entity.status).toBe('returned'));
+  const post = vi.mocked(api).mock.calls.find(([, init]) => init?.method === 'POST');
+  expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+    waivers: { QG1: legacyFixture.reviewWaiver },
+    waiver_denials: { QG3: 'Missing applicability boundary' },
+  });
+});

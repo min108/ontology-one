@@ -70,6 +70,7 @@ async function blockedToRepair(page, id) {
   expect(response.ok()).toBe(false);
   await expect(modal.getByRole("alert")).toBeVisible();
   await expect(modal.getByText(c.r4a1_legacy_sod)).toBeVisible();
+  await screenshot(page, "r4a1-legacy-blocked");
   await modal
     .getByRole("link", { name: c.r4a1_legacy_repair, exact: true })
     .click();
@@ -192,6 +193,15 @@ test("R4-A.1 AB7: manual data application reaches independent review but missing
     await expect(button(builder.page, c.r4a1_legacy_submit)).toBeDisabled();
     await repair(builder.page, created.entity.id);
     // The same editor cannot approve the newly submitted content from either view.
+    await builder.page.goto("/assets/" + created.entity.id);
+    const selfReview = await oldAction(
+      builder.page,
+      "审核通过",
+      "尝试审核本人登记的内容。",
+    );
+    expect(selfReview.response.status()).toBe(403);
+    await expect(selfReview.modal.getByRole("alert")).toBeVisible();
+    await button(selfReview.modal, "取消").click();
     await builder.page.goto("/govern/reviews");
     await builder.page
       .locator(`[data-review-item-id="${created.entity.id}"]`)

@@ -71,6 +71,11 @@ export function GateChecklist({
                   {copy.r4a1_legacy_application}：{check.application_reason}
                 </p>
               )}
+              {check.denial_reason && (
+                <p>
+                  {copy.r4a1_legacy_denial}：{check.denial_reason}
+                </p>
+              )}
               {onRepair && check.status === 'fail' && (
                 <Button autoInsertSpace={false} disabled={disabled} onClick={() => onRepair(check.code)}>
                   {copy.r4a1_legacy_repair}
