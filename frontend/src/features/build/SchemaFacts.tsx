@@ -64,6 +64,8 @@ export function SchemaFacts({ value, direction }: { value: string; direction: 'i
   } catch {
     /* Unreadable structures belong only in technical details. */
   }
+  if (!Object.keys(schema).length && description(value) && !['{', '['].includes(value.trimStart()[0]))
+    return <p data-schema-business>{value}</p>;
   const rows: { title: string; details: string[] }[] = [];
   function visit(node: Schema, prefix = '', depth = 0) {
     if (depth > 4 || rows.length >= 60) return;

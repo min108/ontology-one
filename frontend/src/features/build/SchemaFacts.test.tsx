@@ -55,3 +55,12 @@ it('does not leak malformed structured text or invent missing fields', () => {
   expect(container).not.toHaveTextContent(raw);
   expect(screen.queryByText(fixture.amountLabel)).not.toBeInTheDocument();
 });
+it('preserves an existing plain business input declaration', () => {
+  render(
+    <MemoryRouter>
+      <SchemaFacts value={fixture.amountLabel} direction="inputs" />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText(fixture.amountLabel)).toBeVisible();
+  expect(screen.queryByText(terms.labels.r4a1_schema_pending)).not.toBeInTheDocument();
+});
