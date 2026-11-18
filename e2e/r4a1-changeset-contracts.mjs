@@ -137,3 +137,59 @@ export function assertAllOrdinaryRulesReady(before, after, expectedArticles) {
   }
   return expected;
 }
+
+export function assertDocumentScope(
+  proposal,
+  source,
+  expectedValue,
+  expectedQuote,
+) {
+  const fact = proposal.document_facts.scope;
+  assert.equal(
+    fact.value,
+    expectedValue,
+    "current-file general scope is exact",
+  );
+  assert.equal(
+    fact.quote,
+    expectedQuote,
+    "scope quotes the full current-file sentence",
+  );
+  assert.ok(source.includes(expectedQuote));
+  assert.equal(fact.material_id, proposal.source_material_id);
+  assert.ok(
+    fact.anchor_id && fact.source_version,
+    "default scope is anchored to a real source version",
+  );
+  let inherited = 0;
+  for (const item of proposal.items.filter(
+    (item) => item.after_data.kind === "rule",
+  )) {
+    assert.equal(item.after_data.scope, expectedValue);
+    const provenance = item.after_data.field_provenance.scope;
+    if (provenance.origin === "document") {
+      inherited++;
+      for (const field of [
+        "quote",
+        "anchor_id",
+        "source_version",
+        "material_id",
+      ])
+        assert.equal(
+          provenance[field],
+          fact[field],
+          "inherited scope retains current-file provenance",
+        );
+    } else {
+      assert.equal(provenance.origin, "source");
+      assert.ok(
+        item.evidence.some(
+          (evidence) =>
+            evidence.quote.includes(provenance.quote) &&
+            evidence.quote.includes(expectedValue),
+        ),
+      );
+    }
+  }
+  assert.ok(inherited > 0, "default scope is inherited by ordinary rules");
+}

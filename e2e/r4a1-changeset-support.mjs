@@ -50,11 +50,13 @@ export async function startRegulation(
   await expect(dialog).toBeVisible();
   const starting = postResponse(page, "/recipe.start:invoke");
   await button(dialog, "开始整理").click();
-  expect((await starting).ok()).toBe(true);
+  const startedResponse = await starting;
+  expect(startedResponse.ok()).toBe(true);
+  const startedRecipe = (await startedResponse.json()).data;
   await expect(button(page, "核对建设方案")).toBeVisible({ timeout: 180_000 });
   if (stopAtIntake) {
-    const runId = new URL(page.url()).searchParams.get("run");
-    const recipe = (await read(page, "/api/v2/recipes/" + runId)).data;
+    const recipe = (await read(page, "/api/v2/recipes/" + startedRecipe.id))
+      .data;
     return {
       proposal: await readProposal(page, recipe.changeset_id),
       text,

@@ -17,6 +17,7 @@ import {
   assertPartialSubmission,
   assertBatchExcluded,
   assertAllOrdinaryRulesReady,
+  assertDocumentScope,
 } from "./r4a1-changeset-contracts.mjs";
 const output = process.env.E2E_EVIDENCE_DIR;
 async function evidence(page, name, data) {
@@ -131,13 +132,23 @@ for (const [name, forbidden] of [
   }) => {
     const { page, context } = await login(browser, "modeler");
     try {
-      const { proposal } = await startRegulation(page, name);
+      const { proposal, text } = await startRegulation(page, name);
       assertDocumentDate(proposal, "");
       expect(proposal.document_facts.valid_from.value).not.toBe(forbidden);
       await expect(
         page.getByLabel(c.r4a1_file_date, { exact: true }),
       ).toHaveValue("");
       expect(proposal.document_facts.scope.value).toBeTruthy();
+      if (name === "regulation-history") {
+        const scope =
+          "公司全体员工因公出差发生的交通费、住宿费和伙食补助的报销";
+        assertDocumentScope(
+          proposal,
+          text,
+          scope,
+          "第二条 本规定适用于" + scope + "。",
+        );
+      }
       await setFileDate(page, "2026-02-01");
       const saved = await readProposal(page, proposal.id);
       assertDocumentDate(saved, "2026-02-01");
@@ -191,6 +202,38 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
     const adopted = (await readProposal(page, initial.id)).items.find(
       (item) => item.id === misclassified.id,
     );
+    const changesetUrl = page.url();
+    const handoffUrl = new URL(adopted.handoff.href, changesetUrl);
+    expect(handoffUrl.pathname).toBe("/skill-development");
+    expect(handoffUrl.searchParams.get("legacy")).toBe(
+      adopted.applied_entity_id,
+    );
+    await page
+      .getByRole("link", { name: adopted.handoff.label, exact: true })
+      .click();
+    const conversion = page.getByRole("dialog", {
+      name: "继续建设已有技能",
+      exact: true,
+    });
+    await expect(conversion).toBeVisible();
+    const originalSkill = (
+      await read(page, "/api/v2/elements/" + adopted.applied_entity_id)
+    ).data.entity;
+    expect(originalSkill.id).toBe(adopted.applied_entity_id);
+    expect(originalSkill.title).toBe(adopted.after_data.title);
+    await conversion
+      .getByLabel("技能建设需求", { exact: true })
+      .fill("按年度检查合同付款资料，输出缺项及其原文依据。");
+    await expect(button(conversion, "开始建设技能")).toBeEnabled();
+    await evidence(page, "r4a1-specialized-handoff", {
+      entity_id: originalSkill.id,
+      conversion_visible: true,
+      passed: true,
+    });
+    await button(conversion, "取消").click();
+    await page.goto(changesetUrl);
+    await pickItem(page, adopted);
+
     await editKind(
       page,
       adopted,
@@ -232,25 +275,6 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
     await expect(
       page.getByRole("link", { name: skill.handoff.label, exact: true }),
     ).toHaveAttribute("href", skill.handoff.href);
-    const changesetUrl = page.url();
-    await page
-      .getByRole("link", { name: skill.handoff.label, exact: true })
-      .click();
-    await expect(page).toHaveURL((url) => url.pathname === skill.handoff.href);
-    await expect(
-      page.getByRole("heading", {
-        name: skill.after_data.title,
-        exact: true,
-        level: 1,
-      }),
-    ).toBeVisible();
-    await evidence(page, "r4a1-specialized-handoff", {
-      entity_id: skill.applied_entity_id,
-      passed: true,
-    });
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.goto(changesetUrl);
-    await pickItem(page, skill);
     const rejecting = postResponse(page, "/changeset.decide_items:invoke");
     await button(selected(page), a.catalog_1_2).click();
     expect((await rejecting).ok()).toBe(true);

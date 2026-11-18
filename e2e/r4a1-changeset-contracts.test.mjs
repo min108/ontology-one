@@ -99,3 +99,40 @@ test("every expected rule must pass and facts cannot leak from its neighbor", as
     assertAllOrdinaryRulesReady(before, fakeDocumentCondition, articles),
   );
 });
+
+test("document scope must be exact and inherited from its anchored current-file sentence", async () => {
+  const { assertDocumentScope } =
+    await import("./r4a1-changeset-contracts.mjs");
+  const fact = {
+    value: "all employees business travel",
+    quote: "This policy applies to all employees business travel.",
+    origin: "document",
+    material_id: "M",
+    anchor_id: "A",
+    source_version: "V",
+  };
+  const proposal = {
+    source_material_id: "M",
+    document_facts: { scope: fact },
+    items: [
+      {
+        after_data: {
+          kind: "rule",
+          scope: fact.value,
+          field_provenance: { scope: { ...fact } },
+        },
+      },
+    ],
+  };
+  assertDocumentScope(proposal, fact.quote, fact.value, fact.quote);
+  const wrong = structuredClone(proposal);
+  wrong.document_facts.scope.value = "historical budget scope";
+  assert.throws(() =>
+    assertDocumentScope(wrong, fact.quote, fact.value, fact.quote),
+  );
+  const inherited = structuredClone(proposal);
+  inherited.items[0].after_data.field_provenance.scope.source_version = "OLD";
+  assert.throws(() =>
+    assertDocumentScope(inherited, fact.quote, fact.value, fact.quote),
+  );
+});
