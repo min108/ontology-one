@@ -134,24 +134,32 @@ def prepare(box, external):
             builder.create(
                 ident, prefix + "-" + title, payload={"definition": "已审核的业务数据标准", "unit": "无量纲"}
             )
-            builder.prepare_publication(ident)
-            for actor, action in ((builder, "submit"), (reviewer, "approve"), (reviewer, "publish")):
-                actor.ok("POST", "/entities/" + ident + "/action", json={"action": action, "reason": "QA异人审核标准"})
         builder.create("MCP-HIDDEN", prefix + "-未发布内容", payload={"definition": "不能穿透未发布节点"})
-        database = box.tenant_db(tenant)
-        for ident, left, right, status in [
-            ("EDGE-1", "MCP-KEY", "MCP-AMOUNT", "confirmed"),
-            ("EDGE-2", "MCP-AMOUNT", "MCP-TEXT", "confirmed"),
-            ("EDGE-HIDDEN", "MCP-KEY", "MCP-HIDDEN", "confirmed"),
-            ("EDGE-PENDING", "MCP-KEY", "MCP-TEXT", "candidate"),
-        ]:
-            box.sql(
-                "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-                (ident, left, right, "references_data", "QA审核关系", status, "{}"),
-                database,
-            )
+        visible_edges = set()
+        for left, right, confirm in (
+            ("MCP-KEY", "MCP-AMOUNT", True),
+            ("MCP-AMOUNT", "MCP-TEXT", True),
+            ("MCP-KEY", "MCP-HIDDEN", True),
+            ("MCP-KEY", "MCP-TEXT", False),
+        ):
+            edge = builder.ok(
+                "POST",
+                "/v2/capabilities/relation.propose:invoke",
+                json={"source": left, "target": right, "type": "references_data", "reason": "核对测试数据项之间的引用"},
+            ).json()["data"]
+            assert edge["status"] == "candidate"
+            if confirm:
+                reviewer.ok(
+                    "POST",
+                    "/v2/capabilities/relation.decide:invoke",
+                    json={"relation_id": edge["id"], "status": "confirmed", "reason": "独立核对两端业务含义"},
+                )
+                if right != "MCP-HIDDEN":
+                    visible_edges.add(edge["id"])
+        for ident in ("MCP-KEY", "MCP-AMOUNT", "MCP-TEXT"):
+            builder.publish(ident, reviewer)
         kinds = ["mysql", "mcp"] if tenant == "sub-01" else ["mysql"]
-        records[tenant] = {}
+        records[tenant] = {"visible_edges": visible_edges}
         for kind in kinds:
             config = (
                 {
@@ -372,7 +380,8 @@ async def run_checks(box, external, ui_access=None):
         assert all(item["owner_tenant_id"] == "sub-01" and "payload" not in item for item in data["entities"])
         data = success(await caller.call(token(), "ontology_traverse", {"entity_id": "MCP-KEY", "depth": 3}))
         assert {item["id"] for item in data["nodes"]} == {"MCP-KEY", "MCP-AMOUNT", "MCP-TEXT"}
-        assert {item["id"] for item in data["edges"]} == {"EDGE-1", "EDGE-2"}
+        assert len(records["sub-01"]["visible_edges"]) == 2
+        assert {item["id"] for item in data["edges"]} == records["sub-01"]["visible_edges"]
         limited = success(
             await caller.call(token(), "ontology_traverse", {"entity_id": "MCP-KEY", "max_nodes": 1}), partial=True
         )

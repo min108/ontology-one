@@ -74,7 +74,7 @@ def preserve_review_identity(old: dict, payload: dict, changes: dict | None = No
 
 
 def editor_ids(entity: dict) -> set[str]:
-    meta = entity["payload"].get("r2_review") or {}
+    meta = (entity.get("payload") or {}).get("r2_review") or {}
     return {
         value
         for value in [*(meta.get("editor_ids") or []), meta.get("last_editor_id"), meta.get("submitted_by")]
