@@ -183,7 +183,8 @@ class BuildWorkflow(unittest.TestCase):
                 "UPDATE entities SET payload=JSON_SET(payload,'$.judgement','旧判定文本') WHERE id=?", (ident,)
             )
             conn.execute(
-                "UPDATE changeset_items SET after_data=JSON_SET(after_data,'$.waiver_applications',CAST('null' AS JSON)) WHERE id=?",
+                "UPDATE changeset_items SET after_data=JSON_SET(after_data,"
+                "'$.waiver_applications',CAST('null' AS JSON)) WHERE id=?",
                 (item["id"],),
             )
         reopened = client.get(path)
