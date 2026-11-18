@@ -87,6 +87,12 @@ class ElementCard(TypedDict):
     sources: NotRequired[list[str]]
 
 
+class ApplicabilityOption(TypedDict):
+    id: str
+    title: str
+    kind: str
+
+
 class ElementDetail(TypedDict):
     __pydantic_config__ = ConfigDict(extra="allow")
 
@@ -95,6 +101,7 @@ class ElementDetail(TypedDict):
     versions: list[ElementVersion]
     can_edit: bool
     gates: NotRequired[GateResult]
+    applicability_options: NotRequired[list[ApplicabilityOption]]
 
 
 class ElementDetailResult(StrictModel):

@@ -28,6 +28,7 @@ class ReviewDecision(ReviewGet):
     version: int = Field(ge=1)
     reason: str = Field(default="", max_length=500)
     waivers: GateWaivers | None = None
+    waiver_denials: GateWaivers | None = None
 
 
 def declaration(ident: str, title: str, model: type[StrictModel], *, write: bool = False) -> Callable:
@@ -71,5 +72,6 @@ def decide_review(ctx: CapabilityContext, body: ReviewDecision) -> BuildResult:
             body.version,
             body.reason,
             waivers=body.waivers.model_dump(exclude_none=True) if body.waivers else None,
+            waiver_denials=body.waiver_denials.model_dump(exclude_none=True) if body.waiver_denials else None,
         )
     )

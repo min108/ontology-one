@@ -11,6 +11,7 @@ from backend.relation_semantics import RELATION_SEMANTICS
 
 DERIVED_TYPES = frozenset(
     {
+        "applies_to",
         "has_property",
         "link_source",
         "link_target",
@@ -28,6 +29,7 @@ DERIVED_TYPES = frozenset(
     }
 )
 TARGET_KINDS = {
+    "applies_to": {"organization", "position", "person", "party", "object_type"},
     "has_property": {"data"},
     "link_source": {"object_type"},
     "link_target": {"object_type"},
@@ -84,6 +86,7 @@ def derived_edges(entity: dict) -> list[dict]:
     elif kind == "metric":
         add("measures", payload.get("object_type"))
     elif kind == "rule":
+        add("applies_to", payload.get("applies_to_id"))
         add("governs", (payload.get("judgement") or {}).get("applies_to", {}).get("object_type"))
     elif kind == "person":
         add("holds_position", payload.get("position_id"))

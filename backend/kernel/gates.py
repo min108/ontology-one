@@ -200,16 +200,35 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
             payload.get("org_id") if kind == "position" else payload.get("unified_code") or payload.get("identity")
         )
     complete = True
+    missing = []
+    expression_error = facts.get("expression_error", "")
     if kind == "rule":
-        complete = all(plain(payload.get(key)) for key in ("scope", "conditions", "exceptions")) and _dates(meta)
-        if payload.get("judgement"):
-            complete = complete and facts.get("tests", False)
+        from backend.kernel.rules import validate_judgement_shape
+
+        try:
+            validate_judgement_shape(payload)
+        except ValueError as error:
+            expression_error = str(error)
+    if kind == "rule":
+        missing = [
+            label
+            for key, label in (("scope", "适用范围"), ("conditions", "适用条件"), ("exceptions", "例外"))
+            if not plain(payload.get(key))
+        ]
+        if not meta.get("valid_from"):
+            missing.append("生效日期")
+        elif not _dates(meta):
+            missing.append("有效的生效日期和失效日期（失效日期不得早于生效日期）")
+        if payload.get("judgement") and not facts.get("tests", False):
+            missing.append("判定式用例（至少两个且全部通过）")
+        complete = not missing and not expression_error
     elif kind == "metric" and payload.get("formula"):
         complete = facts.get("tests", False)
     elif kind == "knowledge":
-        complete = bool(plain(payload.get("conditions") or payload.get("usage_conditions"))) and bool(
-            plain(payload.get("boundary"))
-        )
+        missing = [] if plain(payload.get("conditions") or payload.get("usage_conditions")) else ["使用条件"]
+        if not plain(payload.get("boundary")):
+            missing.append("使用边界")
+        complete = not missing
     elif kind == "skill":
         complete = all(payload.get(key) for key in ("inputs", "outputs", "steps")) and facts.get("tests", False)
     elif kind == "process":
@@ -217,9 +236,17 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
     outcomes = (evidence, meaning, complete, facts.get("relations", False), facts.get("snapshot", False))
     reasons = (
         "请补充可逐字定位的原文出处。" if not hard else "时限、金额或审批要求须有制度原文依据；目前依据不足，待确认。",
-        "请补充一句话定义、单位与粒度或身份标识，并处理同名不同义的内容。",
-        "请补齐适用范围、条件、例外和生效日期；有判定式时至少两个用例全部通过。"
-        if kind == "rule"
+        "已有同名内容《" + str(entity.get("title", "")) + "》使用不同定义，请核对现有内容或归档不用的草稿。"
+        if facts.get("duplicate")
+        else "请补充一句话定义、单位与粒度或身份标识。",
+        (
+            "；".join(
+                (["请补充：" + "、".join(missing)] if missing else [])
+                + ([expression_error] if expression_error else [])
+            )
+            + "。"
+        )
+        if kind in {"rule", "knowledge"}
         else "请补齐用例并运行通过。"
         if kind == "metric"
         else "请补齐起点、终点和至少两个连通步骤，确认每步的经办方与依据或结果。"
@@ -253,9 +280,34 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
     return _result(checks, hard_constraint=hard)
 
 
+def submission_eligibility(result: dict, applications: dict | None = None) -> bool:
+    return all(
+        item["status"] != "fail"
+        or (
+            item["can_waive"]
+            and not (item.get("denial_reason") and not (applications or {}).get(item["code"]))
+            and bool(str((applications or {}).get(item["code"], item.get("application_reason", ""))).strip())
+        )
+        for item in result["checks"]
+    )
+
+
 def _result(checks: list[dict], *, hard_constraint: bool = False) -> dict:
     blockers = [f"{item['label']}：{item['reason']}" for item in checks if item["status"] == "fail"]
-    return {"passed": not blockers, "checks": checks, "blockers": blockers, "hard_constraint": hard_constraint}
+    submission_blockers = [
+        f"{item['label']}：{item['reason']}"
+        for item in checks
+        if item["status"] == "fail"
+        and not (item["can_waive"] and item.get("application_reason") and not item.get("denial_reason"))
+    ]
+    return {
+        "passed": not blockers,
+        "ready_to_submit": not submission_blockers,
+        "submission_blockers": submission_blockers,
+        "checks": checks,
+        "blockers": blockers,
+        "hard_constraint": hard_constraint,
+    }
 
 
 def _valid_reference(conn: db.Connection, ref: object) -> tuple[bool, bool]:
@@ -401,6 +453,8 @@ def _fingerprint(entity: dict, meta: dict) -> str:
     data = {key: entity.get(key) for key in ("id", "kind", "title", "summary", "domain")}
     data["payload"] = {key: value for key, value in entity.get("payload", {}).items() if key != "r2_review"}
     data["meta"] = {key: meta.get(key) for key in ("valid_from", "valid_to", "module_id", "subtype")}
+    data["revision_id"] = _object(entity.get("payload", {}).get("r2_review")).get("revision_id")
+    data["field_sources"] = _object(meta.get("gates")).get("field_sources", {})
     return hashlib.sha256(
         json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -432,6 +486,7 @@ def check_entity(
         rows = conn.execute(
             "SELECT e.payload FROM entities e JOIN entity_meta m ON m.entity_id=e.id "
             "WHERE e.id<>? AND e.title=? AND e.kind=? AND COALESCE(m.module_id,'MOD-DEFAULT')=? "
+            "AND e.status NOT IN ('archived','discarded') "
             "AND COALESCE(json_extract(e.payload,'$.active_asset'),1)!=0",
             (entity["id"], entity["title"], entity["kind"], meta.get("module_id") or "MOD-DEFAULT"),
         )
@@ -439,11 +494,15 @@ def check_entity(
             plain(_object(row["payload"]).get("definition")) != plain(payload.get("definition")) for row in rows
         )
     tests = True
-    if payload.get("judgement") or (entity["kind"] == "metric" and payload.get("formula")):
+    expression_error = ""
+    if (entity["kind"] == "rule" and "judgement" in payload) or (entity["kind"] == "metric" and payload.get("formula")):
         try:
-            tests = run_cases(conn, entity)["passed"]
-        except (ValueError, ApiError):
+            report = run_cases(conn, entity)
+            tests = report["passed"]
+            expression_error = "；".join(report.get("errors", []))
+        except (ValueError, ApiError) as error:
             tests = False
+            expression_error = str(error)
     elif entity["kind"] == "skill":
         # Only the controlled package's latest matching proof is trusted.
         tests = bool(package_facts and package_facts["tests"])
@@ -473,6 +532,7 @@ def check_entity(
         "step_evidence": step_evidence,
         "duplicate": duplicate,
         "tests": tests,
+        "expression_error": expression_error,
         "snapshot": snapshot,
         "relations": _relations_pass(
             conn, entity, proposed_relations, declared_empty=bool(package_facts and package_facts["relations"])
@@ -483,6 +543,16 @@ def check_entity(
     stored = _object(meta.get("gates"))
     fingerprint = _fingerprint(original, meta)
     for item in result["checks"]:
+        application = _object(stored.get("applications")).get(item["code"], {})
+        if item["can_waive"] and item["status"] == "fail" and application.get("fingerprint") == fingerprint:
+            item.update(
+                application_reason=application.get("reason", ""),
+                application_by=application.get("name", ""),
+                application_at=application.get("at", ""),
+            )
+        denial = _object(stored.get("denials")).get(item["code"], {})
+        if denial.get("fingerprint") == fingerprint:
+            item["denial_reason"] = denial.get("reason", "")
         waiver = stored.get("waivers", {}).get(item["code"], {})
         if (
             item["can_waive"]
@@ -491,7 +561,12 @@ def check_entity(
             and waiver.get("reason")
         ):
             item.update(status="waived", waiver_reason=waiver["reason"], reason="审核人员已记录豁免理由。")
-    return _result(result["checks"], hard_constraint=result["hard_constraint"])
+    from backend.kernel.gate_fields import project
+
+    return {
+        **_result(result["checks"], hard_constraint=result["hard_constraint"]),
+        "fields": project(conn, original, meta),
+    }
 
 
 def persist(conn: db.Connection, entity: dict, result: dict) -> None:
@@ -505,10 +580,14 @@ def persist(conn: db.Connection, entity: dict, result: dict) -> None:
     )
 
 
-def enforce(conn: db.Connection, entity: dict) -> dict:
+def enforce(conn: db.Connection, entity: dict, *, stage: str = "release") -> dict:
     result = check_entity(conn, entity)
-    if not result["passed"]:
-        raise ApiError("GATE_NOT_PASSED", "还差：" + "；".join(result["blockers"]), details={"gates": result})
+    if not result["ready_to_submit" if stage == "submit" else "passed"]:
+        raise ApiError(
+            "GATE_NOT_PASSED",
+            "还差：" + "；".join(result["blockers"]),
+            details={"gates": result, "repair_href": "/assets/" + entity["id"]},
+        )
     persist(conn, entity, result)
     return result
 
@@ -525,6 +604,9 @@ def waive(conn: db.Connection, entity: dict, reasons: dict[str, str]) -> dict:
         raise ApiError("VALIDATION_FAILED", "口径、关系和版本三项不能豁免。")
     if any(not isinstance(reason, str) or not reason.strip() or len(reason) > 500 for reason in reasons.values()):
         raise ApiError("VALIDATION_FAILED", "豁免必须写明接受此项缺口的理由。")
+    from backend.domains.reviews import ensure_independent
+
+    ensure_independent(entity)
     identity = entity["payload"].get("r2_review", {})
     if person.user_id in {identity.get("last_editor_id"), identity.get("submitted_by")}:
         raise ApiError("SEPARATION_OF_DUTIES")
@@ -544,8 +626,14 @@ def waive(conn: db.Connection, entity: dict, reasons: dict[str, str]) -> dict:
         ).fetchone()
         if document and person.user_id in {document["last_editor_id"], document["submitted_by"]}:
             raise ApiError("SEPARATION_OF_DUTIES")
+    if entity["status"] != "review":
+        raise ApiError("PRECONDITION_FAILED", "请先提交申请，由独立审核人员在待审核内容中办理。")
     meta = get_meta(conn, entity["id"]) or sync_meta(conn, entity)
     stored = _object(meta.get("gates"))
+    current = {item["code"]: item for item in check_entity(conn, entity)["checks"]}
+    for code in reasons:
+        if identity.get("revision_id") and not current[code].get("application_reason"):
+            raise ApiError("PRECONDITION_FAILED", "建设人员尚未为此项缺口提交有效申请说明。")
     waivers = stored.setdefault("waivers", {})
     fingerprint = _fingerprint(entity, meta)
     for code, reason in reasons.items():
@@ -571,3 +659,86 @@ def check(entity_id: str) -> dict:
         if not entity:
             raise ApiError("NOT_FOUND")
         return check_entity(conn, entity)
+
+
+def record_field_sources(conn: db.Connection, entity: dict, sources: dict) -> None:
+    from backend.kernel.gate_fields import record
+
+    record(conn, entity, sources)
+
+
+def _application_reasons(reasons: dict) -> dict[str, str]:
+    if not isinstance(reasons, dict) or set(reasons) - {"QG1", "QG3"}:
+        raise ApiError("VALIDATION_FAILED", "仅出处和条件两项可逐项申请豁免。")
+    if any(not isinstance(value, str) or not value.strip() or len(value) > 500 for value in reasons.values()):
+        raise ApiError("VALIDATION_FAILED", "请逐项填写不超过500字的申请说明或办理理由。")
+    return {key: value.strip() for key, value in reasons.items()}
+
+
+def apply_for_waiver(conn: db.Connection, entity: dict, applications: dict) -> dict:
+    from backend.kernel.metadata import get_meta, sync_meta
+
+    person = require_context()
+    if person.readonly or person.role not in {"admin", "modeler"}:
+        raise ApiError("PERMISSION_DENIED")
+    if entity["status"] not in {"draft", "returned"}:
+        raise ApiError("PRECONDITION_FAILED", "请在草稿中填写申请说明后提交审核。")
+    applications = _application_reasons(applications)
+    from backend.domains.reviews import record_editor
+
+    record_editor(entity, person.user_id)
+    conn.execute(
+        "UPDATE entities SET payload=? WHERE id=?", (json.dumps(entity["payload"], ensure_ascii=False), entity["id"])
+    )
+    result = check_entity(conn, entity)
+    current = {item["code"]: item for item in result["checks"]}
+    if any(current[code]["status"] != "fail" for code in applications):
+        raise ApiError("VALIDATION_FAILED", "只需为尚未通过的出处或条件项申请豁免。")
+    meta = get_meta(conn, entity["id"]) or sync_meta(conn, entity)
+    stored = _object(meta.get("gates"))
+    stored["applications"] = {}
+    fingerprint = _fingerprint(entity, meta)
+    for code, reason in applications.items():
+        stored["applications"][code] = {
+            "reason": reason,
+            "by": person.user_id,
+            "name": person.username,
+            "at": db.now(),
+            "fingerprint": fingerprint,
+            "version": entity["version"],
+        }
+        db.log(conn, entity["id"], "申请发布检查豁免", f"{LABELS[int(code[-1]) - 1]}：{reason}", person.username)
+    if not applications:
+        db.log(conn, entity["id"], "申请发布检查豁免", "撤回本次豁免申请。", person.username)
+    stored.pop("denials", None)
+    conn.execute(
+        "UPDATE entity_meta SET gates=? WHERE entity_id=?", (json.dumps(stored, ensure_ascii=False), entity["id"])
+    )
+    return check_entity(conn, entity)
+
+
+def deny_applications(conn: db.Connection, entity: dict, reasons: dict) -> None:
+    from backend.domains.reviews import ensure_independent
+    from backend.kernel.metadata import get_meta
+
+    ensure_independent(entity)
+    reasons = _application_reasons(reasons)
+    checks = {item["code"]: item for item in check_entity(conn, entity)["checks"]}
+    meta = get_meta(conn, entity["id"]) or {}
+    stored = _object(meta.get("gates"))
+    for code, reason in reasons.items():
+        if not checks[code].get("application_reason"):
+            raise ApiError("PRECONDITION_FAILED", "这项申请不存在或内容已变更，请刷新后重新核对。")
+        stored.setdefault("denials", {})[code] = {
+            "reason": reason,
+            "fingerprint": _fingerprint(entity, meta),
+            "by": require_context().user_id,
+            "at": db.now(),
+        }
+        stored.setdefault("waivers", {}).pop(code, None)
+        db.log(
+            conn, entity["id"], "拒绝发布检查豁免", f"{LABELS[int(code[-1]) - 1]}：{reason}", require_context().username
+        )
+    conn.execute(
+        "UPDATE entity_meta SET gates=? WHERE entity_id=?", (json.dumps(stored, ensure_ascii=False), entity["id"])
+    )

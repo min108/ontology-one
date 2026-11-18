@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from backend import db
 from backend.asset_kinds import canonical_entity, canonical_kind
 from backend.kernel import rules
-from backend.kernel.kinds import get_kind, requires_quality_gates
+from backend.kernel.kinds import get_kind, persisted_kind, requires_quality_gates
 from backend.kernel.metadata import SNAPSHOT_META_FIELDS, get_meta, sync_meta
 from backend.kernel.schemas import validate_payload
 from backend.security.context import require_context
@@ -60,7 +60,7 @@ def _target(conn: db.Connection, ident: object, kinds: set[str] | None = None) -
     if not isinstance(ident, str) or not ident:
         raise HTTPException(422, "请填写有效的关联对象。")
     target = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (ident,)).fetchone())
-    if not target or target["payload"].get("active_asset") in (False, 0):
+    if not target or target["status"] == "archived" or target["payload"].get("active_asset") in (False, 0):
         raise HTTPException(422, "关联对象不存在或已成为历史内容。")
     if kinds and target["kind"] not in kinds:
         raise HTTPException(422, "关联对象的种类不正确。")
@@ -113,21 +113,16 @@ def _validate_references(conn: db.Connection, entity: dict) -> None:
                     _target(conn, basis["material_id"], {"material"})
 
 
-def _prepare(conn: db.Connection, entity: dict) -> dict:
+def _prepare(conn: db.Connection, entity: dict, *, legacy: bool = False) -> dict:
     result = deepcopy(entity)
     title = result.get("title")
     if not isinstance(title, str) or not title.strip():
         raise HTTPException(400, "请填写名称。")
     result["title"] = title.strip()
     try:
-        validate_payload(result["kind"], result["payload"])
-        judgement = result["payload"].get("judgement")
-        if (
-            result["kind"] == "rule"
-            and judgement is not None
-            and (not isinstance(judgement, dict) or not isinstance(judgement.get("applies_to", {}), dict))
-        ):
-            raise ValueError("规则的适用对象与核对条件格式不正确。")
+        validate_payload(result["kind"], result["payload"], allow_legacy=legacy)
+        if result["kind"] == "rule":
+            rules.validate_judgement_shape(result["payload"])
         _validate_references(conn, result)
         if result["kind"] in {"rule", "metric"}:
             from backend.kernel.gates import expression_context
@@ -143,11 +138,9 @@ def _prepare(conn: db.Connection, entity: dict) -> dict:
 def _preserve_review(old: dict, payload: dict, changes: dict) -> dict:
     from backend.domains.reviews import preserve_review_identity
 
-    if old["payload"].get("r2_review"):
-        return preserve_review_identity(old, payload, changes)
     result = {key: value for key, value in payload.items() if key != "r2_review"}
-    if get_kind(old["kind"]).governed:
-        result["r2_review"] = {"changeset_id": "", "last_editor_id": require_context().user_id}
+    if old["payload"].get("r2_review") or persisted_kind(old["kind"]).governed:
+        return preserve_review_identity(old, result, changes)
     return result
 
 
@@ -240,7 +233,12 @@ def create_draft(conn: db.Connection, body: dict) -> dict:
     entity = _prepare(conn, entity)
     entity["payload"].pop("r2_review", None)
     if definition.governed:
-        entity["payload"]["r2_review"] = {"changeset_id": "", "last_editor_id": require_context().user_id}
+        from backend.domains.reviews import record_editor
+
+        identity = record_editor(entity, require_context().user_id)
+        identity["changeset_id"] = ""
+        identity.pop("submitted_by", None)
+        identity.pop("submitted_at", None)
     updates = _meta_updates(body)
     conn.execute(
         "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,"
@@ -249,6 +247,9 @@ def create_draft(conn: db.Connection, body: dict) -> dict:
         tuple(json.dumps(value, ensure_ascii=False) if key == "payload" else value for key, value in entity.items()),
     )
     entity = sync_after_write(conn, entity, updates)
+    from backend.kernel.gate_fields import record_editor_changes
+
+    record_editor_changes(conn, entity, None)
     snapshot(conn, entity, "创建草稿")
     _enforce_identity_status(conn, entity)
     db.log(conn, ident, "创建", entity["title"])
@@ -260,30 +261,43 @@ def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
     check_version(old, changes)
     reason = _reason(changes.get("reason"), "内容修订")
     updates = _meta_updates(changes)
+    from backend.domains.reviews import record_editor
+    from backend.kernel.gate_fields import field_values, record_editor_changes
+
+    previous_fields = field_values(conn, old, get_meta(conn, old["id"]) or {})
     entity = deepcopy(old)
+    if "kind" in changes and changes["kind"] != old["kind"]:
+        try:
+            allowed = get_kind(changes["kind"]).governed and persisted_kind(old["kind"]).governed
+        except ValueError:
+            allowed = False
+        if old["status"] not in {"draft", "returned"} or not allowed:
+            raise HTTPException(422, "仅未提交的业务草稿可在核对后改种类。")
+        entity["kind"] = changes["kind"]
     for key in ("title", "summary", "domain", "status", "payload"):
         if key in changes:
             entity[key] = deepcopy(changes[key])
-    if get_kind(old["kind"]).governed:
+    if persisted_kind(old["kind"]).governed:
         if entity["status"] not in {old["status"], "draft"}:
             raise HTTPException(400, "请通过提交、审核和发布操作变更资产状态。")
         if old["status"] in {"published", "approved", "review"} and any(
-            key in changes for key in ("title", "summary", "domain", "org_id", "payload", "meta")
+            key in changes for key in ("title", "summary", "domain", "org_id", "payload", "meta", "waiver_applications")
         ):
             entity["status"] = "draft"
-    entity = _prepare(conn, entity)
+    entity = _prepare(conn, entity, legacy=True)
     _confirm_sentence(old, entity["payload"], changes)
     entity["payload"] = _preserve_review(old, entity["payload"], changes)
     current_meta = get_meta(conn, old["id"]) or {}
     if entity["payload"].get("r2_review") and any(current_meta.get(key) != value for key, value in updates.items()):
-        entity["payload"]["r2_review"].update(
-            last_editor_id=require_context().user_id, submitted_by=None, submitted_at=None
+        record_editor(
+            entity, require_context().user_id, fresh_revision=old["status"] in {"published", "approved", "archived"}
         )
     snapshot(conn, old, reason)
     entity.update(version=old["version"] + 1, updated_at=db.now())
     conn.execute(
-        "UPDATE entities SET title=?,summary=?,domain=?,status=?,payload=?,version=?,updated_at=? WHERE id=?",
+        "UPDATE entities SET kind=?,title=?,summary=?,domain=?,status=?,payload=?,version=?,updated_at=? WHERE id=?",
         (
+            entity["kind"],
             entity["title"],
             entity["summary"],
             entity["domain"],
@@ -295,6 +309,11 @@ def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
         ),
     )
     entity = sync_after_write(conn, entity, updates)
+    record_editor_changes(conn, entity, previous_fields)
+    if "waiver_applications" in changes:
+        from backend.kernel.gates import apply_for_waiver
+
+        apply_for_waiver(conn, entity, changes["waiver_applications"])
     _enforce_identity_status(conn, entity)
     db.log(conn, entity["id"], "修订", reason)
     return entity
@@ -305,11 +324,33 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
     if target not in STATUS_LABELS:
         raise HTTPException(400, "不支持此操作。")
     reason = _reason(reason, STATUS_LABELS[target])
+    from backend.domains.reviews import guard_marked_action, record_editor
+    from backend.kernel import gates
+
+    actions = {"review": "submit", "approved": "approve", "published": "publish", "returned": "return"}
+    if target in actions:
+        guard_marked_action(conn, old, {"action": actions[target], "reason": reason})
+    if requires_quality_gates(old["kind"]) and target in {"review", "approved", "published"}:
+        if target == "review":
+            gates.enforce(conn, old, stage="submit")
+        else:
+            gates.enforce(conn, old)
     snapshot(conn, old, reason)
-    entity = {**old, "status": target, "version": old["version"] + 1, "updated_at": db.now()}
+    entity = deepcopy(old)
+    if target == "draft" and persisted_kind(old["kind"]).governed:
+        record_editor(
+            entity, require_context().user_id, fresh_revision=old["status"] in {"published", "approved", "archived"}
+        )
+    entity.update(status=target, version=old["version"] + 1, updated_at=db.now())
     conn.execute(
-        "UPDATE entities SET status=?,version=?,updated_at=? WHERE id=?",
-        (entity["status"], entity["version"], entity["updated_at"], entity["id"]),
+        "UPDATE entities SET status=?,payload=?,version=?,updated_at=? WHERE id=?",
+        (
+            entity["status"],
+            json.dumps(entity["payload"], ensure_ascii=False),
+            entity["version"],
+            entity["updated_at"],
+            entity["id"],
+        ),
     )
     entity = sync_after_write(conn, entity)
     _enforce_identity_status(conn, entity)

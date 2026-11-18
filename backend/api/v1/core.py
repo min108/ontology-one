@@ -376,7 +376,6 @@ def entity_action_in_transaction(c, eid, b):
     if not old:
         raise HTTPException(404, "未找到内容。")
     from ...kernel import elements as element_kernel
-    from ...kernel.kinds import requires_quality_gates
     from ...skills import guard_generic_entity
 
     element_kernel.check_version(old, b)
@@ -388,9 +387,6 @@ def entity_action_in_transaction(c, eid, b):
         from ...authority import guard_action
 
         guard_action(c, old, b)
-    from ...domains.reviews import guard_marked_action
-
-    guard_marked_action(c, old, b)
     if act == "approve" and old["status"] != "review":
         raise HTTPException(400, "请先提交审核，再确认审核结果。")
     if act == "complete" and old["kind"] != "task":
@@ -399,10 +395,10 @@ def entity_action_in_transaction(c, eid, b):
         raise HTTPException(400, "请先审核通过，再发布成果。")
     if act == "return" and not str(b.get("reason", "")).strip():
         raise HTTPException(400, "请填写需要补充或修改的内容。")
-    if act in {"submit", "approve", "publish"} and requires_quality_gates(old["kind"]):
-        from ...kernel.gates import enforce
+    if act == "submit" and "waiver_applications" in b:
+        from ...kernel.gates import apply_for_waiver
 
-        enforce(c, old)
+        apply_for_waiver(c, old, b["waiver_applications"])
     element_kernel.transition(
         c,
         old,

@@ -143,6 +143,28 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
             if not original:
                 raise ApiError("NOT_FOUND")
             gate_result = gates.check_entity(conn, original)
+    options = []
+    if "build.edit" in ctx.permissions and not ctx.principal.readonly:
+        with closing(db.connect()) as conn:
+            options = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT id,title,kind FROM entities "
+                    "WHERE kind IN ('organization','position','person','party','object_type') "
+                    "AND status<>'archived' AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0 "
+                    "ORDER BY title,id LIMIT 500"
+                )
+            ]
+    if ctx.principal.readonly:
+        # Federated projections must not expose private field values, applicants or source text.
+        gate_result["fields"] = []
+        for check in gate_result["checks"]:
+            for key in ("application_reason", "application_by", "application_at", "denial_reason", "waiver_reason"):
+                check[key] = ""
+        entity.pop("_meta", None)
+    else:
+        # Gate storage includes stale decisions and internal fingerprints; expose only fresh projection.
+        entity.setdefault("_meta", {}).pop("gates", None)
     return ElementDetailResult(
         data={
             "entity": entity,
@@ -150,5 +172,6 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
             "versions": history,
             "can_edit": "build.edit" in ctx.permissions and not ctx.principal.readonly,
             "gates": gate_result,
+            "applicability_options": options,
         }
     )

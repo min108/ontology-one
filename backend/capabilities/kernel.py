@@ -34,6 +34,8 @@ class ElementCreate(StrictModel):
 
 
 class ElementUpdate(ElementGet):
+    kind: str | None = Field(default=None, min_length=1, max_length=64)
+    waiver_applications: GateWaivers | None = None
     version: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=1, max_length=250)
     summary: str | None = Field(default=None, max_length=16000)
@@ -47,6 +49,10 @@ class ElementUpdate(ElementGet):
 class ElementAction(ElementGet):
     version: int = Field(ge=1)
     reason: str = Field(min_length=1, max_length=500)
+
+
+class ElementSubmit(ElementAction):
+    waiver_applications: GateWaivers | None = None
 
 
 class ElementRestore(ElementAction):
@@ -140,6 +146,15 @@ def _action(body: ElementAction, action: str, allowed: set[str]) -> None:
         core.entity_action_in_transaction(
             conn, body.entity_id, {"action": action, "reason": body.reason, "expected_version": body.version}
         )
+
+
+@mutation("element.submit_draft", "提交要素审核", ElementSubmit)
+def submit_draft(ctx: CapabilityContext, body: ElementSubmit) -> ElementDetailResult:
+    changes = {"action": "submit", "expected_version": body.version, "reason": body.reason}
+    if body.waiver_applications is not None:
+        changes["waiver_applications"] = body.waiver_applications.model_dump(exclude_none=True)
+    core._entity_action(body.entity_id, changes)
+    return get_element(ctx, ElementGet(entity_id=body.entity_id))
 
 
 @mutation("element.start_revision", "发起要素修订", ElementAction)

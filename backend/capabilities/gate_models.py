@@ -14,10 +14,27 @@ class GateCheck(StrictModel):
     reason: str
     can_waive: bool
     waiver_reason: str = ""
+    application_reason: str = ""
+    application_by: str = ""
+    application_at: str = ""
+    denial_reason: str = ""
+
+
+class GateField(StrictModel):
+    key: str
+    label: str
+    value: str
+    source: Literal["source", "editor", "batch_confirmation", "legacy", "missing"]
+    source_quote: str = ""
+    confirmed_by: str = ""
+    href: str = ""
 
 
 class GateResult(StrictModel):
     passed: bool
+    ready_to_submit: bool = False
+    submission_blockers: list[str] = Field(default_factory=list)
+    fields: list[GateField] = Field(default_factory=list)
     hard_constraint: bool = False
     checks: list[GateCheck]
     blockers: list[str] = Field(default_factory=list)
