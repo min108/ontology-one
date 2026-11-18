@@ -274,7 +274,7 @@ function Element({ id }: { id: string }) {
             />
             {canRepair && (
               <ElementRepair
-                key={entity.id + ':' + entity.version}
+                key={`repair:${entity.id}:${entity.version}`}
                 detail={detail}
                 disabled={!!query.refreshing || !!query.error}
                 onSaved={(message) => {
@@ -285,7 +285,7 @@ function Element({ id }: { id: string }) {
             )}
             {professional && ['rule', 'metric'].includes(entity.kind) && (
               <RuleTests
-                key={entity.id + ':' + entity.version}
+                key={`tests:${entity.id}:${entity.version}`}
                 id={id}
                 disabled={!!query.refreshing || !!query.error}
                 onComplete={query.reload}

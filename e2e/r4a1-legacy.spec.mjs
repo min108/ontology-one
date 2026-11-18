@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
+import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
 import {
   c,
   a,
@@ -172,9 +173,14 @@ async function repair(page, id) {
     true,
   );
   await screenshot(page, "r4a1-element-repair");
-  const submitted = postResponse(page, "/element.submit_draft:invoke");
-  await button(panel, c.r4a1_legacy_submit).click();
-  expect((await submitted).status()).toBe(200);
+  await expect(panel).toHaveCount(1);
+  const submit = button(panel, c.r4a1_legacy_submit);
+  await expect(submit).toHaveCount(1);
+  const [submitted] = await Promise.all([
+    postResponse(page, "/element.submit_draft:invoke"),
+    submit.click(),
+  ]);
+  expect(submitted.status()).toBe(200);
   await expect(
     page.getByText(c.r4a1_legacy_submitted, { exact: true }),
   ).toBeVisible();
@@ -339,6 +345,7 @@ test("R4-A.1 AB9: old UI manually creates data and rule then repairs submits and
   const builder = await login(browser, "modeler"),
     reviewer = await login(browser, "reviewer");
   try {
+    await selectSavedViewMode(builder.page, "professional");
     for (const kind of ["data", "rule"]) {
       const created = await createOld(builder.page, kind);
       await blockedToRepair(builder.page, created.entity.id);
