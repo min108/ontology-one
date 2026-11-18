@@ -2,6 +2,7 @@ import { Alert, Button, Input } from 'antd';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { invokeCapability } from '../../api/client';
+import { useWorkspaceGuard } from '../../app/useWorkspaceGuard';
 import type {
   ElementSubmit,
   ElementDetail,
@@ -65,6 +66,7 @@ export function ElementRepair({
         (check.code === 'QG1' || check.code === 'QG3') &&
         (applications[check.code] || '') !== (check.application_reason || ''),
     );
+  useWorkspaceGuard(changed);
   async function save() {
     const signal = lifetime.current?.signal;
     if (busy || disabled || !reason.trim() || signal?.aborted) return;

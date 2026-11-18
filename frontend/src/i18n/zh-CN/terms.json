@@ -1280,7 +1280,7 @@
     "r4_rule_save_target": "保存并核对关系",
     "r4a1_legacy_repair": "去补齐",
     "r4a1_legacy_repair_title": "补齐发布内容",
-    "r4a1_legacy_repair_note": "补充真实的业务口径和适用边界。无法提供可定位出处或完整条件时，可逐项说明原因，交由其他审核人员决定是否豁免。",
+    "r4a1_legacy_repair_note": "补齐真实口径与适用边界；出处或条件无法补齐时，逐项说明原因并申请独立审核。",
     "r4a1_legacy_save": "保存补充",
     "r4a1_legacy_saved": "补充已保存，五项检查已更新。",
     "r4a1_legacy_submit": "提交独立审核",
@@ -1354,7 +1354,8 @@
     "r4a1_extraction_local_hint": "在线整理未完成，当前条目按本地原文保留，请逐条核对。",
     "r4a1_extraction_summary": "自动重试 {retries} 批，弃用 {discarded} 条候选。",
     "r4a1_extraction_discarded": "未通过逐字引用或格式校验的候选未进入本方案；请对照原文检查是否还有遗漏。",
-    "r4a1_ambiguous_facts": "原文跨越多条，请逐条核对条件和例外后填写。"
+    "r4a1_ambiguous_facts": "原文跨越多条，请逐条核对条件和例外后填写。",
+    "r4a1_legacy_rule_cases_hint": "用例预期结果可填写“符合、不符、不适用、待核实”。"
   },
   "states": {
     "loading": {

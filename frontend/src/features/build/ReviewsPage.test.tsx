@@ -1,3 +1,4 @@
+import legacyFixture from '../../../test-fixtures/r4a1-legacy-content.json';
 import fixture from '../../../test-fixtures/r4-semantic-content.json';
 import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -321,24 +322,24 @@ it('cannot approve or waive a missing required relation but can return it', asyn
 
 it('shows source-tagged facts and application reasons again in publication confirmation', async () => {
   current.gates = gates(['QG1']);
-  current.gates.checks[0].application_reason = '原件尚在归档，请先核对经办记录';
+  current.gates.checks[0].application_reason = legacyFixture.reviewApplication;
   current.gates.fields = [
     {
       key: 'valid_from',
-      label: '生效日期',
+      label: legacyFixture.dateLabel,
       value: '2026-01-01',
       source: 'source',
-      source_quote: '本规定自2026年1月1日起施行。',
+      source_quote: legacyFixture.dateQuote,
       confirmed_by: '',
       href: '',
     },
     {
       key: 'exceptions',
-      label: '例外',
-      value: '无其他例外',
+      label: legacyFixture.exceptionLabel,
+      value: legacyFixture.exceptionValue,
       source: 'batch_confirmation',
       source_quote: '',
-      confirmed_by: '核对人员',
+      confirmed_by: legacyFixture.reviewer,
       href: '',
     },
   ];
@@ -349,12 +350,12 @@ it('shows source-tagged facts and application reasons again in publication confi
   // A builder application is not a reviewer waiver.
   expect(approve).toBeDisabled();
   fireEvent.change(screen.getByLabelText(fixture.sourceLabel + ' · ' + terms.labels.r4_gate_waiver), {
-    target: { value: '已核对经办记录，批准本次出处豁免' },
+    target: { value: legacyFixture.reviewWaiver },
   });
   fireEvent.click(approve);
   const dialog = screen.getByRole('dialog');
   await waitFor(() => expect(within(dialog).getByText('2026-01-01')).toBeVisible());
-  expect(within(dialog).getByText('本规定自2026年1月1日起施行。')).toBeVisible();
+  expect(within(dialog).getByText(legacyFixture.dateQuote)).toBeVisible();
   expect(within(dialog).getByText(/原件尚在归档，请先核对经办记录/)).toBeVisible();
   expect(within(dialog).getByText(/已核对经办记录，批准本次出处豁免/)).toBeVisible();
 });

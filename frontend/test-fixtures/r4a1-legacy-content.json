@@ -1,0 +1,20 @@
+{
+  "application": "原件待归档，请独立核实",
+  "dateLabel": "生效日期",
+  "dateQuote": "本规定自2026年1月1日起施行。",
+  "exceptionLabel": "例外",
+  "exceptionValue": "无其他例外",
+  "reviewer": "核对人员",
+  "subjectLabel": "适用主体或对象",
+  "subjectValue": "采购部",
+  "reviewApplication": "原件尚在归档，请先核对经办记录",
+  "reviewWaiver": "已核对经办记录，批准本次出处豁免",
+  "definitionLabel": "定义",
+  "dataTitle": "实际付款",
+  "unit": "元",
+  "grain": "每笔付款",
+  "historicalNote": "保留内容",
+  "definition": "每笔实际支付的人民币金额",
+  "manualApplication": "手工登记，暂不能定位原始凭证；请核对银行回单。",
+  "unsavedDefinition": "尚未保存的定义"
+}

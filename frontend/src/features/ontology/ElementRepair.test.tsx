@@ -1,3 +1,4 @@
+import legacyFixture from '../../../test-fixtures/r4a1-legacy-content.json';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -15,7 +16,7 @@ function detail(): ElementDetail {
   checks.fields = [
     {
       key: 'definition',
-      label: '定义',
+      label: legacyFixture.definitionLabel,
       value: '',
       source: 'missing',
       source_quote: '',
@@ -27,13 +28,17 @@ function detail(): ElementDetail {
     entity: {
       id: 'data-1',
       kind: 'data',
-      title: '实际付款',
+      title: legacyFixture.dataTitle,
       summary: '',
       domain: '',
       status: 'draft',
       version: 2,
       activities: [],
-      payload: { unit: '元', grain: '每笔付款', historical_note: '保留内容' },
+      payload: {
+        unit: legacyFixture.unit,
+        grain: legacyFixture.grain,
+        historical_note: legacyFixture.historicalNote,
+      },
     },
     card: { one_liner: '', points: [], relations: [], usage: '' },
     versions: [],
@@ -52,10 +57,12 @@ it('keeps a missing definition non-waivable and requires saving the exact applic
   );
   expect(screen.getByRole('button', { name: copy.r4a1_legacy_submit })).toBeDisabled();
   expect(container.querySelector('[data-waiver-application-code="QG2"]')).toBeNull();
-  fireEvent.change(screen.getByLabelText('定义'), { target: { value: '每笔实际支付的人民币金额' } });
+  fireEvent.change(screen.getByLabelText(legacyFixture.definitionLabel), {
+    target: { value: legacyFixture.definition },
+  });
   fireEvent.change(
     screen.getByLabelText(current.gates!.checks[0].label + ' · ' + copy.r4a1_legacy_application),
-    { target: { value: '手工登记，暂不能定位原始凭证；请核对银行回单。' } },
+    { target: { value: legacyFixture.manualApplication } },
   );
   fireEvent.click(screen.getByRole('button', { name: copy.r4a1_legacy_save }));
   await waitFor(() => expect(onSaved).toHaveBeenCalledWith(copy.r4a1_legacy_saved));
@@ -63,8 +70,8 @@ it('keeps a missing definition non-waivable and requires saving the exact applic
     'element.update_draft',
     expect.objectContaining({
       version: 2,
-      payload: { ...current.entity.payload, definition: '每笔实际支付的人民币金额' },
-      waiver_applications: { QG1: '手工登记，暂不能定位原始凭证；请核对银行回单。' },
+      payload: { ...current.entity.payload, definition: legacyFixture.definition },
+      waiver_applications: { QG1: legacyFixture.manualApplication },
     }),
     expect.anything(),
   );
@@ -81,7 +88,9 @@ it('uses current server submission permission, and unsaved changes cannot submit
     </MemoryRouter>,
   );
   expect(screen.getByRole('button', { name: copy.r4a1_legacy_submit })).toBeEnabled();
-  fireEvent.change(screen.getByLabelText('定义'), { target: { value: '尚未保存的定义' } });
+  fireEvent.change(screen.getByLabelText(legacyFixture.definitionLabel), {
+    target: { value: legacyFixture.unsavedDefinition },
+  });
   expect(screen.getByRole('button', { name: copy.r4a1_legacy_submit })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: copy.r4a1_legacy_submit }));
   expect(invokeCapability).not.toHaveBeenCalled();

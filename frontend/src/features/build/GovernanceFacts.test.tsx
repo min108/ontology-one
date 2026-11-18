@@ -1,3 +1,4 @@
+import legacyFixture from '../../../test-fixtures/r4a1-legacy-content.json';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { expect, it } from 'vitest';
@@ -10,26 +11,26 @@ it('shows actual effective date, provenance, evidence and applicable subject lin
   result.fields = [
     {
       key: 'valid_from',
-      label: '生效日期',
+      label: legacyFixture.dateLabel,
       value: '2026-01-01',
       source: 'source',
-      source_quote: '本规定自2026年1月1日起施行。',
+      source_quote: legacyFixture.dateQuote,
       confirmed_by: '',
       href: '',
     },
     {
       key: 'exceptions',
-      label: '例外',
-      value: '无其他例外',
+      label: legacyFixture.exceptionLabel,
+      value: legacyFixture.exceptionValue,
       source: 'batch_confirmation',
       source_quote: '',
-      confirmed_by: '核对人员',
+      confirmed_by: legacyFixture.reviewer,
       href: '',
     },
     {
       key: 'subject:org',
-      label: '适用主体或对象',
-      value: '采购部',
+      label: legacyFixture.subjectLabel,
+      value: legacyFixture.subjectValue,
       source: 'editor',
       source_quote: '',
       confirmed_by: '',
@@ -42,10 +43,13 @@ it('shows actual effective date, provenance, evidence and applicable subject lin
     </MemoryRouter>,
   );
   expect(screen.getByText('2026-01-01')).toBeVisible();
-  expect(screen.getByText('本规定自2026年1月1日起施行。')).toBeVisible();
+  expect(screen.getByText(legacyFixture.dateQuote)).toBeVisible();
   expect(screen.getByText(terms.labels.r4a1_legacy_origin_source)).toBeVisible();
-  expect(screen.getByText(/批量确认/)).toHaveTextContent('核对人员');
-  expect(screen.getByRole('link', { name: '采购部' })).toHaveAttribute('href', '/assets/org');
+  expect(screen.getByText(/批量确认/)).toHaveTextContent(legacyFixture.reviewer);
+  expect(screen.getByRole('link', { name: legacyFixture.subjectValue })).toHaveAttribute(
+    'href',
+    '/assets/org',
+  );
   // Counterexample: absent date cannot retain the earlier real value or claim source extraction.
   result.fields = [{ ...result.fields[0], value: '', source: 'missing', source_quote: '' }];
   rerender(

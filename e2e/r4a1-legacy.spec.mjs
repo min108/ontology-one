@@ -163,9 +163,11 @@ async function publish(page, id) {
   await current
     .getByLabel(source.label + " · " + c.r4_gate_waiver, { exact: true })
     .fill(waiver);
+  await current.locator("[data-governance-facts]").scrollIntoViewIfNeeded();
   await screenshot(page, "r4a1-review-facts");
   await button(page, a.catalog_2_5).click();
   const modal = page.getByRole("dialog", { name: a.catalog_2_5 });
+  await expect(modal).toBeVisible();
   await expect(modal.locator("[data-waiver-application]")).toContainText(
     application,
   );
@@ -355,16 +357,13 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
       "2026-01-01",
     );
     const visible = async (scope) =>
-      scope
-        .locator("[data-governance-field]")
-        .evaluateAll((nodes) =>
-          nodes.map((node) => ({
-            key: node.dataset.governanceField,
-            text: node.textContent,
-            source:
-              node.querySelector("[data-fact-origin]")?.dataset.factOrigin,
-          })),
-        );
+      scope.locator("[data-governance-field]").evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          key: node.dataset.governanceField,
+          text: node.textContent,
+          source: node.querySelector("[data-fact-origin]")?.dataset.factOrigin,
+        })),
+      );
     assertVisibleFacts(fields, await visible(current));
     expect(fields.some((field) => field.source === "source")).toBe(true);
     expect(fields.some((field) => field.source === "batch_confirmation")).toBe(

@@ -2,6 +2,7 @@ import { Alert, Button, Checkbox, Input } from 'antd';
 import { useState } from 'react';
 import type { ElementEntity, JsonValue } from '../../api/generated/types';
 import { terms } from '../../i18n/zh-CN';
+import { prepareRuleValue } from './ruleEditorValues';
 import styles from '../build/Build.module.css';
 
 const copy = terms.labels;
@@ -64,7 +65,11 @@ export function RuleEditor({
     setError('');
     try {
       await onSave(
-        { ...entity.payload, [field]: parsed, ...(field === 'formula' ? { test_cases: cases } : {}) },
+        {
+          ...entity.payload,
+          [field]: prepareRuleValue(parsed, entity.payload[field]),
+          ...(field === 'formula' ? { test_cases: cases } : {}),
+        },
         sentenceConfirmed,
       );
       setSaved(true);
@@ -77,6 +82,7 @@ export function RuleEditor({
   return (
     <section className={styles.stack} data-rule-editor>
       <p>{copy.r4_rule_edit_hint}</p>
+      {field === 'judgement' && <p>{copy.r4a1_legacy_rule_cases_hint}</p>}
       {error && <Alert role="alert" type="error" title={error} />}
       {saved && <Alert role="status" type="success" title={copy.r4_rule_saved} />}
       <label className={styles.field}>

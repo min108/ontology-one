@@ -1,3 +1,4 @@
+import legacyFixture from '../../../test-fixtures/r4a1-legacy-content.json';
 import fixture from '../../../test-fixtures/r4-semantic-content.json';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
@@ -66,7 +67,7 @@ it('warns the reviewer while proposing an evidence waiver for a hard constraint'
 it('offers a repair action for each failed gate but never a waiver for definition', () => {
   const onRepair = vi.fn(),
     result = gates(['QG1', 'QG2']);
-  result.checks[0].application_reason = '原件待归档，请独立核实';
+  result.checks[0].application_reason = legacyFixture.application;
   const { container } = render(<GateChecklist gates={result} onRepair={onRepair} />);
   const repairs = screen.getAllByRole('button', { name: terms.labels.r4a1_legacy_repair });
   expect(repairs).toHaveLength(2);
