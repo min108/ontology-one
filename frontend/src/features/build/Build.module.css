@@ -297,3 +297,16 @@
   font-size: var(--zy-font-body);
   line-height: var(--zy-line-body);
 }
+
+.omission-row .omission-evidence summary {
+  min-height: var(--zy-none);
+  padding: var(--zy-none);
+  color: var(--zy-color-link);
+  text-decoration: underline;
+  font-size: var(--zy-font-body);
+  line-height: var(--zy-line-body);
+}
+
+.omission-evidence[open] {
+  padding-bottom: var(--zy-space-2);
+}

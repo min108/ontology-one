@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ConfigProvider } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
@@ -64,6 +64,7 @@ it('explicit batch confirmation sends only missing active rules and their versio
   value.items[1].after_data.exceptions = 'A specific exception';
   value.items.push(
     { ...item('rejected'), decision: 'rejected' },
+    { ...item('processed'), processed_elsewhere: true },
     {
       ...item('ambiguous'),
       after_data: { ...item('ambiguous').after_data, bulk_confirmation_blocked: true },
@@ -85,6 +86,120 @@ it('explicit batch confirmation sends only missing active rules and their versio
     changeset_id: 'CS-1',
     confirm_unconditional_item_ids: ['A', 'B'],
     expected_versions: { A: 4 },
+  });
+});
+it('lets each omission group independently select exact IDs and versions after reviewing its own quote', () => {
+  const value = proposal();
+  for (const [index, entry] of value.items.entries()) {
+    entry.applied_version = index + 3;
+    entry.evidence = [
+      {
+        material_id: 'M-1',
+        anchor_id: 'anchor-' + entry.id,
+        source_version: 'version-1',
+        quote: 'Exact original sentence for ' + entry.id + '.',
+      },
+    ];
+  }
+  const confirm = vi.fn();
+  const { container, rerender } = render(
+    <ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />,
+    { wrapper: wrap },
+  );
+  const exceptions = container.querySelector('[data-omission-group="exceptions"]') as HTMLElement;
+  const conditions = container.querySelector('[data-omission-group="conditions"]') as HTMLElement;
+  const row = exceptions.querySelector('[data-omission-item="A"]') as HTMLElement;
+  const quote = within(row).getByText(value.items[0].evidence[0].quote);
+  expect(quote).not.toBeVisible();
+  fireEvent.click(within(row).getByText(terms.labels.r4a1_source_sentence));
+  expect(quote).toBeVisible();
+  expect(within(row).queryByText(value.items[1].evidence[0].quote)).not.toBeInTheDocument();
+  expect(within(row).getByRole('link')).toHaveAttribute(
+    'href',
+    '/materials/M-1?anchor=anchor-A&source_version=version-1',
+  );
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'B' }));
+  expect(within(conditions).getByRole('checkbox', { name: 'B' })).toBeChecked();
+  fireEvent.click(within(exceptions).getByRole('button', { name: terms.labels.r4a1_confirm_exceptions }));
+  expect(confirm).toHaveBeenLastCalledWith({
+    changeset_id: 'CS-1',
+    confirm_no_exceptions_item_ids: ['A'],
+    expected_versions: { A: 3 },
+  });
+  fireEvent.click(within(conditions).getByRole('checkbox', { name: 'A' }));
+  fireEvent.click(within(conditions).getByRole('button', { name: terms.labels.r4a1_confirm_conditions }));
+  expect(confirm).toHaveBeenLastCalledWith({
+    changeset_id: 'CS-1',
+    confirm_unconditional_item_ids: ['B'],
+    expected_versions: { B: 4 },
+  });
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'A' }));
+  const action = within(exceptions).getByRole('button', { name: terms.labels.r4a1_confirm_exceptions });
+  expect(action).toBeDisabled();
+  fireEvent.click(action);
+  expect(confirm).toHaveBeenCalledTimes(2);
+  rerender(<ChangesetOmissions proposal={value} disabled onConfirm={confirm} />);
+  for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).toBeDisabled();
+  const conditionAction = within(conditions).getByRole('button', {
+    name: terms.labels.r4a1_confirm_conditions,
+  });
+  expect(conditionAction).toBeDisabled();
+  fireEvent.click(conditionAction);
+  expect(confirm).toHaveBeenCalledTimes(2);
+});
+it('never submits a deselected or newly ineligible row when the proposal refreshes', () => {
+  const value = proposal();
+  value.items[0].applied_version = 3;
+  value.items[1].applied_version = 4;
+  const confirm = vi.fn();
+  const { container, rerender } = render(
+    <ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />,
+    { wrapper: wrap },
+  );
+  const exceptions = container.querySelector('[data-omission-group="exceptions"]') as HTMLElement;
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'A' }));
+  value.items[1].after_data.bulk_confirmation_blocked = true;
+  value.items.push({ ...item('C'), applied_version: 5 });
+  rerender(<ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />);
+  expect(within(exceptions).queryByRole('checkbox', { name: 'B' })).not.toBeInTheDocument();
+  expect(within(exceptions).getByRole('checkbox', { name: 'A' })).not.toBeChecked();
+  fireEvent.click(within(exceptions).getByRole('button', { name: terms.labels.r4a1_confirm_exceptions }));
+  expect(confirm).toHaveBeenCalledExactlyOnceWith({
+    changeset_id: 'CS-1',
+    confirm_no_exceptions_item_ids: ['C'],
+    expected_versions: { C: 5 },
+  });
+});
+it('does not relabel a deleted source declaration as absent, independently for each field', () => {
+  const value = proposal();
+  value.items[0].after_data.source_declared_fields = ['exceptions'];
+  value.items[1].after_data.source_declared_fields = ['conditions'];
+  value.items.push({
+    ...item('both'),
+    after_data: { ...item('both').after_data, source_declared_fields: ['conditions', 'exceptions'] },
+  });
+  const confirm = vi.fn();
+  const { container } = render(<ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />, {
+    wrapper: wrap,
+  });
+  const exceptions = container.querySelector('[data-omission-group="exceptions"]') as HTMLElement;
+  const conditions = container.querySelector('[data-omission-group="conditions"]') as HTMLElement;
+  expect(within(exceptions).getAllByRole('checkbox')).toHaveLength(1);
+  expect(within(exceptions).getByRole('checkbox', { name: 'B' })).toBeChecked();
+  expect(within(conditions).getAllByRole('checkbox')).toHaveLength(1);
+  expect(within(conditions).getByRole('checkbox', { name: 'A' })).toBeChecked();
+  expect(screen.queryByRole('checkbox', { name: 'both' })).not.toBeInTheDocument();
+  fireEvent.click(within(exceptions).getByRole('button'));
+  expect(confirm).toHaveBeenLastCalledWith({
+    changeset_id: 'CS-1',
+    confirm_no_exceptions_item_ids: ['B'],
+    expected_versions: {},
+  });
+  fireEvent.click(within(conditions).getByRole('button'));
+  expect(confirm).toHaveBeenLastCalledWith({
+    changeset_id: 'CS-1',
+    confirm_unconditional_item_ids: ['A'],
+    expected_versions: {},
   });
 });
 it('applications preserve the edited snapshot, never waive a check, and exclude hard gates', () => {
