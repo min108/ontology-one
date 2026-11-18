@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { login, button, read, postResponse, c } from "./r3-support.mjs";
+import { assertPublishedSkillReview } from "./r4a1-skill-review-contracts.mjs";
 
 const application =
   "合成技能来自经办经验，纸质方法说明待归档，请独立核对验证样例。";
@@ -193,6 +194,7 @@ test("R4-A.1 managed skill: independent reviewer returns an application then wai
     expect((await published).ok()).toBe(true);
     await expect(publishing).not.toBeVisible();
     const result = await getSkill(reviewer.page, id);
+    assertPublishedSkillReview(result, [application, denial, renewed, waiver]);
     expect(result.entity.status).toBe("published");
     expect(result.last_test.outcome).toBe("passed");
     expect(result.last_test.report.mode).toBe("contract");
