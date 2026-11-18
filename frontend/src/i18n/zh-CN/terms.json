@@ -1328,7 +1328,7 @@
     "r4a1_confirm_exceptions": "确认按无例外处理",
     "r4a1_missing_conditions": "{count} 条规则原文未写适用条件",
     "r4a1_confirm_conditions": "确认无附加适用条件",
-    "r4a1_omissions_hint": "可展开本条引文核对，取消不应批量确认的条目。",
+    "r4a1_omissions_hint": "核对引文，可取消勾选。",
     "r4a1_omissions_saved": "已记录本次批量确认，并重新检查各条规则。",
     "r4a1_incomplete_group": "还需补充",
     "r4a1_ready_count": "可提交 {count} 条",

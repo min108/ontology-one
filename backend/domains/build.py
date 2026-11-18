@@ -1037,13 +1037,19 @@ def preview_item(conn: db.Connection, item: dict) -> dict:
         "payload": candidate_payload(candidate, item["evidence"]),
     }
     relation = suggested_relation(conn, entity, candidate)
-    return gates.check_entity(
+    checks = gates.check_entity(
         conn,
         entity,
         meta_updates=candidate_meta(candidate),
         proposed_relations=[relation] if relation else [],
         preview=True,
     )
+    sources = candidate_field_sources(candidate)
+    for field in checks["fields"]:
+        key = "subjects" if field["key"].startswith("subject:") else field["key"]
+        if field["value"] and key in sources:
+            field.update(sources[key])
+    return checks
 
 
 def manual_provenance(origin: str = "manual") -> dict:
@@ -1094,7 +1100,7 @@ def validate_candidate(conn: db.Connection, item: dict, candidate: dict) -> None
         raise ApiError("VALIDATION_FAILED", str(exc)) from exc
 
 
-def record_candidate_sources(conn: db.Connection, entity: dict, candidate: dict) -> None:
+def candidate_field_sources(candidate: dict) -> dict:
     origins = {"source": "source", "document": "source", "manual": "editor", "bulk_confirmation": "batch_confirmation"}
     sources = {}
     allowed = {
@@ -1102,13 +1108,13 @@ def record_candidate_sources(conn: db.Connection, entity: dict, candidate: dict)
         "data": {"definition", "unit", "grain"},
         "knowledge": {"definition", "usage_conditions", "boundary"},
         "skill": {"definition"},
-    }.get(entity["kind"], set())
+    }.get(candidate["kind"], set())
     for key, value in (candidate.get("field_provenance") or {}).items():
         key = (
             "subjects"
             if key == "applies_to_id"
             else "usage_conditions"
-            if key == "conditions" and entity["kind"] == "knowledge"
+            if key == "conditions" and candidate["kind"] == "knowledge"
             else key
         )
         if key in allowed and value.get("origin") in origins:
@@ -1117,6 +1123,11 @@ def record_candidate_sources(conn: db.Connection, entity: dict, candidate: dict)
                 "source_quote": value.get("quote", ""),
                 "confirmed_by": value.get("confirmed_by", ""),
             }
+    return sources
+
+
+def record_candidate_sources(conn: db.Connection, entity: dict, candidate: dict) -> None:
+    sources = candidate_field_sources(candidate)
     if sources:
         gates.record_field_sources(conn, entity, sources)
     applications = candidate.get("waiver_applications")

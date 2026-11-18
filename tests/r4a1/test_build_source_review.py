@@ -197,6 +197,10 @@ class SourceReviewMySQL(unittest.TestCase):
             with self.subTest(kind=kind):
                 proposal = self.synthetic_proposal(client, kind, text, fields)
                 item = proposal["items"][0]
+                preview = {fact["key"]: fact for fact in item["gates"]["fields"]}
+                for key, value in expected.items():
+                    self.assertEqual((preview[key]["value"], preview[key]["source"]), (value, "source"))
+                    self.assertIn(value, preview[key]["source_quote"])
                 self.invoke(
                     client,
                     "changeset.decide_items",

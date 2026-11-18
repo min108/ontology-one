@@ -168,9 +168,20 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
     const ready = confirmed.items.find((item) => item.id === readyRuleIds[0]);
     expect(ready).toBeTruthy();
     await pickItem(page, ready);
+    await selected(page)
+      .locator("summary")
+      .filter({ hasText: c.r4a1_legacy_facts })
+      .click();
+    const preview = selected(page).locator("[data-governance-facts]");
+    await expect(preview).toBeVisible();
     await expect(
-      selected(page).locator("[data-governance-facts]"),
+      preview.locator(
+        '[data-governance-field="valid_from"] [data-fact-origin="source"]',
+      ),
     ).toBeVisible();
+    await expect(
+      preview.locator('[data-governance-field="valid_from"]'),
+    ).toContainText("2026-01-01");
     await acceptItem(page, ready);
     const saved = (await readProposal(page, proposal.id)).items.find(
       (item) => item.id === ready.id,
