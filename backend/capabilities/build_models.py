@@ -38,6 +38,44 @@ class Evidence(ReadModel):
     locator: str = ""
 
 
+class FieldProvenance(ReadModel):
+    origin: str
+    quote: str = ""
+    actor_id: str = ""
+    confirmed_by: str = ""
+    confirmed_at: str = ""
+    anchor_id: str = ""
+    source_version: str = ""
+
+
+class DocumentFact(FieldProvenance):
+    value: str = ""
+
+
+class DocumentFacts(ReadModel):
+    valid_from: DocumentFact
+    scope: DocumentFact
+
+
+class ExtractionSummary(ReadModel):
+    retried_batches: int = 0
+    discarded_candidates: int = 0
+    accepted_candidates: int = 0
+    failed_batches: int = 0
+    fully_local: bool = True
+
+
+class ProposalApplicabilityOption(ReadModel):
+    id: str
+    title: str
+    kind: str
+
+
+class Handoff(ReadModel):
+    href: str
+    label: str
+
+
 class Candidate(ReadModel):
     id: str
     kind: Literal["rule", "data", "knowledge", "skill"]
@@ -55,6 +93,9 @@ class Candidate(ReadModel):
     judgement: dict[str, JsonValue] | None = None
     applies_to_id: str = ""
     applies_to_title: str = ""
+    field_provenance: dict[str, FieldProvenance] = Field(default_factory=dict)
+    waiver_applications: dict[str, str] = Field(default_factory=dict)
+    bulk_confirmation_blocked: bool = False
 
 
 class ItemValidation(ReadModel):
@@ -78,6 +119,10 @@ class ProposalItem(ReadModel):
     applied_status: str | None = None
     processed_elsewhere: bool = False
     gates: GateResult | None = None
+    ready_for_bulk_accept: bool = False
+    can_submit: bool = False
+    submit_blockers: list[str] = Field(default_factory=list)
+    handoff: Handoff | None = None
 
 
 class Proposal(ReadModel):
@@ -90,10 +135,37 @@ class Proposal(ReadModel):
     source_text: str
     source_material_id: str
     submit_blockers: list[str] = Field(default_factory=list)
+    document_facts: DocumentFacts = Field(
+        default_factory=lambda: DocumentFacts(
+            valid_from=DocumentFact(origin="document"), scope=DocumentFact(origin="document")
+        )
+    )
+    extraction_summary: ExtractionSummary = Field(default_factory=ExtractionSummary)
+    applicability_options: list[ProposalApplicabilityOption] = Field(default_factory=list)
 
 
 class ProposalResult(ReadModel):
     data: Proposal
+
+
+class RemainingItem(ReadModel):
+    item_id: str
+    title: str
+    reasons: list[str]
+
+
+class ApplyData(ReadModel):
+    id: str
+    entity_ids: list[str]
+    submitted: bool
+    submitted_entity_ids: list[str] = Field(default_factory=list)
+    submitted_count: int = 0
+    remaining_items: list[RemainingItem] = Field(default_factory=list)
+    remaining_count: int = 0
+
+
+class ApplyResult(ReadModel):
+    data: ApplyData
 
 
 class Recipe(ReadModel):

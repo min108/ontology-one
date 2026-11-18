@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, JsonValue
 
 from backend.capabilities.context import CapabilityContext
+from backend.capabilities.gate_models import GateWaivers
 from backend.capabilities.registry import capability
 from backend.core.errors import StrictModel
 from backend.domains import build
@@ -44,12 +45,21 @@ class CandidatePatch(StrictModel):
     boundary: str = Field(default="", max_length=4000)
     judgement: dict[str, JsonValue] | None = None
     applies_to_id: str = Field(default="", max_length=191)
+    waiver_applications: GateWaivers | None = None
 
 
 class DecideItems(ChangesetGet):
     item_ids: list[str] = Field(min_length=1, max_length=200)
     decision: Literal["accepted", "edited", "rejected", "pending"]
     edit: CandidatePatch | None = None
+    only_ready: bool = False
+
+
+class ConfirmFacts(ChangesetGet):
+    valid_from: str | None = Field(default=None, max_length=10)
+    confirm_no_exceptions_item_ids: list[str] = Field(default_factory=list, max_length=200)
+    confirm_unconditional_item_ids: list[str] = Field(default_factory=list, max_length=200)
+    expected_versions: dict[str, int] = Field(default_factory=dict, max_length=200)
 
 
 def declaration(ident: str, title: str, model: type[StrictModel], permission: str, *, read: bool = False) -> Callable:
@@ -97,6 +107,7 @@ def decide_items(ctx: CapabilityContext, body: DecideItems) -> BuildResult:
             body.item_ids,
             body.decision,
             body.edit.model_dump(exclude_unset=True) if body.edit else None,
+            only_ready=body.only_ready,
         )
     )
 
@@ -109,3 +120,8 @@ def apply(ctx: CapabilityContext, body: ChangesetGet) -> BuildResult:
 @declaration("changeset.apply_and_submit", "采纳并提交审核", ChangesetGet, "build.submit")
 def apply_and_submit(ctx: CapabilityContext, body: ChangesetGet) -> BuildResult:
     return BuildResult(data=build.apply(body.changeset_id, submit=True))
+
+
+@declaration("changeset.confirm_facts", "确认文件事实与缺项", ConfirmFacts, "build.edit")
+def confirm_facts(ctx: CapabilityContext, body: ConfirmFacts) -> BuildResult:
+    return BuildResult(data=build.confirm_facts(body.changeset_id, body.model_dump(exclude_unset=True)))

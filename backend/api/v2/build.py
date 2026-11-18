@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter
 
-from backend.capabilities.build import BuildResult, ChangesetGet, DecideItems, RecipeStart
-from backend.capabilities.build_models import ProposalResult, RecipeResult, ReviewListResult, ReviewResult
+from backend.capabilities.build import BuildResult, ChangesetGet, ConfirmFacts, DecideItems, RecipeStart
+from backend.capabilities.build_models import ApplyResult, ProposalResult, RecipeResult, ReviewListResult, ReviewResult
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.registry import registry
 from backend.capabilities.reviews import ReviewDecision
@@ -42,12 +42,21 @@ def decide_items(id: str, body: DecideItems) -> BuildResult:
     return call("changeset.decide_items", body.model_dump())
 
 
-@router.post("/changesets/{id}:apply", response_model=BuildResult)
+@router.post("/changesets/{id}/facts:confirm", response_model=ProposalResult)
+def confirm_facts(id: str, body: ConfirmFacts) -> BuildResult:
+    from backend.core.errors import ApiError
+
+    if body.changeset_id != id:
+        raise ApiError("VALIDATION_FAILED")
+    return call("changeset.confirm_facts", body.model_dump(exclude_unset=True))
+
+
+@router.post("/changesets/{id}:apply", response_model=ApplyResult)
 def apply(id: str) -> BuildResult:
     return call("changeset.apply", ChangesetGet(changeset_id=id).model_dump())
 
 
-@router.post("/changesets/{id}:apply-and-submit", response_model=BuildResult)
+@router.post("/changesets/{id}:apply-and-submit", response_model=ApplyResult)
 def submit(id: str) -> BuildResult:
     return call("changeset.apply_and_submit", {"changeset_id": id})
 

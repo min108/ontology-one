@@ -118,8 +118,8 @@ class BuildMySQL(unittest.TestCase):
                 "file": (
                     "【演示】付款核对制度.txt",
                     (
-                        "第一条 付款前必须核对合同约定及附件。\n第二条 累计付款不得超过合同金额。"
-                        "适用范围：本机构。适用条件：办理付款。例外：无例外。生效日期：2026-11-17。"
+                        "第一条 付款前必须核对合同约定及附件。\n第二条 累计付款不得超过合同金额。\n"
+                        "第三条 本制度适用于本机构的合同付款。\n第四条 本制度自2026年11月17日起施行。"
                     ).encode(),
                     "text/plain",
                 )
@@ -137,7 +137,20 @@ class BuildMySQL(unittest.TestCase):
         for item in changeset["items"]:
             self.assertEqual(item["tier"], "doubt")
             self.assertTrue(item["evidence"][0]["anchor_id"])
-        return changeset
+        # D12: human confirmation is explicit; the document does not invent absent facts.
+        return self.invoke(
+            client,
+            "changeset.confirm_facts",
+            {
+                "changeset_id": changeset["id"],
+                "confirm_no_exceptions_item_ids": [
+                    item["id"] for item in changeset["items"] if not item["after_data"].get("exceptions")
+                ],
+                "confirm_unconditional_item_ids": [
+                    item["id"] for item in changeset["items"] if not item["after_data"].get("conditions")
+                ],
+            },
+        )
 
     def test_local_recipe_apply_retry_and_independent_review(self) -> None:
         builder = self.login("fixture.builder")

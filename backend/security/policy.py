@@ -251,6 +251,7 @@ V2_RULES = (
     ("GET", "/api/v2/recipes/{id}", ("draft.read",)),
     ("GET", "/api/v2/changesets/{id}", ("draft.read",)),
     ("POST", "/api/v2/changesets/{id}/items:bulk-decide", ("build.edit",)),
+    ("POST", "/api/v2/changesets/{id}/facts:confirm", ("build.edit",)),
     ("POST", "/api/v2/changesets/{id}:apply", ("build.edit",)),
     ("POST", "/api/v2/changesets/{id}:apply-and-submit", ("build.submit",)),
     ("GET", "/api/v2/reviews", ("draft.read",)),

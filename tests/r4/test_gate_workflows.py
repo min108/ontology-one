@@ -77,7 +77,10 @@ class GateWorkflowsMySQL(unittest.TestCase):
         response = builder.post(
             "/api/v2/capabilities/changeset.apply_and_submit:invoke", json={"changeset_id": proposal["id"]}
         )
-        self.assert_blocked(response, builder, ident, "draft", 1)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["data"]["submitted_count"], 0)
+        self.assertEqual(response.json()["data"]["remaining_count"], 1)
+        self.assertEqual((self.entity(builder, ident)["status"], self.entity(builder, ident)["version"]), ("draft", 1))
         self.payload(builder, ident, original)
         self.assertEqual(self.action(builder, ident, "submit").status_code, 200)
         reviewed = self.entity(builder, ident)["payload"]
@@ -263,7 +266,10 @@ class GateWorkflowsMySQL(unittest.TestCase):
         response = builder.post(
             "/api/v2/capabilities/changeset.apply_and_submit:invoke", json={"changeset_id": proposal["id"]}
         )
-        self.assert_blocked(response, builder, ident, "draft", 2)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["data"]["submitted_count"], 0)
+        self.assertEqual(response.json()["data"]["remaining_count"], 1)
+        self.assertEqual((self.entity(builder, ident)["status"], self.entity(builder, ident)["version"]), ("draft", 2))
         repaired = self.invoke(
             builder, "changeset.decide_items", {**body, "edit": {**required, "exceptions": "无例外"}}
         )
