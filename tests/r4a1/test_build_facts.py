@@ -186,6 +186,15 @@ class BuildFacts(unittest.TestCase):
                 self.assertFalse(result["exceptions"])
                 self.assertIs(result["bulk_confirmation_blocked"], blocked)
 
+    def test_historical_nontext_evidence_cannot_be_confirmed_as_an_omission(self) -> None:
+        candidate = {"id": "historical", "kind": "rule", "content": "留存凭证。"}
+        item = {"after_data": candidate, "evidence": [None, {"quote": 123}, {"quote": " "}]}
+        limits = build.source_confirmation_limits(
+            item, {}, candidate["content"], build.document_facts(candidate["content"])
+        )
+        self.assertEqual(limits, {"source_declared_fields": [], "bulk_confirmation_blocked": True})
+        self.assertEqual(build.candidate_field_sources({**candidate, "field_provenance": {"exceptions": "old"}}), {})
+
     def test_model_governance_fields_require_own_locatable_evidence(self) -> None:
         quote = "登记付款办理情况。"
         for kind in ("data", "knowledge"):

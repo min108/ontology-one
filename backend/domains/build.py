@@ -820,7 +820,11 @@ def source_confirmation_limits(item: dict, candidates: dict, text: str, facts: d
     """Use original evidence for the omission list and the write guard, even after manual edits."""
     after = item["after_data"]
     original = candidates.get(after.get("id")) or after
-    evidence = [ref for ref in item["evidence"] if isinstance(ref, dict) and ref.get("quote") and ref["quote"] in text]
+    evidence = [
+        ref
+        for ref in (item.get("evidence") or [])
+        if isinstance(ref, dict) and isinstance(ref.get("quote"), str) and ref["quote"].strip() and ref["quote"] in text
+    ]
     grounded = ground_candidate({**original, "source_quotes": evidence}, text, facts)
     return {
         "source_declared_fields": [field for field in ("conditions", "exceptions") if grounded.get(field)],
@@ -1117,7 +1121,7 @@ def candidate_field_sources(candidate: dict) -> dict:
             if key == "conditions" and candidate["kind"] == "knowledge"
             else key
         )
-        if key in allowed and value.get("origin") in origins:
+        if key in allowed and isinstance(value, dict) and value.get("origin") in origins:
             sources[key] = {
                 "source": origins[value["origin"]],
                 "source_quote": value.get("quote", ""),
