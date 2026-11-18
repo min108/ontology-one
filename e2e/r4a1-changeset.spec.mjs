@@ -90,7 +90,7 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
     await expect(
       selected(page).locator("[data-governance-facts]"),
     ).toBeVisible();
-    await pickItem(page, ready);
+    await acceptItem(page, ready);
     const saved = (await readProposal(page, proposal.id)).items.find(
       (item) => item.id === ready.id,
     );

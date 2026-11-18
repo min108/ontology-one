@@ -24,6 +24,10 @@ export async function startRegulation(page, name) {
     "utf8",
   );
   await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "工作台", exact: true }),
+  ).toBeVisible();
+  await expect(button(page, "选择文件")).toBeVisible();
   const data = await page.evaluateHandle(
     ({ text, name }) => {
       const data = new DataTransfer();
