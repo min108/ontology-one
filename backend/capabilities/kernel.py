@@ -103,8 +103,8 @@ def mutation(
         summary=title + "，保留权限、版本与办理记录。",
         domain=ident.split(".")[0],
         intent="build",
-        effect="write_draft",
-        confirm="L1",
+        effect="state_change" if ident == "element.submit_draft" else "write_draft",
+        confirm="L2" if ident == "element.submit_draft" else "L1",
         permissions=[permission],
         assistants=["builder"],
         mcp=False,
@@ -148,7 +148,7 @@ def _action(body: ElementAction, action: str, allowed: set[str]) -> None:
         )
 
 
-@mutation("element.submit_draft", "提交要素审核", ElementSubmit)
+@mutation("element.submit_draft", "提交要素审核", ElementSubmit, permission="build.submit")
 def submit_draft(ctx: CapabilityContext, body: ElementSubmit) -> ElementDetailResult:
     changes = {"action": "submit", "expected_version": body.version, "reason": body.reason}
     if body.waiver_applications is not None:

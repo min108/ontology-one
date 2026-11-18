@@ -123,6 +123,59 @@ class ReviewWrites(unittest.TestCase):
         self.assertNotIn("生效日期", reason)
         self.assertNotIn("适用范围", reason)
 
+    def test_legacy_pending_identity_guard_keeps_its_original_rule(self) -> None:
+        from backend.domains.reviews import guard_marked_action
+
+        legacy = {"id": "legacy", "kind": "data", "status": "review", "payload": {"definition": "旧待审内容"}}
+        with self.conn:
+            guard_marked_action(self.conn, legacy, {"action": "approve"})
+        self.assertNotIn("r2_review", legacy["payload"])
+        tracked = self.draft()
+        with self.conn, self.assertRaises(ApiError):
+            guard_marked_action(self.conn, tracked, {"action": "approve"})
+
+    def test_field_source_tags_bind_actual_values_and_change_to_editor_after_edit(self) -> None:
+        entity = self.draft()
+        with self.conn:
+            gates.record_field_sources(
+                self.conn,
+                entity,
+                {
+                    "definition": {
+                        "source": "source",
+                        "source_quote": "合同金额按签署合同登记",
+                        "confirmed_by": "核对人",
+                    }
+                },
+            )
+        fields = {f["key"]: f for f in gates.check_entity(self.conn, entity)["fields"]}
+        self.assertEqual(fields["definition"]["source"], "source")
+        self.assertEqual(fields["definition"]["source_quote"], "合同金额按签署合同登记")
+        with self.conn:
+            entity = elements.update_draft(
+                self.conn, entity, {"payload": {**entity["payload"], "definition": "核对人修订后的口径"}}
+            )
+        fields = {f["key"]: f for f in gates.check_entity(self.conn, entity)["fields"]}
+        self.assertEqual(fields["definition"]["source"], "editor")
+        self.assertEqual(fields["definition"]["source_quote"], "")
+
+    def test_descriptive_null_judgement_is_not_a_failed_structured_expression(self) -> None:
+        entity = {
+            "kind": "rule",
+            "title": "流程",
+            "payload": {
+                "definition": "流程规则",
+                "scope": "本机构",
+                "conditions": "办理时",
+                "exceptions": "无例外",
+                "judgement": None,
+            },
+        }
+        result = gates.evaluate_checks(
+            entity, {"valid_from": "2026-01-01"}, {"evidence": True, "relations": True, "snapshot": True}
+        )
+        self.assertEqual(result["checks"][2]["status"], "pass")
+
 
 # These tests use actual authenticated HTTP and MySQL, never SQL to satisfy gates.
 
@@ -251,3 +304,99 @@ class ReviewHTTP(unittest.TestCase):
             json={"entity_id": entity["id"], "version": 3, "reason": "再次提交"},
         )
         self.assertEqual(denied.status_code, 409, denied.text)
+
+    def test_public_rule_repair_projects_dates_and_validates_subject_in_current_tenant(self) -> None:
+        builder = self.login("fixture.builder")
+        reference = self.invoke(builder, "element.get", {"entity_id": self.manual(builder)["id"]})
+        subject = next(item for item in reference["applicability_options"] if item["kind"] == "organization")
+        rule = self.invoke(
+            builder,
+            "element.create_draft",
+            {
+                "kind": "rule",
+                "title": "按工作分工核对材料",
+                "meta": {"valid_from": "2026-01-01"},
+                "payload": {
+                    "definition": "办理人员按工作分工核对提交的材料",
+                    "scope": "本机构",
+                    "conditions": "收件时",
+                    "exceptions": "无例外",
+                    "applies_to_id": subject["id"],
+                },
+            },
+        )
+        entity = rule["entity"]
+        fields = {item["key"]: item for item in rule["gates"]["fields"]}
+        self.assertEqual(fields["valid_from"]["value"], "2026-01-01")
+        self.assertEqual(fields["valid_from"]["source"], "editor")
+        self.assertEqual(fields["subject:" + subject["id"]]["value"], subject["title"])
+        self.assertEqual(fields["subject:" + subject["id"]]["href"], "/assets/" + subject["id"])
+        response = builder.post(
+            "/api/v2/capabilities/element.update_draft:invoke",
+            json={
+                "entity_id": entity["id"],
+                "version": 1,
+                "payload": {**entity["payload"], "applies_to_id": "sub-01"},
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        unchanged = self.invoke(builder, "element.get", {"entity_id": entity["id"]})
+        self.assertEqual(unchanged["entity"]["version"], 1)
+        result = self.invoke(
+            builder,
+            "element.submit_draft",
+            {
+                "entity_id": entity["id"],
+                "version": 1,
+                "reason": "请核对",
+                "waiver_applications": {"QG1": "手工整理的工作要求，暂缺原文"},
+            },
+        )
+        self.assertEqual(result["entity"]["status"], "review")
+
+    def test_mixed_per_check_decision_records_waiver_and_denial_before_return(self) -> None:
+        builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")
+        reference = self.invoke(builder, "element.get", {"entity_id": self.manual(builder)["id"]})
+        subject = next(item for item in reference["applicability_options"] if item["kind"] == "organization")
+        entity = self.invoke(
+            builder,
+            "element.create_draft",
+            {
+                "kind": "rule",
+                "title": "逐项核对申请的业务规则",
+                "meta": {"valid_from": "2026-01-01"},
+                "payload": {
+                    "definition": "分工核对收到的材料",
+                    "scope": "本机构",
+                    "conditions": "收件时",
+                    "applies_to_id": subject["id"],
+                },
+            },
+        )["entity"]
+        self.invoke(
+            builder,
+            "element.submit_draft",
+            {
+                "entity_id": entity["id"],
+                "version": 1,
+                "reason": "逐项申请",
+                "waiver_applications": {"QG1": "手工记录待附", "QG3": "例外尚不明确"},
+            },
+        )
+        response = reviewer.post(
+            f"/api/v2/reviews/{entity['id']}:decide",
+            json={
+                "decision": "return",
+                "version": 2,
+                "reason": "请补充例外",
+                "waivers": {"QG1": "独立核对记录后接受"},
+                "waiver_denials": {"QG3": "不能接受缺少例外说明"},
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()["data"]
+        self.assertEqual(result["entity"]["status"], "returned")
+        self.assertFalse(result["gates"]["ready_to_submit"])
+        checks = {item["code"]: item for item in result["gates"]["checks"]}
+        self.assertEqual(checks["QG1"]["status"], "waived")
+        self.assertEqual(checks["QG3"]["denial_reason"], "不能接受缺少例外说明")

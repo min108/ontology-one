@@ -204,9 +204,9 @@ def decide(
             raise ApiError("VALIDATION_FAILED", "同一项申请不能同时豁免和拒绝。")
         if waiver_denials and decision != "return":
             raise ApiError("VALIDATION_FAILED", "拒绝豁免申请后请退回补充，不能发布。")
-        if waivers and decision == "return":
-            raise ApiError("VALIDATION_FAILED", "退回时不能同时批准豁免。")
         if decision == "return":
+            if waivers:
+                gates.waive(conn, entity, waivers)
             if waiver_denials:
                 gates.deny_applications(conn, entity, waiver_denials)
             if not reason.strip():

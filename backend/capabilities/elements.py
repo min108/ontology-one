@@ -158,6 +158,8 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
     if ctx.principal.readonly:
         # Federated projections must not expose private field values, applicants or source text.
         gate_result["fields"] = []
+        gate_result["ready_to_submit"] = gate_result["passed"]
+        gate_result["submission_blockers"] = list(gate_result["blockers"])
         for check in gate_result["checks"]:
             for key in ("application_reason", "application_by", "application_at", "denial_reason", "waiver_reason"):
                 check[key] = ""

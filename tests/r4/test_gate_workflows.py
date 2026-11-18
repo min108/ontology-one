@@ -118,22 +118,34 @@ class GateWorkflowsMySQL(unittest.TestCase):
         builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")
         _, _, ident = self.draft(builder)
         old = self.entity(builder, ident)
-        self.payload(builder, ident, {**old["payload"], "source_refs": [], "exceptions": ""})
         reasons = {"QG1": "遗留原文待补，按现有审批记录核对。", "QG3": "例外情况另行人工核对。"}
+        self.invoke(
+            builder,
+            "element.update_draft",
+            {
+                "entity_id": ident,
+                "version": 1,
+                "payload": {**old["payload"], "source_refs": [], "exceptions": ""},
+                "waiver_applications": {"QG1": "原始记录待补，请独立核对", "QG3": "例外需要人工确认"},
+                "reason": "按真实编辑申请缺口核对",
+            },
+        )
+        self.assertFalse(self.check(builder, ident)["passed"])
+        self.assertTrue(self.check(builder, ident)["ready_to_submit"])
+        self.assertEqual(self.action(builder, ident, "submit").status_code, 200)
         result = self.invoke(
             reviewer,
             "quality.waive_gates",
             {
                 "entity_id": ident,
-                "version": 1,
+                "version": 3,
                 "reason": "记录审查结论",
                 "waivers": reasons,
             },
         )
         self.assertTrue(result["passed"])
         self.assertEqual({c["code"]: c["waiver_reason"] for c in result["checks"] if c["status"] == "waived"}, reasons)
-        self.assertEqual(self.action(builder, ident, "submit").status_code, 200)
-        response = reviewer.post(f"/api/v2/reviews/{ident}:decide", json={"decision": "approve_publish", "version": 2})
+        response = reviewer.post(f"/api/v2/reviews/{ident}:decide", json={"decision": "approve_publish", "version": 3})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(self.entity(builder, ident)["status"], "published")
         with use_context(self.principal(builder)), closing(db.connect()) as conn:
@@ -154,7 +166,7 @@ class GateWorkflowsMySQL(unittest.TestCase):
             "element.start_revision",
             {
                 "entity_id": ident,
-                "version": 4,
+                "version": 5,
                 "reason": "调整适用日期",
             },
         )
@@ -163,14 +175,14 @@ class GateWorkflowsMySQL(unittest.TestCase):
             "element.update_draft",
             {
                 "entity_id": ident,
-                "version": 5,
+                "version": 6,
                 "meta": {"valid_from": "2026-11-19"},
                 "reason": "更新后须重新审查",
             },
         )
         changed = self.check(builder, ident)
         self.assertEqual({c["code"] for c in changed["checks"] if c["status"] == "fail"}, {"QG1", "QG3"})
-        self.assert_blocked(self.action(builder, ident, "submit"), builder, ident, "draft", 6)
+        self.assert_blocked(self.action(builder, ident, "submit"), builder, ident, "draft", 7)
 
     def test_forbidden_and_blank_waivers_never_persist(self) -> None:
         builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")

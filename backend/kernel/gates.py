@@ -242,7 +242,7 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
         (
             "；".join(
                 (["请补充：" + "、".join(missing)] if missing else [])
-                + ([expression_error] if expression_error else [])
+                + ([expression_error.rstrip("。；")] if expression_error else [])
             )
             + "。"
         )
@@ -281,15 +281,19 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
 
 
 def submission_eligibility(result: dict, applications: dict | None = None) -> bool:
-    return all(
-        item["status"] != "fail"
-        or (
-            item["can_waive"]
-            and not (item.get("denial_reason") and not (applications or {}).get(item["code"]))
-            and bool(str((applications or {}).get(item["code"], item.get("application_reason", ""))).strip())
-        )
-        for item in result["checks"]
-    )
+    for item in result["checks"]:
+        if item["status"] != "fail":
+            continue
+        reason = (applications or {}).get(item["code"], item.get("application_reason", ""))
+        if (
+            not item["can_waive"]
+            or not isinstance(reason, str)
+            or not reason.strip()
+            or len(reason) > 500
+            or (item.get("denial_reason") and not (applications or {}).get(item["code"]))
+        ):
+            return False
+    return True
 
 
 def _result(checks: list[dict], *, hard_constraint: bool = False) -> dict:
@@ -495,7 +499,9 @@ def check_entity(
         )
     tests = True
     expression_error = ""
-    if (entity["kind"] == "rule" and "judgement" in payload) or (entity["kind"] == "metric" and payload.get("formula")):
+    if (entity["kind"] == "rule" and payload.get("judgement") is not None) or (
+        entity["kind"] == "metric" and payload.get("formula")
+    ):
         try:
             report = run_cases(conn, entity)
             tests = report["passed"]
@@ -543,17 +549,17 @@ def check_entity(
     stored = _object(meta.get("gates"))
     fingerprint = _fingerprint(original, meta)
     for item in result["checks"]:
-        application = _object(stored.get("applications")).get(item["code"], {})
+        application = _object(_object(stored.get("applications")).get(item["code"]))
         if item["can_waive"] and item["status"] == "fail" and application.get("fingerprint") == fingerprint:
             item.update(
                 application_reason=application.get("reason", ""),
                 application_by=application.get("name", ""),
                 application_at=application.get("at", ""),
             )
-        denial = _object(stored.get("denials")).get(item["code"], {})
+        denial = _object(_object(stored.get("denials")).get(item["code"]))
         if denial.get("fingerprint") == fingerprint:
             item["denial_reason"] = denial.get("reason", "")
-        waiver = stored.get("waivers", {}).get(item["code"], {})
+        waiver = _object(_object(stored.get("waivers")).get(item["code"]))
         if (
             item["can_waive"]
             and item["status"] == "fail"
@@ -585,7 +591,10 @@ def enforce(conn: db.Connection, entity: dict, *, stage: str = "release") -> dic
     if not result["ready_to_submit" if stage == "submit" else "passed"]:
         raise ApiError(
             "GATE_NOT_PASSED",
-            "还差：" + "；".join(result["blockers"]),
+            "还差："
+            + "；".join(
+                reason.rstrip("。；") for reason in result["submission_blockers" if stage == "submit" else "blockers"]
+            ),
             details={"gates": result, "repair_href": "/assets/" + entity["id"]},
         )
     persist(conn, entity, result)

@@ -159,7 +159,14 @@ def sync_derived(conn: db.Connection, entity: dict) -> list[dict]:
     owned = [
         row
         for row in existing
-        if _payload(row["payload"]).get("derived") is True
+        if (
+            _payload(row["payload"]).get("derived") is True
+            or (
+                entity.get("payload", {}).get("applies_to_id")
+                and row["type"] == "applies_to"
+                and _payload(row["payload"]).get("recipe_applicability") is True
+            )
+        )
         and not _payload(row["payload"]).get("skill_managed")
         and not _payload(row["payload"]).get("authority_managed")
     ]
