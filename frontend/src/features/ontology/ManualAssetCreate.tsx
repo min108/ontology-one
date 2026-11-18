@@ -47,6 +47,7 @@ export function ManualAssetCreate({ kind }: { kind: string }) {
         {copy.r4a1_legacy_create}
       </Button>
       <Modal
+        cancelButtonProps={{ autoInsertSpace: false }}
         open={open}
         title={copy.r4a1_legacy_create_title}
         onCancel={() => !busy && setOpen(false)}

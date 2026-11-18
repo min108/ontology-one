@@ -77,3 +77,15 @@ it('offers a repair action for each failed gate but never a waiver for definitio
   expect(container.querySelector('[data-gate-code="QG1"]')).toHaveAttribute('data-gate-status', 'fail');
   expect(container.querySelector('[data-gate-code="QG2"] textarea')).toBeNull();
 });
+
+it('shows the independent denial reason without turning the failed check into a waiver', () => {
+  const result = gates(['QG1']);
+  result.checks[0].application_reason = legacyFixture.reviewApplication;
+  result.checks[0].denial_reason = legacyFixture.manualApplication;
+  const { container } = render(<GateChecklist gates={result} />);
+  expect(
+    screen.getByText(`${terms.labels.r4a1_legacy_denial}：${legacyFixture.manualApplication}`),
+  ).toBeVisible();
+  expect(container.querySelector('[data-gate-code="QG1"]')).toHaveAttribute('data-gate-status', 'fail');
+  expect(container.querySelector('[data-gate-waiver-marker]')).toBeNull();
+});

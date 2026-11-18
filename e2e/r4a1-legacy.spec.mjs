@@ -11,6 +11,7 @@ import {
 } from "./r3-support.mjs";
 import { assertNoLeaks } from "./r3-structure.mjs";
 import {
+  assertDialogActionsVisible,
   assertPublishedRepair,
   assertVisibleFacts,
 } from "./r4a1-legacy-contracts.mjs";
@@ -385,8 +386,19 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
     assertVisibleFacts(fields, await visible(modal));
     await expect(modal.getByText("2026-01-01", { exact: true })).toBeVisible();
     await assertNoLeaks(reviewer.page, "AB10 review and publication facts");
+    await expect(button(modal, a.catalog_2_5)).toBeInViewport({ ratio: 1 });
+    await expect(button(modal, a.r2_cancel)).toBeInViewport({ ratio: 1 });
+    assertDialogActionsVisible(
+      await Promise.all([
+        button(modal, a.catalog_2_5).boundingBox(),
+        button(modal, a.r2_cancel).boundingBox(),
+      ]),
+      reviewer.page.viewportSize(),
+    );
     await screenshot(reviewer.page, "r4a1-ordinary-publish-confirmation");
     await button(modal, a.r2_cancel).click();
+    await expect(modal).not.toBeVisible();
+    expect((await detail(reviewer.page, id)).entity.status).toBe("review");
   } finally {
     await builder.context.close();
     await reviewer.context.close();

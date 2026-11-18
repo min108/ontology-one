@@ -397,6 +397,8 @@ function Inbox() {
       <SourceEvidence source={focus} onClose={() => setFocus(undefined)} />
       <Modal
         width="var(--zy-dialog-width)"
+        styles={{ body: { maxHeight: 'calc(100dvh - var(--zy-space-10) * 4)', overflowY: 'auto' } }}
+        cancelButtonProps={{ autoInsertSpace: false }}
         open={!!confirmation}
         title={confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}
         okText={confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assertDialogActionsVisible,
   assertPublishedRepair,
   assertVisibleFacts,
 } from "./r4a1-legacy-contracts.mjs";
@@ -72,4 +73,20 @@ test("AB10 counterexamples reject missing date, altered fact and falsely attribu
     [{ key: "valid_from", text: "2026-01-01", source: "editor" }],
   ])
     assert.throws(() => assertVisibleFacts(fields, rows));
+});
+
+test("publication footer counterexample rejects actions below the viewport", () => {
+  const boxes = [
+    { x: 0, y: 700, width: 80, height: 36 },
+    { x: 100, y: 700, width: 80, height: 36 },
+  ];
+  assertDialogActionsVisible(boxes, { height: 768 });
+  assert.throws(() =>
+    assertDialogActionsVisible([boxes[0], { ...boxes[1], y: 900 }], {
+      height: 768,
+    }),
+  );
+  assert.throws(() =>
+    assertDialogActionsVisible([boxes[0], null], { height: 768 }),
+  );
 });

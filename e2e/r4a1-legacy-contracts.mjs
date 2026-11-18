@@ -50,3 +50,17 @@ export function assertVisibleFacts(fields, rows) {
     assert.equal(row.source, field.source, `Wrong fact origin ${field.key}`);
   }
 }
+
+export function assertDialogActionsVisible(boxes, viewport) {
+  assert.ok(boxes.length >= 2, "Both confirmation actions must exist");
+  for (const box of boxes) {
+    assert.ok(
+      box && box.width > 0 && box.height > 0,
+      "Dialog action must have visible geometry",
+    );
+    assert.ok(
+      box.y >= 0 && box.y + box.height <= viewport.height,
+      "Dialog action must remain inside the viewport",
+    );
+  }
+}
