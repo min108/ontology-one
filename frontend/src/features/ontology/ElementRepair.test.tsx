@@ -47,6 +47,42 @@ function detail(): ElementDetail {
   };
 }
 beforeEach(() => vi.clearAllMocks());
+it('uses the shared calendar and saves the selected date as metadata, never as payload', async () => {
+  const current = detail();
+  current.gates!.fields!.push({
+    key: 'valid_from',
+    label: legacyFixture.dateLabel,
+    value: '',
+    source: 'missing',
+    source_quote: '',
+    confirmed_by: '',
+    href: '',
+  });
+  const onSaved = vi.fn();
+  const { container } = render(
+    <MemoryRouter>
+      <ElementRepair detail={current} disabled={false} onSaved={onSaved} />
+    </MemoryRouter>,
+  );
+  const date = screen.getByLabelText(legacyFixture.dateLabel);
+  expect(date).toHaveValue('');
+  expect(container.querySelector('input[type="date"]')).toBeNull();
+  expect(date.closest('.ant-picker')).not.toBeNull();
+  fireEvent.focus(date);
+  fireEvent.change(date, { target: { value: '2026-01-01' } });
+  fireEvent.keyDown(date, { key: 'Enter', code: 'Enter' });
+  fireEvent.blur(date);
+  fireEvent.click(screen.getByRole('button', { name: copy.r4a1_legacy_save }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  expect(invokeCapability).toHaveBeenCalledWith(
+    'element.update_draft',
+    expect.objectContaining({
+      meta: { valid_from: '2026-01-01' },
+      payload: current.entity.payload,
+    }),
+    expect.anything(),
+  );
+});
 it('keeps a missing definition non-waivable and requires saving the exact application before submit', async () => {
   const current = detail(),
     onSaved = vi.fn();

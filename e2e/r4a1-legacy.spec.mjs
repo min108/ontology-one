@@ -100,10 +100,12 @@ async function repair(page, id) {
     usage_conditions: "具备经办记录和待核对的原始资料",
   };
   for (const field of before.gates.fields) {
-    if (values[field.key] && (!field.value || field.key === "definition"))
-      await panel
-        .getByLabel(field.label, { exact: true })
-        .fill(values[field.key]);
+    if (values[field.key] && (!field.value || field.key === "definition")) {
+      const input = panel.getByLabel(field.label, { exact: true });
+      await input.fill(values[field.key]);
+      if (field.key === "valid_from" || field.key === "valid_to")
+        await input.press("Enter");
+    }
   }
   if (
     before.entity.kind === "rule" &&

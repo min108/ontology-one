@@ -11,6 +11,7 @@ import type {
   GateWaivers,
 } from '../../api/generated/types';
 import { terms } from '../../i18n/zh-CN';
+import { BusinessDatePicker } from '../../ui/BusinessDatePicker';
 import { useLifetime } from '../build/shared';
 import { businessText } from '../build/businessText';
 import { SubjectSelect } from './SubjectSelect';
@@ -158,12 +159,11 @@ export function ElementRepair({
         <label className={styles.field} key={field.key}>
           {field.label}
           {field.key === 'valid_from' || field.key === 'valid_to' ? (
-            <Input
+            <BusinessDatePicker
               aria-label={field.label}
-              type="date"
               value={values[field.key] || ''}
               disabled={disabled || busy}
-              onChange={(event) => setValues((old) => ({ ...old, [field.key]: event.target.value }))}
+              onChange={(value) => setValues((old) => ({ ...old, [field.key]: value }))}
             />
           ) : (
             <Input.TextArea
