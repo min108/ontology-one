@@ -96,6 +96,7 @@ class Candidate(ReadModel):
     field_provenance: dict[str, FieldProvenance] = Field(default_factory=dict)
     waiver_applications: dict[str, str] = Field(default_factory=dict)
     bulk_confirmation_blocked: bool = False
+    source_declared_fields: list[Literal["conditions", "exceptions"]] = Field(default_factory=list)
 
 
 class ItemValidation(ReadModel):

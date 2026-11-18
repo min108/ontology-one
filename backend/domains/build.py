@@ -334,6 +334,9 @@ def get(ident: str) -> dict:
         ]
         material = materials.material(conn, result["source_refs"][0]["material_id"])
         candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
+        ref = result["source_refs"][0]
+        source = provenance.get_source_version(conn, ref["material_id"], ref.get("source_version"))
+        facts = result.get("stats", {}).get("document_facts") or document_facts(source["text"])
         for item in result["items"]:
             item["processed_elsewhere"] = item_processed_elsewhere(item, candidates)
             if item["processed_elsewhere"]:
@@ -353,6 +356,8 @@ def get(ident: str) -> dict:
                     item["after_data"] = current_candidate(conn, item, current)
                     item["applied_version"] = current["version"]
                     item["applied_status"] = current["status"]
+            if item["after_data"]["kind"] == "rule":
+                item["after_data"].update(source_confirmation_limits(item, candidates, source["text"], facts))
             item["gates"] = preview_item(conn, item)
             judgement = item["after_data"].get("judgement")
             if judgement is not None and not isinstance(judgement, dict):
@@ -408,11 +413,9 @@ def get(ident: str) -> dict:
             and not item["processed_elsewhere"]
             and item["submit_blockers"]
         ]
-        ref = result["source_refs"][0]
-        source = provenance.get_source_version(conn, ref["material_id"], ref.get("source_version"))
         result["source_text"] = source["text"]
         result["source_material_id"] = ref["material_id"]
-        result["document_facts"] = result.get("stats", {}).get("document_facts") or document_facts(source["text"])
+        result["document_facts"] = facts
         result["extraction_summary"] = result.get("stats", {}).get("extraction_summary") or {
             "fully_local": not any(item["content_origin"] == "source" for item in result["items"])
         }
@@ -807,12 +810,31 @@ def source_exception(own: str) -> tuple[str, bool]:
 
 
 def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, facts: dict | None = None) -> dict:
+    result = ground_candidate(candidate, source_text, facts)
+    if candidate["kind"] == "rule":
+        suggest_applicability(conn, result)
+    return result
+
+
+def source_confirmation_limits(item: dict, candidates: dict, text: str, facts: dict) -> dict:
+    """Use original evidence for the omission list and the write guard, even after manual edits."""
+    after = item["after_data"]
+    original = candidates.get(after.get("id")) or after
+    evidence = [ref for ref in item["evidence"] if isinstance(ref, dict) and ref.get("quote") and ref["quote"] in text]
+    grounded = ground_candidate({**original, "source_quotes": evidence}, text, facts)
+    return {
+        "source_declared_fields": [field for field in ("conditions", "exceptions") if grounded.get(field)],
+        "bulk_confirmation_blocked": not evidence or grounded["bulk_confirmation_blocked"],
+    }
+
+
+def ground_candidate(candidate: dict, source_text: str, facts: dict | None = None) -> dict:
     """Item facts must be literal own-quote facts; only file scope/date are shared."""
     result = dict(candidate)
     facts = facts if facts is not None else document_facts(source_text)
     quotes = [
         item["quote"]
-        for item in candidate.get("source_quotes", [])
+        for item in (candidate.get("source_quotes") or [])
         if isinstance(item, dict) and isinstance(item.get("quote"), str) and item["quote"] in source_text
     ]
     local_quotes = []
@@ -922,8 +944,6 @@ def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, fac
     if result["valid_from"]:
         origins["valid_from"] = dict(facts["valid_from"])
     result["field_provenance"] = origins
-    if candidate["kind"] == "rule":
-        suggest_applicability(conn, result)
     return result
 
 
@@ -1187,15 +1207,15 @@ def confirm_facts(ident: str, body: dict) -> dict:
             if date_changed:
                 after["valid_from"] = facts["valid_from"]["value"]
                 origins["valid_from"] = dict(facts["valid_from"])
-            source_candidate = enrich_candidate(conn, after, source["text"], facts)
+            limits = source_confirmation_limits(item, candidates, source["text"], facts)
             for key, selected, value in (
                 ("exceptions", exceptions, "无例外"),
                 ("conditions", conditions, ["无附加适用条件"]),
             ):
                 if item["id"] in selected:
-                    if source_candidate.get("bulk_confirmation_blocked"):
+                    if limits["bulk_confirmation_blocked"]:
                         raise ApiError("VALIDATION_FAILED", "请先逐条核对引文中的条件和例外，不可批量确认为无。")
-                    if source_candidate.get(key):
+                    if key in limits["source_declared_fields"]:
                         raise ApiError("VALIDATION_FAILED", "原文中已写明条件或例外，请逐条核对，不可批量确认为无。")
                     if after.get(key):
                         raise ApiError("VERSION_CONFLICT", "这条规则已填写条件或例外，请刷新后逐条核对，不可批量覆盖。")

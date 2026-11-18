@@ -137,6 +137,7 @@ class SourceReviewMySQL(unittest.TestCase):
                 if after[key]:
                     self.assertEqual(after["field_provenance"][key]["origin"], "source")
                     self.assertIn(after["field_provenance"][key]["quote"], text)
+                    self.assertIn(key, after["source_declared_fields"])
                 else:
                     self.assertTrue(after["bulk_confirmation_blocked"])
                 response = client.post(
@@ -147,6 +148,34 @@ class SourceReviewMySQL(unittest.TestCase):
                 self.assertIn(expected, response.text)
                 saved = self.invoke(client, "changeset.get", {"changeset_id": proposal["id"]})
                 self.assertEqual(saved["items"][0]["after_data"], after)
+
+    def test_manual_clear_does_not_make_a_declared_source_field_eligible_for_bulk_confirmation(self) -> None:
+        client = self.login("fixture.builder")
+        text = "所有申请均须复核，抢险救灾无需复核。"
+        proposal = self.synthetic_proposal(client, "rule", text, {})
+        item = proposal["items"][0]
+        fields = {key: item["after_data"][key] for key in ("title", "content", "kind")}
+        updated = self.invoke(
+            client,
+            "changeset.decide_items",
+            {
+                "changeset_id": proposal["id"],
+                "item_ids": [item["id"]],
+                "decision": "edited",
+                "edit": {**fields, "exceptions": ""},
+            },
+        )
+        after = updated["items"][0]["after_data"]
+        self.assertEqual(after["exceptions"], "")
+        self.assertEqual(after["source_declared_fields"], ["exceptions"])
+        self.assertFalse(after["bulk_confirmation_blocked"])
+        response = client.post(
+            "/api/v2/capabilities/changeset.confirm_facts:invoke",
+            json={"changeset_id": proposal["id"], "confirm_no_exceptions_item_ids": [item["id"]]},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        saved = self.invoke(client, "changeset.get", {"changeset_id": proposal["id"]})
+        self.assertEqual(saved["items"][0]["after_data"], after)
 
     def test_supported_fields_persist_individual_source_and_knowledge_mapping(self) -> None:
         client = self.login("fixture.builder")

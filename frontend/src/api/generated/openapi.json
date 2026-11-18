@@ -864,6 +864,17 @@
             "title": "Scope",
             "type": "string"
           },
+          "source_declared_fields": {
+            "items": {
+              "enum": [
+                "conditions",
+                "exceptions"
+              ],
+              "type": "string"
+            },
+            "title": "Source Declared Fields",
+            "type": "array"
+          },
           "title": {
             "title": "Title",
             "type": "string"
