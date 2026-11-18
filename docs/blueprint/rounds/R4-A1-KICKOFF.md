@@ -15,7 +15,7 @@
 
 ## 二、起点
 
-1. `git fetch origin claude/affectionate-hopper-9bdpfg`（规划分支已更名），把负责人给出的验收提交合并进 `dev/r4-semantic-kernel`。它等于 `577c9cb` 加文档，没有代码改动，可以快进。继续在 `dev/r4-semantic-kernel` 上开发。
+1. `git fetch origin claude/affectionate-hopper-9bdpfg`（规划分支已更名），把该分支的最新提交合并进 `dev/r4-semantic-kernel`。验收提交是 `b12209d`，其后的提交只改这份提示；它们等于 `577c9cb` 加文档，没有代码改动，可以快进。继续在 `dev/r4-semantic-kernel` 上开发。
 2. 版本保持 `1.3.0`。
 3. 按顺序阅读：
    - `AGENTS.md`；
