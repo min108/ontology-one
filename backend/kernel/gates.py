@@ -585,9 +585,13 @@ def check_entity(
             item.update(status="waived", waiver_reason=waiver["reason"], reason="审核人员已记录豁免理由。")
     from backend.kernel.gate_fields import project
 
+    person = require_context()
+    can_read_package_facts = (
+        person.identity_kind == "session" and person.role in {"admin", "modeler", "reviewer"} and not person.readonly
+    )
     return {
         **_result(result["checks"], hard_constraint=result["hard_constraint"]),
-        "fields": project(conn, original, meta),
+        "fields": project(conn, entity, meta) if not package_facts or can_read_package_facts else [],
     }
 
 

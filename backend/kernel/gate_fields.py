@@ -19,6 +19,9 @@ FIELD_LABELS = {
     "usage_conditions": "使用条件",
     "boundary": "使用边界",
     "subjects": "适用主体或对象",
+    "inputs": "输入要求",
+    "outputs": "输出要求",
+    "steps": "操作步骤",
 }
 SOURCES = {"source", "editor", "batch_confirmation", "legacy", "missing"}
 
@@ -32,9 +35,26 @@ def field_values(conn: db.Connection, entity: dict, meta: dict) -> dict[str, str
         keys += ["scope", "conditions", "exceptions", "valid_from", "valid_to", "subjects"]
     if entity["kind"] == "knowledge":
         keys += ["usage_conditions", "boundary"]
+    if entity["kind"] == "skill":
+        keys += ["inputs", "outputs", "steps", "usage_conditions"]
     result = {key: plain(meta.get(key) if key.startswith("valid_") else payload.get(key)) for key in keys}
     if "usage_conditions" in result:
         result["usage_conditions"] = plain(payload.get("usage_conditions") or payload.get("conditions"))
+    if entity["kind"] == "skill":
+        for key in ("inputs", "outputs"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                # These are the declared schema facts used by the gates, not
+                # package files, test inputs or executable configuration.
+                result[key] = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        steps = payload.get("steps")
+        if isinstance(steps, list):
+            result["steps"] = "；".join(
+                "：".join(filter(None, (plain(step.get("title")), plain(step.get("instruction")))))
+                if isinstance(step, dict)
+                else plain(step)
+                for step in steps
+            )
     if "subjects" in result:
         result["subjects"] = "、".join(row["title"] for row in subjects(conn, entity))
     return result

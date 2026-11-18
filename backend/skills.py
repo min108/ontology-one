@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
+from .capabilities.gate_models import GateResult, GateWaivers
 from .db import connect, current_org_id, entity_json, log, now
 from .security.context import require_context
 from .security.store import append_audit
@@ -409,6 +410,20 @@ class VersionBody(StrictModel):
 class ActionBody(VersionBody):
     action: Literal["submit", "publish", "return", "revise", "archive"]
     reason: Annotated[str, Field(min_length=1, max_length=2000)]
+    waivers: GateWaivers | None = None
+    waiver_denials: GateWaivers | None = None
+
+    @model_validator(mode="after")
+    def review_decisions(self):
+        waivers = self.waivers.model_dump(exclude_none=True) if self.waivers is not None else {}
+        denials = self.waiver_denials.model_dump(exclude_none=True) if self.waiver_denials is not None else {}
+        if (self.waivers is not None or self.waiver_denials is not None) and self.action not in {"publish", "return"}:
+            raise ValueError("逐项审核决定只能随发布或退回办理。")
+        if denials and self.action != "return":
+            raise ValueError("拒绝豁免申请后请退回补充，不能发布。")
+        if set(waivers) & set(denials):
+            raise ValueError("同一项申请不能同时豁免和拒绝。")
+        return self
 
     @field_validator("reason")
     @classmethod
@@ -624,6 +639,9 @@ def _last_check(conn, document):
 
 
 def _detail(conn, entity, document):
+    from .domains.reviews import editor_ids
+    from .kernel.gates import check_entity
+
     principal = _role()
     validation = _validation(document["files"], document["manifest"])
     checks, _ = _dependency_state(conn, document["manifest"], strict=False)
@@ -645,6 +663,15 @@ def _detail(conn, entity, document):
         "digest": document["digest"],
         "validation": validation,
         "last_test": _last_check(conn, document),
+        "gates": GateResult.model_validate(check_entity(conn, entity)).model_dump(),
+        "gate_history": [
+            dict(row)
+            for row in conn.execute(
+                "SELECT action,detail,actor,created_at FROM activities WHERE entity_id=? "
+                "AND action IN ('申请发布检查豁免','发布检查豁免','拒绝发布检查豁免') ORDER BY id DESC LIMIT 30",
+                (entity["id"],),
+            )
+        ],
         "history": history,
         "read_only": entity["status"] not in {"draft", "returned"},
         "capabilities": {
@@ -652,7 +679,7 @@ def _detail(conn, entity, document):
             "submit": principal.role in BUILD and entity["status"] in {"draft", "returned"},
             "review": principal.role in REVIEW
             and entity["status"] == "review"
-            and principal.user_id not in {document["last_editor_id"], document["submitted_by"]},
+            and principal.user_id not in editor_ids(entity) | {document["last_editor_id"], document["submitted_by"]},
             "test": principal.role in BUILD and entity["status"] in {"draft", "returned"},
             "assist": principal.role in BUILD,
         },
@@ -773,7 +800,9 @@ def _create_document(conn, title, summary, files, manifest, legacy_id=None):
     entity, document = _document(conn, ident)
     _sync_relations(conn, entity, document)
     from .kernel.elements import snapshot
+    from .kernel.gate_fields import record_editor_changes
 
+    record_editor_changes(conn, {**entity, "payload": gate_payload(entity, document)}, None)
     snapshot(conn, entity, "创建技能草稿")
     _history_event(conn, entity, document, "创建技能草稿")
     log(conn, ident, "创建技能草稿", "登记Agent Skills包及本机构治理清单")
@@ -1066,6 +1095,12 @@ def _save_skill(ident, body):
         _expected(entity, body.expected_version)
         if entity["status"] not in {"draft", "returned"}:
             _fail("skill_not_editable", "请先修订为草稿，再编辑技能。", 409)
+        from .kernel.gate_fields import field_values, record_editor_changes
+        from .kernel.metadata import get_meta
+
+        previous_fields = field_values(
+            conn, {**entity, "payload": gate_payload(entity, document)}, get_meta(conn, ident) or {}
+        )
         _dependency_state(conn, manifest)
         if manifest.get("source_refs"):
             from .authority import normalize_refs
@@ -1092,6 +1127,7 @@ def _save_skill(ident, body):
         )
         entity, document = _document(conn, ident)
         _sync_relations(conn, entity, document)
+        record_editor_changes(conn, {**entity, "payload": gate_payload(entity, document)}, previous_fields)
         _history_event(conn, entity, document, body.reason)
         log(conn, ident, "保存技能草稿", "保存技能包及依赖版本，等待校验和审核")
         result = _detail(conn, entity, document)
@@ -1405,14 +1441,22 @@ def _action(ident, body):
             document["submitted_by"],
         }:
             _fail("skill_self_review", "本次修订的编辑人和提交人需由其他审核人员办理。", 403)
+        from .kernel import gates
+
         if body.action in {"submit", "publish"}:
             _validate_current(conn, entity, document, proof=True)
-            from .kernel.gates import enforce
-
-            if body.action == "submit":
-                enforce(conn, entity, stage="submit")
-            else:
-                enforce(conn, entity)
+        # The same locked revision owns its decisions, gate enforcement and
+        # specialized transition. A later failure rolls back decisions and audit.
+        if body.waivers is not None:
+            reasons = body.waivers.model_dump(exclude_none=True)
+            if reasons:
+                gates.waive(conn, entity, reasons)
+        if body.waiver_denials is not None:
+            reasons = body.waiver_denials.model_dump(exclude_none=True)
+            if reasons:
+                gates.deny_applications(conn, entity, reasons)
+        if body.action in {"submit", "publish"}:
+            gates.enforce(conn, entity, stage="submit" if body.action == "submit" else "release")
         _snapshot_entity(conn, entity, body.reason)
         submitted = (
             principal.user_id
