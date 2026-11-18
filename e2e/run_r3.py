@@ -35,6 +35,12 @@ def main(round_name: str = "r3") -> int:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--repetitions", type=int, help="UI mainline repetitions (live default: 3; early rehearsal: 1)")
     parser.add_argument("--mainline-only", action="store_true")
+    parser.add_argument(
+        "--material",
+        choices=("regulation-plain", "regulation-repeal", "regulation-history"),
+        default="regulation-plain",
+        help="Reviewed R4-A.1 source used by the browser mainline",
+    )
     parser.add_argument("--grep", help="Run only matching UI cases while diagnosing a failed action")
     parser.add_argument("--skip-build", action="store_true", help="Use a build from this exact worktree")
     parser.add_argument("--output", type=Path, required=True)
@@ -67,6 +73,8 @@ def main(round_name: str = "r3") -> int:
                 "--repetitions",
                 "1",
                 "--skip-build",
+                "--material",
+                args.material,
                 "--output",
                 str(destination),
                 "--api-port",
@@ -91,7 +99,13 @@ def main(round_name: str = "r3") -> int:
                             "steps",
                             "total_seconds",
                             "publication_checks",
+                            "gate_repairs",
+                            "extraction_summary",
+                            "document_date",
+                            "submitted_count",
+                            "remaining_count",
                         )
+                        if key in details
                     }
                 )
             runs.append(receipt)
@@ -99,6 +113,7 @@ def main(round_name: str = "r3") -> int:
                 break
         summary = {
             "provider": "real_deepseek" if args.live else "synthetic_messages_real_sdk",
+            **({"material": args.material + ".txt"} if round_name == "r4" else {}),
             **(model_metadata(dict(os.environ)) if args.live else {}),
             "channel": "browser_ui",
             "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip(),
@@ -129,6 +144,7 @@ def main(round_name: str = "r3") -> int:
     scope = DatabaseScope(config, database_names(namespace, [row["id"] for row in control["tables"]["sec_tenants"]]))
     report = {
         "provider": "real_deepseek" if args.live else "synthetic_messages_real_sdk",
+        **({"material": args.material + ".txt"} if round_name == "r4" else {}),
         "status": "failed",
         "channel": "browser_ui",
         "selection": args.grep or ("mainline" if args.mainline_only or args.live else "all_actions"),
@@ -154,6 +170,7 @@ def main(round_name: str = "r3") -> int:
             E2E_DEPENDENCY_ROOT=str(ROOT / "frontend"),
             E2E_R3_LIVE="1" if args.live else "0",
             E2E_R4="1" if round_name == "r4" else "0",
+            E2E_R4A1_MATERIAL=args.material,
             ONTOLOGY_MODEL_SOURCE="analyst" if args.live else "mock",
             ONTOLOGY_MODEL_FROM_ENV="1",
             E2E_PYTHON=sys.executable,

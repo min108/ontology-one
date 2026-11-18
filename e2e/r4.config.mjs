@@ -5,8 +5,8 @@ export default defineConfig({
   testDir: resolve("e2e"),
   testMatch:
     process.env.E2E_R3_MAINLINE_ONLY === "1"
-      ? "**/r3-mainline.spec.mjs"
-      : ["**/r4-*.spec.mjs", "**/r3-*.spec.mjs"],
+      ? "**/r4a1-mainline.spec.mjs"
+      : ["**/r4-*.spec.mjs", "**/r3-*.spec.mjs", "**/r4a1-*.spec.mjs"],
   workers: 1,
   retries: 0,
   timeout: 600_000,

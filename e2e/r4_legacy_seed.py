@@ -19,6 +19,7 @@ from backend import db
 from backend.infra.backup import canonical, snapshot_database
 from backend.provenance import normalize_source_ref
 from backend.security import store
+from e2e.r4a1_legacy_seed import seed_legacy, verify_legacy
 
 TABLES = ("entities", "relations", "versions", "activities")
 SCOPES = ("hq", "dept-01", "sub-01")
@@ -56,6 +57,7 @@ def seed(path: Path) -> None:
     original = {tenant: snapshot_database(name) for tenant, name in names.items()}
     if any("entity_meta" in snapshot["tables"] for snapshot in original.values()):
         raise ValueError("Legacy copies must be created before the semantic migration")
+    seed_legacy(names)
     dept = original["dept-01"]
     rows = sorted(dept["tables"]["entities"], key=lambda row: row["id"])
     if len(rows) >= TARGET or any(row["id"].startswith("R4-LEGACY-COPY-") for row in rows):
@@ -182,6 +184,7 @@ def verify(path: Path) -> None:
     else:
         raise AssertionError("Preservation assertion did not reject a modified row")
     evidence.update(
+        legacy_compatibility=verify_legacy(names),
         migration_verified=True,
         after_migration=after,
         repeat_migration_unchanged=True,
