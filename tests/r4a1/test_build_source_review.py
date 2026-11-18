@@ -47,7 +47,10 @@ class SourceReviewMySQL(unittest.TestCase):
         self.assertEqual(uploaded.status_code, 200, uploaded.text)
         run = self.invoke(client, "recipe.start", {"material_id": uploaded.json()["id"]})
 
-        async def extracted(material_id: str, chunks: list[dict], context: dict) -> tuple[list[dict], dict]:
+        async def extracted(
+            material_id: str, chunks: list[dict], context: dict, *, diagnostics: dict
+        ) -> tuple[list[dict], dict]:
+            self.assertIsInstance(diagnostics, dict)
             chunk = chunks[0]
             title = "字段出处核对" + kind + text[:12]
             return [
@@ -73,7 +76,11 @@ class SourceReviewMySQL(unittest.TestCase):
         ):
             asyncio.run(build.run_recipe(run["id"]))
         ready = self.invoke(client, "recipe.status", {"run_id": run["id"]})
-        return self.invoke(client, "changeset.get", {"changeset_id": ready["changeset_id"]})
+        proposal = self.invoke(client, "changeset.get", {"changeset_id": ready["changeset_id"]})
+        self.assertFalse(proposal["extraction_summary"]["fully_local"])
+        self.assertEqual(proposal["items"][0]["content_origin"], "source")
+        self.assertEqual(proposal["items"][0]["after_data"]["kind"], kind)
+        return proposal
 
     def test_invented_model_measurement_cannot_pass_or_be_labeled_source(self) -> None:
         client = self.login("fixture.builder")

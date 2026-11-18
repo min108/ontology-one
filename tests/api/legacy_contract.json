@@ -892,5 +892,8 @@
     "edit": "037dc300d4e8deafc41fb74b8c66579b3e80f69a103c13486b2d473de3e02987",
     "_restore_entity": "54ea007e64d9bfb44fca3b1e38a98a1901136abcc4517cf30a61293da81cac7d",
     "relation_work_entry": "cc34e211ef137e3ed3bb8eebebdfaf42a43175d502e7ffc83c31f6f6905b075d"
+  },
+  "r4a1_functions": {
+    "_confirm_relation": "a2639ce10f3df981bd68773c2629d9b314c0b51e4aec93275b64bc861af19e95"
   }
 }

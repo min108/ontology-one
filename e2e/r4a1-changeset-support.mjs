@@ -63,12 +63,11 @@ export async function startRegulation(
       recipe,
     };
   }
-  const getting = page.waitForResponse((response) =>
-    /\/api\/v2\/changesets\/CS-/.test(new URL(response.url()).pathname),
-  );
   await button(page, "核对建设方案").click();
-  const proposal = (await (await getting).json()).data;
+  await expect(page).toHaveURL(/\/build\/changesets\/CS-[^/]+$/);
   await expect(page.locator("[data-document-facts]")).toBeVisible();
+  const id = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1));
+  const proposal = await readProposal(page, id);
   expect(proposal.items.length).toBeGreaterThan(0);
   return { proposal, text };
 }

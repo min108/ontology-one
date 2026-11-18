@@ -55,7 +55,16 @@ class AssemblyTests(unittest.TestCase):
             set(CONTRACT["r4_functions"]),
             {"entities", "_create_entity", "edit", "_restore_entity", "relation_work_entry"},
         )
-        self.assertEqual(actual, {**CONTRACT["functions"], **CONTRACT["r2_functions"], **CONTRACT["r4_functions"]})
+        self.assertEqual(set(CONTRACT["r4a1_functions"]), {"_confirm_relation"})
+        self.assertEqual(
+            actual,
+            {
+                **CONTRACT["functions"],
+                **CONTRACT["r2_functions"],
+                **CONTRACT["r4_functions"],
+                **CONTRACT["r4a1_functions"],
+            },
+        )
 
     def test_legacy_connection_patch_is_forwarded(self) -> None:
         from backend.api.v1 import core

@@ -173,7 +173,7 @@ async function repair(page, id) {
   );
   await screenshot(page, "r4a1-element-repair");
   const submitted = postResponse(page, "/element.submit_draft:invoke");
-  await button(page, c.r4a1_legacy_submit).click();
+  await button(panel, c.r4a1_legacy_submit).click();
   expect((await submitted).status()).toBe(200);
   await expect(
     page.getByText(c.r4a1_legacy_submitted, { exact: true }),
