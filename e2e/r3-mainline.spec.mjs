@@ -292,6 +292,21 @@ for (
         await classification
           .getByLabel(c.r4_rule_definition, { exact: true })
           .fill(quote.split("。", 1)[0]);
+        const institutionTarget = proposal.applicability_options.find(
+          (option) =>
+            option.kind === "organization" &&
+            proposal.items.some(
+              (row) => row.after_data.applies_to_id === option.id,
+            ),
+        );
+        expect(institutionTarget).toBeTruthy();
+        await classification
+          .getByLabel(c.r4a1_legacy_subject, { exact: true })
+          .click();
+        await page
+          .locator(".ant-select-item-option-content")
+          .getByText(institutionTarget.title, { exact: true })
+          .click();
         const classified = postResponse(page, "/changeset.decide_items:invoke");
         await button(classification, c.r4_rule_save_target).click();
         const savedClassification = (
