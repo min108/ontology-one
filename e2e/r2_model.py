@@ -10,6 +10,7 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from itertools import pairwise
 
 
 class Provider:
@@ -110,37 +111,70 @@ def reply(body: dict) -> dict:
         source = json.loads(next(message["content"] for message in reversed(messages) if message["role"] == "user"))
         candidates, coverage = [], []
         for chunk in source["chunks"]:
-            quote = chunk["content"].strip()
-            if re.search(r"本办法自\d{4}年\d+月\d+日起施行", quote):
-                coverage.append({"chunk_id": chunk["id"], "reason": "施行日期属于文件事实，不单独生成规则"})
-                continue
-            data_field = "合同付款台账逐份合同记录付款金额" in quote
-            candidates.append(
-                {
-                    # Deliberately misclassify one normative clause so the UI
-                    # acceptance path must review it before adopting a draft.
-                    "kind": "data" if data_field else "skill" if "经办人员应保存验收记录" in quote else "rule",
-                    # Different source clauses must not fabricate the same title
-                    # with different definitions under the real QG2 check.
-                    "title": "付款申请时限" if "30日" in quote else quote[:24],
-                    "summary": quote,
-                    "content": quote,
-                    "definition": quote,
-                    "source_chunk_ids": [chunk["id"]],
-                    "source_quotes": [{"chunk_id": chunk["id"], "quote": quote}],
-                    "conditions": [
-                        condition
-                        for condition in ("验收通过后", "有异议的款项", "对存在争议的付款")
-                        if condition in quote
-                    ],
-                    # Deliberately incomplete extraction: the original prose supports
-                    # these facts, but the browser must supply and persist the repair.
-                    "unit": "",
-                    "grain": "",
-                    "questions": [],
-                }
-            )
-            coverage.append({"chunk_id": chunk["id"], "reason": "已按合成原文完整提炼"})
+            article_starts = [
+                match.start() for match in re.finditer(r"第[一二三四五六七八九十百零〇\d]+条", chunk["content"])
+            ]
+            boundaries = [*article_starts, len(chunk["content"])]
+            quotes = [chunk["content"][left:right].strip() for left, right in pairwise(boundaries)]
+            if not article_starts:
+                quotes = [chunk["content"].strip()]
+            for quote in quotes:
+                if len(quote) < 8 or re.fullmatch(r"(?:第[^条]+章.*|.*(?:办法|规定)(?:（试行）)?)", quote):
+                    continue
+                if re.search(r"本(?:办法|规定)自(?:\d{4}年\d+月\d+日|发布之日|印发之日)起?施行", quote):
+                    continue
+                data_field = any(
+                    text in quote for text in ("合同付款台账逐份合同记录付款金额", "单笔付款金额超过100万元的")
+                )
+                skill_mistake = any(
+                    text in quote for text in ("经办人员应保存验收记录", "审计部门每年至少开展一次合同付款专项检查")
+                )
+                candidates.append(
+                    {
+                        # Deliberately misclassify one normative clause so the UI
+                        # acceptance path must review it before adopting a draft.
+                        "kind": "data" if data_field else "skill" if skill_mistake else "rule",
+                        # Different clauses keep distinct titles under the real QG2 check.
+                        "title": "付款申请时限" if "30日" in quote else quote[:24],
+                        "summary": quote,
+                        "content": quote,
+                        "definition": quote,
+                        "source_chunk_ids": [chunk["id"]],
+                        "source_quotes": [{"chunk_id": chunk["id"], "quote": quote}],
+                        "conditions": [
+                            condition
+                            for condition in (
+                                "验收通过后",
+                                "有异议的款项",
+                                "对存在争议的付款",
+                                "收到完整付款资料后",
+                                "单笔付款金额超过100万元的",
+                                "超过500万元的",
+                                "质保期满且无质量问题后",
+                                "对未经审批擅自付款、超合同约定付款的",
+                                "返回后",
+                                "收到报销申请后",
+                            )
+                            if condition in quote
+                        ],
+                        "exceptions": "；".join(
+                            exception
+                            for exception in (
+                                "有异议的款项应记录原因并暂停支付",
+                                "资料不齐全的，应一次性告知经办部门补正",
+                                "确需超过的，应报财务负责人批准",
+                                "经部门负责人批准的会议统一安排住宿除外",
+                            )
+                            if exception in quote
+                        ),
+                        # The ordinary original supports these missing extraction facts;
+                        # the browser must supply and persist the data-field repair.
+                        "unit": "",
+                        "grain": "",
+                        "questions": [],
+                    }
+                )
+            coverage.append({"chunk_id": chunk["id"], "reason": "按各条原文提炼；标题和施行说明保留为文件事实"})
         return {
             "type": "tool_use",
             "id": "r2-extract",

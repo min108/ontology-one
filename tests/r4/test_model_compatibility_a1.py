@@ -73,6 +73,33 @@ class SyntheticCompatibility(unittest.TestCase):
         for item in result["candidates"]:
             self.assertEqual(item["source_quotes"][0]["quote"], item["content"])
 
+    def test_multiple_articles_in_one_chunk_keep_exact_separate_quotes(self) -> None:
+        text = (
+            "第一条 验收通过后10个工作日内提出付款申请。\n"
+            "第二条 单笔付款金额超过100万元的，须经分管领导审批。\n"
+            "第三条 审计部门每年至少开展一次合同付款专项检查。"
+        )
+        history = [{"role": "user", "content": json.dumps({"chunks": [{"id": "combined", "content": text}]})}]
+        response = r2_model.reply(
+            {
+                "tools": [{"name": "submit_task_result"}],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Conversation messages (the role labels describe application history):\n"
+                        + json.dumps(history),
+                    }
+                ],
+            }
+        )
+        result = json.loads(response["input"]["text"])
+        self.assertEqual([item["kind"] for item in result["candidates"]], ["rule", "data", "skill"])
+        for item in result["candidates"]:
+            quote = item["source_quotes"][0]["quote"]
+            self.assertIn(quote, text)
+            self.assertEqual(quote.count("条"), 1)
+            self.assertEqual(item["source_chunk_ids"], ["combined"])
+
 
 if __name__ == "__main__":
     unittest.main()
