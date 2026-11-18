@@ -28,7 +28,11 @@ class RunnerReceiptTests(unittest.TestCase):
             "exception_after_clean",
             "incomplete",
             "service_running",
-            *(["missing_evidence"] if round_name == "r4" else []),
+            *(
+                ["missing_evidence", "all_complete", "all_missing_retained", "all_missing_current"]
+                if round_name == "r4"
+                else []
+            ),
         ):
             work = root / "work"
             work.mkdir(exist_ok=True)
@@ -51,11 +55,16 @@ class RunnerReceiptTests(unittest.TestCase):
                 def run_command(
                     command: list[str],
                     *_args: object,
-                    emit: bool = (round_name == "r4" and mode != "missing_evidence"),
+                    emit: bool = (round_name == "r4" and mode not in {"missing_evidence", "all_missing_current"}),
+                    retained: bool = mode in {"all_complete", "all_missing_current"},
                     evidence: Path = output / "a1-mainline-1.json",
                 ) -> None:
                     if emit and "test" in command:
                         evidence.write_text(json.dumps({"success": True, "gate_repairs": [{"field": "exceptions"}]}))
+                    if retained and "test" in command:
+                        evidence.with_name("mainline-1.json").write_text(
+                            json.dumps({"success": True, "gate_repairs": [{"fields": ["unit", "grain"]}]})
+                        )
 
                 with ExitStack() as stack, redirect_stdout(io.StringIO()):
                     for target, value in (
@@ -71,16 +80,23 @@ class RunnerReceiptTests(unittest.TestCase):
                     stack.enter_context(patch.object(runner.subprocess, "check_output", return_value="test-commit"))
                     args = [f"run_{round_name}.py", "--output", str(output)]
                     if round_name == "r4":
-                        args.extend(["--skip-build", "--mainline-only"])
+                        args.append("--skip-build")
+                        if not mode.startswith("all_"):
+                            args.append("--mainline-only")
                     stack.enter_context(patch.object(sys, "argv", args))
                     code = runner.main() if round_name == "r2" else runner.main("r4")
                 receipt = json.loads((output / "runner.json").read_text())
-                self.assertEqual(code, 0 if mode == "complete" else 1)
-                self.assertEqual(receipt["status"], "passed" if mode == "complete" else "failed")
+                passed = mode in {"complete", "all_complete"}
+                self.assertEqual(code, 0 if passed else 1)
+                self.assertEqual(receipt["status"], "passed" if passed else "failed")
                 self.assertEqual(receipt["databases_removed"], databases_removed)
                 self.assertEqual(receipt["services_stopped"], mode != "service_running")
-                if mode == "missing_evidence":
+                if mode in {"missing_evidence", "all_missing_current"}:
                     self.assertEqual(receipt["error_type"], "MissingBrowserReceipt")
+                if mode == "all_missing_retained":
+                    self.assertEqual(receipt["error_type"], "MissingRetainedBrowserReceipt")
+                if mode == "all_complete":
+                    self.assertEqual(receipt["retained_r3_mainline"]["gate_repairs"], [{"fields": ["unit", "grain"]}])
                 if mode == "complete" and round_name == "r4":
                     self.assertEqual(receipt["gate_repairs"], [{"field": "exceptions"}])
                 if mode in {"exception", "exception_after_clean"}:

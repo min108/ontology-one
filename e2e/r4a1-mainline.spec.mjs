@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { test, expect } from "./runtime.mjs";
 import {
   a,
@@ -27,7 +28,8 @@ const deadline =
   material === "regulation-history" ? "15个工作日" : "10个工作日";
 const compact = (text) => text.replace(/\s+/gu, "");
 
-async function checkExports(page, browser) {
+async function checkExports(page, browser, citation, quote) {
+  const checks = {};
   for (const [label, extension] of [
     ["下载 Word", "docx"],
     ["下载网页", "html"],
@@ -45,30 +47,41 @@ async function checkExports(page, browser) {
       const inspection = spawnSync(
         process.env.E2E_PYTHON || "python",
         [
-          "-c",
-          [
-            "import io,sys",
-            "from docx import Document",
-            "doc=Document(io.BytesIO(sys.stdin.buffer.read()))",
-            "body=[p.text for p in doc.paragraphs]+[c.text for t in doc.tables for r in t.rows for c in r.cells]",
-            "assert sys.argv[1] in ''.join(''.join(body).split())",
-          ].join("\n"),
+          "e2e/inspect_report_export.py",
           deadline,
+          citation,
+          createHash("sha256").update(compact(quote)).digest("hex"),
         ],
         { input: bytes },
       );
-      expect(
-        inspection.status,
-        "Word contains the original deadline with unit",
-      ).toBe(0);
+      expect(inspection.status, "the actual Word file can be parsed").toBe(0);
+      checks[extension] = JSON.parse(inspection.stdout.toString());
     } else {
       const offline = await browser.newContext({ offline: true });
       try {
         const html = await offline.newPage();
         await html.setContent(bytes.toString());
-        expect(compact(await html.locator("body").innerText())).toContain(
-          deadline,
+        const body = await html
+          .locator("body > p, body > table")
+          .allTextContents();
+        const linked = await html
+          .locator("body > p > a")
+          .evaluateAll(
+            (nodes, key) =>
+              nodes.some((node) => node.getAttribute("href") === "#" + key),
+            citation,
+          );
+        const source = await html.evaluate(
+          (key) =>
+            document.getElementById(key)?.querySelector("blockquote")
+              ?.textContent || "",
+          citation,
         );
+        checks[extension] = {
+          body_deadline: body.some((line) => compact(line).includes(deadline)),
+          citation_link: linked,
+          source_quote: compact(source) === compact(quote),
+        };
         await expect(
           html.locator("script[src],link[href^=http],img[src^=http]"),
         ).toHaveCount(0);
@@ -76,8 +89,14 @@ async function checkExports(page, browser) {
         await offline.close();
       }
     }
+    expect(checks[extension]).toEqual({
+      body_deadline: true,
+      citation_link: true,
+      source_quote: true,
+    });
     await download.delete();
   }
+  return checks;
 }
 
 test("R4-A.1 AB15: ordinary policy through independent publication and verified report exports", async ({
@@ -237,7 +256,9 @@ test("R4-A.1 AB15: ordinary policy through independent publication and verified 
     stage = "就已发布的条款提问";
     await page.goto("/ontology/elements/" + id);
     await button(page, c.r3_main_ask).click();
-    await expect(page.locator(".agent-scope-picker input:checked")).toHaveCount(1);
+    await expect(page.locator(".agent-scope-picker input:checked")).toHaveCount(
+      1,
+    );
     await button(page, "收起参考范围").click();
     await page
       .getByLabel("说说你希望完成的任务", { exact: true })
@@ -289,7 +310,12 @@ test("R4-A.1 AB15: ordinary policy through independent publication and verified 
     const evidence = page.getByRole("dialog");
     await expect(evidence.locator("mark")).toHaveText(citations[index].quote);
     await evidence.getByRole("button", { name: /关闭|Close/ }).click();
-    await checkExports(page, browser);
+    receipt.report_checks = await checkExports(
+      page,
+      browser,
+      Object.keys(artifact.spec.citations)[index],
+      citations[index].quote,
+    );
     record();
     receipt.success = true;
   } catch (error) {

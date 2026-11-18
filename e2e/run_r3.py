@@ -267,6 +267,7 @@ def main(round_name: str = "r3") -> int:
                     "total_seconds",
                     "publication_checks",
                     "gate_repairs",
+                    "report_checks",
                     "extraction_summary",
                     "document_date",
                     "submitted_count",
@@ -281,6 +282,20 @@ def main(round_name: str = "r3") -> int:
             elif args.mainline_only or args.live or not args.grep:
                 report["status"] = "failed"
                 report.setdefault("error_type", "MissingBrowserReceipt")
+            if round_name == "r4" and report["selection"] == "all_actions":
+                previous = output / "mainline-1.json"
+                if previous.is_file():
+                    retained = json.loads(previous.read_text())
+                    report["retained_r3_mainline"] = {
+                        key: retained[key]
+                        for key in ("success", "gate_repairs", "publication_checks", "report_checks")
+                        if key in retained
+                    }
+                    if not retained.get("success"):
+                        report["status"] = "failed"
+                else:
+                    report["status"] = "failed"
+                    report.setdefault("error_type", "MissingRetainedBrowserReceipt")
             if args.live:
                 shutil.rmtree(output / "test-results", ignore_errors=True)
             (output / "runner.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
