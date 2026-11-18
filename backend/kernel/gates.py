@@ -36,12 +36,20 @@ def _object(value: object) -> dict:
 # independently below, so a bland sentence cannot hide its numeric constraint.
 _HARD_WORDS = re.compile(
     r"时限|期限|阈值|限额|上限|下限|审批权限|(?:不得|不能|不应|不可|不)(?:超过|高于|低于|少于|多于)|"
-    r"(?:金额|付款|支付|额度)[^。；\n]{0,24}(?:超过|高于|低于|达到)[^。；\n]{0,24}(?:时|则|须|需|应)|"
-    r"(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千][一二三四五六七八九十百千万亿]*)"
-    r"\s*(?:个工作日|工作日|日内|天内|亿元|万元|元|小时|%)"
+    r"(?:金额|付款|支付|额度)[^。；\n]{0,24}(?:超过|高于|低于|达到)[^。；\n]{0,24}(?:时|则|须|需|应)"
 )
+_HARD_NUMBERS = re.compile(r"\d+(?:\.\d+)?|[一二三四五六七八九十百千][一二三四五六七八九十百千万亿]*")
+_HARD_UNIT = re.compile(r"\s*(?:个工作日|工作日|日内|天内|亿元|万元|元|小时|%)")
 _NUMERIC_DATE_TYPES = {"integer", "decimal", "number", "date", "datetime"}
 _NUMERIC_DATE_CALLS = {"max", "min", "abs", "round", "len", "days_between", "today", "year", "month"}
+
+
+def _hard_prose(text: str) -> bool:
+    # Consume each complete numeric token once before checking its suffix. A
+    # failed unit match must not restart at every digit of the same long number.
+    return bool(_HARD_WORDS.search(text)) or any(
+        _HARD_UNIT.match(text, number.end()) for number in _HARD_NUMBERS.finditer(text)
+    )
 
 
 def hard_constraint(entity: dict, *, expression_schema: dict | None = None) -> bool:
@@ -79,7 +87,7 @@ def hard_constraint(entity: dict, *, expression_schema: dict | None = None) -> b
         ]
         + [plain(block) for block in prose_blocks]
     )
-    if payload.get("authority_spec") or _HARD_WORDS.search(text):
+    if payload.get("authority_spec") or _hard_prose(text):
         return True
     if entity.get("kind") != "rule":
         return False
@@ -101,7 +109,7 @@ def hard_constraint(entity: dict, *, expression_schema: dict | None = None) -> b
             if node.kind == "property":
                 field = expression.properties.get(node.value, {})
                 name = " ".join(str(field.get(key) or "") for key in ("key", "name", "unit", "note"))
-                if field.get("datatype", field.get("data_type")) in _NUMERIC_DATE_TYPES or _HARD_WORDS.search(name):
+                if field.get("datatype", field.get("data_type")) in _NUMERIC_DATE_TYPES or _hard_prose(name):
                     return True
             if node.kind == "literal" and isinstance(node.value, str):
                 try:
@@ -351,8 +359,15 @@ def _relations_pass(
 
 
 def expression_context(conn: db.Connection, entity: dict) -> dict:
+    from backend.kernel.rules import validate_judgement_shape
+
     payload = entity.get("payload") or {}
-    object_id = payload.get("object_type") or (payload.get("judgement") or {}).get("applies_to", {}).get("object_type")
+    try:
+        validate_judgement_shape(payload)
+    except ValueError as error:
+        raise ApiError("EXPRESSION_INVALID", str(error)) from error
+    judgement = _object(payload.get("judgement"))
+    object_id = payload.get("object_type") or _object(judgement.get("applies_to")).get("object_type")
     if not object_id:
         return {"properties": (), "relations": {}}
     row = conn.execute("SELECT payload FROM entities WHERE id=? AND kind='object_type'", (object_id,)).fetchone()
@@ -375,7 +390,11 @@ def expression_context(conn: db.Connection, entity: dict) -> dict:
 def run_cases(conn: db.Connection, entity: dict) -> dict:
     from backend.kernel.rules import run_test_cases
 
-    return run_test_cases(entity["kind"], entity.get("payload") or {}, **expression_context(conn, entity))
+    try:
+        context = expression_context(conn, entity)
+    except (ValueError, ApiError) as error:
+        return {"passed": False, "total": 0, "passed_count": 0, "results": [], "errors": [str(error)]}
+    return run_test_cases(entity["kind"], entity.get("payload") or {}, **context)
 
 
 def _fingerprint(entity: dict, meta: dict) -> str:
