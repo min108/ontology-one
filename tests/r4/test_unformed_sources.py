@@ -17,7 +17,7 @@ from backend.api.v2.routes import registry
 from backend.capabilities.context import CapabilityContext
 from backend.core.errors import ApiError
 from backend.domains import build
-from backend.domains.build_sources import proposal_sources
+from backend.domains.build_sources import proposal_sources, unformed_chunks
 from backend.security import store
 from backend.security.context import use_context
 from tests.r2 import test_build as construction
@@ -62,6 +62,25 @@ def mixed_reply(messages: list[dict], **_options: object) -> dict:
 
 
 class RetentionBoundary(unittest.TestCase):
+    def test_repeated_extraction_does_not_offer_a_second_raw_item_for_an_already_preserved_paragraph(self) -> None:
+        chunk = {"id": "chunk", "content": RECOVER}
+        candidate = {
+            "extraction_mode": "local",
+            "content": RECOVER,
+            "source_chunk_ids": ["chunk"],
+            "source_quotes": [{"chunk_id": "chunk", "quote": RECOVER}],
+        }
+        payload = {
+            "candidates": [candidate],
+            "coverage": {"chunk": {"mode": "online", "status": "needs_review", "discarded_source": True}},
+        }
+        self.assertEqual(unformed_chunks({"payload": payload}, [chunk]), {})
+        # A generated or partial paraphrase does not stand in for the original.
+        for changed in ({**candidate, "extraction_mode": "online"}, {**candidate, "content": RECOVER[:5]}):
+            self.assertEqual(
+                unformed_chunks({"payload": {**payload, "candidates": [changed]}}, [chunk]), {"chunk": "invalid_quote"}
+            )
+
     def test_readonly_even_with_build_permission_and_tool_without_human_confirmation_cannot_retain(self) -> None:
         for ctx, code in (
             (CapabilityContext(principal(readonly=True), permissions=frozenset({"build.edit"})), "PERMISSION_DENIED"),

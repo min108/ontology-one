@@ -361,7 +361,7 @@ function Inbox() {
                 )}
                 {!!current.gates?.fields?.length && (
                   <FoldRow
-                    key={current.entity.id}
+                    key={'facts:' + current.entity.id}
                     title={copy.r4a1_legacy_facts}
                     summary={sentence(copy.r3_main_count, { count: current.gates.fields.length })}
                     defaultOpen

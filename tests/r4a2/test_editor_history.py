@@ -141,6 +141,76 @@ class EditorHistoryHTTP(unittest.TestCase):
         self.assertEqual(released.status_code, 200, released.text)
         self.assertEqual(self.entity(first, ident)["status"], "published")
 
+    def test_identical_restores_before_and_after_publication_in_each_binding(self) -> None:
+        admin, builder, reviewer = (self.login("fixture." + role) for role in ("admin", "builder", "reviewer"))
+        proposal = self.proposal(builder)
+        self.invoke(
+            builder,
+            "changeset.decide_items",
+            {"changeset_id": proposal["id"], "item_ids": [proposal["items"][0]["id"]], "decision": "accepted"},
+        )
+        ident = self.invoke(builder, "changeset.apply", {"changeset_id": proposal["id"]})["entity_ids"][0]
+        admin_id, builder_id = (client.get("/api/auth/session").json()["user"]["id"] for client in (admin, builder))
+
+        def restore_same(current: dict, binding: str) -> dict:
+            snapshot = admin.get(f"/api/entities/{ident}/versions").json()["items"][0]
+            for key in ("title", "summary", "domain"):
+                self.assertEqual(snapshot["snapshot"][key], current[key])
+            self.assertEqual(
+                {k: v for k, v in snapshot["snapshot"]["payload"].items() if k != "r2_review"},
+                {k: v for k, v in current["payload"].items() if k != "r2_review"},
+            )
+            if binding == "v1":
+                restored = admin.post(
+                    f"/api/entities/{ident}/restore", json={"version": snapshot["version"], "reason": "沿用核实版本"}
+                )
+                self.assertEqual(restored.status_code, 200, restored.text)
+            else:
+                self.invoke(
+                    admin,
+                    "element.restore_version",
+                    {
+                        "entity_id": ident,
+                        "version": current["version"],
+                        "restore_version": snapshot["version"],
+                        "reason": "沿用核实版本",
+                    },
+                )
+            result = self.entity(admin, ident)
+            self.assertEqual((result["status"], result["version"]), ("draft", current["version"] + 1))
+            return result
+
+        def submit_and_release(restored: dict) -> dict:
+            pending = self.action(builder, restored, "submit")
+            for path, body in (
+                (f"/api/entities/{ident}/action", {"action": "approve", "expected_version": pending["version"]}),
+                (f"/api/v2/reviews/{ident}:decide", {"decision": "approve_publish", "version": pending["version"]}),
+            ):
+                denied = admin.post(path, json=body)
+                self.assertEqual(denied.status_code, 403, denied.text)
+                self.assertIn("其他审核人员", denied.text)
+            released = self.action(reviewer, self.action(reviewer, pending, "approve"), "publish")
+            self.assertEqual(released["status"], "published")
+            return released
+
+        current = self.entity(admin, ident)
+        for binding in ("v1", "v2"):
+            with self.subTest(binding=binding):
+                if current["status"] == "published":
+                    current = self.action(builder, current, "revise")
+                period = current["payload"]["r2_review"]["revision_id"]
+                restored = restore_same(current, binding)
+                receipt = restored["payload"]["r2_review"]
+                self.assertEqual(receipt["revision_id"], period)
+                self.assertEqual(set(receipt["editor_ids"]), {builder_id, admin_id})
+                released = submit_and_release(restored)
+                restored = restore_same(released, binding)
+                receipt = restored["payload"]["r2_review"]
+                self.assertNotEqual(receipt["revision_id"], period)
+                self.assertFalse(receipt["cycle_closed"])
+                self.assertEqual(receipt["editor_ids"], [admin_id])
+                current = submit_and_release(restored)
+
     def test_submitting_without_edit_stays_in_history_after_return(self) -> None:
         first, builder, reviewer = (self.login("fixture." + role) for role in ("admin", "builder", "reviewer"))
         entity = self.invoke(

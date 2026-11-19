@@ -1,3 +1,4 @@
+import reviewFixture from '../../../test-fixtures/r4a2-source-review.json';
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -11,14 +12,14 @@ const original: UnformedSource = {
   anchor_id: 'anchor',
   source_version: 'source',
   unformed_reason: 'invalid_quote',
-  quote: '请在核对后保留这个条款。',
-  locator: '原文第 2 段',
+  quote: reviewFixture.unformedParagraph,
+  locator: reviewFixture.paragraphLocator,
 };
 it('shows the original, preserves only its version and anchor, and disables read-only writes', () => {
   const retain = vi.fn();
   const proposal: Proposal = {
     id: 'proposal',
-    title: '制度',
+    title: reviewFixture.materialTitle,
     summary: '',
     status: 'open',
     source_text: original.quote,

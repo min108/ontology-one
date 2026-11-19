@@ -17,12 +17,35 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from backend import db
+from backend.capabilities.context import CapabilityContext
+from backend.capabilities.registry import registry
 from backend.core.errors import ApiError
 from backend.domains import build
 from backend.kernel.gates import evaluate_checks
 from backend.security import store
 from backend.security.context import use_context
 from tests.r4a1 import test_build_workflow as workflow
+from tests.security.test_permissions import principal
+
+
+class ChangesetCapabilityBoundaries(unittest.TestCase):
+    def test_readonly_session_with_nominal_write_permissions_cannot_enter_any_changeset_write(self) -> None:
+        context = CapabilityContext(
+            principal("admin", readonly=True), permissions=frozenset({"build.edit", "build.submit"})
+        )
+        for name, body in (
+            ("changeset.decide_items", {"item_ids": ["item"], "decision": "rejected"}),
+            ("changeset.confirm_facts", {"valid_from": "2026-04-15"}),
+            ("changeset.apply", {}),
+            ("changeset.apply_and_submit", {}),
+        ):
+            with (
+                self.subTest(name=name),
+                patch("backend.capabilities.registry.store.append_audit"),
+                self.assertRaises(ApiError) as error,
+            ):
+                registry.invoke(name, context, {"changeset_id": "proposal", **body})
+            self.assertEqual(error.exception.code, "PERMISSION_DENIED")
 
 
 class MeaningReasons(unittest.TestCase):
@@ -498,3 +521,25 @@ class ChangesetWriteGuards(unittest.TestCase):
         released = reviewer.post(path, json={**decision, "waivers": {"QG3": "独立核对本版并接受例外说明缺口"}})
         self.assertEqual(released.status_code, 200, released.text)
         self.assertEqual(released.json()["data"]["entity"]["status"], "published")
+
+    def test_foreign_tenant_cannot_confirm_apply_submit_or_discard_a_real_proposal(self) -> None:
+        owner, other = self.login("fixture.builder"), self.login("r2.other")
+        proposal = self.proposal(owner)
+        item = proposal["items"][0]
+        request = {"changeset_id": proposal["id"]}
+        self.accept(owner, proposal, [item["id"]])
+        ident = self.invoke(owner, "changeset.apply", request)["entity_ids"][0]
+        before = self.invoke(owner, "changeset.get", request)
+        entity = owner.get("/api/entities/" + ident).json()
+        for name, body in (
+            ("changeset.decide_items", {"item_ids": [item["id"]], "decision": "rejected"}),
+            ("changeset.confirm_facts", {"valid_from": "2026-04-15"}),
+            ("changeset.apply", {}),
+            ("changeset.apply_and_submit", {}),
+        ):
+            with self.subTest(name=name):
+                blocked = other.post(f"/api/v2/capabilities/{name}:invoke", json={**request, **body})
+                self.assertEqual(blocked.status_code, 404, blocked.text)
+                self.assertEqual(blocked.json()["error"]["code"], "NOT_FOUND")
+        self.assertEqual(self.invoke(owner, "changeset.get", request), before)
+        self.assertEqual(owner.get("/api/entities/" + ident).json(), entity)

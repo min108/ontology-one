@@ -406,6 +406,8 @@ it('opens the next review’s facts when the reviewer collapsed those of the pre
   expect(screen.getByText('2026-01-01')).not.toBeVisible();
   fireEvent.click(container.querySelector('[data-review-item-id="rule-other"]')!);
   expect(await screen.findByText('2026-01-02')).toBeVisible();
+  expect(container.querySelectorAll('[data-governance-facts]')).toHaveLength(1);
+  expect(screen.queryByText('2026-01-01')).not.toBeInTheDocument();
 });
 it('keeps per-check waiver and refusal decisions disjoint when returning an application', async () => {
   current.gates = gates(['QG1', 'QG3']);

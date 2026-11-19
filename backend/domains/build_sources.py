@@ -5,15 +5,37 @@ import json
 from backend import db, provenance
 
 
+def preserved_paragraphs(candidates: list[dict]) -> set[tuple[str, str]]:
+    """Identify unchanged, single-paragraph local items, including pre-A.2 fallbacks."""
+    preserved = set()
+    for candidate in candidates:
+        quotes = candidate.get("source_quotes") or []
+        if candidate.get("extraction_mode") != "local" or not isinstance(quotes, list) or len(quotes) != 1:
+            continue
+        quote = quotes[0]
+        if (
+            isinstance(quote, dict)
+            and isinstance(quote.get("chunk_id"), str)
+            and isinstance(quote.get("quote"), str)
+            and candidate.get("source_chunk_ids") == [quote["chunk_id"]]
+            and candidate.get("content") == quote["quote"]
+        ):
+            preserved.add((quote["chunk_id"], quote["quote"]))
+    return preserved
+
+
 def unformed_chunks(material: dict, chunks: list[dict]) -> dict[str, str]:
     payload = material["payload"]
-    represented = {cid for candidate in payload.get("candidates", []) for cid in candidate.get("source_chunk_ids", [])}
+    candidates = payload.get("candidates", [])
+    represented = {cid for candidate in candidates for cid in (candidate.get("source_chunk_ids") or [])}
+    preserved = preserved_paragraphs(candidates)
     missing = {}
     for chunk in chunks:
         cid = chunk["id"]
         coverage = (payload.get("coverage") or {}).get(cid, {})
         if (
             chunk["content"].strip()
+            and (cid, chunk["content"]) not in preserved
             and coverage.get("mode") == "online"
             and (coverage.get("discarded_source") or coverage.get("status") == "needs_review" or cid not in represented)
         ):

@@ -1,3 +1,4 @@
+import reviewFixture from '../../../test-fixtures/r4a2-source-review.json';
 import fixture from '../../../test-fixtures/r4-semantic-content.json';
 import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -214,6 +215,38 @@ it('requires all items handled before one L2 submit confirmation and then submit
   expect(
     vi.mocked(invokeCapability).mock.calls.filter(([op]) => op === 'changeset.apply_and_submit'),
   ).toHaveLength(1);
+});
+it('replaces the submission count if a refreshed queue leaves an open confirmation with no eligible draft', async () => {
+  const item = proposal.items[0];
+  Object.assign(item, {
+    decision: 'accepted',
+    applied_entity_id: 'R-1',
+    applied_status: 'draft',
+    can_submit: true,
+  });
+  proposal.can_submit = true;
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_6 }));
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() =>
+    expect(within(dialog).getByText(sentence(terms.labels.r3_main_submit_count, { count: 1 }))).toBeVisible(),
+  );
+  Object.assign(item, { can_submit: false });
+  proposal.can_submit = false;
+  proposal.submit_blockers = ['Recheck required'];
+  await act(async () => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  try {
+    expect(await within(dialog).findByText(terms.labels.r4a2_no_submittable)).toBeVisible();
+    expect(
+      within(dialog).queryByText(sentence(terms.labels.r3_main_submit_count, { count: 0 })),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled();
+  } finally {
+    focusManager.setFocused(undefined);
+  }
 });
 it('shows the original in place with exact highlight and keeps the selected item after closing', async () => {
   const quote = 'Original';
@@ -562,14 +595,18 @@ it('keeps two untouched candidates explicit after nine drafts submit with zero b
 it('requests a fresh Chinese sentence when an unchanged sentence describes the previous expression', async () => {
   useUiStore.setState({ viewMode: 'professional' });
   Object.assign(proposal.items[0].after_data, {
-    judgement: { requirement: { oxl: 'amount > 0', sentence: '旧判定句' } },
+    judgement: { requirement: { oxl: 'amount > 0', sentence: reviewFixture.originalJudgement } },
   });
   open();
   fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
   const dialog = screen.getByRole('dialog');
   fireEvent.click(within(dialog).getByText(terms.labels.r3_ui_technical));
   fireEvent.change(within(dialog).getByLabelText(terms.labels.r4_rule_judgement), {
-    target: { value: JSON.stringify({ requirement: { oxl: 'amount >= 1', sentence: '旧判定句' } }) },
+    target: {
+      value: JSON.stringify({
+        requirement: { oxl: 'amount >= 1', sentence: reviewFixture.originalJudgement },
+      }),
+    },
   });
   fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.r2_save }));
   await waitFor(() =>

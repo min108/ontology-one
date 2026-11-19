@@ -1,3 +1,4 @@
+import reviewFixture from '../../../test-fixtures/r4a2-source-review.json';
 import legacyFixture from '../../../test-fixtures/r4a1-legacy-content.json';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -67,22 +68,22 @@ it('distinguishes system recognition from verbatim extraction and identifies a r
   result.fields = [
     {
       key: 'conditions',
-      label: '条件',
-      value: '系统识别的条件值',
+      label: reviewFixture.conditionLabel,
+      value: reviewFixture.conditionValue,
       source: 'system',
-      source_quote: '条件的原句。',
+      source_quote: reviewFixture.conditionQuote,
     },
     {
       key: 'valid_from',
-      label: '生效日期',
+      label: legacyFixture.dateLabel,
       value: '2026-01-01',
       source: 'editor',
       method: 'selection',
-      source_quote: '新版自该日起施行。',
+      source_quote: legacyFixture.dateQuote,
       material_id: 'M-1',
       anchor_id: 'selected-anchor',
       source_version: 'V-3',
-      confirmed_by: '李某',
+      confirmed_by: legacyFixture.reviewer,
     },
   ];
   const { container } = render(
@@ -92,12 +93,12 @@ it('distinguishes system recognition from verbatim extraction and identifies a r
   );
   expect(
     container.querySelector('[data-governance-field="conditions"] [data-fact-origin]'),
-  ).toHaveTextContent('系统识别');
+  ).toHaveTextContent(terms.labels.r4a2_origin_system);
   expect(screen.queryByText(terms.labels.r4a1_legacy_origin_source)).not.toBeInTheDocument();
   expect(container.querySelector('[data-governance-field="valid_from"]')).toHaveTextContent(
-    '核对人选择 · 李某',
+    [terms.labels.r4a2_origin_selection, legacyFixture.reviewer].join(' · '),
   );
-  expect(screen.getByRole('link', { name: '新版自该日起施行。' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: legacyFixture.dateQuote })).toHaveAttribute(
     'href',
     '/materials/M-1?anchor=selected-anchor&source_version=V-3',
   );

@@ -179,13 +179,9 @@ async function fillConditions(page, proposal, item) {
 
 async function activityPanel(page, id) {
   await page.goto("/ontology/elements/" + id);
-  const history = page
-    .locator("details")
-    .filter({
-      has: page
-        .locator("summary strong")
-        .filter({ hasText: c.r2_card_activity }),
-    });
+  const history = page.locator("details").filter({
+    has: page.locator("summary strong").filter({ hasText: c.r2_card_activity }),
+  });
   await history.locator("summary").click();
   return history;
 }

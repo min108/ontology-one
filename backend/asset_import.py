@@ -216,7 +216,12 @@ def sheet_rows(workbook, kind):
             code = text(values.get(FIELDS[kind][0]))
             if not code:
                 continue
-            records.append({"sheet": ws.title, "row": row_index, "values": values})
+            source_text = "\n".join(
+                f"{text(header, True)}：{text(cell, True)}"
+                for header, cell in zip(rows[header_index], row, strict=False)
+                if text(header) and text(cell)
+            )
+            records.append({"sheet": ws.title, "row": row_index, "values": values, "source_text": source_text})
     return records, recognized
 
 
@@ -763,10 +768,6 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                 chunk_id = f"{material_id}::p{position:06d}"
                 asset = build_asset(kind, record, material_id, material_title, chunk_id, batch)
                 assets.append(asset)
-                # Preserve the actual source cells, including unit and grain where provided.
-                content = "\n".join(
-                    f"{header}：{text(value, True)}" for header, value in record["values"].items() if text(value)
-                )
                 conn.execute(
                     "INSERT INTO chunks(id,material_id,position,heading,content,locator,status) VALUES(?,?,?,?,?,?,?)",
                     (
@@ -774,7 +775,7 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                         material_id,
                         position,
                         f"{asset['id']} {asset['title']}",
-                        content,
+                        record["source_text"],
                         asset["payload"]["source_locator"],
                         "available",
                     ),

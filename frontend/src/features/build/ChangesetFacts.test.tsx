@@ -1,3 +1,4 @@
+import reviewFixture from '../../../test-fixtures/r4a2-source-review.json';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ConfigProvider } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
@@ -216,7 +217,7 @@ it('lets each omission group independently select exact IDs and versions after r
   const quote = within(row).getByText(value.items[0].evidence[0].quote);
   expect(exceptions.querySelector('summary')).toHaveTextContent(/请核对.*例外/);
   expect(conditions.querySelector('summary')).toHaveTextContent(/请核对.*条件/);
-  expect(exceptions.querySelector('summary')).not.toHaveTextContent('原文未写');
+  expect(exceptions.querySelector('summary')).not.toHaveTextContent(reviewFixture.previousOmissionWording);
   expect(quote).toBeVisible();
   expect(within(row).queryByText(value.items[1].evidence[0].quote)).not.toBeInTheDocument();
   expect(within(row).getByRole('link')).toHaveAttribute(

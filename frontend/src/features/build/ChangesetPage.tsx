@@ -801,9 +801,15 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         onOk={() => void submitReady()}
       >
         {error && <Alert type="error" title={error} role="alert" />}
-        <p>{sentence(copy.r3_main_submit_count, { count: gate.ready })}</p>
-        <p>{copy.r3_main_submit_checks}</p>
-        <p>{copy.r3_main_submit_impact}</p>
+        {gate.ready ? (
+          <>
+            <p>{sentence(copy.r3_main_submit_count, { count: gate.ready })}</p>
+            <p>{copy.r3_main_submit_checks}</p>
+            <p>{copy.r3_main_submit_impact}</p>
+          </>
+        ) : (
+          <p>{copy.r4a2_no_submittable}</p>
+        )}
       </Modal>
       <Modal
         title={actions.catalog_1_1}

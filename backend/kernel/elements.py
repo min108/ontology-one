@@ -259,7 +259,7 @@ def create_draft(conn: db.Connection, body: dict) -> dict:
     return entity
 
 
-def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
+def update_draft(conn: db.Connection, old: dict, changes: dict, *, restoring: bool = False) -> dict:
     _writable()
     check_version(old, changes)
     reason = _reason(changes.get("reason"), "内容修订")
@@ -291,7 +291,11 @@ def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
     _confirm_sentence(old, entity["payload"], changes)
     entity["payload"] = _preserve_review(conn, old, entity["payload"], changes)
     current_meta = get_meta(conn, old["id"]) or {}
-    if entity["payload"].get("r2_review") and any(current_meta.get(key) != value for key, value in updates.items()):
+    if entity["payload"].get("r2_review") and (
+        restoring
+        or entity["status"] != old["status"]
+        or any(current_meta.get(key) != value for key, value in updates.items())
+    ):
         record_editor({**old, "payload": entity["payload"]}, require_context().user_id, conn=conn)
     snapshot(conn, old, reason)
     entity.update(version=old["version"] + 1, updated_at=db.now())
@@ -370,6 +374,6 @@ def restore(conn: db.Connection, old: dict, saved: dict, reason: str) -> dict:
     # Module/owner/sensitivity assignments are current authorization, not content
     # supplied by an old snapshot. Restore only publicly editable business dates.
     changes["meta"] = {key: value for key, value in saved.get("_meta", {}).items() if key in PUBLIC_META_FIELDS}
-    result = update_draft(conn, old, changes)
+    result = update_draft(conn, old, changes, restoring=True)
     db.log(conn, old["id"], "还原历史版本", f"还原版本{saved.get('version')}为草稿：{reason}")
     return result

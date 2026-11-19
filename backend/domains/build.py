@@ -15,7 +15,7 @@ from backend import ai, db, jobs, materials, provenance
 from backend.core.errors import ApiError, NextAction, from_http
 from backend.domains.build_source_facts import document_facts, ground_candidate
 from backend.domains.build_source_facts import source_exception as source_exception
-from backend.domains.build_sources import proposal_sources, unformed_chunks
+from backend.domains.build_sources import preserved_paragraphs, proposal_sources, unformed_chunks
 from backend.kernel import gates
 from backend.kernel.metadata import get_meta, sync_meta
 from backend.security.context import require_context
@@ -185,12 +185,13 @@ async def run_recipe(ident: str) -> None:
                     if not online or coverage.get(chunk["id"], {}).get("status") not in {"completed", "needs_review"}
                 ]
                 ids = {candidate["id"] for candidate in candidates}
+                preserved = preserved_paragraphs(candidates)
                 for chunk in fallback:
                     # A located rejected candidate needs an explicit reviewer
                     # choice, even if every candidate in its batch was rejected.
-                    if online and coverage.get(chunk["id"], {}).get("discarded_source"):
+                    if coverage.get(chunk["id"], {}).get("discarded_source"):
                         continue
-                    if not chunk["content"].strip():
+                    if not chunk["content"].strip() or (chunk["id"], chunk["content"]) in preserved:
                         continue
                     title = chunk["content"].strip().splitlines()[0][:120]
                     cid = materials.candidate_id(material_id, "rule", title, [chunk["id"]])

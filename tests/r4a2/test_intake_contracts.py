@@ -19,7 +19,7 @@ class OriginalWorkbook(unittest.TestCase):
             with self.subTest(headers=headers):
                 book = Workbook()
                 first = ["数据项编码", "二级分类", "三级分类", "数据项名称", "业务含义"]
-                book.active.append([*first, *headers])
+                book.active.append([*first, *headers, "原表备注"])
                 book.active.append(
                     [
                         "D.05.01.301",
@@ -28,9 +28,13 @@ class OriginalWorkbook(unittest.TestCase):
                         "处理份数",
                         "复核完成的资料份数",
                         *("份", "每笔申请")[: len(headers)],
+                        "按实际工作表追溯",
                     ]
                 )
                 rows, _ = asset_import.sheet_rows(book, "data")
+                self.assertIn("原表备注：按实际工作表追溯", rows[0]["source_text"])
+                if headers:
+                    self.assertIn(f"{headers[0]}：份", rows[0]["source_text"].splitlines())
                 asset = asset_import.build_asset("data", rows[0], "mat", "原始工作簿", "chunk", "batch")
                 p = asset["payload"]
                 if headers:
