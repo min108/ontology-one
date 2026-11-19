@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { accounts, evidence } from "./fixture.mjs";
 import { c, read, terms, userRow } from "./r3-support.mjs";
+import { verifyMaterialPickers } from "./r4b-material-picker.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
 import {
   assertAbsent,
@@ -386,6 +387,11 @@ test("R4-B BA7–BA10 S1–S12 search the reviewed original regulation, all entr
     assertRebuilt(before, rebuilt);
     receipt.after_rebuild = orderedDocuments(rebuilt);
     receipt.passed.push("S12");
+    stage = "register the original material through two retained pickers";
+    receipt.material_pickers = await verifyMaterialPickers(
+      builder.page,
+      receipt.material_id,
+    );
     stage =
       "administrator views the existing read-only account in the real institution directory";
     await admin.page.goto("/admin/users");
