@@ -6,11 +6,11 @@ import unittest
 from contextlib import closing
 from dataclasses import replace
 
-from backend.infra.search_index import rebuild_index
 from fastapi import HTTPException
 
 from backend import db, provenance
 from backend.core.errors import ApiError
+from backend.infra.search_index import rebuild_index
 from backend.kernel import search
 from backend.security import store, visibility
 from backend.security.context import Principal, use_context

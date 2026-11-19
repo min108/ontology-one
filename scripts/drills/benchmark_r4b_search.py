@@ -38,7 +38,14 @@ SUBJECTS = (
     "调度安排",
     "费用分摊",
 )
-DESCRIPTIONS = ("经办部门登记数量并核实单位。", "复核人员按期校验记录。", "负责人依据签收凭证核对归属。")
+DESCRIPTIONS = (
+    "经办部门登记数量并核实单位。",
+    "复核人员按期校验记录。",
+    "负责人依据签收凭证核对归属。",
+    "按合同约定的交付日期登记差异。",
+    "收到凭证后五个工作日内完成复核。",
+    "每月最后一个工作日汇总并归档。",
+)
 KINDS = ("data", "knowledge", "term", "object_type")
 
 
@@ -85,12 +92,24 @@ def prepare(person: Principal, evidence: dict) -> dict:
                 "GROUP BY kind,status ORDER BY kind,status"
             )
         ]
+        originals = list(dict.fromkeys(evidence["published_rule_ids"]))
+        statuses = {
+            row["id"]: row["status"]
+            for row in conn.execute(
+                "SELECT id,status FROM entities WHERE kind='rule' AND id IN (" + ",".join("?" for _ in originals) + ")",
+                originals,
+            )
+        }
+        if len(statuses) != len(originals):
+            raise AssertionError("Each independently published source rule must remain in the institution")
         return {
             "before": before,
             "after": after,
             "by_kind_and_status": composition,
             "added_synthetic_drafts": added,
-            "original_confirmed_rules": len(set(evidence["published_rule_ids"])),
+            "original_rules_current_status": statuses,
+            "synthetic_subjects": len(SUBJECTS),
+            "synthetic_descriptions": DESCRIPTIONS,
             "mysql_version": conn.execute("SELECT VERSION() AS v").fetchone()["v"],
         }
 

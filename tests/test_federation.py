@@ -100,6 +100,7 @@ class FederationBoundaryTests(unittest.TestCase):
             patch.object(federation, "_scope", side_effect=lambda: (self.principal, list(self.tenants.values()))),
             patch.object(federation.db, "tenant_connection", side_effect=self.connection),
             patch.object(federation, "_central_links", return_value=[]),
+            patch("backend.security.visibility.assert_execution_principal_current", side_effect=self.check_identity),
             patch.object(
                 federation.store, "can_read_tenant", side_effect=lambda principal, target: self.tenants.get(target)
             ),
@@ -109,6 +110,11 @@ class FederationBoundaryTests(unittest.TestCase):
         ]
         for entry in self.patches:
             entry.start()
+
+    def check_identity(self, person):
+        if person != self.principal:
+            raise HTTPException(403, "revoked")
+        return person
 
     def tearDown(self):
         for entry in reversed(self.patches):
