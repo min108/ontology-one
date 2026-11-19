@@ -6,6 +6,7 @@ import { invokeCapability } from '../../api/client';
 import { RuleEditor } from './RuleEditor';
 import { RuleTests } from './RuleTests';
 import { ElementRepair } from './ElementRepair';
+import { aliasesOf, ElementAliases } from './ElementAliases';
 import { GovernanceFacts } from '../build/GovernanceFacts';
 import { useUiStore } from '../../state/ui';
 import {
@@ -55,6 +56,7 @@ export type { ElementDetail } from '../../api/generated/types';
 import type { ElementDetail, ElementDetailResult, ElementUpdate } from '../../api/generated/types';
 export function BusinessCard({ detail }: { detail: ElementDetail }) {
   const [source, setSource] = useState<Evidence>();
+  const aliases = aliasesOf(detail.entity);
   const sources = Array.isArray(detail.entity.payload.source_refs)
     ? detail.entity.payload.source_refs.filter(
         (value) => sourceDescription(value) || isAnchoredEvidence(value),
@@ -63,6 +65,11 @@ export function BusinessCard({ detail }: { detail: ElementDetail }) {
   return (
     <article className={styles.card} aria-label={detail.entity.title}>
       <p className={styles.statement}>{detail.card.one_liner}</p>
+      {aliases.length > 0 && (
+        <p>
+          {copy.r4b_aliases} · {aliases.join('、')}
+        </p>
+      )}
       {(detail.entity.payload.extraction_mode === 'online' ||
         detail.entity.payload.extraction_mode === 'local') && (
         <OriginTag
@@ -178,6 +185,16 @@ function Element({ id }: { id: string }) {
                 </span>
               )}
             </>
+          }
+          extra={
+            <ElementAliases
+              detail={detail}
+              disabled={!!query.refreshing || !!query.error}
+              onSaved={(message) => {
+                setNotice(message ?? '');
+                query.reload();
+              }}
+            />
           }
           primaryAction={
             entity.status === 'published'

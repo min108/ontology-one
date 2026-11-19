@@ -180,29 +180,54 @@ export async function publishOriginal(builder, reviewer, receipt) {
 }
 
 export async function registerAlias(builder, reviewer, rule) {
-  const revision = (
-    await elementAction(builder, "start_revision", rule, {
-      reason: "登记业务别名",
-    })
-  ).entity;
-  const existing = revision.payload.aliases ?? [];
-  expect(existing).not.toContain(alias);
-  const change = (
-    await elementAction(builder, "update_draft", revision, {
-      payload: { ...revision.payload, aliases: [...existing, alias] },
-      reason: "登记质量保证金的日常称呼",
-    })
-  ).entity;
-  expect(change.title).toBe(rule.title);
-  expect(change.payload.aliases).toContain(alias);
-  const submitted = await elementAction(builder, "submit_draft", change, {
-    reason: "送独立审核人核对别名",
+  await builder.goto("/ontology/elements/" + rule.id);
+  await expect(
+    builder.getByRole("heading", { name: rule.title, exact: true }),
+  ).toBeVisible();
+  await button(builder, c.r4b_alias_register).click();
+  const dialog = builder.getByRole("dialog", { name: c.r4b_alias_register });
+  await dialog.getByRole("textbox", { name: c.r4b_alias_new }).fill(alias);
+  await builder.screenshot({
+    path: resolve(evidence, "r4b-alias-entry-1366x768.png"),
   });
+  const revising = postResponse(builder, "/element.start_revision:invoke");
+  await button(dialog, a.catalog_2_8).click();
+  const revision = (await (await revising).json()).data.entity;
+  expect(revision).toMatchObject({
+    id: rule.id,
+    status: "draft",
+    title: rule.title,
+  });
+  expect(revision.payload.aliases ?? []).not.toContain(alias);
+  const saving = postResponse(builder, "/element.update_draft:invoke");
+  await button(dialog, a.catalog_2_0).click();
+  const change = (await (await saving).json()).data.entity;
+  expect(change).toMatchObject({
+    id: rule.id,
+    status: "draft",
+    title: rule.title,
+  });
+  expect(change.payload.aliases).toContain(alias);
+  expect(change.payload.source_refs).toEqual(rule.payload.source_refs);
+  await expect(dialog).toHaveCount(0);
+  const submitting = postResponse(builder, "/element.submit_draft:invoke");
+  await button(
+    builder.locator("#element-repair"),
+    c.r4a1_legacy_submit,
+  ).click();
+  const submitted = (await (await submitting).json()).data;
   expect(submitted.entity.status).toBe("review");
   const updated = await publish(reviewer, builder, rule.id);
   expect(updated.version).toBeGreaterThan(rule.version);
   expect(updated.title).toBe(rule.title);
   expect(updated.payload.aliases).toContain(alias);
+  await builder.goto("/ontology/elements/" + rule.id);
+  await expect(
+    builder.getByText(c.r4b_aliases + " · " + alias, { exact: true }),
+  ).toBeVisible();
+  await builder.screenshot({
+    path: resolve(evidence, "r4b-alias-published-1366x768.png"),
+  });
   return updated;
 }
 
