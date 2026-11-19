@@ -36,11 +36,11 @@ WRITERS = {
 class ReleaseActionsHTTP(ReleaseWorkerActions, unittest.TestCase):
     login = construction.BuildMySQL.login
     invoke = construction.BuildMySQL.invoke
-    tearDownClass = classmethod(construction.BuildMySQL.tearDownClass.__func__)
 
     @classmethod
     def setUpClass(cls) -> None:
         construction.BuildMySQL.setUpClass.__func__(cls)
+        cls.addClassCleanup(construction.BuildMySQL.tearDownClass.__func__, cls)
         token = store.login("fixture.superadmin", "SyntheticFixture9!", "127.0.0.1", "release-fixture")
         admin = store.authenticate_session(token, "release-fixture")[0]
         for name, role in (
@@ -353,7 +353,13 @@ class ReleaseActionsHTTP(ReleaseWorkerActions, unittest.TestCase):
             {promoted["id"]: "member", staying["id"]: "member", external["id"]: "ref"},
         )
         self.assertEqual({row["entity_id"] for row in initial["gates"]}, {promoted["id"], staying["id"]})
-        self.historical_scene(admin, reviewer, initial)
+        self.assertEqual(initial["missing_dependencies"], [COMMON])
+        self.business(admin, "module.save", {"module_id": scene, "register_dependencies": True})
+        refreshed = self.business(admin, "release.create_draft", {"module_id": scene})
+        self.assertEqual((refreshed["id"], refreshed["manifest_hash"]), (initial["id"], initial["manifest_hash"]))
+        self.assertEqual(refreshed["missing_dependencies"], [])
+        self.assertEqual(self.detail(admin, initial["id"])["missing_dependencies"], [])
+        self.historical_scene(admin, reviewer, refreshed)
         original = self.frozen(admin, initial["id"])
         self.assertEqual(original[promoted["id"]]["item_role"], "member")
         original_asset = self.get(admin, "/api/entities/" + promoted["id"])
@@ -444,9 +450,18 @@ class ReleaseActionsHTTP(ReleaseWorkerActions, unittest.TestCase):
             self.asset(owner, reviewer, title, evidence)["id"] for title in ("装箱份数", "交册份数", "复核份数")
         ]
         scene = self.scene_fixture(admin, member_ids)
+        for role in ("analyst", "viewer"):
+            self.rejected(clients[role].get(f"/api/v2/modules/{scene}"), 404, "NOT_FOUND")
+            self.rejected(clients[role].get(f"/api/v2/modules/{scene}/releases"), 404, "NOT_FOUND")
         self.business(
             admin, "module.save", {"module_id": scene, "owner_user_id": self.identity(clients["nonowner"]).user_id}
         )
+        # Each modeler manages their named part only. The scenario owner still
+        # needs the public part's owner to approve the promotion below.
+        scene_settings = {"module_id": scene, "scope_note": "只管理本场景的交接范围"}
+        self.rejected(owner.post("/api/v2/capabilities/module.save:invoke", json=scene_settings), 403)
+        settings = self.business(clients["nonowner"], "module.save", scene_settings)
+        self.assertEqual(settings["scope_note"], scene_settings["scope_note"])
         move = {"source_module_id": scene, "target_module_id": COMMON, "entity_ids": [member_ids[0]]}
         check_denials("module.move_elements", authorized, move)
         for role, ident in zip(sorted(authorized), member_ids, strict=True):
@@ -468,6 +483,8 @@ class ReleaseActionsHTTP(ReleaseWorkerActions, unittest.TestCase):
             release_input = {"release_id": draft["id"]}
             self.assertEqual(draft["created_by"], self.identity(clients[creator]).user_id)
             if i == 0:
+                for role in ("admin", "modeler", "nonowner", "reviewer", "superadmin"):
+                    self.assertEqual(self.detail(clients[role], draft["id"])["status"], "draft")
                 for role in ("analyst", "viewer"):
                     self.rejected(clients[role].get("/api/v2/releases/" + draft["id"]), 404)
                     visible = self.get(clients[role], f"/api/v2/modules/{COMMON}/releases")["items"]
