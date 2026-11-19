@@ -1,7 +1,129 @@
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect } from "./runtime.mjs";
 import { evidence } from "./fixture.mjs";
+import { a, button, read } from "./r3-support.mjs";
 import { fixture, person, post, topSearch } from "./r4b-search-support.mjs";
+
+export async function uploadConfirmedMaterial(page, name, text) {
+  const session = await read(page, "/api/auth/session");
+  const upload = await page.request.post("/api/materials/upload", {
+    headers: {
+      "X-Workspace-Id": session.workspace.tenant_id,
+      "X-CSRF-Token": session.csrf_token,
+    },
+    multipart: {
+      file: { name, mimeType: "text/plain", buffer: Buffer.from(text) },
+    },
+  });
+  expect(upload.ok()).toBe(true);
+  const { id } = await upload.json();
+  const base = "/api/materials/" + encodeURIComponent(id);
+  const preview = await post(page, base + "/segment-preview", {
+    mode: "default",
+  });
+  await post(page, base + "/segment-confirm", { preview_id: preview.id });
+  return { id, base };
+}
+
+async function publishMaterial(builder, reviewer, id, reason) {
+  for (const [actor, action, expected] of [
+    [builder, "submit", "review"],
+    [reviewer, "approve", "approved"],
+    [reviewer, "publish", "published"],
+  ]) {
+    const entity = await post(actor, "/api/entities/" + id + "/action", {
+      action,
+      reason,
+    });
+    expect(entity.status).toBe(expected);
+  }
+}
+
+async function openMaterialHit(page, query, id, type) {
+  const result = await topSearch(page, query);
+  const index = result.first.items.findIndex(
+    (hit) =>
+      hit.doc_type === type &&
+      (type === "element" ? hit.id : hit.entity_id) === id,
+  );
+  expect(index, query).toBeGreaterThanOrEqual(0);
+  const hit = result.first.items[index];
+  await result.options.nth(index).click();
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === "/materials/" + encodeURIComponent(id) &&
+      url.searchParams.get("chunk") === (hit.chunk_id || null),
+  );
+  return hit;
+}
+
+async function readLargeMaterial(page, builder, reviewer) {
+  const marker = "当日核对绿色封签";
+  const text =
+    "第一条 经办人应" +
+    marker +
+    "。\n\n第二条 凭证需要盖章确认。\n\n" +
+    "办理时应逐笔核对该凭证的财务签收记录。".repeat(5000);
+  expect(Buffer.byteLength(text)).toBeGreaterThan(256 * 1024);
+  const { id, base } = await uploadConfirmedMaterial(
+    builder,
+    "长册实际点击.txt",
+    text,
+  );
+  const original = await read(builder, base + "/source");
+  expect(original.text).toBe(text);
+  await publishMaterial(builder, reviewer, id, marker);
+  const detailPath = "/api/v2/elements/" + encodeURIComponent(id);
+  const detailRequests = [];
+  const observe = (request) => {
+    if (new URL(request.url()).pathname === detailPath)
+      detailRequests.push(request.method());
+  };
+  page.on("request", observe);
+  try {
+    const hit = await openMaterialHit(page, id, id, "element");
+    await expect(
+      page.getByRole("heading", { name: hit.title, exact: true }),
+    ).toBeVisible();
+    const body = page.locator("[data-source-viewer] blockquote");
+    const chars = Array.from(original.text);
+    const first = chars.slice(0, 4096).join("");
+    const second = chars.slice(4096, 8192).join("");
+    expect(first).not.toBe(second);
+    await expect.poll(() => body.textContent()).toBe(first);
+    await page.screenshot({
+      path: resolve(evidence, "r4b-published-large-1366x768.png"),
+    });
+    await button(page, a.identity_next).click();
+    await expect.poll(() => body.textContent()).toBe(second);
+    await button(page, a.identity_previous).click();
+    await expect.poll(() => body.textContent()).toBe(first);
+
+    const passage = await openMaterialHit(page, marker, id, "chunk");
+    const { focus } = await read(
+      builder,
+      base + "/source?" + new URLSearchParams({ chunk_id: passage.chunk_id }),
+    );
+    expect(focus.quote).toContain(marker);
+    await expect(page.locator("[data-source-viewer] mark")).toHaveText(
+      focus.quote,
+    );
+    expect(detailRequests).toEqual([]);
+    return {
+      material_id: id,
+      original_sha256: original.sha256,
+      utf8_bytes: Buffer.byteLength(text),
+      codepoints: chars.length,
+      checked_page_offsets: [0, 4096, 0],
+      selected_chunk: passage.chunk_id,
+      selected_quote: focus.quote,
+      full_detail_requests: detailRequests.length,
+    };
+  } finally {
+    page.off("request", observe);
+  }
+}
 
 export async function verifyPublishedPassage(
   browser,
@@ -23,43 +145,25 @@ export async function verifyPublishedPassage(
       },
     };
     expect((await page.request.get(passage, location)).status()).toBe(404);
-    for (const [actor, action] of [
-      [builder, "submit"],
-      [reviewer, "approve"],
-      [reviewer, "publish"],
-    ]) {
-      await post(actor, "/api/entities/" + source.material_id + "/action", {
-        action,
-        reason: source.quote,
-      });
-    }
+    expect(
+      (await page.request.get("/api/v2" + path + "/source")).status(),
+    ).toBe(404);
+    await publishMaterial(builder, reviewer, source.material_id, source.quote);
     expect((await page.request.get("/api" + path)).status()).toBe(403);
-    const whole = await topSearch(page, source.material_id);
-    const document = whole.first.items.findIndex(
-      (item) => item.doc_type === "element" && item.id === source.material_id,
+    const whole = await openMaterialHit(
+      page,
+      source.material_id,
+      source.material_id,
+      "element",
     );
-    expect(document).toBeGreaterThanOrEqual(0);
-    await whole.options.nth(document).click();
-    await expect(page).toHaveURL((url) => url.pathname === path);
     await expect(
-      page.getByRole("heading", {
-        name: whole.first.items[document].title,
-        exact: true,
-      }),
+      page.getByRole("heading", { name: whole.title, exact: true }),
     ).toBeVisible();
+    await expect(page.locator("[data-source-viewer] blockquote")).toHaveText(
+      source.quote,
+    );
 
-    const match = await topSearch(page, source.quote);
-    const chunk = match.first.items.findIndex(
-      (item) =>
-        item.doc_type === "chunk" && item.entity_id === source.material_id,
-    );
-    expect(chunk).toBeGreaterThanOrEqual(0);
-    await match.options.nth(chunk).click();
-    await expect(page).toHaveURL(
-      (url) =>
-        url.pathname === path &&
-        url.searchParams.get("chunk") === match.first.items[chunk].chunk_id,
-    );
+    await openMaterialHit(page, source.quote, source.material_id, "chunk");
     await expect(page.locator("[data-source-viewer] mark")).toHaveText(
       source.quote,
     );
@@ -76,6 +180,24 @@ export async function verifyPublishedPassage(
     );
     await expect(page.locator("[data-source-viewer] mark")).toHaveText(
       source.quote,
+    );
+    const large = await readLargeMaterial(page, builder, reviewer);
+    writeFileSync(
+      resolve(evidence, "r4b-material-reader.json"),
+      JSON.stringify(
+        {
+          role: reader.user.role,
+          small: {
+            material_id: source.material_id,
+            whole_text: source.quote,
+            anchor: source.anchor_id,
+            source_version: source.source_version,
+          },
+          large,
+        },
+        null,
+        2,
+      ) + "\n",
     );
   } finally {
     await reader.context.close();

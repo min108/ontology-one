@@ -2,25 +2,13 @@ import { expect, test } from "./runtime.mjs";
 import { a, button, c, postResponse, read } from "./r3-support.mjs";
 import { capability, person, post, publish } from "./r4b-search-support.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
-import { verifyPublishedPassage } from "./r4b-published-passage.mjs";
+import {
+  uploadConfirmedMaterial,
+  verifyPublishedPassage,
+} from "./r4b-published-passage.mjs";
 
 async function uploadEvidence(page, name, text) {
-  const session = await read(page, "/api/auth/session");
-  const upload = await page.request.post("/api/materials/upload", {
-    headers: {
-      "X-Workspace-Id": session.workspace.tenant_id,
-      "X-CSRF-Token": session.csrf_token,
-    },
-    multipart: {
-      file: { name, mimeType: "text/plain", buffer: Buffer.from(text) },
-    },
-  });
-  expect(upload.ok()).toBe(true);
-  const base = "/api/materials/" + (await upload.json()).id;
-  const preview = await post(page, base + "/segment-preview", {
-    mode: "default",
-  });
-  await post(page, base + "/segment-confirm", { preview_id: preview.id });
+  const { base } = await uploadConfirmedMaterial(page, name, text);
   const [chunk] = (await read(page, base + "/chunks")).items;
   const { focus } = await read(page, base + "/source?chunk_id=" + chunk.id);
   expect(focus.quote).toBe(text);
