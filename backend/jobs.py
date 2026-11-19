@@ -19,6 +19,7 @@ from contextvars import ContextVar
 from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
+from .core.errors import ApiError
 from .security.context import Principal, require_context, use_context
 from .security.context import readonly_session_execution as readonly_agent_execution
 from .security.context import has_readonly_session_execution as has_readonly_agent_execution
@@ -298,6 +299,13 @@ def assert_execution_principal_current(principal, require_write=False):
     return assert_job_principal_current(principal, require_write=require_write)
 
 
+def require_leased_principal(job_id: str) -> Principal:
+    lease = _job_lease.get()
+    if lease is None or lease[0] != job_id:
+        raise ApiError("PERMISSION_DENIED")
+    return assert_execution_principal_current(require_context(), require_write=True)
+
+
 def _claim():
     # InnoDB may deadlock while concurrent SKIP LOCKED claims move rows
     # between status indexes. A 1213 rolls back that transaction entirely;
@@ -405,11 +413,15 @@ async def _invoke(row):
                 ).fetchone()
                 if not job:
                     raise HTTPException(409, "任务业务事务未完成。")
-                if job["status"] == "completed" and (
-                    row["kind"] != "recipe_run"
-                    or c.execute("SELECT changeset_id FROM recipe_runs WHERE id=?", (row["job_id"],)).fetchone()[
-                        "changeset_id"
-                    ]
+                if (
+                    row["kind"] != "release_snapshot"
+                    and job["status"] == "completed"
+                    and (
+                        row["kind"] != "recipe_run"
+                        or c.execute("SELECT changeset_id FROM recipe_runs WHERE id=?", (row["job_id"],)).fetchone()[
+                            "changeset_id"
+                        ]
+                    )
                 ):
                     return "completed"
             if row["kind"] == "material_extract":
@@ -419,6 +431,12 @@ async def _invoke(row):
                 if row["attempts"] > 1:
                     args[3] = True
                 operation = run_extraction(*args)
+            elif row["kind"] == "release_snapshot":
+                from .infra.release_snapshot import run_snapshot
+
+                operation = asyncio.to_thread(
+                    run_snapshot, row["job_id"], row["entity_id"], json.loads(row["args_json"])
+                )
             elif row["kind"] == "recipe_run":
                 from .domains.build import run_recipe
 
@@ -478,6 +496,13 @@ async def run_one():
             else "failed",
             "原提交者会话或授权已失效，任务停止。" if exc.status_code in (401, 403) else "任务未完成，可重试。",
         )
+    except ApiError as exc:
+        if row["kind"] == "release_snapshot" and exc.status_code in {403, 404, 409, 422}:
+            _finish(row, "cancelled", "本次审核已失效，请重新核对发布版本。")
+        else:
+            _finish(
+                row, "retry" if row["attempts"] < row["max_attempts"] else "failed", "任务执行中断，已保存结果保留。"
+            )
     except asyncio.CancelledError:
         # Leave the lease for safe recovery; another worker cannot write until expiry.
         raise
@@ -524,6 +549,8 @@ def retry_job(job_id: str):
         row = cur.fetchone()
     if not row:
         raise HTTPException(404, "未找到该机构任务。")
+    if row["kind"] == "release_snapshot":
+        raise HTTPException(409, "请重新核对并审核发布版本。")
     if row["status"] in ACTIVE:
         return {"id": job_id, "status": row["status"], "already_queued": True}
     if row["status"] == "completed":

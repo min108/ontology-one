@@ -47,6 +47,12 @@ class ContractTests(unittest.TestCase):
                 "quality.check_gates",
                 "quality.waive_gates",
                 "rule.test_cases",
+                "module.save",
+                "module.move_elements",
+                "release.create_draft",
+                "release.submit",
+                "release.publish",
+                "release.withdraw",
                 "model.configure",
                 "backup.export",
                 "backup.restore",
@@ -67,6 +73,8 @@ class ContractTests(unittest.TestCase):
                 "backup.restore",
                 "review.decide",
                 "relation.decide",
+                "release.publish",
+                "release.withdraw",
             }
             draft = item.id in {
                 "changeset.confirm_facts",
@@ -83,12 +91,14 @@ class ContractTests(unittest.TestCase):
                 "element.restore_version",
                 "element.discard_draft",
                 "quality.waive_gates",
+                "module.save",
+                "release.create_draft",
             }
             proposal = item.id == "relation.propose"
             self.assertEqual(
                 item.effect,
                 "state_change"
-                if mutation or item.id == "element.submit_draft"
+                if mutation or item.id in {"element.submit_draft", "module.move_elements", "release.submit"}
                 else "write_draft"
                 if draft
                 else "propose"
@@ -99,7 +109,8 @@ class ContractTests(unittest.TestCase):
                 "L3"
                 if mutation or item.id == "backup.export"
                 else "L2"
-                if item.id in {"changeset.apply_and_submit", "element.submit_draft"}
+                if item.id
+                in {"changeset.apply_and_submit", "element.submit_draft", "module.move_elements", "release.submit"}
                 else "L1"
                 if draft or proposal
                 else "L0"
@@ -123,6 +134,12 @@ class ContractTests(unittest.TestCase):
             "quality.check_gates": (),
             "quality.waive_gates": ("review.decide",),
             "rule.test_cases": (),
+            "module.save": ("module.manage",),
+            "module.move_elements": ("module.manage",),
+            "release.create_draft": ("module.manage",),
+            "release.submit": ("module.manage",),
+            "release.publish": ("review.decide",),
+            "release.withdraw": ("review.decide",),
         }
         for name, permissions in expected.items():
             with self.subTest(capability=name):
@@ -137,6 +154,8 @@ class ContractTests(unittest.TestCase):
                 with (
                     self.subTest(role=role, capability=item.id),
                     patch("backend.security.store.append_audit"),
+                    patch("backend.security.store.authorized_read_tenants", return_value=[]),
+                    patch("backend.capabilities.releases._owner_for_target", return_value="another-owner"),
                     patch("backend.capabilities.registry.check_all", side_effect=RuntimeError("admitted")),
                 ):
                     # Stop at the business call after checking the declaration's permissions.
@@ -201,6 +220,16 @@ class ContractTests(unittest.TestCase):
                                     "waivers": {"QG1": "Documented exception"},
                                 },
                                 "rule.test_cases": {"entity_id": "entity"},
+                                "module.save": {"module_id": "MOD-DEFAULT", "name": "公共部分"},
+                                "module.move_elements": {
+                                    "source_module_id": "MOD-a1234567",
+                                    "target_module_id": "MOD-DEFAULT",
+                                    "entity_ids": ["item"],
+                                },
+                                "release.create_draft": {"module_id": "MOD-DEFAULT"},
+                                "release.submit": {"release_id": "RLS-a1234567"},
+                                "release.publish": {"release_id": "RLS-a1234567"},
+                                "release.withdraw": {"release_id": "RLS-a1234567"},
                                 "model.configure": {"base_url": "https://model.test/anthropic", "model": "test"},
                                 "user.manage": {
                                     "action": "update",
