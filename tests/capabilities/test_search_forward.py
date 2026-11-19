@@ -105,6 +105,18 @@ class SearchTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in result["items"]], ["LIVE"])
         self.assertEqual(result["total"], 1)
 
+    def test_readonly_search_uses_federation_visibility(self) -> None:
+        person = principal("modeler", readonly=True, home_tenant_id="hq")
+        grant = {"id": person.tenant_id, "db_name": person.database_name, "visibility": "published"}
+        ctx = CapabilityContext(person, connection_factory=self.factory)
+        with use_context(person), patch("backend.security.store.can_read_tenant", return_value=grant) as check:
+            self.assertEqual(semantic_search(ctx, SearchInput()).total, 0)
+            self.connection.executemany("INSERT INTO entity_access VALUES(?,'headquarters')", [("DRAFT",), ("LIVE",)])
+            result = semantic_search(ctx, SearchInput())
+            self.assertEqual([item["id"] for item in result.items], ["LIVE"])
+            self.assertTrue(all(call.args == (person, person.tenant_id) for call in check.call_args_list))
+            self.assertGreaterEqual(check.call_count, 2)
+
     def test_connection_identity_must_match_scope(self) -> None:
         bound = self.factory()  # No session was attached at acquisition.
         person = principal()

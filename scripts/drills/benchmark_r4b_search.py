@@ -141,12 +141,17 @@ def run(evidence_path: Path, output: Path) -> dict:
     evidence = json.loads(evidence_path.read_text())
     base_url = os.environ["E2E_BASE_URL"]
     namespace = os.environ.get("MYSQL_DATABASE", "")
+    source_sha256 = hashlib.sha256(
+        (ROOT / "docs/blueprint/rounds/r4a1-materials/regulation-plain.txt").read_bytes()
+    ).hexdigest()
     if (
         urlsplit(base_url).hostname not in {"127.0.0.1", "localhost", "::1"}
         or not re.fullmatch(r"e2e_r1_[0-9a-f]{24}", namespace)
         or evidence["tenant_id"] != "sub-01"
         or evidence.get("success") is not True
         or evidence.get("passed") != [f"S{i}" for i in range(1, 13)]
+        or evidence.get("source_sha256") != source_sha256
+        or evidence.get("model_channel") != "synthetic_messages_real_sdk"
         or evidence["s1_rule_id"] not in evidence["published_rule_ids"]
     ):
         raise ValueError("BA12 requires the completed, isolated R4 browser fixture")
@@ -160,10 +165,12 @@ def run(evidence_path: Path, output: Path) -> dict:
         "material_id": evidence["material_id"],
         "s1_rule_id": evidence["s1_rule_id"],
         "platform": platform.platform(),
+        "python_version": platform.python_version(),
+        "source_channel": evidence["model_channel"],
+        "original_extraction": evidence["extraction"],
+        "confirmed_source_chunks": evidence["chunks"]["confirmed"],
         "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-        "source_sha256": hashlib.sha256(
-            (ROOT / "docs/blueprint/rounds/r4a1-materials/regulation-plain.txt").read_bytes()
-        ).hexdigest(),
+        "source_sha256": source_sha256,
     }
     try:
         with httpx.Client(base_url=base_url, trust_env=False, timeout=30.0) as client:
