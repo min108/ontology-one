@@ -248,14 +248,12 @@ def main(round_name: str = "r3") -> int:
                     else:
                         run_command(browser_command, ROOT, bootstrap, output / "browser.log")
                     search_receipt = output / "r4b-search.json"
-                    if round_name == "r4" and (
-                        benchmark or report["selection"] == "all_actions" or search_receipt.exists()
-                    ):
+                    if round_name == "r4" and search_receipt.is_file():
                         search = json.loads(search_receipt.read_text())
-                        if not search["success"] or set(search["passed"]) != {f"S{i}" for i in range(1, 13)}:
+                        if search.get("success") is not True or search.get("passed") != [f"S{i}" for i in range(1, 13)]:
                             raise ValueError("R4-B requires all twelve browser search actions")
                         report["search_actions"] = search["passed"]
-                    if benchmark:
+                    if benchmark and "search_actions" in report:
                         run_command(
                             [
                                 sys.executable,
@@ -326,6 +324,13 @@ def main(round_name: str = "r3") -> int:
                 else:
                     report["status"] = "failed"
                     report.setdefault("error_type", "MissingRetainedBrowserReceipt")
+            if (
+                round_name == "r4"
+                and (benchmark or report["selection"] == "all_actions")
+                and "search_actions" not in report
+            ):
+                report["status"] = "failed"
+                report.setdefault("error_type", "MissingSearchReceipt")
             if args.live:
                 shutil.rmtree(output / "test-results", ignore_errors=True)
             (output / "runner.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
