@@ -13,7 +13,7 @@ from fastapi import HTTPException
 
 from backend import ai, db, jobs, materials, provenance
 from backend.core.errors import ApiError, NextAction, from_http
-from backend.domains.build_source_facts import document_facts, ground_candidate
+from backend.domains.build_source_facts import FACTS_VERSION, document_facts, ground_candidate
 from backend.domains.build_source_facts import source_exception as source_exception
 from backend.domains.build_sources import preserved_paragraphs, proposal_sources, unformed_chunks
 from backend.kernel import gates
@@ -553,9 +553,7 @@ def retain_source(ident: str, anchor_id: str, source_version: str) -> dict:
                     or any(quotes[0].get(key) != evidence[key] for key in ("anchor_id", "source_version", "quote"))
                 ):
                     raise ApiError("ITEM_CHANGED", "这一段已在素材页或其他方案中办理，请核对最新记录。")
-            facts = (proposal.get("stats") or {}).get("document_facts") or anchored_document_facts(
-                conn, material_id, source
-            )
+            facts = changeset_document_facts(conn, proposal, source, anchor=True)
             seq = items[-1]["seq"] + 1 if items else 1
             insert_candidate_item(conn, ident, seq, material_id, candidate, source, facts, retained_by=person.user_id)
             conn.execute(
@@ -946,10 +944,10 @@ def date_choice_id(fact: dict, source_id: str) -> str:
 
 def changeset_document_facts(conn: db.Connection, proposal: dict, source: dict, *, anchor: bool = False) -> dict:
     stored = (proposal.get("stats") or {}).get("document_facts") or {}
-    if "valid_from_candidates" in stored:
+    if stored.get("recognition_version") == FACTS_VERSION:
         return stored
-    # A.1 only stored the first candidate. A read can offer exact offsets
-    # from the frozen source without writing anchors under read permissions.
+    # Older recognizers missed some dated provisions and scope exclusions.
+    # Reads calculate choices from the frozen source without writing anchors.
     material_id = proposal["source_refs"][0]["material_id"]
     if anchor:
         facts = anchored_document_facts(conn, material_id, source)
@@ -977,7 +975,10 @@ def changeset_document_facts(conn: db.Connection, proposal: dict, source: dict, 
 
 def needs_legacy_projection(proposal: dict) -> bool:
     stats = proposal.get("stats") or {}
-    return bool(stats.get("legacy_fact_items")) or "valid_from_candidates" not in (stats.get("document_facts") or {})
+    return (
+        bool(stats.get("legacy_fact_items"))
+        or (stats.get("document_facts") or {}).get("recognition_version") != FACTS_VERSION
+    )
 
 
 def legacy_document(conn: db.Connection, proposal: dict) -> tuple[dict, dict] | None:
@@ -993,13 +994,15 @@ def align_legacy_item(item: dict, originals: dict, text: str, facts: dict) -> No
     origins = after.get("field_provenance") or {}
     original = originals.get(after.get("id"))
     grounded = None
-    if not item.get("applied_entity_id") and original and not original.get("field_provenance"):
+    if not item.get("applied_entity_id") and original:
         grounded = ground_candidate({**original, "source_quotes": item["evidence"]}, text, facts)
         anchor_candidate_fields(grounded, item["evidence"])
     for key, record in list(origins.items()):
         if not isinstance(record, dict):
             continue
-        if record.get("origin") == "document":
+        if record.get("origin") == "document" or (
+            record.get("origin") == "system" and record.get("level") == "document"
+        ):
             if item.get("applied_entity_id"):
                 origins[key] = {**record, "origin": "system", "level": "document"}
             elif key in {"valid_from", "scope"}:
@@ -1008,7 +1011,9 @@ def align_legacy_item(item: dict, originals: dict, text: str, facts: dict) -> No
                     origins[key] = dict(facts[key])
                 else:
                     origins.pop(key)
-        elif record.get("origin") == "source":
+        elif record.get("origin") == "source" or (
+            record.get("origin") == "system" and key in {"conditions", "exceptions", "scope"}
+        ):
             if grounded is not None and key in grounded:
                 after[key] = grounded[key]
                 if key in grounded["field_provenance"]:

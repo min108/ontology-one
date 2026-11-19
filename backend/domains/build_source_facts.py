@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from datetime import date
 from itertools import pairwise
 
+FACTS_VERSION = 2
 ARTICLE = re.compile(r"^\s*第[一二三四五六七八九十百千零\u3007\d]+条(?:之[一二三四五六七八九十\d]+)?\s*")
 UNITS = re.compile(r"[^。；;！？!?\r\n]+[。；;！？!?]?")
 POLICY = (
@@ -13,9 +14,12 @@ POLICY = (
     r"条例|指引|准则|规范|通知|标准|指南|意见|指令|程序|文件)"
 )
 CURRENT = rf"(?:本{POLICY}|(?:修订后的|新修订的)本?{POLICY}|本次修订(?:后的{POLICY}|版|文本)?)"
-SELF_BEFORE_DATE = re.compile(CURRENT + r"(?:[（(](?:试行|暂行|修订)[）)])?\s*(?:将|原|曾|最初|原定|首次)?\s*$")
+SELF_BEFORE_DATE = re.compile(
+    CURRENT + r"(?:[（(](?:试行|暂行|修订)[）)])?\s*(?:(?:经|重新)?修[订改](?:完成)?后|修订版)?"
+    r"\s*(?:将|原|曾|最初|原定|首次)?\s*$"
+)
 ATTACHMENT = re.compile(
-    r"^\s*(?:[【\u3014（(]\s*)?(?:附\s*[件录表页]|附(?=[：:]))(?=$|[\s：:、.\uff0e（(【\u3014一二三四五六七八九十\dA-Z])"
+    r"^\s*(?:[【\u3014（(]\s*)?(?:附\s*[件录表页]|附(?=[：:]))(?=$|[\s：:、.\uff0e（(【《〈「『\u3014一二三四五六七八九十\dA-Z])"
 )
 CITATION = re.compile(
     r"引述|引文|引用|援引|摘录|节录|摘引|摘自|原文如下|(?:旧|原)[^，,：:。\n]{0,24}(?:载明|记载|写道|规定(?=如下|[：:])|说明)"
@@ -30,7 +34,7 @@ DATE = (
     rf"(?:月|-)\s*(?P<day>{MONTH_DAY})\s*日?"
 )
 OPERATIVE = re.compile(
-    rf"(?:(?P<preposition>自|从|于)\s*)?{DATE}\s*(?:起|开始)?\s*(?:正式|开始|首次)?"
+    rf"(?:(?P<preposition>自|从|于)\s*)?{DATE}\s*(?:起|开始)?\s*(?:正式|开始|首次|重新|再次)?"
     r"(?:施行|实施|生效|执行|试行)(?=$|[。，,；;！!?？：:、”’」』）)\s…]|以来)"
 )
 RELATIVE_DATE = re.compile(CURRENT + r"(?:自|从)(?:公布|印发|发布|颁布|下发|批准|签发|发文)(?:之日|当日|日起)")
@@ -105,7 +109,8 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
             CURRENT + r"(?:已)?经[^。，；;]{1,60}(?:审议|通过|同意|批准|修订)[，,]\s*(?:定|将)?$",
             ARTICLE.sub("", prefix),
         )
-        if not (subject or continued or cited_title or bare_excerpt or approved):
+        bare_provision = found["preposition"] and not ARTICLE.sub("", prefix).strip()
+        if not (subject or continued or cited_title or bare_excerpt or approved or bare_provision):
             continue
         try:
             value = date(*(calendar_number(found[k]) for k in ("year", "month", "day"))).isoformat()
@@ -136,12 +141,17 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
     return options
 
 
+SCOPE_LIMIT = re.compile(r"不适用|不(?:包括|含|涵盖)|除外|另有规定的?除外|除[^，,。；;]{1,80}(?:以外|之外|外)")
+
+
 def scope_value(sentence: str, *, file_only: bool = False) -> str:
     core = ARTICLE.sub("", sentence).rstrip("。；;！？!?").strip()
     subject = CURRENT if file_only else rf"(?:{CURRENT}|本[条章节款项])"
     match = re.fullmatch(
-        subject + r"(?:[仅均只]?适用于|的?适用范围(?:为|包括|是|[：:]))\s*([^，,。；;]+)(?:[，,].*)?", core
+        subject + r"(?:[仅均只]?适用于|的?适用范围(?:为|包括|是|[：:]))\s*([^，,。；;]+)([，,].*)?", core
     )
+    if match and match[2] and SCOPE_LIMIT.search(match[2]):
+        return core[match.start(1) :].strip()
     if not match:
         match = re.fullmatch(r"([^，,：:不]+?)[，,]?\s*(?:均)?适用" + subject, core)
     if not match and not file_only:
@@ -154,18 +164,24 @@ def document_facts(text: str) -> dict:
     scope = file_fact()
     quotations = quotation_boundaries(text)
     relative = False
+    scope_conflict = False
     for sentence, start, external in sentences(text):
         dates.extend(date_candidates(sentence, start, external, quotations))
         if not external and not bisect_right(quotations, start) % 2:
             relative |= bool(RELATIVE_DATE.search(sentence))
-            if not scope["value"]:
-                value = scope_value(sentence, file_only=True)
-                if value:
+            value = scope_value(sentence, file_only=True)
+            if value:
+                if scope["value"] and value != scope["value"]:
+                    scope_conflict = True
+                else:
                     scope = file_fact(value, sentence, start)
+            elif re.match(CURRENT + r"(?:不适用|的?适用范围不)", ARTICLE.sub("", sentence)):
+                scope_conflict = True
     return {
+        "recognition_version": FACTS_VERSION,
         "valid_from": dates[0][0].copy() if len(dates) == 1 and not dates[0][1] and not relative else file_fact(),
         "valid_from_candidates": [fact for fact, _ in dates],
-        "scope": scope,
+        "scope": file_fact() if scope_conflict else scope,
     }
 
 
@@ -181,6 +197,9 @@ NEGATIVE_BRANCH = re.compile(
     r"(?<=[；;])\s*[^。；;\n]{0,60}(?:不|未|缺|无法|不能|不足|争议|异议|逾期)[^。；;\n]{0,60}?的[，,][^。；;\n]{1,160}"
 )
 EXCEPTION_LABEL = re.compile(r"(?:^|[。；;\n])\s*例外(?:情形)?[：:]\s*([^。；;\n]+)")
+PROHIBITED_EXEMPTION = re.compile(
+    r"(?:不得|不能|不可|不应|不准|禁止|严禁)(?:自行|擅自|直接|随意|任意)?(?:免予|免于|豁免|免除)"
+)
 
 
 def source_exception(quote: str) -> tuple[str, bool]:
@@ -189,7 +208,7 @@ def source_exception(quote: str) -> tuple[str, bool]:
     if label:
         return label.group(1).strip(), False
     for clause in re.split(r"[。；;\n]", quote):
-        if EXCEPTION.search(ARTICLE.sub("", clause)):
+        if EXCEPTION.search(PROHIBITED_EXEMPTION.sub("", ARTICLE.sub("", clause))):
             return clause.strip(), False
     negative = NEGATIVE_BRANCH.search(quote)
     if negative:
@@ -207,6 +226,14 @@ TEMPORAL = re.compile(
     r"(?:后(?!备|台|续|勤)|(?<![及按准随同定])时(?!间|限|机)|(?<!提)前(?!提|述|沿|期|景))|"
     r"(?:经[^，,。；;\n]{1,55}?(?:同意|审批|批准|签字|核验)|[^，,。；;\n]{0,30}?(?:期满|到期)|完成|通过|收到)"
     r"[^，,。；;\n]{0,60}?(?:后(?!备|台|续)|时(?!间|限)|之日起)"
+)
+CLOCK = re.compile(
+    r"(?:在|于)(?:当日|次日|当天)?(?:上午|下午|中午|早上|晚上|凌晨)?[零〇一二三四五六七八九十两\d]{1,3}"
+    r"(?:(?:时|点)(?:[零〇一二三四五六七八九十\d]{1,3}分|半|整)?|[:：][0-5]\d)(?:之|以)?(?:前|后)?"
+)
+TEMPORAL_EVENT = re.compile(
+    r"生效|失效|发布|印发|提交|申报|报送|申请|受理|交付|签[收发字章约署订]|核[验对准]|审[批核查议结]|"
+    r"验收|复[核查]|收到|归档|登记|结[算束账]|完成|通过|办理|实施|开工|竣工|到期|期满|届满|截止|之前|之后"
 )
 PREDICATE = re.compile(
     r"超过|超出|达到|不足|低于|高于|具备|确需|发现|存在|发生|出现|遇到|"
@@ -228,7 +255,9 @@ def condition_clauses(quote: str) -> Iterator[tuple[str, bool]]:
         if label or introduced:
             yield (label or introduced).group(1).strip(), False
             continue
-        temporal = TEMPORAL.search(clause)
+        temporal = CLOCK.search(clause) or next(
+            (m for m in TEMPORAL.finditer(clause) if not m[0].startswith("在") or TEMPORAL_EVENT.search(m[0])), None
+        )
         if temporal:
             yield temporal.group().strip(), False
             continue
@@ -310,8 +339,21 @@ def ground_candidate(candidate: dict, source_text: str, facts: dict | None = Non
     for field in ("definition", "unit", "grain", "boundary", "scope", "exceptions"):
         value = model.get(field)
         support = literal_source(value, quotes)
-        if field == "exceptions" and support and FALSE_EXCEPTION.search(value) and not source_exception(value)[0]:
+        if (
+            field == "exceptions"
+            and support
+            and (
+                (FALSE_EXCEPTION.search(value) and not source_exception(value)[0])
+                or (PROHIBITED_EXEMPTION.search(support) and not source_exception(support)[0])
+            )
+        ):
             support = ""
+        if field == "scope" and support:
+            for clause, _, external in sentences(support):
+                complete = scope_value(clause)
+                if not external and value in complete and value != complete and SCOPE_LIMIT.search(complete):
+                    support = ""
+                    break
         origin = "source" if support else "system"
         if not support:
             value = ""

@@ -21,6 +21,8 @@ class SourceFacts(unittest.TestCase):
             ("本细则于2027-12-31生效。", "2027-12-31"),
             ("本指引自二〇二七年十一月二十日起实施。", "2027-11-20"),
             ("本次修订版自2027年7月1日起施行。", "2027-07-01"),
+            ("第二十条 自2027年7月1日起施行。", "2027-07-01"),
+            ("经修订，本办法将于2027年7月1日重新施行。", "2027-07-01"),
             ("附则\n第二十一条 本规定从2027年3月1日起执行。原规定同时废止。", "2027-03-01"),
             ("本条例自2027年9月1日起施行，实施细则另行制定。", "2027-09-01"),
             ("本准则于2027年10月1日开始实施。", "2027-10-01"),
@@ -59,6 +61,13 @@ class SourceFacts(unittest.TestCase):
             ),
             ("本办法最初于2018年5月1日实施。经重新审议，本次修订自2026年1月1日起施行。", ["2018-05-01", "2026-01-01"]),
             ("附件：原有工作规程摘录\n第十条 自2018年2月1日起施行。", ["2018-02-01"]),
+            ("附件《原采购办法》\n第十五条 本办法自2015年7月1日起施行。", ["2015-07-01"]),
+            ("本办法自2018年1月1日起施行。\n本办法修订后自2026年1月1日起施行。", ["2018-01-01", "2026-01-01"]),
+            (
+                "第一条 本制度于2018年5月1日实施。2020年完成第一次修订。\n第二十条 自2026年1月1日起施行。",
+                ["2018-05-01", "2026-01-01"],
+            ),
+            ("本办法自2018年1月1日起施行。经修订，本办法将于2026年1月1日重新施行。", ["2018-01-01", "2026-01-01"]),
             ("本制度于2018年5月1日实施，至今已修订三次，自2026年1月1日起施行。", ["2018-05-01", "2026-01-01"]),
             (
                 "本规定自2026年3月1日起实施。\n附件一：旧办法摘录\n本办法自2017年9月1日起施行。",
@@ -99,6 +108,8 @@ class SourceFacts(unittest.TestCase):
             ("本实施细则适用于以公开招标方式采购的项目。", "以公开招标方式采购的项目", True),
             ("本制度适用于研发、试制和中试阶段的技术资料。", "研发、试制和中试阶段的技术资料", True),
             ("本规定适用于外聘专业人员，临时人员另行管理。", "外聘专业人员", True),
+            ("本办法适用于公司各部门，但不适用于海外分支机构。", "公司各部门，但不适用于海外分支机构", True),
+            ("本细则适用于下属企业，其中参股公司除外。", "下属企业，其中参股公司除外", True),
             ("本办法适用于集团在建工程（含改扩建）。", "集团在建工程（含改扩建）", True),
             ("本条仅适用于已生效的框架合同。", "已生效的框架合同", False),
             ("本章适用于总部集中采购事项。", "总部集中采购事项", False),
@@ -141,6 +152,10 @@ class SourceFacts(unittest.TestCase):
             ("如未按时完成整改，暂停受理新增事项。", "如未按时完成整改"),
             ("具备法定资格的，方可承担独立审核。", "具备法定资格的"),
             ("在两名经办人共同签字后方可封存。", "在两名经办人共同签字后"),
+            ("会计应在上午十时之前完成清点。", "在上午十时之前"),
+            ("库存应于17时30分前完成核对。", "于17时30分前"),
+            ("档案管理员应在柜台前放置一份签收簿。", ""),
+            ("请在档案柜后留足检修空间。", ""),
             ("应当提供真实的，合法的票据。", ""),
             ("应当提交完整的，有签章的原件。", ""),
             ("当事人应在登记册签字。", ""),
@@ -226,3 +241,22 @@ class SourceFacts(unittest.TestCase):
         other = ground("第五条 付款凭证应当入档。", extraction_mode="online", exceptions="紧急支付除外")
         self.assertEqual(other["exceptions"], "")
         self.assertNotIn("exceptions", other["field_provenance"])
+
+    def test_prohibited_waivers_and_scope_limits_survive_grounding(self) -> None:
+        for wording in ("任何人不得免予提交原始凭证", "经办人禁止自行免除核验", "不得擅自免于复核"):
+            for value in (None, wording, wording[3:]):
+                with self.subTest(wording=wording, value=value):
+                    item = ground(wording + "。", extraction_mode="online", exceptions=value)
+                    self.assertEqual(item["exceptions"], "")
+                    self.assertNotIn("exceptions", item["field_provenance"])
+        text = "本办法适用于公司各部门，但不适用于海外分支机构。"
+        own = ground(text, extraction_mode="online", scope="公司各部门")
+        self.assertEqual(own["scope"], "公司各部门，但不适用于海外分支机构")
+        self.assertEqual(own["field_provenance"]["scope"]["origin"], "system")
+        rule = "采购款应由财务部门复核。"
+        candidate = {"kind": "rule", "source_quotes": [{"quote": rule}], "content": rule}
+        inherited = build.ground_candidate(candidate, text + "\n" + rule)
+        self.assertEqual(inherited["scope"], own["scope"])
+        self.assertEqual(inherited["field_provenance"]["scope"]["quote"], text)
+        conflicting = "本办法适用于各分支机构。本办法不适用于间接控股企业。"
+        self.assertEqual(build.ground_candidate(candidate, conflicting + rule)["scope"], "")

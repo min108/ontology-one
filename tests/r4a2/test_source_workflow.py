@@ -5,6 +5,7 @@ import os
 import unittest
 from contextlib import nullcontext
 from dataclasses import replace
+from typing import Literal
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -27,13 +28,22 @@ class SourceWorkflow(unittest.TestCase):
     invoke = construction.BuildMySQL.invoke
     synthetic_proposal = source_review.SourceReviewMySQL.synthetic_proposal
 
-    def proposal(self, client: TestClient, text: str, *, legacy: bool = False) -> dict:
+    def proposal(self, client: TestClient, text: str, *, legacy: bool | Literal["a2"] = False) -> dict:
         uploaded = client.post("/api/materials/upload", files={"file": ("制度沿革.txt", text.encode(), "text/plain")})
         self.assertEqual(uploaded.status_code, 200, uploaded.text)
         run = self.invoke(client, "recipe.start", {"material_id": uploaded.json()["id"]})
         person = store.authenticate_session(client.cookies.get("ontology_session"), "source-facts")[0]
 
+        current_facts = build.anchored_document_facts
+
         def old_file_facts(conn: object, material_id: str, source: dict) -> dict:
+            if legacy == "a2":
+                stored = current_facts(conn, material_id, source)
+                stored.pop("recognition_version")
+                stored["valid_from_candidates"] = stored["valid_from_candidates"][:1]
+                stored["valid_from"] = dict(stored["valid_from_candidates"][0])
+                stored["scope"]["value"] = "公司各部门"
+                return stored
             recognized = build.document_facts(source["text"])
             old = {key: dict(recognized[key], origin="document") for key in ("scope", "valid_from")}
             old["valid_from"] = dict(recognized["valid_from_candidates"][0], origin="document")
@@ -182,6 +192,35 @@ class SourceWorkflow(unittest.TestCase):
         self.assertEqual(choice["source_version"], intended["source_version"])
         self.assertEqual(choice["value"], "2026-01-01")
         self.assertEqual(choice["origin"], "manual")
+
+    def test_pending_a2_proposal_rechecks_ambiguous_dates_and_scope_from_immutable_text(self) -> None:
+        client = self.login("fixture.builder")
+        text = (
+            "采购管理办法\n第一条 本办法自2018年1月1日起施行。\n"
+            "第二条 本办法适用于公司各部门，但不适用于海外分支机构。\n第三条 财务部门应核验付款凭证。\n"
+            "第四条 本办法修订后自2026年1月1日起施行。"
+        )
+        proposal = self.proposal(client, text, legacy="a2")
+        facts = proposal["document_facts"]
+        self.assertFalse(facts["valid_from"]["value"])
+        options = facts["valid_from_candidates"]
+        self.assertEqual([row["value"] for row in options], ["2018-01-01", "2026-01-01"])
+        self.assertEqual(facts["scope"]["value"], "公司各部门，但不适用于海外分支机构")
+        self.assertGreater(len(proposal["items"]), 0)
+        for item in proposal["items"]:
+            self.assertFalse(item["after_data"].get("valid_from"))
+        updated = self.invoke(
+            client,
+            "changeset.confirm_facts",
+            {
+                "changeset_id": proposal["id"],
+                "valid_from_candidate_id": options[1]["candidate_id"],
+            },
+        )
+        choice = updated["document_facts"]["valid_from"]
+        self.assertEqual((choice["origin"], choice["value"]), ("manual", "2026-01-01"))
+        self.assertIn("修订后", choice["quote"])
+        self.assertTrue(choice["anchor_id"])
 
     def test_bulk_adoption_keeps_system_applicability_and_model_literal_sources_separate(self) -> None:
         client = self.login("fixture.builder")
