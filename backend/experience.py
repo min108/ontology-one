@@ -11,6 +11,14 @@ from typing import Literal
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from .db import connect, entity_json, log, now
+from .domains.experience_history import (
+    Authors,
+    adopted_editors,
+    draft_changed,
+    draft_editors,
+    pending_editors,
+    section_facts,
+)
 from .ai import complete, config
 from .work_context import validate_matter_context, attach_matter_context
 from .provenance import ensure_source_version, normalize_source_ref, register_chunk_anchor, get_active_chunks
@@ -1172,141 +1180,21 @@ def candidate_item(e, cid):
     return item
 
 
-def candidate_editors(conn, items):
+def candidate_editors(conn, source, items):
     """Contributors to the open draft, including an already-adopted parent of a split."""
     from .domains.reviews import editor_ids
 
-    editors = {actor for item in items for actor in item.get("draft_editor_ids", []) if actor}
+    editors = Authors()
+    for item in items:
+        editors.merge(pending_editors(conn, source, item))
     for ident in sorted({item["adopted_entity_id"] for item in items if item.get("adopted_entity_id")}):
         row = conn.execute("SELECT * FROM entities WHERE id=? AND kind='knowledge' FOR SHARE", (ident,)).fetchone()
         if row:
             asset = entity_json(row)
             if asset["status"] != "published" and not (asset["payload"].get("r2_review") or {}).get("cycle_closed"):
-                editors.update(editor_ids(asset))
-                editors.update(adopted_legacy_editors(conn, asset))
+                editors.ids.update(editor_ids(asset))
+                editors.merge(adopted_editors(conn, asset))
     return editors
-
-
-def section_facts(sections):
-    # Section ids and edit timestamps can change on a compatibility save without a content change.
-    return [
-        (s.get("title"), s.get("content"), s.get("origin", "source_synthesis"), s.get("source_refs") or [])
-        for s in sections or []
-    ]
-
-
-def _legacy_draft_changed(before, after):
-    return any(
-        (before.get(key) or "") != (after.get(key) or "")
-        for key in ("title", "summary", "content", "questions", "boundary")
-    ) or (
-        after.get("article_sections") is not None
-        and section_facts(before.get("article_sections")) != section_facts(after.get("article_sections"))
-    )
-
-
-def _legacy_draft_editors(conn, record):
-    draft = record["payload"].get("draft") or {}
-    if not draft or "draft_editor_ids" in draft:
-        return set(draft.get("draft_editor_ids") or [])
-    linked = next(
-        (
-            item.get("adopted_entity_id")
-            for item in record["payload"].get("knowledge_candidates", [])
-            if item.get("legacy_draft") and item.get("adopted_entity_id")
-        ),
-        record["payload"].get("adopted_entity_id"),
-    )
-    cutoff = (
-        conn.execute(
-            "SELECT MAX(created_at) FROM activities WHERE entity_id=? AND action='发布成果'", (linked,)
-        ).fetchone()[0]
-        if linked
-        else None
-    )
-    return _draft_version_editors(conn, record, since=cutoff)
-
-
-def adopted_legacy_editors(conn, asset):
-    """Read only the current revision's already-adopted legacy draft, even if it is awaiting review."""
-    payload = asset["payload"]
-    meta = payload.get("r2_review") or {}
-    if (
-        asset.get("kind") != "knowledge"
-        or not payload.get("experience_candidate_id")
-        or not payload.get("source_material_id")
-        or asset.get("status") == "published"
-        or meta.get("cycle_closed")
-        or meta.get("experience_draft_tracked")
-    ):
-        return set()
-    dates = conn.execute(
-        "SELECT MAX(CASE WHEN action IN ('经验形成知识草稿','经验稿修订知识') THEN created_at END) adopted, "
-        "MAX(CASE WHEN action='发布成果' THEN created_at END) published FROM activities WHERE entity_id=?",
-        (asset["id"],),
-    ).fetchone()
-    if not dates["adopted"] or (dates["published"] and dates["published"] >= dates["adopted"]):
-        return set()
-    row = conn.execute(
-        "SELECT e.* FROM entities e WHERE e.id=? AND e.kind='material' AND EXISTS "
-        "(SELECT 1 FROM relations r WHERE r.source=? AND r.target=e.id AND r.type='derived_from' AND r.status='confirmed')",
-        (payload["source_material_id"], asset["id"]),
-    ).fetchone()
-    if not row:
-        return set()
-    source = entity_json(row)
-    if source["payload"].get("record_type") != "experience_session" or not any(
-        item.get("legacy_draft")
-        and item.get("id") == payload["experience_candidate_id"]
-        and item.get("adopted_entity_id") == asset["id"]
-        for item in source["payload"].get("knowledge_candidates", [])
-    ):
-        return set()
-    return _draft_version_editors(conn, source, since=dates["published"], through=dates["adopted"])
-
-
-def _draft_version_editors(conn, record, *, since, through=None):
-    """Old PATCH versions kept content and reason. Their HTTP receipts identify the actor."""
-    from datetime import datetime
-
-    from .security import store
-    from .security.context import require_context
-
-    rows = list(
-        conn.execute(
-            "SELECT reason,created_at,json_extract(snapshot,'$.payload.draft') draft FROM versions "
-            "WHERE entity_id=? AND created_at>=? ORDER BY version,id",
-            (record["id"], since or ""),
-        )
-    )
-    times = []
-    for i, row in enumerate(rows):
-        if through and row["created_at"] > through:
-            break
-        if row["reason"] != "人工编辑经验草稿":
-            continue
-        before = json.loads(row["draft"] or "{}") or {}
-        after = (
-            (json.loads(rows[i + 1]["draft"] or "{}") or {})
-            if i + 1 < len(rows)
-            else (record["payload"].get("draft") or {})
-        )
-        if _legacy_draft_changed(before, after):
-            times.append(datetime.fromisoformat(row["created_at"]).timestamp())
-    if not times:
-        return set()
-    person = require_context()
-    path = "/api/experience/" + record["id"] + "/draft"
-    with store.control_connection() as audit, audit.cursor() as cursor:
-        cursor.execute(
-            "SELECT s.actor_id,s.created_at started,f.created_at finished FROM sec_audit s JOIN sec_audit f "
-            "ON f.request_id=s.request_id AND f.tenant_id=s.tenant_id AND f.resource=s.resource AND f.actor_id=s.actor_id "
-            "WHERE s.tenant_id=%s AND s.resource=%s AND s.action='business_request' AND f.action=s.action "
-            "AND s.outcome='started' AND f.outcome='success' AND s.created_at<=%s AND f.created_at>=%s "
-            "AND JSON_UNQUOTE(JSON_EXTRACT(s.details,'$.method'))='PATCH'",
-            (person.tenant_id, path, max(times), min(times)),
-        )
-        return {row["actor_id"] for row in cursor if any(row["started"] <= point <= row["finished"] for point in times)}
 
 
 def clean_manual_sections(body, item):
@@ -1384,9 +1272,10 @@ def _review_candidate(c, e, candidate_id, body):
     item = candidate_item(e, candidate_id)
     draft = e["payload"].get("draft") or {}
     if item.get("legacy_draft") and draft and "draft_editor_ids" not in draft:
-        editors = _legacy_draft_editors(c, e)
-        item["draft_editor_ids"] = sorted(set(item.get("draft_editor_ids") or []) | editors)
-        draft["draft_editor_ids"] = sorted(editors)
+        editors = draft_editors(c, e)
+        editors.save_draft(draft)
+        editors.merge(Authors.from_draft(item))
+        editors.save_draft(item)
     request_signature = hashlib.sha256(
         json.dumps(body.model_dump(), ensure_ascii=False, sort_keys=True).encode()
     ).hexdigest()
@@ -1420,8 +1309,11 @@ def _review_candidate(c, e, candidate_id, body):
         return {"entity_id": item["adopted_entity_id"], "already_adopted": True, "status": "adopted"}
     if body.action == "save" and not changed:
         return {"entity_id": item.get("adopted_entity_id"), "candidate_id": candidate_id, "status": item["status"]}
-    if changed:
-        item["draft_editor_ids"] = sorted(set(item.get("draft_editor_ids") or []) | {require_context().user_id})
+    if changed or body.action == "adopt":
+        authors = pending_editors(c, e, item)
+        if changed:
+            authors.ids.add(require_context().user_id)
+        authors.save_draft(item)
     item.update(
         **{k: getattr(body, k).strip() for k in ["title", "summary", "boundary", "questions"]},
         article_sections=sections,
@@ -1472,12 +1364,15 @@ def _review_candidate(c, e, candidate_id, body):
             guard_generic_edit(c, asset, {"payload": payload})
             snapshot(c, asset, "从经验萃取记录修订同一知识，重新进入草稿审核")
             payload = {**asset["payload"], **payload}
-            record_editor(
+            meta = record_editor(
                 {**asset, "payload": payload},
                 require_context().user_id,
                 conn=c,
                 contributors=item.get("draft_editor_ids", ()),
-            )["experience_draft_tracked"] = True
+            )
+            authors = Authors.from_draft(item)
+            authors.unverified = max(authors.unverified, meta.get("unverified_experience_edit_at") or "")
+            authors.save_review(meta)
             c.execute(
                 "UPDATE entities SET title=?,summary=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?",
                 (item["title"], item["summary"], dump(payload), "draft", stamp, kid),
@@ -1486,9 +1381,8 @@ def _review_candidate(c, e, candidate_id, body):
         else:
             kid = uid("K-EXP-")
             asset_version = 1
-            record_editor(
-                {"payload": payload}, require_context().user_id, contributors=item.get("draft_editor_ids", ())
-            )["experience_draft_tracked"] = True
+            meta = record_editor({"payload": payload}, require_context().user_id)
+            Authors.from_draft(item).save_review(meta)
             c.execute(
                 "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -1528,10 +1422,10 @@ def _review_candidate(c, e, candidate_id, body):
             snapshot(c, saved, "经验记录首次形成知识草稿")
         attach(c, e, kid, "produced_asset")
         if item.get("legacy_draft") and isinstance(e["payload"].get("draft"), dict):
-            e["payload"]["draft"]["draft_editor_ids"] = []
+            Authors().save_draft(e["payload"]["draft"])
+        Authors().save_draft(item)
         item.update(
             status="adopted",
-            draft_editor_ids=[],
             adopted_entity_id=kid,
             adopted_revision=item["revision"],
             asset_version=asset_version,
@@ -1668,7 +1562,8 @@ def decide_proposal(session_id: str, proposal_id: str, body: ProposalDecision):
                 raise HTTPException(409, "经验点已被修改，不能用旧建议覆盖当前稿件")
         primary = next((x for x in items if x.get("adopted_entity_id")), items[0])
         outputs = proposal["outputs"]
-        editors = sorted(candidate_editors(c, items) | {require_context().user_id})
+        editors = candidate_editors(c, e, items)
+        editors.ids.add(require_context().user_id)
         previous = {k: primary.get(k) for k in ["title", "summary", "article_sections", "content", "source_refs"]}
         primary.setdefault("revision_history", []).append(
             {
@@ -1689,11 +1584,13 @@ def decide_proposal(session_id: str, proposal_id: str, body: ProposalDecision):
             "experience_key",
         ]:
             primary[key] = outputs[0].get(key)
-        primary.update(revision=primary["revision"] + 1, manually_edited=True, draft_editor_ids=editors)
+        primary.update(revision=primary["revision"] + 1, manually_edited=True)
+        editors.save_draft(primary)
         resulting = [primary["id"]]
         if proposal["operation"] == "split":
             for out in outputs[1:]:
-                out = {**out, "manually_edited": True, "split_from": primary["id"], "draft_editor_ids": editors}
+                out = {**out, "manually_edited": True, "split_from": primary["id"]}
+                editors.save_draft(out)
                 p["knowledge_candidates"].append(out)
                 resulting.append(out["id"])
         if proposal["operation"] == "merge":
@@ -1748,9 +1645,8 @@ def build_draft(session_id: str):
         e = session(c, session_id, lock=True)
         source = chunks_for(c, session_id)
         content = "\n\n".join(ch["content"] for ch in source)
-        editors = _legacy_draft_editors(c, e)
+        editors = draft_editors(c, e)
         e["payload"]["draft"] = {
-            "draft_editor_ids": sorted(editors),
             "title": e["title"],
             "summary": e["summary"],
             "content": content,
@@ -1759,6 +1655,7 @@ def build_draft(session_id: str):
             "article_sections": [{"id": uid("SEC-"), "title": "经验原述", "content": content, "source_refs": []}],
             "generated_from": "user_narratives",
         }
+        editors.save_draft(e["payload"]["draft"])
         save_session(c, e, "按原始叙述整理自由草稿，未用缺项模板补写")
     return get_session(session_id)
 
@@ -1771,16 +1668,17 @@ def edit_draft(session_id: str, body: AdoptRequest):
         e = session(c, session_id, lock=True)
         prior = e["payload"].get("draft") or {}
         new = body.model_dump()
-        editors = _legacy_draft_editors(c, e)
-        changed = _legacy_draft_changed(prior, new)
+        editors = draft_editors(c, e)
+        changed = draft_changed(prior, new)
         if changed:
-            editors.add(require_context().user_id)
-        new["draft_editor_ids"] = sorted(editors)
+            editors.ids.add(require_context().user_id)
+        editors.save_draft(new)
         e["payload"]["draft"] = new
         item = next((i for i in e["payload"].get("knowledge_candidates", []) if i.get("legacy_draft")), None)
         if item and changed:
             item["revision"] = item.get("revision", 1) + 1
-            item["draft_editor_ids"] = sorted(set(item.get("draft_editor_ids") or []) | editors)
+            editors.merge(Authors.from_draft(item))
+            editors.save_draft(item)
         save_session(c, e, "人工编辑经验草稿")
     return get_session(session_id)
 
@@ -1814,7 +1712,7 @@ def adopt_draft(session_id: str, body: AdoptRequest):
                 allow_human_input=True,
             )
             item["legacy_draft"] = True
-            item["draft_editor_ids"] = sorted(_legacy_draft_editors(c, e))
+            draft_editors(c, e).save_draft(item)
             if e["payload"].get("adopted_entity_id"):
                 item["adopted_entity_id"] = e["payload"]["adopted_entity_id"]
             e["payload"].setdefault("knowledge_candidates", []).append(item)

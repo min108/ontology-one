@@ -7,6 +7,7 @@ from contextlib import closing
 
 from backend import db
 from backend.core.errors import ApiError
+from backend.domains.experience_history import Authors, adopted_editors
 from backend.kernel import gates
 from backend.security.context import Principal, require_context
 
@@ -48,6 +49,10 @@ LEGACY_AUTHOR_ACTIONS = {
 }
 PUBLICATION_ACTIONS = {"发布成果", "发布技能版本"}
 SEPARATION_MESSAGE = "本次修订的编辑人和提交人需由其他审核人员办理。"
+MISSING_EXPERIENCE_AUTHOR = (
+    "本次经验稿存在已确认的历史改动，尚缺可核对的编辑人记录。"
+    "请恢复该次业务记录或签名回执，或由改动后开通账号的其他独立审核人办理。"
+)
 
 
 def _legacy_edits(actions: list[dict]) -> tuple[set[str], bool]:
@@ -96,10 +101,7 @@ def _open_revision(entity: dict, conn: db.Connection | None) -> dict:
     if not meta.get("revision_id"):
         meta["revision_id"] = uuid.uuid4().hex
     if conn is not None and entity.get("kind") == "knowledge" and entity["payload"].get("experience_candidate_id"):
-        from backend.experience import adopted_legacy_editors
-
-        meta["editor_ids"] = [*(meta.get("editor_ids") or []), *sorted(adopted_legacy_editors(conn, entity))]
-        meta["experience_draft_tracked"] = True
+        adopted_editors(conn, entity).save_review(meta)
     meta["cycle_closed"] = False
     meta["editor_ids"] = list(
         dict.fromkeys(
@@ -203,17 +205,15 @@ def is_review_participant(
     *,
     actions: list[dict] | None = None,
     document: Mapping | None = None,
+    experience: Authors | None = None,
 ) -> bool:
     identity = entity["payload"].get("r2_review") or {}
     if person.user_id in editor_ids(entity) or any(
         is_same_person(person, name) for name in identity.get("legacy_actors", [])
     ):
         return True
-    if entity.get("kind") == "knowledge" and entity["payload"].get("experience_candidate_id"):
-        from backend.experience import adopted_legacy_editors
-
-        if person.user_id in adopted_legacy_editors(conn, entity):
-            return True
+    if person.user_id in (experience or adopted_editors(conn, entity)).ids:
+        return True
     if "cycle_closed" in identity:
         return False
     # Historic records can identify a person by username instead of stable ID.
@@ -238,8 +238,11 @@ def ensure_independent(conn: db.Connection, entity: dict) -> None:
     person = require_context()
     if person.readonly or person.role not in {"admin", "reviewer"}:
         raise ApiError("PERMISSION_DENIED")
-    if is_review_participant(conn, entity, person):
+    experience = adopted_editors(conn, entity)
+    if is_review_participant(conn, entity, person, experience=experience):
         raise ApiError("SEPARATION_OF_DUTIES", SEPARATION_MESSAGE)
+    if experience.unresolved_for(person):
+        raise ApiError("SEPARATION_OF_DUTIES", MISSING_EXPERIENCE_AUTHOR)
 
 
 def guard_marked_action(conn: db.Connection, entity: dict, body: dict) -> None:
@@ -271,7 +274,9 @@ def review_info(conn: db.Connection, entity: dict) -> dict:
     person = require_context()
     submitter = meta.get("submitted_name") or submission.get("actor", "")
     has_submission = bool(submitter) or legacy_approved(entity)
-    blocked = is_review_participant(conn, entity, person, actions=actions)
+    experience = adopted_editors(conn, entity)
+    blocked = is_review_participant(conn, entity, person, actions=actions, experience=experience)
+    unknown_author = experience.unresolved_for(person)
     package = bool(conn.execute("SELECT 1 FROM skill_documents WHERE entity_id=?", (entity["id"],)).fetchone())
     return {
         "entity": entity,
@@ -279,6 +284,7 @@ def review_info(conn: db.Connection, entity: dict) -> dict:
         "submitted_at": meta.get("submitted_at") or submission.get("created_at", ""),
         "can_decide": has_submission
         and not blocked
+        and not unknown_author
         and not package
         and person.role in {"admin", "reviewer"}
         and not person.readonly,
@@ -286,6 +292,8 @@ def review_info(conn: db.Connection, entity: dict) -> dict:
         if package
         else SEPARATION_MESSAGE
         if blocked
+        else MISSING_EXPERIENCE_AUTHOR
+        if unknown_author
         else "历史记录缺少提交人，请由建设人员重新提交。"
         if not has_submission
         else "",

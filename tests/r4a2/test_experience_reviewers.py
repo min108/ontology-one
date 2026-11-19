@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from httpx import Response
 
-from backend import db
+from backend import db, experience
 from backend.security import store
 from backend.security.context import use_context
 from tests.r2 import test_build as construction
@@ -78,11 +78,17 @@ class ExperienceReviewers(unittest.TestCase):
         return self.ok(self.builder.post(self.path + "/adopt", json=self.base))["entity"]
 
     def apply(self, operation: str, candidates: list[str], actor: TestClient) -> list[str]:
+        proposal = self.propose(operation, candidates)
+        return self.ok(actor.post(self.path + "/proposals/" + proposal["id"] + "/decision", json={"action": "apply"}))[
+            "candidate_ids"
+        ]
+
+    def propose(self, operation: str, candidates: list[str], author: TestClient | None = None) -> dict:
         items = self.candidates()
         refs = items[candidates[0]]["source_refs"]
         outputs = [
             {
-                "title": operation + "逐项核对",
+                "title": getattr(self, "proposal_prefix", "") + operation + "逐项核对",
                 "summary": "按交接清册逐笔登记",
                 "content": "核验交接清册的日期和两方签字。",
                 "source_refs": refs,
@@ -97,7 +103,7 @@ class ExperienceReviewers(unittest.TestCase):
             patch("backend.experience.complete", fake),
         ):
             proposal = self.ok(
-                self.builder.post(
+                (author or self.builder).post(
                     self.path + "/proposals",
                     json={
                         "operation": operation,
@@ -108,9 +114,19 @@ class ExperienceReviewers(unittest.TestCase):
                 )
             )["proposal"]
         self.assertEqual(fake.await_count, 1)
-        return self.ok(actor.post(self.path + "/proposals/" + proposal["id"] + "/decision", json={"action": "apply"}))[
-            "candidate_ids"
-        ]
+        return proposal
+
+    def old_pending(self, ident: str) -> dict:
+        """Keep all actual receipts and history while reproducing the pre-upgrade knowledge identity fields."""
+        pending = self.submit(ident)
+        principal = store.authenticate_session(self.builder.cookies.get(store.COOKIE_NAME), "legacy-pending")[0]
+        with use_context(principal), closing(db.connect()) as conn, conn:
+            payload = pending["payload"]
+            payload["r2_review"].pop("experience_authorship_tracked", None)
+            payload["r2_review"].pop("experience_draft_tracked", None)
+            payload["r2_review"]["editor_ids"] = [self.person(self.builder)]
+            conn.execute("UPDATE entities SET payload=? WHERE id=?", (json.dumps(payload), ident))
+        return pending
 
     def review(self, candidate: str, client: TestClient, action: str, **changes: object) -> dict:
         item = self.candidates()[candidate]
@@ -249,7 +265,7 @@ class ExperienceReviewers(unittest.TestCase):
                 "UPDATE entities SET payload=JSON_REMOVE(payload,'$.draft.draft_editor_ids') WHERE id=?", (self.sid,)
             )
             payload = pending["payload"]
-            payload["r2_review"].pop("experience_draft_tracked", None)
+            payload["r2_review"].pop("experience_authorship_tracked", None)
             payload["r2_review"]["editor_ids"] = [self.person(self.builder)]
             conn.execute("UPDATE entities SET payload=? WHERE id=?", (json.dumps(payload), pending["id"]))
         self.decide(pending, [self.author], self.secondary)
@@ -314,3 +330,96 @@ class ExperienceReviewers(unittest.TestCase):
         merged = self.review(primary, self.builder, "adopt")
         self.assertEqual(merged["entity_id"], initial["id"])
         self.publish(initial["id"], [self.author, self.applier, self.secondary, self.observer], self.independent)
+
+    def test_pending_preupgrade_proposals_follow_split_revise_and_release_boundaries(self) -> None:
+        self.base["title"] = "旧稿领单与盖章核验"
+        self.proposal_prefix = "领单"
+        source = self.adopt_legacy()
+        self.publish(source["id"], [self.author], self.independent)
+        (parent,) = self.candidates()
+        _, child = self.apply("split", [parent], self.applier)
+        self.assertFalse(self.candidates()[child].get("legacy_draft"))
+        self.apply("revise", [child], self.secondary)
+        preview = self.propose("revise", [child], self.author)
+        self.ok(self.observer.post(self.path + "/proposals/" + preview["id"] + "/decision", json={"action": "dismiss"}))
+        adopted = self.review(child, self.builder, "adopt")
+        pending = self.old_pending(adopted["entity_id"])
+        self.apply("revise", [child], self.observer)
+        prior_author = self.ok(self.author.get("/api/v2/reviews/" + pending["id"]))["data"]
+        self.assertTrue(prior_author["can_decide"], prior_author)
+        self.decide(pending, [self.applier, self.secondary], self.observer)
+
+    def test_pending_preupgrade_merge_identifies_ancestor_and_secondary_manual_editors(self) -> None:
+        self.base["title"] = "旧稿账册归并"
+        self.proposal_prefix = "账册"
+        source = self.adopt_legacy()
+        (cid,) = self.candidates()
+        primary, secondary = self.apply("split", [cid], self.applier)
+        self.review(secondary, self.secondary, "save", summary="交接后须分别留存双方原件。")
+        self.apply("merge", [secondary, primary], self.observer)
+        self.review(primary, self.builder, "adopt")
+        pending = self.old_pending(source["id"])
+        self.decide(pending, [self.author, self.applier, self.secondary, self.observer], self.independent)
+
+    def test_first_adoption_carries_prior_proposals_of_an_unadopted_preupgrade_candidate(self) -> None:
+        self.base["title"] = "首次采纳的签收稿"
+        self.proposal_prefix = "首次"
+        self.adopt_legacy()
+        (cid,) = self.candidates()
+        _, child = self.apply("split", [cid], self.applier)
+        self.apply("revise", [child], self.secondary)
+        principal = store.authenticate_session(self.builder.cookies.get(store.COOKIE_NAME), "old-candidate")[0]
+        with use_context(principal), closing(db.connect()) as conn, conn:
+            row = conn.execute("SELECT payload FROM entities WHERE id=?", (self.sid,)).fetchone()
+            payload = json.loads(row["payload"])
+            candidate = next(item for item in payload["knowledge_candidates"] if item["id"] == child)
+            candidate.pop("draft_editor_ids", None)
+            candidate.pop("draft_authorship_tracked", None)
+            conn.execute("UPDATE entities SET payload=? WHERE id=?", (json.dumps(payload), self.sid))
+        adopted = self.review(child, self.builder, "adopt")
+        self.publish(adopted["entity_id"], [self.author, self.applier, self.secondary], self.independent)
+
+    def test_unattributed_confirmed_revision_keeps_independence_until_evidence_or_a_later_account(self) -> None:
+        self.base["title"] = "旧稿签署存根"
+        self.proposal_prefix = "存根"
+        source = self.adopt_legacy()
+        (cid,) = self.candidates()
+        suggestion = self.propose("revise", [cid])
+        person = store.authenticate_session(self.applier.cookies.get(store.COOKIE_NAME), "old-experience-import")[0]
+        # Earlier imports retained business versions and activities without control-plane HTTP receipts.
+        with use_context(person):
+            experience.decide_proposal(self.sid, suggestion["id"], experience.ProposalDecision(action="apply"))
+        self.review(cid, self.builder, "adopt")
+        pending = self.old_pending(source["id"])
+        detail_url = "/api/v2/reviews/" + pending["id"]
+        blocked = self.ok(self.applier.get(detail_url))["data"]
+        self.assertFalse(blocked["can_decide"])
+        self.assertTrue(self.ok(self.independent.get(detail_url))["data"]["can_decide"])
+        with use_context(person), closing(db.connect()) as conn, conn:
+            # A partly retained historic copy: applied proposal with input/output ids survives; actor was unspecified.
+            conn.execute("UPDATE activities SET actor='系统' WHERE entity_id=? AND action='确认经验调整'", (self.sid,))
+            conn.execute(
+                "UPDATE versions SET reason='旧版本',snapshot=JSON_REMOVE(snapshot,'$.payload.proposals') "
+                "WHERE entity_id=? AND reason='人工采用AI修订建议'",
+                (self.sid,),
+            )
+        for client in (self.applier, self.independent):
+            detail = self.ok(client.get(detail_url))["data"]
+            self.assertFalse(detail["can_decide"])
+            self.assertIn("尚缺可核对的编辑人记录", detail["blocked_reason"])
+            denied = client.post(
+                detail_url + ":decide", json={"decision": "approve_publish", "version": pending["version"]}
+            )
+            self.assertEqual(denied.status_code, 403, denied.text)
+            self.assertIn("尚缺可核对的编辑人记录", denied.text)
+        admin = store.authenticate_session(self.author.cookies.get(store.COOKIE_NAME), "new-reviewer")[0]
+        store.create_user(
+            admin,
+            username="x.new.reviewer",
+            display_name="后期开通审核人",
+            tenant_id=admin.tenant_id,
+            role="reviewer",
+            password="SyntheticFixture9!",
+            must_change_password=False,
+        )
+        self.decide(pending, [], self.login("x.new.reviewer"))
