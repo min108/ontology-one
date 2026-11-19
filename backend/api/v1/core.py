@@ -256,8 +256,7 @@ def detail(eid: str, version: int = 0):
         return d
 
 
-def guard_generic_edit(c, old, b, *, dispatch_work_record=False):
-    """Check ownership on the locked entity before a generic writer changes content or lifecycle."""
+def _guard_edit(c, old, b):
     from ...skills import guard_generic_entity
 
     guard_generic_entity(c, old, b)
@@ -275,7 +274,12 @@ def guard_generic_edit(c, old, b, *, dispatch_work_record=False):
         raise HTTPException(400, "请从专项事项与依据工作面修改，确保归属、原文引用和办理状态一致。")
     if old["payload"].get("active_asset") is False:
         raise HTTPException(409, "这是保留追溯的历史条目。请打开整合后的成果开展修订。")
-    if not dispatch_work_record and old["kind"] in {"task", "project"}:
+
+
+def guard_generic_edit(c, old, b):
+    """Check ownership when the caller cannot dispatch a dedicated work record."""
+    _guard_edit(c, old, b)
+    if old["kind"] in {"task", "project"}:
         raise HTTPException(400, "请通过任务或专题工作档案修改。")
 
 
@@ -286,7 +290,7 @@ async def edit(eid: str, request: Request):
         old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
         if not old:
             raise HTTPException(404, "未找到内容。")
-        guard_generic_edit(c, old, b, dispatch_work_record=True)
+        _guard_edit(c, old, b)
         if old["kind"] == "task":
             from ...projects import edit_task
 
