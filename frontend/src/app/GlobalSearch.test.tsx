@@ -164,6 +164,24 @@ it('opens a material chunk at its actual location and ignores destinations suppl
   fireEvent.click(screen.getByRole('option'));
   expect(screen.getByTestId('location')).toHaveTextContent('/materials/m%2F1?chunk=chunk%20a');
 });
+it('keeps element and chunk identifiers distinct and presents a matching summary only once', () => {
+  const item = { id: 'shared', title: 'Payment policy', summary: 'Settlement within ten days', kind: 'rule' };
+  const rows = parseSearchItems(
+    {
+      items: [
+        { ...item, doc_type: 'element', highlight: 'Settlement within ten days. Another line of the card.' },
+        { ...item, doc_type: 'chunk', entity_id: 'source', chunk_id: item.id, kind: 'material' },
+      ],
+    },
+    'TEN days',
+  );
+  expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+  expect(rows[0].excerpt).toBeUndefined();
+  expect(rows.map((row) => row.href)).toEqual([
+    '/ontology/elements/shared',
+    '/materials/source?chunk=shared',
+  ]);
+});
 it('distinguishes a single-character prefix miss from an unsupported longer query', async () => {
   vi.mocked(invokeCapability).mockResolvedValue({ items: [] });
   renderSearch();

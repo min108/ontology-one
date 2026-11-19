@@ -18,26 +18,22 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 /** Validate search rows and construct local destinations from their identifiers. */
-export function parseSearchItems(value: unknown): SearchItem[] {
+export function parseSearchItems(value: unknown, query = ''): SearchItem[] {
   const rows = object(value).items;
   if (!Array.isArray(rows)) throw new Error(terms.labels.global_search_failed);
   const seen = new Set<string>();
   return rows.map((row: unknown) => {
     const item = object(row);
-    if (
-      typeof item.id !== 'string' ||
-      !item.id.trim() ||
-      typeof item.kind !== 'string' ||
-      !item.kind.trim() ||
-      seen.has(item.id)
-    )
+    if (typeof item.id !== 'string' || !item.id.trim() || typeof item.kind !== 'string' || !item.kind.trim())
       throw new Error(terms.labels.global_search_failed);
     for (const field of ['title', 'summary', 'status', 'highlight', 'entity_id', 'chunk_id', 'doc_type'])
       if (item[field] !== undefined && item[field] !== null && typeof item[field] !== 'string')
         throw new Error(terms.labels.global_search_failed);
     if (item.doc_type && item.doc_type !== 'element' && item.doc_type !== 'chunk')
       throw new Error(terms.labels.global_search_failed);
-    seen.add(item.id);
+    const id = item.doc_type ? JSON.stringify([item.doc_type, item.id]) : item.id;
+    if (seen.has(id)) throw new Error(terms.labels.global_search_failed);
+    seen.add(id);
     const kinds: Record<string, string> = terms.kinds;
     const statuses: Record<string, string> = terms.statuses.element;
     const status =
@@ -62,13 +58,17 @@ export function parseSearchItems(value: unknown): SearchItem[] {
       href = '/materials/' + encodeURIComponent(item.id);
     }
     const description = typeof item.summary === 'string' ? item.summary : undefined;
+    const label = typeof item.title === 'string' && item.title.trim() ? item.title : item.id;
+    const matchAlreadyShown =
+      Boolean(query) &&
+      [label, description].some((text) => text?.toLowerCase().includes(query.toLowerCase()));
     return {
-      id: item.id,
+      id,
       href,
-      label: typeof item.title === 'string' && item.title.trim() ? item.title : item.id,
+      label,
       description,
       excerpt:
-        typeof item.highlight === 'string' && !description?.includes(item.highlight)
+        typeof item.highlight === 'string' && !matchAlreadyShown && !description?.includes(item.highlight)
           ? item.highlight
           : undefined,
       group: [item.doc_type === 'chunk' ? terms.labels.global_search_source_chunk : kind, status]
@@ -133,7 +133,7 @@ function WorkspaceSearch({
     {
       queryKey: workspaceQueryKey(tenantId, scopeKey, 'semantic.search', debounced),
       queryFn: async ({ signal }) =>
-        parseSearchItems(await invokeCapability('semantic.search', { q: debounced }, { signal })),
+        parseSearchItems(await invokeCapability('semantic.search', { q: debounced }, { signal }), debounced),
       enabled: ready,
       retry: false,
     },
