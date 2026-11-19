@@ -17,7 +17,7 @@ from backend.capabilities.semantic_models import (
     TraceInput,
     TraceResult,
 )
-from backend.core.errors import StrictModel
+from backend.core.errors import ApiError, StrictModel
 
 
 class DescribeInput(ElementGet):
@@ -87,11 +87,15 @@ def analyze(ctx: CapabilityContext, body: SemanticTarget) -> ImpactResult:
 
 @read_capability("evidence.trace", "追溯依据", TraceInput, TraceResult, assistants=["builder", "analyst"], mcp=True)
 def trace(ctx: CapabilityContext, body: TraceInput) -> TraceResult:
-    from backend.kernel import semantic_evidence
+    from backend.kernel import material_source, semantic_evidence
     from backend.security.visibility import scope_for
 
     with closing(ctx.connection_factory()) as conn:
         scope = scope_for(conn, **search_restrictions(ctx))
-        return TraceResult.model_validate(
-            semantic_evidence.trace(conn, scope, **body.model_dump(exclude={"tenant_id"}))
-        )
+        target = body.model_dump(exclude={"tenant_id", "source_page"}, exclude_none=True)
+        if body.source_page is not None:
+            if set(target) != {"entity_id"}:
+                raise ApiError("VALIDATION_FAILED", "阅读原件须指定一份材料及其阅读位置。")
+            page = material_source.read_page(conn, scope, body.entity_id, **body.source_page.model_dump())
+            return TraceResult(subject_id=body.entity_id, subject_type="entity", sources=[], source_page=page)
+        return TraceResult.model_validate(semantic_evidence.trace(conn, scope, **target))

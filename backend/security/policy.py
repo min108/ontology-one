@@ -247,6 +247,7 @@ V2_RULES = (
     ("GET", "/api/v2/elements", ()),
     ("GET", "/api/v2/elements/{id}", ()),
     ("GET", "/api/v2/elements/{id}/passage", ()),
+    ("GET", "/api/v2/materials/{id}/source", ()),
     ("GET", "/api/v2/artifacts", ("artifact.read",)),
     ("GET", "/api/v2/artifacts/{id}", ("artifact.read",)),
     ("POST", "/api/v2/artifacts/{id}:render", ("artifact.create",)),

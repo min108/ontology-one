@@ -15,6 +15,25 @@ from backend.security import visibility
 PUBLIC_RELATIONS = (*sorted(gates.CONFIRMED), "demo")
 
 
+def card_payload(entity: dict) -> dict:
+    payload = entity["payload"]
+    if entity["kind"] == "material":
+        # Original documents and their physical blocks are read using the paged material projection.
+        return {
+            k: v
+            for k, v in payload.items()
+            if k
+            not in {
+                "original_text",
+                "source_blocks",
+                "segmentation_preview",
+                "original_text_before_v3",
+                "original_body_before_v3",
+            }
+        }
+    return payload
+
+
 def display_payload(scope: visibility.Scope, payload: dict) -> dict:
     """Render public business fields; obtain every cited passage from its original version."""
     if scope.external_tool:
@@ -59,9 +78,9 @@ def detail_entity(scope: visibility.Scope, ident: str) -> tuple[dict, dict]:
         raise ApiError("NOT_FOUND")
     raw = db.entity_json(row)
     if scope.drafts and not scope.metadata_only:
-        (payload,) = visibility.project_payloads(scope, [raw["payload"]], legacy_notes=True)
+        (payload,) = visibility.project_payloads(scope, [card_payload(raw)], legacy_notes=True)
     else:
-        payload = display_payload(scope, raw["payload"])
+        payload = display_payload(scope, card_payload(raw))
     return {**raw, "payload": payload}, raw
 
 
@@ -199,7 +218,9 @@ def details(scope: visibility.Scope, ident: str) -> tuple[dict, dict, list]:
                 continue
             row["snapshot"] = snapshot
             snapshots.append(snapshot)
-        visible = visibility.project_payloads(scope, [snapshot["payload"] for snapshot in snapshots], legacy_notes=True)
+        visible = visibility.project_payloads(
+            scope, [card_payload(snapshot) for snapshot in snapshots], legacy_notes=True
+        )
         for snapshot, payload in zip(snapshots, visible, strict=True):
             snapshot["payload"] = payload
             if isinstance(snapshot.get("_meta"), dict):

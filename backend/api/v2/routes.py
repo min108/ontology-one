@@ -43,5 +43,17 @@ def invoke(id: str, body: CapabilityInput, request: Request) -> BaseModel:
     return registry.invoke(id, ctx, body.model_dump(exclude_unset=True))
 
 
-for module in ("orgs", "users", "grants", "audit", "prefs", "build", "artifacts", "elements", "meta", "releases"):
+for module in (
+    "orgs",
+    "users",
+    "grants",
+    "audit",
+    "prefs",
+    "build",
+    "artifacts",
+    "elements",
+    "materials",
+    "meta",
+    "releases",
+):
     router.include_router(importlib.import_module("backend.api.v2." + module).router)

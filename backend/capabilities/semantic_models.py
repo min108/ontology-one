@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, model_validator
 
 from backend.capabilities.context import TenantTarget
+from backend.capabilities.material_models import MaterialPageRequest, MaterialSourcePage
 from backend.core.errors import StrictModel
 
 ResourceId = Annotated[str, Field(min_length=1, max_length=191)]
@@ -40,6 +41,7 @@ class NeighborInput(SemanticTarget):
 
 
 class TraceInput(TenantTarget):
+    source_page: MaterialPageRequest | None = None
     entity_id: ResourceId | None = None
     relation_id: ResourceId | None = None
     receipt_id: ResourceId | None = None
@@ -150,3 +152,4 @@ class TraceResult(StrictModel):
     sources: list[TraceSource]
     query: QueryEvidence | None = None
     truncated: bool = False
+    source_page: MaterialSourcePage | None = Field(default=None, exclude_if=lambda value: value is None)

@@ -3547,6 +3547,149 @@
         "title": "ListResponse[User]",
         "type": "object"
       },
+      "MaterialPageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id"
+          },
+          "chunk_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
+          "citing_entity_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Entity Id"
+          },
+          "citing_relation_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Relation Id"
+          },
+          "offset": {
+            "default": 0,
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "title": "MaterialPageRequest",
+        "type": "object"
+      },
+      "MaterialSourcePage": {
+        "additionalProperties": false,
+        "properties": {
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4096,
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "material_id",
+          "title",
+          "status",
+          "source_version",
+          "version",
+          "locator",
+          "text",
+          "offset",
+          "total"
+        ],
+        "title": "MaterialSourcePage",
+        "type": "object"
+      },
       "MigrationSummary": {
         "additionalProperties": false,
         "properties": {
@@ -6693,6 +6836,16 @@
             ],
             "title": "Relation Id"
           },
+          "source_page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialPageRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source_version": {
             "anyOf": [
               {
@@ -6741,6 +6894,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/QueryEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialSourcePage"
               },
               {
                 "type": "null"
@@ -8602,6 +8765,149 @@
           }
         },
         "summary": "Grants"
+      }
+    },
+    "/api/v2/materials/{id}/source": {
+      "get": {
+        "operationId": "source_api_v2_materials__id__source_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 191,
+              "minLength": 1,
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 4294967295,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chunk_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chunk Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_relation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Relation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialSourcePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Source"
       }
     },
     "/api/v2/meta/kinds": {
