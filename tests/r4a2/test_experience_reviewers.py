@@ -1,7 +1,9 @@
 """Authenticated human contributors follow an experience through legacy adoption, splitting and merging."""
 
+import asyncio
 import json
 import os
+import time
 import unittest
 from contextlib import closing
 from unittest.mock import AsyncMock, patch
@@ -9,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from httpx import Response
 
-from backend import db, experience
+from backend import db, experience, jobs
 from backend.security import store
 from backend.security.context import use_context
 from tests.r2 import test_build as construction
@@ -423,3 +425,54 @@ class ExperienceReviewers(unittest.TestCase):
             must_change_password=False,
         )
         self.decide(pending, [], self.login("x.new.reviewer"))
+
+    def test_experience_writers_require_local_writable_build_session_on_real_pending_records(self) -> None:
+        self.base["title"] = "跨机构收件签署核对"
+        self.adopt_legacy()
+        (cid,) = self.candidates()
+        ref = self.candidates()[cid]["source_refs"][0]
+        update = {
+            **self.base,
+            "continuation_of": cid,
+            "source_refs": [{"chunk_id": ref["chunk_id"], "quote": "分别签收并注明日期"}],
+        }
+        fake = AsyncMock(return_value=json.dumps({"candidates": [update]}, ensure_ascii=False))
+        with (
+            patch("backend.experience.config", return_value={"api_key": "local-fixture"}),
+            patch("backend.experience.complete", fake),
+        ):
+            self.ok(self.builder.post(self.path + "/analyze", json={}))
+            deadline = time.monotonic() + 15
+            while not asyncio.run(jobs.run_one()):
+                self.assertLess(time.monotonic(), deadline, "experience analysis job did not become available")
+                time.sleep(0.1)
+            self.assertEqual(fake.await_count, 1)
+            (suggestion,) = self.candidates()[cid]["analysis_updates"]
+            update_path = "/candidates/" + cid + "/updates/" + suggestion["id"]
+            proposal = self.ok(self.builder.post(self.path + update_path))["proposal"]
+            self.assertEqual(proposal["status"], "pending")
+            before = self.record()
+            foreign = self.login("r2.other")
+            missing_csrf = self.login("fixture.builder")
+            del missing_csrf.headers["X-CSRF-Token"]
+            requests = (
+                ("POST", "/draft", {}),
+                ("PATCH", "/draft", self.base),
+                ("POST", "/adopt", self.base),
+                ("POST", "/candidates/" + cid + "/review", {**self.base, "action": "save"}),
+                ("POST", "/proposals", {"candidate_ids": [cid], "instruction": "请逐项核对签收"}),
+                ("POST", "/proposals/" + proposal["id"] + "/decision", {"action": "apply"}),
+                ("POST", update_path, {}),
+                ("POST", "/turns", {"content": self.narrative, "mode": "structured"}),
+                ("POST", "/question", {"mode": "structured"}),
+                ("POST", "/analyze", {}),
+            )
+            for method, suffix, body in requests:
+                for client, status in [(foreign, 404), (self.independent, 403), (missing_csrf, 403)]:
+                    with self.subTest(method=method, suffix=suffix, status=status):
+                        denied = client.request(method, self.path + suffix, json=body)
+                        self.assertEqual(denied.status_code, status, denied.text)
+            self.assertEqual(self.record(), before)
+        self.ok(self.secondary.patch(self.path + "/draft", json={**self.base, "summary": "新增交接记录核对。"}))
+        rebuilt = self.ok(self.builder.post(self.path + "/draft"))["entity"]
+        self.assertEqual(rebuilt["payload"]["draft"]["draft_editor_ids"], [self.person(self.secondary)])
