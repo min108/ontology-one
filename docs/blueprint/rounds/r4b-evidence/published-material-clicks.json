@@ -1,0 +1,173 @@
+{
+  "before_commit": "4200af992fc962aa0390acda591e55fa704c95e2",
+  "after_commit": "9358d1337d82af2db10d728879a812f4aab04863",
+  "channel": "Chromium, signed sessions and a separate MySQL institution; uploaded via the material workflow, independently published, entered by a real click from home search",
+  "viewport": [
+    1366,
+    768
+  ],
+  "cases": [
+    {
+      "role": "modeler",
+      "upload_bytes": 88,
+      "result": "whole",
+      "before": {
+        "path": "/materials/material_92db8873989d426a?via=vmwn0ufhgor83je",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 0
+      },
+      "after": {
+        "path": "/materials/material_486681c0eed34d4d?via=vmwn1fwyt3480rs",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 0
+      }
+    },
+    {
+      "role": "modeler",
+      "upload_bytes": 88,
+      "result": "chunk",
+      "before": {
+        "path": "/materials/material_92db8873989d426a?chunk=chunk_c309743248b441d5&via=vmwn0ug9xoz1qe9",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 1
+      },
+      "after": {
+        "path": "/materials/material_486681c0eed34d4d?chunk=chunk_b94c7462d26b45d5&via=vmwn1fyog25qrhk",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 1
+      }
+    },
+    {
+      "role": "modeler",
+      "upload_bytes": 285090,
+      "result": "whole",
+      "before": {
+        "path": "/materials/material_60981db35b644fd8?via=vmwn0ugxmq0gktl",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 0
+      },
+      "after": {
+        "path": "/materials/material_587ea21975bf402b?via=vmwn1g0ltvfq0mj",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 0
+      }
+    },
+    {
+      "role": "modeler",
+      "upload_bytes": 285090,
+      "result": "chunk",
+      "before": {
+        "path": "/materials/material_60981db35b644fd8?chunk=chunk_435dc7f896c1404c&via=vmwn0uhpv5x4g32",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 1
+      },
+      "after": {
+        "path": "/materials/material_587ea21975bf402b?chunk=chunk_09e0f6e409d54e4b&via=vmwn1g2ds6ga8kg",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 1
+      }
+    },
+    {
+      "role": "viewer",
+      "upload_bytes": 88,
+      "result": "whole",
+      "before": {
+        "path": "/materials/material_92db8873989d426a?via=vmwn0uj28b516ca",
+        "detail_status": 200,
+        "phrase_visible": false,
+        "mark_count": 0
+      },
+      "after": {
+        "path": "/materials/material_486681c0eed34d4d?via=vmwn1g58px2dtfw",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 0
+      }
+    },
+    {
+      "role": "viewer",
+      "upload_bytes": 88,
+      "result": "chunk",
+      "before": {
+        "path": "/materials/material_92db8873989d426a?chunk=chunk_c309743248b441d5&via=vmwn0ujshkyluoy",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 1
+      },
+      "after": {
+        "path": "/materials/material_486681c0eed34d4d?chunk=chunk_b94c7462d26b45d5&via=vmwn1g6prz6lsdp",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 1
+      }
+    },
+    {
+      "role": "viewer",
+      "upload_bytes": 285090,
+      "result": "whole",
+      "before": {
+        "path": "/materials/material_60981db35b644fd8?via=vmwn0ukjle1naun",
+        "detail_status": 413,
+        "phrase_visible": false,
+        "mark_count": 0
+      },
+      "after": {
+        "path": "/materials/material_587ea21975bf402b?via=vmwn1g8khc9ptzg",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 0
+      }
+    },
+    {
+      "role": "viewer",
+      "upload_bytes": 285090,
+      "result": "chunk",
+      "before": {
+        "path": "/materials/material_60981db35b644fd8?chunk=chunk_435dc7f896c1404c&via=vmwn0ul7lx9wta4",
+        "detail_status": 413,
+        "phrase_visible": false,
+        "mark_count": 0
+      },
+      "after": {
+        "path": "/materials/material_587ea21975bf402b?chunk=chunk_09e0f6e409d54e4b&via=vmwn1ga3qgz973c",
+        "detail_status": 200,
+        "phrase_visible": true,
+        "mark_count": 1
+      }
+    }
+  ],
+  "paged_browser_case": {
+    "channel": "browser_ui",
+    "model_requests": 0,
+    "role": "viewer",
+    "small": {
+      "material_id": "material_51cae7d487a44d87",
+      "whole_text": "交接清册记录资料的签收情况。",
+      "anchor": "anchor_6bf234e430e941f88bfe",
+      "source_version": "source_09af17b630084761a89f"
+    },
+    "large": {
+      "material_id": "material_875dcfb4fd754f1e",
+      "original_sha256": "9eb1b670bd03780333155343f6cf75964ffd5cc5ce589cbeacffbf0bcc86935f",
+      "utf8_bytes": 285090,
+      "codepoints": 95034,
+      "source_version": "source_56bffa8c3402409a9fd2",
+      "checked_page_offsets": [
+        0,
+        4096,
+        0
+      ],
+      "selected_chunk": "chunk_7f7f7b6f47584b8b",
+      "selected_quote": "第一条 经办人应当日核对绿色封签。\n\n",
+      "full_detail_requests": 0
+    }
+  }
+}

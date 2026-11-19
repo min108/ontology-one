@@ -25,7 +25,7 @@ R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁
 ## 3 代码地图
 
 - R4-B1 的机构归属、提升与依赖由 `backend/kernel/modules.py` 管理。`releases.py` 调用 `release_snapshots.py` 生成差异和冻结条目，独立审核通过后在同一事务更新当前版本。后台批准保存在 `backend/infra/release_snapshot.py`。机构库 0005 对应可信恢复定义 v8。 [办理与恢复实测](docs/blueprint/rounds/R4-B-UPPER-EVIDENCE.md#b1-动作反例和恢复)
-- R4-B2 的可见范围由 `backend/security/visibility.py` 判定。顶部搜索、旧搜索与工具共用 `backend/kernel/search.py`。要素及原文片段在业务事务提交时写入机构自己的检索索引。重建任务与 0006 迁移都使用 `backend/infra/search_index.py`。可信恢复定义 v9 从原始业务数据重建索引。 [检索与语义服务演练](docs/blueprint/rounds/R4-DEMO.md#从原制度检索)
+- R4-B2 的可见范围由 `backend/security/visibility.py` 判定。顶部搜索、旧搜索与工具共用 `backend/kernel/search.py`。要素及原文片段在业务事务提交时写入机构自己的检索索引。重建任务与 0006 迁移都使用 `backend/infra/search_index.py`。可信恢复定义 v9 从原始业务数据重建索引。查阅人员的材料页通过同一项 `evidence.trace` 读取分页正文，历史引文按可见引用主体复核。 [检索与语义服务演练](docs/blueprint/rounds/R4-DEMO.md#从原制度检索)
 
 - 已发布规则和原文材料各自授权。卡片、关联、门禁字段和依据追溯按同一权限范围读取，两份材料只公开一份时只能展示那一份的引文。专题和项目从搜索结果归集原件使用材料编号，直接阅读时则使用片段编号和版本。
 
