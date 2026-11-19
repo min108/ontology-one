@@ -12,7 +12,7 @@ from unittest.mock import patch
 from backend import db, sources
 from backend.api.v1.core import entity_action_in_transaction
 from backend.core.errors import ApiError
-from backend.kernel import releases
+from backend.kernel import elements, releases
 from backend.security import store
 from backend.security.context import Principal, use_context
 from tests.r2 import test_build as construction
@@ -153,6 +153,56 @@ class ReleaseTransactions(ReleaseFixture, unittest.TestCase):
         self.assertEqual((result["id"], result["manifest_hash"]), (previous["id"], previous["manifest_hash"]))
         self.assertTrue(all(not values for values in result["diff"].values()))
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM ont_releases").fetchone()[0], 1)
+
+    def test_first_freeze_only_grandfathers_unmodified_pre_upgrade_publications(self) -> None:
+        sheet = self.conn.execute(
+            "SELECT dataset_id,sheet_name,payload FROM dataset_sheets ORDER BY dataset_id,sheet_name LIMIT 1"
+        ).fetchone()
+        column = json.loads(sheet["payload"])["columns"][0]
+        evidence = {
+            "kind": "dataset",
+            "dataset_id": sheet["dataset_id"],
+            "sheet": sheet["sheet_name"],
+            "column": column["name"] if isinstance(column, dict) else column,
+        }
+        with use_context(self.builder):
+            added = elements.create_draft(
+                self.conn,
+                {
+                    "kind": "term",
+                    "title": "账龄核验范围",
+                    "payload": {"schema": "term/1", "definition": "取自核对台账的范围", "source_refs": [evidence]},
+                },
+            )
+            entity_action_in_transaction(self.conn, added["id"], {"action": "submit", "reason": "有已登记台账出处"})
+        with use_context(self.reviewer):
+            for act in ("approve", "publish"):
+                entity_action_in_transaction(self.conn, added["id"], {"action": act, "reason": "分别核对定义及出处"})
+        first = self.create()
+        self.assertTrue(next(check["passed"] for check in first["gates"] if check["entity_id"] == added["id"]))
+        with use_context(self.builder):
+            conflict = elements.create_draft(
+                self.conn,
+                {
+                    "kind": "term",
+                    "title": added["title"],
+                    "payload": {"schema": "term/1", "definition": "另一种未确认的定义"},
+                },
+            )
+        preview = self.create()
+        self.assertEqual(preview["id"], first["id"])
+        self.assertEqual(preview["manifest_hash"], first["manifest_hash"])
+        failed = [check for check in preview["gates"] if not check["passed"]]
+        self.assertEqual([check["entity_id"] for check in failed if check["blocking"]], [added["id"]])
+        self.assertTrue(any(not check["blocking"] for check in failed))
+        with self.assertRaises(ApiError) as blocked:
+            self.submit(preview)
+        self.assertEqual(blocked.exception.code, "GATE_NOT_PASSED")
+        for check in failed:
+            entity = self.conn.execute("SELECT status FROM entities WHERE id=?", (check["entity_id"],)).fetchone()
+            self.assertEqual(entity["status"], "published")
+        self.archive(conflict["id"])
+        self.assertEqual(self.publish(first)["manifest_hash"], first["manifest_hash"])
 
     def test_newly_changed_legacy_deficiency_blocks_but_unchanged_legacy_survives(self) -> None:
         self.publish(self.create())

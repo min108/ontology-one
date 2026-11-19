@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from backend import db, federation, sources
 from backend.core.errors import ApiError
 from backend.core.ids import new_id
+from backend.domains.reviews import PUBLICATION_ACTIONS
 from backend.kernel import modules
 from backend.kernel import release_snapshots as snapshots
 from backend.security.context import Principal
@@ -23,11 +25,13 @@ SUMMARY_FIELDS = (
 )
 
 
-def _tenant(conn: db.Connection, person: Principal) -> None:
+def _tenant(conn: db.Connection, person: Principal, *, writing: bool = False) -> None:
     if person.identity_kind != "session" or (conn.principal and conn.principal != person):
         raise ApiError("PERMISSION_DENIED")
     if person.readonly and person.tenant_id != person.home_tenant_id:
         raise ApiError("NOT_FOUND")
+    if writing and (person.readonly or conn.readonly):
+        raise ApiError("PERMISSION_DENIED")
 
 
 def _release(conn: db.Connection, release_id: str, *, lock: bool = False) -> dict:
@@ -40,7 +44,7 @@ def _release(conn: db.Connection, release_id: str, *, lock: bool = False) -> dic
 
 
 def _lock_release(conn: db.Connection, person: Principal, release_id: str) -> tuple[dict, dict]:
-    _tenant(conn, person)
+    _tenant(conn, person, writing=True)
     # Acquire the ownership row first on every transition. A nonlocking lookup of
     # the release here would establish an InnoDB snapshot before a competing writer
     # commits a new head. FOR UPDATE OF m neither locks r nor creates such a view.
@@ -51,8 +55,6 @@ def _lock_release(conn: db.Connection, person: Principal, release_id: str) -> tu
     ).fetchone()
     if not row:
         raise ApiError("NOT_FOUND")
-    if person.readonly:
-        raise ApiError("PERMISSION_DENIED")
     return dict(row), _release(conn, release_id, lock=True)
 
 
@@ -72,25 +74,26 @@ def _frozen_items(conn: db.Connection, release_id: str, *, lock: bool = False) -
     ]
 
 
-def _summary(release: dict, module: dict) -> dict:
+def _summary(conn: db.Connection, person: Principal, release: dict, module: dict) -> dict:
     stats = release["stats"]
-    return {
+    result = {
         **{key: value for key, value in release.items() if key != "stats"},
         **{key: stats.get(key) for key in SUMMARY_FIELDS},
         "current_release_id": module["current_release_id"],
         "no_changes": False,
     }
-
-
-def _detail(conn: db.Connection, person: Principal, release: dict, module: dict) -> dict:
-    result = _summary(release, module)
-    stats = release["stats"]
-    items = _frozen_items(conn, release["id"]) if release["status"] in PUBLIC_STATES else stats["preview_items"]
     if release["status"] == "draft":
-        refs = [item["entity_id"] for item in items if item["item_role"] == "ref"]
+        refs = [item["entity_id"] for item in stats["preview_items"] if item["item_role"] == "ref"]
         result["missing_dependencies"] = modules.missing_reference_dependencies(
             conn, module["id"], person.tenant_id, refs
         )
+    return result
+
+
+def _detail(conn: db.Connection, person: Principal, release: dict, module: dict) -> dict:
+    result = _summary(conn, person, release, module)
+    stats = release["stats"]
+    items = _frozen_items(conn, release["id"]) if release["status"] in PUBLIC_STATES else stats["preview_items"]
     return {**result, "items": items, "gates": stats["gates"], "diff": stats["diff"]}
 
 
@@ -182,7 +185,7 @@ def list_releases(conn: db.Connection, person: Principal, module_id: str = "MOD-
     results = []
     for row in rows:
         stats = snapshots.decode(row["stats"] or "{}")
-        result = _summary({**dict(row), "stats": stats}, module)
+        result = _summary(conn, person, {**dict(row), "stats": stats}, module)
         if not private:
             result.update(ref_count=result["ref_count"] - len(stats.get("private_refs", [])), missing_dependencies=[])
         results.append(result)
@@ -191,6 +194,46 @@ def list_releases(conn: db.Connection, person: Principal, module_id: str = "MOD-
 
 def _failed(check: dict) -> set[str]:
     return {item["code"] for item in check["checks"] if item["status"] == "fail"}
+
+
+def _instant(value: object) -> datetime | None:
+    if not isinstance(value, str) or len(value) <= 10:
+        return None
+    try:
+        stamp = datetime.fromisoformat(value)
+        return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp.astimezone(UTC)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _legacy_at_upgrade(conn: db.Connection, checks: list[dict]) -> set[str]:
+    """The tenant's restored migration receipt marks when release gates became enforceable."""
+    failed = [check["entity_id"] for check in checks if not check["passed"]]
+    if not failed:
+        return set()
+    receipt = conn.execute("SELECT applied_at FROM schema_migrations WHERE version=5").fetchone()
+    cutoff = _instant(receipt["applied_at"]) if receipt else None
+    if cutoff is None:
+        return set()
+    placeholders = ",".join("?" for _ in failed)
+    actions = sorted(PUBLICATION_ACTIONS)
+    action_params = ",".join("?" for _ in actions)
+    rows = conn.execute(
+        "SELECT e.id,e.updated_at,a.action,a.created_at AS published_at FROM entities e "
+        f"LEFT JOIN activities a ON a.entity_id=e.id AND a.action IN ({action_params}) "
+        f"WHERE e.id IN ({placeholders})",
+        (*actions, *failed),
+    )
+    ineligible = set()
+    for row in rows:
+        # Some 0.7 published records have no publication activity. Their current
+        # published row must itself predate rollout. A later publication receipt
+        # independently disqualifies a record with an old or imported row stamp.
+        updated = _instant(row["updated_at"])
+        published = _instant(row["published_at"])
+        if updated is None or updated >= cutoff or (row["action"] and (published is None or published >= cutoff)):
+            ineligible.add(row["id"])
+    return set(failed) - ineligible
 
 
 def _prepare(conn: db.Connection, person: Principal, module: dict) -> tuple[dict, str, str]:
@@ -211,6 +254,7 @@ def _prepare(conn: db.Connection, person: Principal, module: dict) -> tuple[dict
     first = not historic_versions
     bump = "major" if first else bump
     suggested = "1.0.0" if first else snapshots.next_version(max(historic_versions, key=snapshots.version_parts), bump)
+    legacy = _legacy_at_upgrade(conn, checks) if first else set()
     prior_gates = {check["entity_id"]: check for check in previous["stats"].get("gates", [])} if previous else {}
     changed = set(diff["added"]) | set(diff["changed"])
     for check in checks:
@@ -221,7 +265,7 @@ def _prepare(conn: db.Connection, person: Principal, module: dict) -> tuple[dict
         # Preserve recorded first-release deficiencies only while exactly that
         # content and those pre-existing failing checks persist. New failures,
         # new assets and changed content must pass the ordinary release gates.
-        check["blocking"] = bool(not check["passed"] and not first and not inherited)
+        check["blocking"] = bool(not check["passed"] and check["entity_id"] not in legacy and not inherited)
     refs = [item["entity_id"] for item in items if item["item_role"] == "ref"]
     stats = {
         "suggested_version": suggested,
@@ -253,7 +297,7 @@ def create_draft(
     version: str | None = None,
     changelog: str = "",
 ) -> dict:
-    _tenant(conn, person)
+    _tenant(conn, person, writing=True)
     module = modules.get_module(conn, module_id, lock=True)
     modules.require_management(person, module)
     stats, bump, manifest = _prepare(conn, person, module)
@@ -281,6 +325,15 @@ def create_draft(
         ):
             existing = _release(conn, collision["id"], lock=True)
             if existing["stats"].get("previous_release_id") == current:
+                if existing["status"] == "draft":
+                    # A dependent fact or grant can change the gate result without
+                    # changing the semantic manifest. Refresh the mutable preview.
+                    stats["suggested_version"] = existing["stats"]["suggested_version"]
+                    if stats != existing["stats"]:
+                        conn.execute(
+                            "UPDATE ont_releases SET stats=? WHERE id=?", (snapshots.encode(stats), existing["id"])
+                        )
+                        existing["stats"] = stats
                 return _project(
                     conn, person, _detail(conn, person, existing, module), existing["stats"]["private_refs"]
                 )
