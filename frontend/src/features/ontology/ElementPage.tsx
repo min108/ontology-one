@@ -320,13 +320,13 @@ function Element({ id }: { id: string }) {
                     key={entity.id + ':' + entity.version}
                     entity={entity}
                     disabled={!!query.refreshing || !!query.error}
-                    onSave={async (payload, sentenceConfirmed) => {
+                    onSave={async (fields, sentenceConfirmed) => {
                       await invokeCapability<ElementDetailResult>(
                         'element.update_draft',
                         {
                           entity_id: id,
                           version: entity.version,
-                          payload,
+                          payload_fields: fields,
                           sentence_confirmed: sentenceConfirmed,
                         } satisfies ElementUpdate,
                         { signal: lifetime.current?.signal },

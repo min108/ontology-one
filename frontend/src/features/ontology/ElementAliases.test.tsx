@@ -57,7 +57,7 @@ it('requires an authorized ordinary asset and a writable lifecycle state', () =>
     unmount();
   }
 });
-it('keeps original scalar aliases and all other payload fields, prevents duplicate or empty saves, and uses the latest revision', async () => {
+it('checks existing aliases and sends only the new name with the current revision', async () => {
   vi.mocked(invokeCapability).mockResolvedValue({});
   const current = detail();
   const onSaved = vi.fn();
@@ -86,10 +86,7 @@ it('keeps original scalar aliases and all other payload fields, prevents duplica
       entity_id: 'R1',
       version: 8,
       reason: terms.labels.r4b_alias_register,
-      payload: {
-        ...current.entity.payload,
-        aliases: [searchFixture.aliases.existing, searchFixture.aliases.added],
-      },
+      add_alias: searchFixture.aliases.added,
     },
     { signal: expect.any(AbortSignal) },
   ]);

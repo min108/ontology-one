@@ -344,6 +344,10 @@ def _edit_entity(eid, b, *, repair_gates=False):
             skills.apply_gate_notes(c, old, b)
         else:
             guard_generic_edit(c, old, b)
+            if repair_gates and ("add_alias" in b or "payload_fields" in b):
+                from ...kernel.element_edits import draft_field_changes
+
+                b = draft_field_changes(c, old, b)
             element_kernel.update_draft(c, old, b)
     return detail(eid)
 

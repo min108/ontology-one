@@ -64,14 +64,13 @@ export function RuleEditor({
     setBusy(true);
     setError('');
     try {
-      await onSave(
-        {
-          ...entity.payload,
-          [field]: prepareRuleValue(parsed, entity.payload[field]),
-          ...(field === 'formula' ? { test_cases: cases } : {}),
-        },
-        sentenceConfirmed,
-      );
+      const fields: ElementEntity['payload'] = {};
+      const expression = prepareRuleValue(parsed, entity.payload[field]);
+      if (JSON.stringify(expression) !== JSON.stringify(entity.payload[field] || {}))
+        fields[field] = expression;
+      if (field === 'formula' && JSON.stringify(cases) !== JSON.stringify(entity.payload.test_cases || []))
+        fields.test_cases = cases;
+      await onSave(fields, sentenceConfirmed);
       setSaved(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : copy.r2_failure);

@@ -158,7 +158,7 @@ it('uses the shared calendar and saves the selected date as metadata, never as p
     'element.update_draft',
     expect.objectContaining({
       meta: { valid_from: '2026-01-01' },
-      payload: current.entity.payload,
+      payload_fields: {},
     }),
     expect.anything(),
   );
@@ -186,7 +186,7 @@ it('keeps a missing definition non-waivable and requires saving the exact applic
     'element.update_draft',
     expect.objectContaining({
       version: 2,
-      payload: { ...current.entity.payload, definition: legacyFixture.definition },
+      payload_fields: { definition: legacyFixture.definition },
       waiver_applications: { QG1: legacyFixture.manualApplication },
     }),
     expect.anything(),

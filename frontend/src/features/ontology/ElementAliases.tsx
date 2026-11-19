@@ -70,11 +70,9 @@ export function ElementAliases({
         );
         if (!signal?.aborted) onSaved();
       } else {
-        const existing = entity.payload.aliases;
-        const values = Array.isArray(existing) ? existing : typeof existing === 'string' ? [existing] : [];
         await invokeCapability<ElementDetailResult>(
           'element.update_draft',
-          { ...version, payload: { ...entity.payload, aliases: [...values, next] } } satisfies ElementUpdate,
+          { ...version, add_alias: next } satisfies ElementUpdate,
           { signal },
         );
         if (!signal?.aborted) {
@@ -126,6 +124,7 @@ export function ElementAliases({
           {copy.r4b_alias_new}
           <Input
             value={value}
+            maxLength={250}
             disabled={disabled || busy}
             onChange={(event) => setValue(event.target.value)}
           />

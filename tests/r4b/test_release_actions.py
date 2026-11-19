@@ -84,8 +84,9 @@ class ReleaseActionsHTTP(ReleaseWorkerActions, unittest.TestCase):
         if code:
             self.assertEqual(response.json()["error"]["code"], code, response.text)
 
-    def evidence(self, client: TestClient) -> dict:
-        text = "移交时按份登记交接单和交接清册，档案接收人与经办人分别核对。"
+    def evidence(
+        self, client: TestClient, text: str = "移交时按份登记交接单和交接清册，档案接收人与经办人分别核对。"
+    ) -> dict:
         upload = self.receipt(
             client.post("/api/materials/upload", files={"file": ("交接登记说明.txt", text.encode(), "text/plain")})
         )

@@ -202,7 +202,14 @@ export async function registerAlias(builder, reviewer, rule) {
   expect(revision.payload.aliases ?? []).not.toContain(alias);
   const saving = postResponse(builder, "/element.update_draft:invoke");
   await button(dialog, a.catalog_2_0).click();
-  const change = (await (await saving).json()).data.entity;
+  const saved = await saving;
+  expect(saved.request().postDataJSON()).toEqual({
+    entity_id: rule.id,
+    version: revision.version,
+    reason: c.r4b_alias_register,
+    add_alias: alias,
+  });
+  const change = (await saved.json()).data.entity;
   expect(change).toMatchObject({
     id: rule.id,
     status: "draft",

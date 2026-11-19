@@ -9,6 +9,7 @@ from dataclasses import replace
 from backend import db
 from backend.api.v2.routes import registry
 from backend.capabilities.context import CapabilityContext
+from backend.core.errors import ApiError
 from backend.mcp_tools import dispatch_tool
 from backend.security import applications
 from backend.security.context import use_context
@@ -28,6 +29,183 @@ class PublishedElementDetail(unittest.TestCase):
     invoke = semantic.SemanticActionsHTTP.invoke
     business = semantic.SemanticActionsHTTP.business
     get = semantic.SemanticActionsHTTP.get
+
+    def test_register_alias_keeps_an_archived_source_through_independent_publication(self) -> None:
+        editor, reviewer, viewer = (self.login("b1." + role) for role in ("modeler", "reviewer", "viewer"))
+        current = self.evidence(editor)
+        historical = self.evidence(editor, "原交接办法要求经办人保留一份签收回单，以备查档。")
+        refs = [current, historical]
+        draft = self.create(
+            editor,
+            "data",
+            "清册签收份数",
+            {
+                "definition": "每次交接登记的份数",
+                "unit": "份",
+                "grain": "每次交接",
+                "aliases": "原有称呼",
+                "source_refs": refs,
+            },
+        )
+        published = self.publish_asset(editor, reviewer, draft)
+        ident = published["id"]
+        raw_path = "/api/entities/" + ident
+        detail_path = "/api/v2/elements/" + ident
+        save_path = "/api/v2/capabilities/element.update_draft:invoke"
+        original = self.get(editor, raw_path)["payload"]
+        self.assertEqual(original["source_refs"], refs)
+        self.assertNotEqual(current["material_id"], historical["material_id"])
+        archived = self.receipt(
+            reviewer.post(
+                "/api/entities/" + historical["material_id"] + "/action",
+                json={"action": "archive", "reason": "改用本期交接办法"},
+            )
+        )
+        self.assertEqual(archived["status"], "archived")
+        self.assertEqual(
+            [ref["anchor_id"] for ref in self.get(editor, detail_path)["data"]["entity"]["payload"]["source_refs"]],
+            [current["anchor_id"]],
+        )
+        revision = self.invoke(
+            editor,
+            "element.start_revision",
+            {"entity_id": ident, "version": published["version"], "reason": "登记清册日常称呼"},
+        )["entity"]
+        self.assertEqual(revision["status"], "draft")
+        change = {"entity_id": ident, "version": revision["version"], "add_alias": "交接回单数"}
+        saved = self.invoke(editor, "element.update_draft", change)["entity"]
+        self.assertEqual(saved["payload"]["aliases"], ["原有称呼", "交接回单数"])
+        self.assertEqual([ref["anchor_id"] for ref in saved["payload"]["source_refs"]], [current["anchor_id"]])
+
+        def assert_persisted(status: str) -> None:
+            actual = self.get(editor, raw_path)
+            self.assertEqual(actual["status"], status)
+            self.assertEqual(actual["payload"]["aliases"], ["原有称呼", "交接回单数"])
+            self.assertEqual(actual["payload"]["source_refs"], refs)
+            for key, value in original.items():
+                if key not in {"aliases", "r2_review"}:
+                    self.assertEqual(actual["payload"][key], value, key)
+
+        assert_persisted("draft")
+        next_change = {**change, "version": saved["version"], "add_alias": "另一个名称"}
+        for client, body, status in (
+            (editor, {**change, "add_alias": "过期客户端名称"}, 409),
+            (editor, {**next_change, "add_alias": " 交接回单数 "}, 409),
+            (editor, {**next_change, "add_alias": "  "}, 422),
+            (editor, {**next_change, "payload": {"source_refs": []}}, 422),
+            (viewer, next_change, 403),
+            (self.login("fixture.builder"), next_change, 404),
+        ):
+            with self.subTest(status=status, keys=body.keys()):
+                response = client.post(save_path, json=body)
+                self.assertEqual(response.status_code, status, response.text)
+        self.assertEqual(self.get(editor, raw_path)["version"], saved["version"])
+        submitted = self.invoke(
+            editor,
+            "element.submit_draft",
+            {"entity_id": ident, "version": saved["version"], "reason": "请独立复核业务别名"},
+        )["entity"]
+        assert_persisted("review")
+        rejected = editor.post(save_path, json={**next_change, "version": submitted["version"]})
+        self.assertEqual(rejected.status_code, 409, rejected.text)
+        decision = {"version": submitted["version"], "decision": "approve_publish"}
+        self.assertEqual(editor.post("/api/v2/reviews/" + ident + ":decide", json=decision).status_code, 403)
+        self.receipt(reviewer.post("/api/v2/reviews/" + ident + ":decide", json=decision))
+        assert_persisted("published")
+        latest = self.get(editor, raw_path)
+        rejected = editor.post(save_path, json={**next_change, "version": latest["version"]})
+        self.assertEqual(rejected.status_code, 409, rejected.text)
+        self.assertEqual(self.get(editor, raw_path)["version"], latest["version"])
+
+    def test_partial_rule_edit_protects_hidden_nested_data_and_keeps_explicit_replacement(self) -> None:
+        editor, reviewer = (self.login("b1." + role) for role in ("modeler", "reviewer"))
+        current = self.evidence(editor)
+        previous = self.evidence(editor, "交接以前使用纸质回单。")
+        refs = [current, previous]
+        original = self.create(
+            editor,
+            "rule",
+            "交接回单核对",
+            {
+                "source_refs": refs,
+                "definition": "核对交接份数。",
+                "judgement": {
+                    "condition": {"oxl": "true"},
+                    "requirement": {"oxl": "true"},
+                    "source_refs": refs,
+                    "prior_record": {"material_id": previous["material_id"]},
+                },
+            },
+        )
+        ident = original["id"]
+        path = "/api/entities/" + ident
+        mutation = "/api/v2/capabilities/element.update_draft:invoke"
+        self.receipt(
+            reviewer.post(
+                "/api/entities/" + previous["material_id"] + "/action",
+                json={"action": "archive", "reason": "停用旧式回单"},
+            )
+        )
+        visible = self.get(editor, "/api/v2/elements/" + ident)["data"]["entity"]["payload"]["judgement"]
+        self.assertEqual([item["anchor_id"] for item in visible["source_refs"]], [current["anchor_id"]])
+        self.assertNotIn("prior_record", visible)
+        fields = {"entity_id": ident, "version": original["version"], "payload_fields": {"scope": "交接清册"}}
+        person = self.identity(editor)
+        readonly = CapabilityContext(replace(person, readonly=True), permissions=frozenset(permissions_for(person)))
+        for changes in (fields, {"entity_id": ident, "version": original["version"], "add_alias": "回单规定"}):
+            with self.assertRaises(ApiError) as denied:
+                registry.invoke("element.update_draft", readonly, changes)
+            self.assertEqual(denied.exception.code, "PERMISSION_DENIED")
+        saved = self.invoke(editor, "element.update_draft", fields)["entity"]
+        self.assertEqual(self.get(editor, path)["payload"]["source_refs"], refs)
+        version = saved["version"]
+        for invalid, status in (
+            ({"payload_fields": {"source_refs": []}}, 422),
+            ({"payload": {}, "payload_fields": {"scope": "相互冲突"}}, 422),
+            ({"payload_fields": {"judgement": {**visible, "source_refs": []}}}, 409),
+        ):
+            response = editor.post(mutation, json={"entity_id": ident, "version": version, **invalid})
+            self.assertEqual(response.status_code, status, response.text)
+            self.assertEqual(self.get(editor, path)["version"], version)
+        saved = self.invoke(
+            editor,
+            "element.update_draft",
+            {
+                "entity_id": ident,
+                "version": version,
+                "payload_fields": {"judgement": {**visible, "requirement": {"oxl": "false"}}},
+            },
+        )["entity"]
+        payload = self.get(editor, path)["payload"]
+        self.assertEqual((payload["scope"], payload["judgement"]["requirement"]["oxl"]), ("交接清册", "false"))
+        self.assertEqual(payload["source_refs"], refs)
+        self.assertEqual(payload["judgement"]["source_refs"], refs)
+        self.assertEqual(payload["judgement"]["prior_record"], {"material_id": previous["material_id"]})
+        # Legacy callers can still explicitly replace a complete draft.
+        self.invoke(
+            editor,
+            "element.update_draft",
+            {
+                "entity_id": ident,
+                "version": saved["version"],
+                "payload": {"definition": "清册归集说明"},
+            },
+        )
+        replaced = self.get(editor, path)["payload"]
+        self.assertNotIn("judgement", replaced)
+        self.assertNotIn("source_refs", replaced)
+        self.assertEqual(replaced["definition"], "清册归集说明")
+        project = self.receipt(editor.post("/api/special-projects", json={"title": "档案审核", "scope": "检查档案"}))[
+            "project"
+        ]
+        matter = self.receipt(
+            editor.post("/api/special-projects/" + project["id"] + "/matters", json={"title": "交接档案核对"})
+        )["entity"]
+        for edit in ({"add_alias": "交接档案"}, {"payload_fields": {"definition": "交接复核"}}):
+            denied = editor.post(mutation, json={"entity_id": matter["id"], "version": matter["version"], **edit})
+            self.assertEqual(denied.status_code, 422, denied.text)
+            self.assertIn("专项事项与依据", denied.json()["error"]["message"])
+            self.assertEqual(self.get(editor, "/api/entities/" + matter["id"])["version"], matter["version"])
 
     def test_search_hit_card_relations_and_citations_follow_source_publication(self) -> None:
         owner, reviewer, viewer, analyst = (
