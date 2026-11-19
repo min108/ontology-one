@@ -6797,6 +6797,32 @@
             ],
             "title": "Chunk Id"
           },
+          "citing_entity_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Entity Id"
+          },
+          "citing_relation_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Relation Id"
+          },
           "entity_id": {
             "anyOf": [
               {
@@ -8721,6 +8747,38 @@
                 }
               ],
               "title": "Source Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_relation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Relation Id"
             }
           }
         ],
