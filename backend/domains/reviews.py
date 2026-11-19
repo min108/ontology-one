@@ -95,6 +95,11 @@ def _open_revision(entity: dict, conn: db.Connection | None) -> dict:
                 ]
     if not meta.get("revision_id"):
         meta["revision_id"] = uuid.uuid4().hex
+    if conn is not None and entity.get("kind") == "knowledge" and entity["payload"].get("experience_candidate_id"):
+        from backend.experience import adopted_legacy_editors
+
+        meta["editor_ids"] = [*(meta.get("editor_ids") or []), *sorted(adopted_legacy_editors(conn, entity))]
+        meta["experience_draft_tracked"] = True
     meta["cycle_closed"] = False
     meta["editor_ids"] = list(
         dict.fromkeys(
@@ -204,6 +209,11 @@ def is_review_participant(
         is_same_person(person, name) for name in identity.get("legacy_actors", [])
     ):
         return True
+    if entity.get("kind") == "knowledge" and entity["payload"].get("experience_candidate_id"):
+        from backend.experience import adopted_legacy_editors
+
+        if person.user_id in adopted_legacy_editors(conn, entity):
+            return True
     if "cycle_closed" in identity:
         return False
     # Historic records can identify a person by username instead of stable ID.

@@ -132,6 +132,9 @@ class ExperienceReviewers(unittest.TestCase):
         return self.ok(self.builder.get("/api/entities/" + ident))
 
     def publish(self, ident: str, blocked: list[TestClient], independent: TestClient) -> None:
+        self.decide(self.submit(ident), blocked, independent)
+
+    def submit(self, ident: str) -> dict:
         draft = self.asset(ident)
         repaired = self.invoke(
             self.builder,
@@ -153,6 +156,10 @@ class ExperienceReviewers(unittest.TestCase):
             {"entity_id": ident, "version": repaired["version"], "reason": "送审核对"},
         )["entity"]
         self.assertEqual(pending["status"], "review")
+        return pending
+
+    def decide(self, pending: dict, blocked: list[TestClient], independent: TestClient) -> None:
+        ident = pending["id"]
         for actor in blocked:
             self.assertEqual(
                 actor.post("/api/entities/" + ident + "/action", json={"action": "approve"}).status_code, 403
@@ -163,6 +170,12 @@ class ExperienceReviewers(unittest.TestCase):
             )
             self.assertEqual(denied.status_code, 403, denied.text)
             self.assertEqual(denied.json()["error"]["code"], "SEPARATION_OF_DUTIES")
+            via_capability = actor.post(
+                "/api/v2/capabilities/review.decide:invoke",
+                json={"entity_id": ident, "decision": "approve_publish", "version": pending["version"]},
+            )
+            self.assertEqual(via_capability.status_code, 403, via_capability.text)
+            self.assertEqual(via_capability.json()["error"]["code"], "SEPARATION_OF_DUTIES")
         result = self.ok(
             independent.post(
                 "/api/v2/reviews/" + ident + ":decide",
@@ -213,12 +226,33 @@ class ExperienceReviewers(unittest.TestCase):
     def test_split_inherits_the_open_adopted_parent_and_manual_applier(self) -> None:
         self.adopt_legacy()
         (cid,) = self.candidates()
+        note = "已核对签收人的两份签字。"
+        self.review(cid, self.secondary, "save", reason=note)
+        self.assertEqual(self.candidates()[cid]["review_note"], note)
+        self.review(cid, self.observer, "save", reason=note)
         primary, child = self.apply("split", [cid], self.applier)
         self.assertEqual(primary, cid)
         result = self.review(child, self.builder, "adopt")
         editors = set(self.asset(result["entity_id"])["payload"]["r2_review"]["editor_ids"])
-        self.assertEqual(editors, {self.person(x) for x in [self.author, self.builder, self.applier]})
-        self.publish(result["entity_id"], [self.author, self.applier], self.independent)
+        self.assertEqual(editors, {self.person(x) for x in [self.author, self.builder, self.applier, self.secondary]})
+        self.publish(result["entity_id"], [self.author, self.applier, self.secondary], self.observer)
+
+    def test_upgrade_already_pending_knowledge_recovers_only_draft_editors_before_adoption(self) -> None:
+        self.base["title"] = "存量交接单领用核验"
+        draft = self.adopt_legacy()
+        pending = self.submit(draft["id"])
+        self.ok(self.secondary.patch(self.path + "/draft", json={**self.base, "summary": "下一轮再核对领用日期。"}))
+        # Recreate the storage fields of an already-submitted pre-upgrade knowledge asset.
+        principal = store.authenticate_session(self.builder.cookies.get(store.COOKIE_NAME), "legacy-pending")[0]
+        with use_context(principal), closing(db.connect()) as conn, conn:
+            conn.execute(
+                "UPDATE entities SET payload=JSON_REMOVE(payload,'$.draft.draft_editor_ids') WHERE id=?", (self.sid,)
+            )
+            payload = pending["payload"]
+            payload["r2_review"].pop("experience_draft_tracked", None)
+            payload["r2_review"]["editor_ids"] = [self.person(self.builder)]
+            conn.execute("UPDATE entities SET payload=? WHERE id=?", (json.dumps(payload), pending["id"]))
+        self.decide(pending, [self.author], self.secondary)
 
     def test_merge_carries_secondary_writers_and_generic_restore_cannot_rewrite_them(self) -> None:
         initial = self.adopt_legacy()

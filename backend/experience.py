@@ -1183,6 +1183,7 @@ def candidate_editors(conn, items):
             asset = entity_json(row)
             if asset["status"] != "published" and not (asset["payload"].get("r2_review") or {}).get("cycle_closed"):
                 editors.update(editor_ids(asset))
+                editors.update(adopted_legacy_editors(conn, asset))
     return editors
 
 
@@ -1205,12 +1206,6 @@ def _legacy_draft_changed(before, after):
 
 
 def _legacy_draft_editors(conn, record):
-    """Old PATCH versions kept content and reason. Their HTTP receipts identify the actor."""
-    from datetime import datetime
-
-    from .security import store
-    from .security.context import require_context
-
     draft = record["payload"].get("draft") or {}
     if not draft or "draft_editor_ids" in draft:
         return set(draft.get("draft_editor_ids") or [])
@@ -1229,19 +1224,73 @@ def _legacy_draft_editors(conn, record):
         if linked
         else None
     )
+    return _draft_version_editors(conn, record, since=cutoff)
+
+
+def adopted_legacy_editors(conn, asset):
+    """Read only the current revision's already-adopted legacy draft, even if it is awaiting review."""
+    payload = asset["payload"]
+    meta = payload.get("r2_review") or {}
+    if (
+        asset.get("kind") != "knowledge"
+        or not payload.get("experience_candidate_id")
+        or not payload.get("source_material_id")
+        or asset.get("status") == "published"
+        or meta.get("cycle_closed")
+        or meta.get("experience_draft_tracked")
+    ):
+        return set()
+    dates = conn.execute(
+        "SELECT MAX(CASE WHEN action IN ('经验形成知识草稿','经验稿修订知识') THEN created_at END) adopted, "
+        "MAX(CASE WHEN action='发布成果' THEN created_at END) published FROM activities WHERE entity_id=?",
+        (asset["id"],),
+    ).fetchone()
+    if not dates["adopted"] or (dates["published"] and dates["published"] >= dates["adopted"]):
+        return set()
+    row = conn.execute(
+        "SELECT e.* FROM entities e WHERE e.id=? AND e.kind='material' AND EXISTS "
+        "(SELECT 1 FROM relations r WHERE r.source=? AND r.target=e.id AND r.type='derived_from' AND r.status='confirmed')",
+        (payload["source_material_id"], asset["id"]),
+    ).fetchone()
+    if not row:
+        return set()
+    source = entity_json(row)
+    if source["payload"].get("record_type") != "experience_session" or not any(
+        item.get("legacy_draft")
+        and item.get("id") == payload["experience_candidate_id"]
+        and item.get("adopted_entity_id") == asset["id"]
+        for item in source["payload"].get("knowledge_candidates", [])
+    ):
+        return set()
+    return _draft_version_editors(conn, source, since=dates["published"], through=dates["adopted"])
+
+
+def _draft_version_editors(conn, record, *, since, through=None):
+    """Old PATCH versions kept content and reason. Their HTTP receipts identify the actor."""
+    from datetime import datetime
+
+    from .security import store
+    from .security.context import require_context
+
     rows = list(
         conn.execute(
             "SELECT reason,created_at,json_extract(snapshot,'$.payload.draft') draft FROM versions "
             "WHERE entity_id=? AND created_at>=? ORDER BY version,id",
-            (record["id"], cutoff or ""),
+            (record["id"], since or ""),
         )
     )
     times = []
     for i, row in enumerate(rows):
+        if through and row["created_at"] > through:
+            break
         if row["reason"] != "人工编辑经验草稿":
             continue
         before = json.loads(row["draft"] or "{}") or {}
-        after = (json.loads(rows[i + 1]["draft"] or "{}") or {}) if i + 1 < len(rows) else draft
+        after = (
+            (json.loads(rows[i + 1]["draft"] or "{}") or {})
+            if i + 1 < len(rows)
+            else (record["payload"].get("draft") or {})
+        )
         if _legacy_draft_changed(before, after):
             times.append(datetime.fromisoformat(row["created_at"]).timestamp())
     if not times:
@@ -1357,9 +1406,11 @@ def _review_candidate(c, e, candidate_id, body):
     if item.get("adopted_entity_id") and body.action in {"reject", "restore"}:
         raise HTTPException(409, "已形成知识的条目请采用修订流程")
     sections = clean_manual_sections(body, item)
-    changed = any(
-        getattr(body, k).strip() != item.get(k, "") for k in ["title", "summary", "boundary", "questions"]
-    ) or section_facts(sections) != section_facts(item.get("article_sections"))
+    changed = (
+        any(getattr(body, k).strip() != item.get(k, "") for k in ["title", "summary", "boundary", "questions"])
+        or section_facts(sections) != section_facts(item.get("article_sections"))
+        or (body.action in {"save", "adopt"} and body.reason != (item.get("review_note") or ""))
+    )
     if (
         body.action == "adopt"
         and item.get("adopted_entity_id")
@@ -1426,7 +1477,7 @@ def _review_candidate(c, e, candidate_id, body):
                 require_context().user_id,
                 conn=c,
                 contributors=item.get("draft_editor_ids", ()),
-            )
+            )["experience_draft_tracked"] = True
             c.execute(
                 "UPDATE entities SET title=?,summary=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?",
                 (item["title"], item["summary"], dump(payload), "draft", stamp, kid),
@@ -1437,7 +1488,7 @@ def _review_candidate(c, e, candidate_id, body):
             asset_version = 1
             record_editor(
                 {"payload": payload}, require_context().user_id, contributors=item.get("draft_editor_ids", ())
-            )
+            )["experience_draft_tracked"] = True
             c.execute(
                 "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
