@@ -1,13 +1,12 @@
-"""R1 read capabilities. Search forwards the existing implementation and filters in SQL."""
+"""Read capability declarations and the authenticated semantic search binding."""
 
 from collections.abc import Callable
+from contextlib import closing
 
 from pydantic import Field, JsonValue
 
-from backend import federation
-from backend.api.v1 import core
 from backend.api.v2.models import ListResponse
-from backend.capabilities.context import CapabilityContext
+from backend.capabilities.context import CapabilityContext, TenantTarget
 from backend.capabilities.registry import capability
 from backend.core.errors import StrictModel
 from backend.kernel.kinds import KINDS as KIND_REGISTRY
@@ -66,8 +65,14 @@ class ReadinessOutput(StrictModel):
     message: str
 
 
-class SearchInput(StrictModel):
+class SearchInput(TenantTarget):
     q: str = Field(default="", max_length=500)
+    kind: str = Field(default="", max_length=64)
+    pillar: str = Field(default="", max_length=16)
+    module_id: str = Field(default="", max_length=64)
+    status: str = Field(default="", max_length=64)
+    page: int = Field(default=1, ge=1, le=10000, strict=True)
+    page_size: int = Field(default=25, ge=1, le=100, strict=True)
 
 
 class SearchOutput(ListResponse[dict[str, JsonValue]]):
@@ -81,6 +86,8 @@ def read_capability(
     output_model: type[StrictModel],
     *,
     assistants: list[str] | None = None,
+    permissions: list[str] | None = None,
+    mcp: bool = False,
 ) -> Callable:
     return capability(
         id=ident,
@@ -91,9 +98,9 @@ def read_capability(
         intent="read",
         effect="read",
         confirm="L0",
-        permissions=[],
+        permissions=permissions or [],
         assistants=assistants or [],
-        mcp=False,
+        mcp=mcp,
         input=input_model,
         output=output_model,
         preconditions=[],
@@ -143,20 +150,23 @@ def readiness(ctx: CapabilityContext, body: EmptyInput) -> ReadinessOutput:
     )
 
 
-@read_capability("semantic.search", "检索内容", SearchInput, SearchOutput, assistants=["builder", "analyst"])
-def semantic_search(ctx: CapabilityContext, body: SearchInput) -> SearchOutput:
-    if ctx.principal.readonly:
-        result = federation.search(
-            q=body.q, kind="", status="published", tenant_id=ctx.principal.tenant_id, page=1, page_size=25
-        )
-        if result["partial"]:
-            from backend.core.errors import ApiError
+def search_restrictions(ctx: CapabilityContext) -> dict[str, bool]:
+    return {
+        "published_only": "draft.read" not in ctx.permissions or ctx.binding == "mcp",
+        "metadata_only": ctx.binding == "mcp",
+    }
 
-            raise ApiError("RUNTIME_UNAVAILABLE")
-        return SearchOutput.model_validate({key: result[key] for key in ("items", "total", "page", "page_size")})
-    result = (
-        core.search(q=body.q)
-        if "draft.read" in ctx.permissions
-        else core.entities(q=body.q, page_size=25, status="published")
-    )
-    return SearchOutput.model_validate(result)
+
+@read_capability("semantic.search", "检索内容", SearchInput, SearchOutput, assistants=["builder", "analyst"], mcp=True)
+def semantic_search(ctx: CapabilityContext, body: SearchInput) -> SearchOutput:
+    from backend.kernel.search import search
+
+    with closing(ctx.connection_factory()) as conn:
+        return SearchOutput.model_validate(
+            search(
+                conn,
+                **body.model_dump(exclude={"tenant_id"}),
+                legacy_payload=ctx.binding != "mcp",
+                **search_restrictions(ctx),
+            )
+        )

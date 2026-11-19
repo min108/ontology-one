@@ -1,12 +1,13 @@
 import hashlib
 import unittest
 from dataclasses import replace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from httpx import Response
 
 from backend import main
+from backend.capabilities.context import CapabilityContext
 from tests.security.test_permissions import principal
 
 
@@ -22,17 +23,21 @@ class InvokeTests(unittest.TestCase):
                 side_effect=lambda *_: (self.person, hashlib.sha256(b"csrf").hexdigest()),
             ),
             patch("backend.security.store.append_audit"),
+            patch("backend.api.v2.routes.CapabilityContext", side_effect=self.bound_context),
+            patch("backend.kernel.search.search", return_value={"items": [], "total": 0, "page": 1, "page_size": 25}),
             patch("backend.security.store.authorized_read_tenants", return_value=[{"id": "sub-01"}]),
             patch(
                 "backend.security.store.list_tenants",
                 return_value=[{"id": "sub-01", "name": "机构", "category": "subsidiary", "db_name": "secret"}],
             ),
-            patch("backend.api.v1.core.entities", return_value={"items": [], "total": 0, "page": 1, "page_size": 25}),
         ]
         for item in self.patches:
             item.start()
             self.addCleanup(item.stop)
         self.addCleanup(self.client.close)
+
+    def bound_context(self, *args: object, **kwargs: object) -> object:
+        return CapabilityContext(*args, **kwargs, connection_factory=MagicMock)
 
     def invoke(self, name: str, body: dict | None = None) -> Response:
         return self.client.post("/api/v2/capabilities/" + name + ":invoke", json=body or {})
@@ -66,9 +71,11 @@ class InvokeTests(unittest.TestCase):
         self.assertEqual(self.invoke("missing.read").json()["error"]["code"], "NOT_FOUND")
 
     def test_request_cannot_impersonate(self) -> None:
-        for key in ("principal", "tenant_id", "actor", "permissions", "database_name"):
+        for key in ("principal", "actor", "permissions", "database_name"):
             response = self.invoke("semantic.search", {key: "forged"})
             self.assertEqual(response.status_code, 422)
+
+        self.assertEqual(self.invoke("semantic.search", {"tenant_id": "forged"}).status_code, 404)
 
     def test_csrf_required(self) -> None:
         del self.client.headers["X-CSRF-Token"]
@@ -115,18 +122,8 @@ class InvokeTests(unittest.TestCase):
 
     def test_readonly_can_invoke_all_read_capabilities(self) -> None:
         self.person = replace(self.person, readonly=True)
-        with patch(
-            "backend.federation.search",
-            return_value={
-                "items": [],
-                "total": 0,
-                "page": 1,
-                "page_size": 25,
-                "partial": False,
-            },
-        ):
-            for name in ("session.whoami", "meta.kinds", "org.tree", "agent.readiness", "semantic.search"):
-                self.assertEqual(self.invoke(name).status_code, 200)
+        for name in ("session.whoami", "meta.kinds", "org.tree", "agent.readiness", "semantic.search"):
+            self.assertEqual(self.invoke(name).status_code, 200)
 
     def test_conflict_has_unified_error(self) -> None:
         from backend.core.errors import ApiError
