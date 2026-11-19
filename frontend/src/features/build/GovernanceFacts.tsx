@@ -19,9 +19,11 @@ const origins = {
 export function GovernanceFacts({
   gates,
   showHeading = true,
+  citingEntityId,
 }: {
   gates?: GateResult | null;
   showHeading?: boolean;
+  citingEntityId?: string;
 }) {
   if (!gates?.fields?.length) return null;
   return (
@@ -52,7 +54,7 @@ export function GovernanceFacts({
                 {field.source_quote && (
                   <blockquote className={styles.quote}>
                     {isAnchoredEvidence(evidence) ? (
-                      <Link to={sourceHref(evidence)}>{field.source_quote}</Link>
+                      <Link to={sourceHref(evidence, citingEntityId)}>{field.source_quote}</Link>
                     ) : (
                       field.source_quote
                     )}

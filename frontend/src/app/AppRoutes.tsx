@@ -13,6 +13,7 @@ import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from
 const IntakePage = lazy(() => import('../features/build/IntakePage'));
 const CatalogPage = lazy(() => import('../features/ontology/CatalogPage'));
 const ElementPage = lazy(() => import('../features/ontology/ElementPage'));
+const MaterialReaderPage = lazy(() => import('../features/ontology/MaterialReaderPage'));
 const ChangesetPage = lazy(() => import('../features/build/ChangesetPage'));
 const ReviewsPage = lazy(() => import('../features/build/ReviewsPage'));
 const Home = lazy(() => import('../features/home/Home'));
@@ -95,7 +96,7 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
           path="/materials/:id"
           element={
             principal.role === 'viewer' || principal.role === 'analyst' ? (
-              <ElementPage />
+              <MaterialReaderPage />
             ) : (
               <LegacyPage>
                 <MaterialDetail />
