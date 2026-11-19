@@ -180,7 +180,11 @@ class SearchMigration(unittest.TestCase):
         recovered = backup.snapshot_database(database)
         self.assertEqual(self.assert_source_documents(database), clean)
         self.assertIn("ART-b2-private", {r["id"] for r in recovered["tables"]["artifacts"]})
-        self.assertEqual(recovered["ddl"]["search_index"], persisted["ddl"]["search_index"])
+        self.assertEqual(
+            recovery_schema.normalized_ddl(recovered["ddl"]["search_index"]),
+            recovery_schema.normalized_ddl(persisted["ddl"]["search_index"]),
+        )
+        self.assertEqual(recovered["ddl"]["search_index"].count("WITH PARSER `ngram`"), 2)
         migrations.validate_runtime()
 
     def test_full_recovery_rejects_each_changed_parser_and_forged_cache_before_writes(self) -> None:
