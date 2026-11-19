@@ -52,6 +52,13 @@ class SourceFacts(unittest.TestCase):
     def test_history_annexes_and_quotations_offer_distinct_exact_sentences(self) -> None:
         cases = [
             (
+                "原第十条：本办法自2015年7月1日起施行。\n修订后第十条：自2026年1月1日起施行。",
+                ["2015-07-01", "2026-01-01"],
+            ),
+            ("修订前文本：\n第十条 自2015年7月1日起施行。", ["2015-07-01"]),
+            ("本办法自2018年5月1日起施行。本办法修订后，自2026年1月1日起施行。", ["2018-05-01", "2026-01-01"]),
+            ("本办法自2018年5月1日起施行。本办法经修订，自2026年1月1日起施行。", ["2018-05-01", "2026-01-01"]),
+            (
                 "本制度于2018年5月1日实施，至今已修订三次。现予公布，本制度自2026年1月1日起施行。",
                 ["2018-05-01", "2026-01-01"],
             ),
@@ -120,6 +127,8 @@ class SourceFacts(unittest.TestCase):
             ("审批人员应确认是否适用于本案。", "", False),
             ("有关人员应了解本制度的适用范围。", "", False),
             ("本办法不适用于临时垫付。", "", False),
+            ("本办法适用于公司各部门；海外分支机构除外。", "", False),
+            ("本办法适用于公司各部门。海外分支机构不适用本办法。", "", False),
             ("本办法适用的具体问题由财务部说明。", "", False),
             ("符合时应参照本规定办理。", "", False),
             ("部门应当准确说明项目范围。", "", False),
@@ -204,6 +213,11 @@ class SourceFacts(unittest.TestCase):
             ("不仅要防范重复付款，而且要定期盘点。", ""),
             ("办理时应调查是否已经删除外部共有目录。", ""),
             ("经办人应填写豁免申请台账。", ""),
+            ("任何人员不得以紧急为由免予审批。", ""),
+            ("任何部门不得以任何理由免予审核。", ""),
+            ("但任何人不得以职务需要为由豁免核验。", ""),
+            ("例外：不得因项目紧急免除复核。", ""),
+            ("不得以业务紧急为由免予审批，但获得书面授权的可免予交纸质副本。", "可免予交纸质副本"),
         ]
         for text, needle in cases:
             with self.subTest(text=text):
@@ -243,12 +257,23 @@ class SourceFacts(unittest.TestCase):
         self.assertNotIn("exceptions", other["field_provenance"])
 
     def test_prohibited_waivers_and_scope_limits_survive_grounding(self) -> None:
-        for wording in ("任何人不得免予提交原始凭证", "经办人禁止自行免除核验", "不得擅自免于复核"):
+        for wording in (
+            "任何人不得免予提交原始凭证",
+            "经办人禁止自行免除核验",
+            "不得擅自免于复核",
+            "任何人员不得以紧急为由免予审批",
+            "任何部门不得以任何理由免予审核",
+        ):
             for value in (None, wording, wording[3:]):
                 with self.subTest(wording=wording, value=value):
                     item = ground(wording + "。", extraction_mode="online", exceptions=value)
                     self.assertEqual(item["exceptions"], "")
                     self.assertNotIn("exceptions", item["field_provenance"])
+        mixed = "不得以紧急为由免予审批，但获得书面授权的可免予交纸质副本。"
+        self.assertEqual(
+            ground(mixed, extraction_mode="online", exceptions="免予审批")["exceptions"],
+            "但获得书面授权的可免予交纸质副本",
+        )
         text = "本办法适用于公司各部门，但不适用于海外分支机构。"
         own = ground(text, extraction_mode="online", scope="公司各部门")
         self.assertEqual(own["scope"], "公司各部门，但不适用于海外分支机构")
@@ -260,3 +285,9 @@ class SourceFacts(unittest.TestCase):
         self.assertEqual(inherited["field_provenance"]["scope"]["quote"], text)
         conflicting = "本办法适用于各分支机构。本办法不适用于间接控股企业。"
         self.assertEqual(build.ground_candidate(candidate, conflicting + rule)["scope"], "")
+        for limited in (
+            "本办法适用于公司各部门；海外分支机构除外。",
+            "本办法适用于公司各部门。海外分支机构不适用本办法。",
+        ):
+            self.assertEqual(build.ground_candidate(candidate, limited + rule)["scope"], "")
+            self.assertEqual(ground(limited, extraction_mode="online", scope="公司各部门")["scope"], "")

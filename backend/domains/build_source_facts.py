@@ -6,8 +6,14 @@ from collections.abc import Iterator
 from datetime import date
 from itertools import pairwise
 
-FACTS_VERSION = 2
-ARTICLE = re.compile(r"^\s*第[一二三四五六七八九十百千零\u3007\d]+条(?:之[一二三四五六七八九十\d]+)?\s*")
+FACTS_VERSION = 3
+ARTICLE_NUMBER = r"第[一二三四五六七八九十百千零\u3007\d]+条(?:之[一二三四五六七八九十\d]+)?"
+ARTICLE = re.compile(r"^\s*" + ARTICLE_NUMBER + r"\s*")
+AMENDMENT_HEADING = re.compile(
+    r"^\s*(?:[原旧新](?:条文|条款|规定|文本|文|版)?|现行条文|"
+    r"(?:修订|修改|修正|调整|变更)[前后](?:的?(?:条文|条款|规定|文本))?)"
+    rf"\s*(?:{ARTICLE_NUMBER}\s*)?[：:]\s*"
+)
 UNITS = re.compile(r"[^。；;！？!?\r\n]+[。；;！？!?]?")
 POLICY = (
     r"(?:实施细则|管理办法|管理制度|办法|制度|规定|细则|规程|规则|"
@@ -15,8 +21,8 @@ POLICY = (
 )
 CURRENT = rf"(?:本{POLICY}|(?:修订后的|新修订的)本?{POLICY}|本次修订(?:后的{POLICY}|版|文本)?)"
 SELF_BEFORE_DATE = re.compile(
-    CURRENT + r"(?:[（(](?:试行|暂行|修订)[）)])?\s*(?:(?:经|重新)?修[订改](?:完成)?后|修订版)?"
-    r"\s*(?:将|原|曾|最初|原定|首次)?\s*$"
+    CURRENT + r"(?:[（(](?:试行|暂行|修订)[）)])?\s*(?:(?:(?:经|重新)?修[订改正](?:完成)?后?|修订版)\s*[，,]?\s*)?"
+    r"(?:将|原|曾|最初|原定|首次)?\s*$"
 )
 ATTACHMENT = re.compile(
     r"^\s*(?:[【\u3014（(]\s*)?(?:附\s*[件录表页]|附(?=[：:]))(?=$|[\s：:、.\uff0e（(【《〈「『\u3014一二三四五六七八九十\dA-Z])"
@@ -71,17 +77,20 @@ def sentences(text: str) -> Iterator[tuple[str, int, bool]]:
     """Keep exact offsets and remember a preceding attachment or quotation heading."""
     attachment = False
     cited_section = False
+    amendment_excerpt = False
     for line in LINE.finditer(text):
         line_text = line.group().strip()
         if re.fullmatch(r"[（(]?正\s*文[）)]?|附件结束|(?:引文|摘录|引用)(?:结束|完)|以下为正文", line_text):
-            attachment = cited_section = False
+            attachment = cited_section = amendment_excerpt = False
+        if heading := AMENDMENT_HEADING.match(line_text):
+            amendment_excerpt = heading.end() == len(line_text)
         attachment |= bool(ATTACHMENT.match(line_text))
         for part in UNITS.finditer(line.group()):
             sentence = part.group().strip()
             if not sentence:
                 continue
             start = line.start() + part.start() + len(part.group()) - len(part.group().lstrip())
-            yield sentence, start, attachment or cited_section
+            yield sentence, start, attachment or cited_section or amendment_excerpt
             if CITATION.search(sentence) and re.search(r"(?:如下[。；;]?|[：:])$", sentence):
                 cited_section = True
             elif cited_section and re.search(r"[”’」』]", sentence):
@@ -99,7 +108,15 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
     matches = []
     for found in OPERATIVE.finditer(sentence):
         prefix = sentence[: found.start()].rstrip()
-        cited = external or bool(bisect_right(quotations, start + found.start()) % 2) or bool(CITATION.search(prefix))
+        heading = AMENDMENT_HEADING.match(prefix)
+        if heading:
+            prefix = prefix[heading.end() :]
+        cited = (
+            external
+            or bool(heading)
+            or bool(bisect_right(quotations, start + found.start()) % 2)
+            or bool(CITATION.search(prefix))
+        )
         subject = SELF_BEFORE_DATE.search(prefix)
         # A second date may share the first clause's subject (经修订，自…起施行).
         continued = bool(matches and found["preposition"] and re.search(r"[，,；;…]\s*$", prefix))
@@ -142,6 +159,8 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
 
 
 SCOPE_LIMIT = re.compile(r"不适用|不(?:包括|含|涵盖)|除外|另有规定的?除外|除[^，,。；;]{1,80}(?:以外|之外|外)")
+FILE_EXCLUSION = re.compile(r"(?:不适用(?:于)?" + CURRENT + r"|" + CURRENT + r"(?:不适用|的?适用范围不))")
+SCOPE_QUALIFIER = re.compile(r"^(?:但|其中)?[^，,。；;]{1,100}(?:除外|不在(?:上述|该|本)?适用范围(?:之内|内)?)$")
 
 
 def scope_value(sentence: str, *, file_only: bool = False) -> str:
@@ -165,6 +184,7 @@ def document_facts(text: str) -> dict:
     quotations = quotation_boundaries(text)
     relative = False
     scope_conflict = False
+    previous_scope = False
     for sentence, start, external in sentences(text):
         dates.extend(date_candidates(sentence, start, external, quotations))
         if not external and not bisect_right(quotations, start) % 2:
@@ -175,13 +195,19 @@ def document_facts(text: str) -> dict:
                     scope_conflict = True
                 else:
                     scope = file_fact(value, sentence, start)
-            elif re.match(CURRENT + r"(?:不适用|的?适用范围不)", ARTICLE.sub("", sentence)):
+            elif FILE_EXCLUSION.search(sentence) or (
+                previous_scope and SCOPE_QUALIFIER.fullmatch(ARTICLE.sub("", sentence).rstrip("。；;").strip())
+            ):
                 scope_conflict = True
+            previous_scope = bool(value)
+        else:
+            previous_scope = False
     return {
         "recognition_version": FACTS_VERSION,
         "valid_from": dates[0][0].copy() if len(dates) == 1 and not dates[0][1] and not relative else file_fact(),
         "valid_from_candidates": [fact for fact, _ in dates],
         "scope": file_fact() if scope_conflict else scope,
+        "scope_conflict": scope_conflict,
     }
 
 
@@ -198,22 +224,31 @@ NEGATIVE_BRANCH = re.compile(
 )
 EXCEPTION_LABEL = re.compile(r"(?:^|[。；;\n])\s*例外(?:情形)?[：:]\s*([^。；;\n]+)")
 PROHIBITED_EXEMPTION = re.compile(
-    r"(?:不得|不能|不可|不应|不准|禁止|严禁)(?:自行|擅自|直接|随意|任意)?(?:免予|免于|豁免|免除)"
+    r"(?:不得|不能|不可|不应|不准|禁止|严禁|不予)(?:(?!但是|但可|可以|允许)[^。，,；;！？\n]){0,80}?"
+    r"(?:免予|免于|豁免|免除|免审|跳过)"
 )
 
 
 def source_exception(quote: str) -> tuple[str, bool]:
     """An explicit exclusion or a different obligation. An uncertain branch needs review."""
     label = EXCEPTION_LABEL.search(quote)
-    if label:
+    if label and not PROHIBITED_EXEMPTION.search(label.group(1)):
         return label.group(1).strip(), False
+    unresolved = False
     for clause in re.split(r"[。；;\n]", quote):
-        if EXCEPTION.search(PROHIBITED_EXEMPTION.sub("", ARTICLE.sub("", clause))):
-            return clause.strip(), False
+        # A prohibition can include its reasons ("不得以紧急为由免予审批").
+        # Keep an independent permitted branch after a comma grounded in its own words.
+        parts = re.split(r"[，,]", clause) if PROHIBITED_EXEMPTION.search(clause) else [clause]
+        for part in parts:
+            if PROHIBITED_EXEMPTION.search(part):
+                continue
+            if EXCEPTION.search(ARTICLE.sub("", part)):
+                return part.strip(), False
+            unresolved |= bool(SPECIAL_PROCEDURE.search(part))
     negative = NEGATIVE_BRANCH.search(quote)
-    if negative:
+    if negative and not PROHIBITED_EXEMPTION.search(negative.group()):
         return negative.group().strip(), False
-    return "", bool(SPECIAL_PROCEDURE.search(quote))
+    return "", unresolved
 
 
 CONDITIONAL = (
@@ -344,7 +379,13 @@ def ground_candidate(candidate: dict, source_text: str, facts: dict | None = Non
             and support
             and (
                 (FALSE_EXCEPTION.search(value) and not source_exception(value)[0])
-                or (PROHIBITED_EXEMPTION.search(support) and not source_exception(support)[0])
+                or (
+                    PROHIBITED_EXEMPTION.search(support)
+                    and not any(
+                        value in part and not PROHIBITED_EXEMPTION.search(part) and source_exception(part)[0]
+                        for part in re.split(r"[。；;，,\n]", support)
+                    )
+                )
             )
         ):
             support = ""
@@ -380,6 +421,12 @@ def ground_candidate(candidate: dict, source_text: str, facts: dict | None = Non
                 if unresolved:
                     ambiguous = True
                     value = ""
+        if (
+            field == "scope"
+            and facts.get("scope_conflict")
+            and any(scope_value(sentence, file_only=True) for quote in quotes for sentence, _, _ in sentences(quote))
+        ):
+            value = ""
         result[field] = value
         if value:
             origins[field] = {"origin": origin, "quote": support or literal_source(value, quotes)}

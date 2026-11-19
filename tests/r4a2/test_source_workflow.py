@@ -193,6 +193,40 @@ class SourceWorkflow(unittest.TestCase):
         self.assertEqual(choice["value"], "2026-01-01")
         self.assertEqual(choice["origin"], "manual")
 
+    def test_amendment_columns_and_separate_restrictions_reach_the_signed_review_workflow(self) -> None:
+        client = self.login("fixture.builder")
+        text = (
+            "办理办法修订对照\n原第十条：本办法自2015年7月1日起施行。\n"
+            "修订后第十条：自2026年1月1日起施行。\n"
+            "第一条 本办法适用于公司各部门；海外分支机构除外。\n"
+            "第二条 财务人员应核对付款凭证。\n第三条 任何部门不得以任何理由免予审核。"
+        )
+        result = self.proposal(client, text)
+        facts = result["document_facts"]
+        self.assertFalse(facts["valid_from"]["value"])
+        self.assertFalse(facts["scope"]["value"])
+        options = facts["valid_from_candidates"]
+        self.assertEqual([row["value"] for row in options], ["2015-07-01", "2026-01-01"])
+        payment = next(i for i in result["items"] if "付款凭证" in i["after_data"]["content"])
+        self.assertFalse(payment["after_data"].get("scope"))
+        self.assertFalse(payment["after_data"].get("valid_from"))
+        restriction = next(i for i in result["items"] if "免予审核" in i["after_data"]["content"])
+        self.assertFalse(restriction["after_data"].get("exceptions"))
+        self.assertNotIn("exceptions", restriction["after_data"]["field_provenance"])
+        saved = self.invoke(
+            client,
+            "changeset.confirm_facts",
+            {"changeset_id": result["id"], "valid_from_candidate_id": options[1]["candidate_id"]},
+        )
+        reread = self.invoke(client, "changeset.get", {"changeset_id": result["id"]})
+        self.assertEqual(saved["document_facts"], reread["document_facts"])
+        chosen = reread["document_facts"]["valid_from"]
+        self.assertEqual(
+            (chosen["value"], chosen["origin"], chosen["quote"]), ("2026-01-01", "manual", options[1]["quote"])
+        )
+        self.assertEqual(text[chosen["start"] : chosen["end"]], chosen["quote"])
+        self.assertEqual({i["after_data"]["valid_from"] for i in reread["items"]}, {"2026-01-01"})
+
     def test_pending_a2_proposal_rechecks_ambiguous_dates_and_scope_from_immutable_text(self) -> None:
         client = self.login("fixture.builder")
         text = (
