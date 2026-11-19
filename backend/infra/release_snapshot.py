@@ -36,9 +36,7 @@ def enqueue_snapshot(conn: db.Connection, person: Principal, release_id: str) ->
     # tenant job and durable dispatch together, using the tenant transaction.
     queue = f"`{store._config()['database']}`.ontology_task_queue"
     slot = jobs._slot(person.tenant_id, "release_snapshot", release_id)
-    active = conn.execute(
-        f"SELECT job_id,principal_json,args_json FROM {queue} WHERE active_key=? FOR UPDATE", (slot,)
-    ).fetchone()
+    active = conn.execute(f"SELECT job_id,principal_json,args_json FROM {queue} WHERE active_key=?", (slot,)).fetchone()
     if active:
         captured = Principal(**json.loads(active["principal_json"]))
         if (
