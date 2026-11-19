@@ -44,6 +44,13 @@ class SearchMigration(unittest.TestCase):
                 ("el:b2-grammar", "element", "碧海明珠", "银杏田园", "苍松流泉", db.now()),
             )
             conn.commit()
+
+            def hits(columns: str, query: str) -> int:
+                return conn.execute(
+                    f"SELECT COUNT(*) FROM search_index WHERE doc_id=? AND MATCH({columns}) AGAINST(? IN BOOLEAN MODE)",
+                    ("el:b2-grammar", query),
+                ).fetchone()[0]
+
             for columns, query, expected in (
                 ("title,aliases", "海明", 1),
                 ("title,aliases", "杏田", 1),
@@ -52,14 +59,24 @@ class SearchMigration(unittest.TestCase):
                 ("title,aliases", "松流", 0),
             ):
                 with self.subTest(columns=columns, query=query):
-                    self.assertEqual(
-                        conn.execute(
-                            "SELECT COUNT(*) FROM search_index WHERE doc_id=? "
-                            f"AND MATCH({columns}) AGAINST(? IN BOOLEAN MODE)",
-                            ("el:b2-grammar", query),
-                        ).fetchone()[0],
-                        expected,
-                    )
+                    self.assertEqual(hits(columns, query), expected)
+
+            def infix_matches() -> tuple[int, int, int]:
+                return hits("title,aliases", "海明"), hits("title,aliases", "杏田"), hits("body", "松流")
+
+            for index, columns, expected in (
+                ("ft_si_title", "title,aliases", (0, 0, 1)),
+                ("ft_si_body", "body", (1, 1, 0)),
+            ):
+                with self.subTest(default_parser=index):
+                    conn.execute(f"ALTER TABLE search_index DROP INDEX {index}")
+                    conn.execute(f"ALTER TABLE search_index ADD FULLTEXT KEY {index} ({columns})")
+                    self.assertEqual(infix_matches(), expected)
+                    with runtime_guard(shared=False), self.assertRaises(backup.BackupError):
+                        backup.create_upgrade_backup(store.list_tenants())
+                    conn.execute(f"ALTER TABLE search_index DROP INDEX {index}")
+                    conn.execute(f"ALTER TABLE search_index ADD FULLTEXT KEY {index} ({columns}) WITH PARSER ngram")
+                    self.assertEqual(infix_matches(), (1, 1, 1))
 
     def assert_source_documents(self, database: str) -> dict[str, dict]:
         snapshot = backup.snapshot_database(database)
