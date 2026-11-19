@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from urllib.parse import quote, urlencode
 
 from backend import db
-from backend.ai import _FACET_EQUIVALENTS, _STOP, _query_facets
+from backend.ai import _FACET_EQUIVALENTS, _query_facets
 from backend.infra.search_index import EVIDENCE_SEPARATOR, chunk_doc_id, chunk_doc_id_sql
+from backend.kernel import search_cards
 from backend.security.visibility import Scope, federation_scope, scope_for, visible_entities
 
 _FACETS = ("kind", "status", "source_kind", "domain")
@@ -36,14 +37,21 @@ class Query:
     text: str
     terms: tuple[str, ...]
     facets: tuple[tuple[str, ...], ...]
+    names_only: bool = False
 
     @classmethod
-    def parse(cls, q: str) -> Query:
+    def parse(cls, q: str, *, names_only: bool = False) -> Query:
         text = q.strip().casefold()
-        question = bool(_STOP.search(text) or re.search(r"[?？]", text))
+        question = bool(re.search(r"[?？]|请问|如何|怎样|什么|哪些|是否|能否|何时|为何|怎么", text))
         facets = _query_facets(text) if question else ()
         terms = tuple(dict.fromkeys(word for word in text.split() if len(word) > 1))
-        return cls(q.strip(), text, terms, tuple(tuple(_FACET_EQUIVALENTS.get(facet, (facet,))) for facet in facets))
+        return cls(
+            q.strip(),
+            text,
+            terms,
+            tuple(tuple(_FACET_EQUIVALENTS.get(facet, (facet,))) for facet in facets),
+            names_only,
+        )
 
     def fulltext(self) -> str:
         return " ".join([self.text, *(term for group in self.facets for term in group if term not in self.text)])
@@ -82,9 +90,19 @@ def _base_columns(scope: Scope) -> str:
     return fields
 
 
-def _empty_page(scope: Scope, where: str, args: list, offset: int, limit: int, *, original: bool) -> dict:
+def _empty_page(
+    scope: Scope, where: str, args: list, offset: int, limit: int, *, original: bool, card_bytes: int
+) -> dict:
     conn = scope.connection
-    total = conn.execute("SELECT count(*)" + _FROM + "WHERE " + where, args).fetchone()[0]
+    aggregates = "count(*)"
+    if card_bytes:
+        aggregates += "," + search_cards.empty_identity_width_sql()
+    stats = conn.execute("SELECT " + aggregates + _FROM + "WHERE " + where, args).fetchone()
+    total = stats[0]
+    if card_bytes:
+        page_index = offset // limit
+        limit = search_cards.page_limit(limit, card_bytes, int(stats[1]), scope.tenant_id, total)
+        offset = page_index * limit
     rows = []
     if limit and offset < total:
         order = "e.id" if scope.metadata_only else "e.updated_at DESC,e.id"
@@ -92,7 +110,11 @@ def _empty_page(scope: Scope, where: str, args: list, offset: int, limit: int, *
         rows = conn.execute(
             f"SELECT {fields}" + _FROM + f"WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?", (*args, limit, offset)
         ).fetchall()
-    return {"items": _project(scope, rows, Query.parse(""), original=original), "total": total}
+    return {
+        "items": _project(scope, rows, Query.parse(""), original=original, card_bytes=card_bytes),
+        "total": total,
+        **({"page_size": limit} if card_bytes else {}),
+    }
 
 
 def _candidates(scope: Scope, query: Query, where: str, args: list) -> list:
@@ -185,6 +207,21 @@ def _add_visible_evidence(scope: Scope, rows: list) -> None:
                 row["body"] += EVIDENCE_SEPARATOR + "\n".join(quotes)
 
 
+def _passage(row: dict) -> str:
+    text = row.get("body") or row.get("summary") or ""
+    if row["doc_type"] == "element" and text.startswith("【"):
+        # The rendered header repeats the name. Generic usage instructions
+        # also belong to the card template, rather than the source evidence.
+        card, separator, quotes = text.partition(EVIDENCE_SEPARATOR)
+        return card.partition("\n")[2].rsplit("\n怎么用：", 1)[0] + separator + quotes
+    return text
+
+
+def _facet_witnesses(query: Query, passage: str) -> tuple[str, ...]:
+    folded = passage.casefold()
+    return tuple(next((term for term in group if term in folded), "") for group in query.facets)
+
+
 def _rank(row: dict, query: Query, scope: Scope) -> tuple[float, str] | None:
     q, title = query.text, (row["title"] or "").casefold()
     is_element = row["doc_type"] == "element"
@@ -192,15 +229,18 @@ def _rank(row: dict, query: Query, scope: Scope) -> tuple[float, str] | None:
     body = (row["body"] or "").casefold()
     if scope.metadata_only and not scope.external_tool:
         body += "\n" + (row["domain"] or "").casefold()
+    exact_id = (
+        (is_element and q == row["id"].casefold())
+        or q == row["doc_id"].casefold()
+        or (not is_element and chunk_doc_id(query.original).casefold() == row["doc_id"].casefold())
+    )
+    if query.facets and not (exact_id or query.names_only) and not all(_facet_witnesses(query, _passage(row))):
+        return None
     if len(q) == 1:
         if not is_element or not title.startswith(q):
             return None
         score, match = 30, "prefix"
-    elif (
-        (is_element and q == row["id"].casefold())
-        or q == row["doc_id"].casefold()
-        or (not is_element and chunk_doc_id(query.original).casefold() == row["doc_id"].casefold())
-    ):
+    elif exact_id:
         score, match = 120, "id"
     elif is_element and q in aliases:
         score, match = 96, "alias"
@@ -209,16 +249,13 @@ def _rank(row: dict, query: Query, scope: Scope) -> tuple[float, str] | None:
     elif is_element and (q in title or any(q in alias for alias in aliases)):
         prefix = title.startswith(q) or any(alias.startswith(q) for alias in aliases)
         score, match = 64, ("prefix" if prefix else "partial")
+    elif query.names_only:
+        return None
     elif q in body:
         score, match = 36, "text"
     elif scope.metadata_only and q in row["id"].casefold():
         score, match = 31, "text"
     elif query.facets:
-        # The first line of a business card repeats its title and id. An
-        # otherwise unrelated clause cannot answer a question from that header.
-        evidence = body.partition("\n")[2] if is_element and body.startswith("【") else body
-        if not all(any(term in evidence for term in group) for group in query.facets):
-            return None
         score, match = 25, "text"
     elif len(query.terms) >= 2 and all(
         term in ("\n".join((title, *aliases, body)) if is_element else body) for term in query.terms
@@ -284,26 +321,63 @@ def _ranked(scope: Scope, query: Query, where: str, args: list) -> list[dict]:
     return sorted(result, key=lambda row: (-row["score"], row["doc_id"]))
 
 
-def _highlight(row: dict, query: Query) -> str:
+def _highlight(row: dict, query: Query, scope: Scope) -> tuple[str, list[str]]:
     title = row["title"] or ""
-    body = row.get("body") or row.get("summary") or title
-    source = body
-    position = body.casefold().find(query.text)
-    if position < 0 and query.text in title.casefold():
-        source, position = title, title.casefold().index(query.text)
-    if position < 0 and row.get("match") == "alias":
-        source, position = next((a for a in row["aliases"].splitlines() if a.casefold() == query.text), title), 0
-    start = max(0, position - 28)
-    return source[start : start + 160].strip()
+    passage = _passage(row)
+    aliases = (row.get("aliases") or "").splitlines()
+    q = query.text
+    if not q:
+        return (row.get("summary") or title)[:160], []
+    if query.facets and not query.names_only and row.get("match") != "id":
+        terms = [term for term in _facet_witnesses(query, passage) if term]
+        text = passage
+    elif row.get("match") in {"title", "prefix", "partial", "alias"}:
+        name = next((alias for alias in aliases if row.get("match") == "alias" and alias.casefold() == q), None)
+        text = name or (title if q in title.casefold() else next((a for a in aliases if q in a.casefold()), title))
+        terms = [q]
+    elif row.get("match") == "id":
+        text = row["doc_id"] if q in row["doc_id"].casefold() else row["id"]
+        terms = [q]
+    else:
+        text = passage
+        if scope.metadata_only and q not in text.casefold():
+            fields = [row["id"], *([row["domain"] or ""] if not scope.external_tool else [])]
+            text = next((field for field in fields if q in field.casefold()), passage)
+        terms = [q] if q in text.casefold() else [term for term in query.terms if term in text.casefold()]
+    terms = list(dict.fromkeys(terms))[:8]
+    # Prefer the window which contains the most distinct actual witnesses.
+    # A match beyond the first 160 characters remains readable in a long card.
+    folded = text.casefold()
+    positions = [folded.index(term) for term in terms if term in folded]
+    starts = [max(0, pos - 30) for pos in positions] or [0]
+    start = max(starts, key=lambda offset: sum(term in folded[offset : offset + 160] for term in terms))
+    excerpt = text[start : start + 160].strip()
+    if len(positions) > 1 and any(term not in excerpt.casefold() for term in terms):
+        # Separate passages may supply different facets. Combine only actual
+        # text windows, marking the omitted interval between them.
+        width = (160 - len(positions) + 1) // len(positions)
+        intervals = []
+        for pos, term in sorted(zip(positions, terms, strict=True)):
+            left = max(0, pos - max(0, min(16, (width - len(term)) // 2)))
+            right = min(len(text), left + width)
+            if intervals and left <= intervals[-1][1]:
+                intervals[-1] = (intervals[-1][0], max(right, intervals[-1][1]))
+            else:
+                intervals.append((left, right))
+        excerpt = "…".join(text[left:right].strip() for left, right in intervals)
+    return excerpt, [term for term in terms if term in excerpt.casefold()]
 
 
-def _project(scope: Scope, rows: list, query: Query, *, original: bool) -> list[dict]:
+def _project(scope: Scope, rows: list, query: Query, *, original: bool, card_bytes: int) -> list[dict]:
     result = []
     entity_ids = [row["entity_id"] for row in rows if row["doc_type"] == "element"]
     payloads = {}
     if entity_ids and original and scope.drafts and not scope.metadata_only:
-        entities = visible_entities(scope.connection, entity_ids, scope=scope, history="all")
-        payloads = {ident: entity["payload"] for ident, entity in entities.items()}
+        if card_bytes:
+            payloads = search_cards.card_payloads(scope.connection, entity_ids)
+        else:
+            entities = visible_entities(scope.connection, entity_ids, scope=scope, history="all")
+            payloads = {ident: entity["payload"] for ident, entity in entities.items()}
     long_ids = [row["doc_id"] for row in rows if row["doc_id"].startswith("chunk-sha256:")]
     chunk_ids = {}
     if long_ids:
@@ -349,10 +423,10 @@ def _project(scope: Scope, rows: list, query: Query, *, original: bool) -> list[
             href=href,
             score=row.get("score", 0),
             match=row.get("match", "text"),
-            highlight=_highlight(row, query),
             owner_tenant_id=scope.tenant_id,
             owner_org_id=scope.tenant_id,
         )
+        item["highlight"], item["match_terms"] = _highlight(row, query, scope)
         if not element:
             item["summary"] = item["highlight"]
         if original:
@@ -362,6 +436,8 @@ def _project(scope: Scope, rows: list, query: Query, *, original: bool) -> list[
         if "visibility" in row:
             item["visibility"] = row["visibility"]
         result.append(item)
+    if card_bytes:
+        search_cards.fit_cards(result, card_bytes)
     return result
 
 
@@ -377,13 +453,24 @@ def _page(
     asset_only: bool = False,
     original: bool = False,
     exclude_root: str = "",
+    names_only: bool = False,
+    card_bytes: int = 0,
 ) -> dict:
-    query = Query.parse(q)
+    query = Query.parse(q, names_only=names_only)
     where, args = _filters(scope, filters, history, bool(query.text) and include_chunks, asset_only, exclude_root)
     if not query.text:
-        return _empty_page(scope, where, args, offset, limit, original=original)
+        return _empty_page(scope, where, args, offset, limit, original=original, card_bytes=card_bytes)
     rows = _ranked(scope, query, where, args)
-    return {"items": _project(scope, rows[offset : offset + limit], query, original=original), "total": len(rows)}
+    if card_bytes:
+        page_index = offset // limit
+        largest = max((search_cards.ranked_identity_width(row) for row in rows), default=0)
+        limit = search_cards.page_limit(limit, card_bytes, largest, scope.tenant_id, len(rows))
+        offset = page_index * limit
+    return {
+        "items": _project(scope, rows[offset : offset + limit], query, original=original, card_bytes=card_bytes),
+        "total": len(rows),
+        **({"page_size": limit} if card_bytes else {}),
+    }
 
 
 def search(
@@ -400,9 +487,11 @@ def search(
     history: str = "current",
     asset_only: bool = False,
     include_chunks: bool = True,
+    names_only: bool = False,
     page: int = 1,
     page_size: int = 25,
     legacy_payload: bool = False,
+    card_bytes: int = 0,
     published_only: bool = False,
     metadata_only: bool = False,
 ) -> dict:
@@ -427,8 +516,10 @@ def search(
         history=history,
         asset_only=asset_only,
         original=legacy_payload,
+        card_bytes=card_bytes,
+        names_only=names_only,
     )
-    return {**result, "page": page, "page_size": page_size}
+    return {"page": page, "page_size": page_size, **result}
 
 
 def search_federated(

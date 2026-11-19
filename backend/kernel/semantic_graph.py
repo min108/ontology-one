@@ -50,6 +50,7 @@ def resolve(
         text,
         kind=kind,
         include_chunks=False,
+        names_only=True,
         page_size=limit,
         published_only=published_only,
         metadata_only=metadata_only,

@@ -13,6 +13,8 @@ from backend.kernel.kinds import KINDS as KIND_REGISTRY
 from backend.kernel.kinds import list_kinds
 from backend.security import store
 
+READ_RESULT_BYTES = 262144
+
 KINDS = {key: item.name for key, item in KIND_REGISTRY.items()}
 
 
@@ -106,7 +108,7 @@ def read_capability(
         preconditions=[],
         idempotent=True,
         audit="metadata",
-        limits={"timeout_s": 30, "max_result_bytes": 262144},
+        limits={"timeout_s": 30, "max_result_bytes": READ_RESULT_BYTES},
     )
 
 
@@ -167,6 +169,7 @@ def semantic_search(ctx: CapabilityContext, body: SearchInput) -> SearchOutput:
                 conn,
                 **body.model_dump(exclude={"tenant_id"}),
                 legacy_payload=ctx.binding != "mcp",
+                card_bytes=READ_RESULT_BYTES,
                 **search_restrictions(ctx),
             )
         )

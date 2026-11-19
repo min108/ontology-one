@@ -7,6 +7,7 @@ from contextlib import closing
 from dataclasses import replace
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from backend import db, provenance
 from backend.core.errors import ApiError
@@ -412,3 +413,129 @@ class RankedSearchMySQL(unittest.TestCase):
         chunk = next(h for h in search.search(self.conn, "河流索引公开引文")["items"] if h["doc_type"] == "chunk")
         self.assertEqual(search.search(self.conn, chunk["id"])["items"][0]["match"], "id")
         self.assertEqual(search.search(self.conn, chunk["doc_id"])["items"][0]["id"], chunk["chunk_id"])
+
+    def _invoke(self, client: TestClient, capability: str, body: dict) -> dict:
+        response = client.post(f"/api/v2/capabilities/{capability}:invoke", json=body)
+        self.assertEqual(response.status_code, 200, response.text[:400])
+        return response.json()
+
+    def test_large_uploaded_original_is_readable_from_detail_and_not_copied_into_semantic_search(self) -> None:
+        client = construction.BuildMySQL.login(self, "fixture.builder")
+        original = "这是一段需要按页核对的正式原始材料。" * 5200 + "末页验证标识。"
+        self.assertGreater(len(original.encode()), 262144)
+        uploaded = client.post(
+            "/api/materials/upload", files={"file": ("联册容量核对.txt", original.encode(), "text/plain")}
+        )
+        self.assertEqual(uploaded.status_code, 200, uploaded.text[:300])
+        ident = uploaded.json()["id"]
+        result = self._invoke(client, "semantic.search", {"q": ident})
+        hit = result["items"][0]
+        self.assertEqual((result["total"], hit["entity_id"], hit["doc_type"]), (1, ident, "element"))
+        self.assertNotIn("original_text", hit["payload"])
+        self.assertNotIn("source_blocks", hit["payload"])
+        self.assertNotIn("末页验证标识", str(hit))
+        self.assertLess(len(json.dumps(result, ensure_ascii=False).encode()), 12000)
+        old = client.get("/api/search", params={"q": ident}).json()["items"][0]
+        self.assertEqual((old["id"], old["kind"]), (ident, "material"))
+        self.assertIsInstance(old["payload"], dict)
+        self.assertNotIn("doc_id", old)
+        source = client.get("/api/materials/" + ident + "/source")
+        self.assertEqual(source.status_code, 200, source.text[:200])
+        self.assertEqual(source.json()["text"], original)
+
+    def test_full_semantic_page_keeps_every_hit_with_long_multibyte_titles_and_summaries(self) -> None:
+        client = construction.BuildMySQL.login(self, "fixture.builder")
+        for i in range(104):
+            _entity(
+                self.conn,
+                "WIDE-" + str(i).zfill(3),
+                "data",
+                "百行检索回执" + str(i) + "广" * 235,
+                summary="超长摘要条目。" * 420,
+                payload={"unit": "份", "definition": "单据份数", "profile": {"bulk": "超大业务资料" * 900}},
+            )
+        self.conn.commit()
+        first = self._invoke(client, "semantic.search", {"q": "百行检索回执", "page_size": 100})
+        second = self._invoke(client, "semantic.search", {"q": "百行检索回执", "page_size": 100, "page": 2})
+        self.assertEqual(
+            (first["total"], first["page_size"], len(first["items"]), len(second["items"])), (104, 100, 100, 4)
+        )
+        all_hits = first["items"] + second["items"]
+        self.assertEqual({h["id"] for h in all_hits}, {"WIDE-" + str(i).zfill(3) for i in range(104)})
+        self.assertTrue(
+            all(h["title"].startswith("百行检索回执") and h["highlight"] and h["summary"] for h in all_hits)
+        )
+        self.assertTrue(all(h["payload"].get("unit") == "份" and "profile" not in h["payload"] for h in all_hits))
+        from backend.capabilities.read import SearchOutput
+
+        self.assertLessEqual(len(SearchOutput.model_validate(first).model_dump_json().encode()), 262144)
+
+    def test_question_facets_require_body_even_for_an_exact_title_and_resolve_still_finds_its_name(self) -> None:
+        client = construction.BuildMySQL.login(self, "fixture.builder")
+        query = "付款账户与收款专户是否为同一账户？"
+        _entity(self.conn, "Q-NAME", "rule", query, summary="本条只要求保留纸质票据。")
+        _entity(
+            self.conn,
+            "Q-ANSWER",
+            "rule",
+            "支付核对要求",
+            summary="核对付款账号与收款账户是否属于同一单位或者个人的账户。",
+        )
+        self.conn.commit()
+        hits = self._invoke(client, "semantic.search", {"q": query})["items"]
+        self.assertIn("Q-ANSWER", [h["id"] for h in hits])
+        self.assertNotIn("Q-NAME", [h["id"] for h in hits])
+        by_id = self._invoke(client, "semantic.search", {"q": "Q-NAME"})["items"][0]
+        self.assertEqual((by_id["id"], by_id["match"]), ("Q-NAME", "id"))
+        names = self._invoke(client, "semantic.resolve", {"text": query})["items"]
+        self.assertEqual((names[0]["id"], names[0]["match"]), ("Q-NAME", "title"))
+
+    def test_highlights_use_actual_late_body_facets_and_alias_prefix(self) -> None:
+        client = construction.BuildMySQL.login(self, "fixture.builder")
+        _entity(
+            self.conn,
+            "LATE-PASSAGE",
+            "rule",
+            "财务处理说明",
+            summary="按单核对凭证，保留收据副本。" * 23 + "办理费用报销时核对单据。",
+            payload={"aliases": ["质量保证金"]},
+        )
+        self.conn.commit()
+        for query, terms in (("费用如何报销？", ("费用", "报销")), ("质量保证", ("质量保证",))):
+            with self.subTest(query=query):
+                hits = self._invoke(client, "semantic.search", {"q": query})["items"]
+                hit = next(h for h in hits if h["id"] == "LATE-PASSAGE")
+                for term in terms:
+                    self.assertIn(term, hit["highlight"])
+                    self.assertIn(term, hit["match_terms"])
+                self.assertLessEqual(len(hit["highlight"]), 160)
+
+    def test_large_opaque_ids_use_a_stable_page_size_and_remain_navigable(self) -> None:
+        client = construction.BuildMySQL.login(self, "fixture.builder")
+        ids = {"编号" + "汉" * 183 + str(i).zfill(4) for i in range(101)}
+        for ident in ids:
+            _entity(self.conn, ident, "term", "厚册编号核对-" + ident[-4:], summary="保留完整标识以供打开。")
+        self.conn.commit()
+        for q in ("厚册编号核对", ""):
+            with self.subTest(q=q):
+
+                def page(number: int, query: str = q) -> dict:
+                    return self._invoke(
+                        client, "semantic.search", {"q": query, "page": number, "page_size": 100, "kind": "term"}
+                    )
+
+                first = page(1)
+                width = first["page_size"]
+                self.assertLess(width, 100)
+                found = set()
+                for i in range((first["total"] + width - 1) // width):
+                    part = first if i == 0 else page(i + 1)
+                    self.assertEqual(part["page_size"], width)
+                    self.assertEqual(len(part["items"]), min(width, first["total"] - i * width))
+                    for item in part["items"]:
+                        self.assertNotIn(item["id"], found)
+                        self.assertEqual(item["entity_id"], item["id"])
+                        self.assertTrue(item["href"])
+                        self.assertTrue(item["title"] and item["summary"])
+                        found.add(item["id"])
+                self.assertEqual(ids, found)
