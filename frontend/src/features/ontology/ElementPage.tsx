@@ -19,6 +19,7 @@ import {
   formatDateTime,
   NextStepBar,
   OriginTag,
+  SourceViewer,
 } from '../../ui';
 import { businessText, fieldLabels, sourceDescription } from '../build/businessText';
 import { SourceEvidence } from '../build/SourceEvidence';
@@ -53,7 +54,42 @@ function activityLabel(action: string): string {
   return /^[\p{Script=Han}\s、，。（）]+$/u.test(action) ? action : '';
 }
 export type { ElementDetail } from '../../api/generated/types';
-import type { ElementDetail, ElementDetailResult, ElementUpdate } from '../../api/generated/types';
+import type {
+  ElementDetail,
+  ElementDetailResult,
+  ElementUpdate,
+  TraceResult,
+} from '../../api/generated/types';
+
+function MaterialPassage({ id, params }: { id: string; params: URLSearchParams }) {
+  const target = new URLSearchParams();
+  for (const [linkKey, apiKey] of [
+    ['chunk', 'chunk_id'],
+    ['anchor', 'anchor_id'],
+    ['source_version', 'source_version'],
+  ]) {
+    const value = params.get(linkKey);
+    if (value) target.set(apiKey, value);
+  }
+  const query = useResource<TraceResult>('/v2/elements/' + encodeURIComponent(id) + '/passage?' + target);
+  if (query.error || !query.data) return <ResourceState error={query.error} reload={query.reload} />;
+  const passage = query.data.sources[0];
+  if (!passage) return <p>{copy.r3_main_no_source}</p>;
+  return (
+    <section aria-label={copy.global_search_source_chunk}>
+      <h2>{copy.global_search_source_chunk}</h2>
+      <p>
+        {passage.locator} · {copy.r2_card_versions} {passage.version}
+      </p>
+      <SourceViewer
+        text={passage.quote}
+        quote={passage.quote}
+        start={0}
+        end={Array.from(passage.quote).length}
+      />
+    </section>
+  );
+}
 export function BusinessCard({ detail }: { detail: ElementDetail }) {
   const [source, setSource] = useState<Evidence>();
   const aliases = aliasesOf(detail.entity);
@@ -212,6 +248,9 @@ function Element({ id }: { id: string }) {
       {notice && <Alert type="success" role="status" title={notice} />}
       <div className={styles['archive-columns']}>
         <div className={styles.stack}>
+          {entity.kind === 'material' && (params.get('chunk') || params.get('anchor')) && (
+            <MaterialPassage id={id} params={params} />
+          )}
           <BusinessCard detail={detail} />
           <GovernanceFacts gates={detail.gates} />
           <div className={styles.folds}>

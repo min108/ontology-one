@@ -1,9 +1,10 @@
 """Catalog REST bindings share the same capability gate as assistants."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from backend.api.v2.build import call
 from backend.capabilities.element_models import ElementDetailResult, ElementListResult
+from backend.capabilities.semantic_models import TraceResult
 
 router = APIRouter()
 
@@ -16,3 +17,15 @@ def elements(q: str = "", kind: str = "", page: int = 1, page_size: int = 25) ->
 @router.get("/elements/{id}", response_model=ElementDetailResult)
 def element(id: str) -> ElementDetailResult:
     return call("element.get", {"entity_id": id})
+
+
+@router.get("/elements/{id}/passage", response_model=TraceResult)
+def passage(
+    id: str, chunk_id: str | None = None, anchor_id: str | None = None, source_version: str | None = None
+) -> TraceResult:
+    if not (chunk_id or anchor_id):
+        raise HTTPException(422, "请指定原文片段。")
+    return call(
+        "evidence.trace",
+        {"entity_id": id, "chunk_id": chunk_id, "anchor_id": anchor_id, "source_version": source_version},
+    )

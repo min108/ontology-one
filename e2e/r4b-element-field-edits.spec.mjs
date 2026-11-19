@@ -2,6 +2,7 @@ import { expect, test } from "./runtime.mjs";
 import { a, button, c, postResponse, read } from "./r3-support.mjs";
 import { capability, person, post, publish } from "./r4b-search-support.mjs";
 import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
+import { verifyPublishedPassage } from "./r4b-published-passage.mjs";
 
 async function uploadEvidence(page, name, text) {
   const session = await read(page, "/api/auth/session");
@@ -187,6 +188,7 @@ test("R4-B unified element edits preserve an archived original throughout indepe
     await preserved("review");
     await publish(reviewer.page, page, rule.id);
     expect((await preserved("published")).payload.aliases).toContain(alias);
+    await verifyPublishedPassage(browser, page, reviewer.page, first);
   } finally {
     await builder.context.close();
     await reviewer.context.close();

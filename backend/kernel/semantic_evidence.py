@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from backend import db, sources
 from backend.core.errors import ApiError
+from backend.infra.search_index import chunk_doc_id_sql
 from backend.kernel.semantic_graph import visible_relation
 from backend.security import store, visibility
 from backend.security.context import require_context
@@ -139,6 +140,9 @@ def trace(
     entity_id: str | None = None,
     relation_id: str | None = None,
     receipt_id: str | None = None,
+    chunk_id: str | None = None,
+    anchor_id: str | None = None,
+    source_version: str | None = None,
 ) -> dict:
     if receipt_id is not None:
         return _query_receipt(conn, scope, receipt_id)
@@ -161,7 +165,36 @@ def trace(
         entity = visibility.visible_entity(conn, entity_id, scope=scope)
         subject, kind, version = entity["id"], "entity", entity["version"]
         last = _step("entity", subject, entity["title"])
-        refs = _visible_refs(conn, scope, entity)
+        if chunk_id or anchor_id:
+            # A direct reader may only open a passage in a currently searchable,
+            # confirmed chunk. Other anchors from the same file can be private.
+            if scope.metadata_only or entity["kind"] != "material":
+                raise ApiError("NOT_FOUND")
+            location = {
+                "material_id": subject,
+                "chunk_id": chunk_id,
+                "anchor_id": anchor_id,
+                "source_version": source_version,
+            }
+            ref = {key: value for key, value in location.items() if value is not None}
+            anchor = saved_anchor(conn, subject, ref)
+            if (
+                not anchor
+                or not conn.execute(
+                    "SELECT 1 FROM source_anchors a JOIN chunk_anchors ca ON ca.anchor_id=a.id "
+                    "JOIN chunks c ON c.id=ca.chunk_id AND c.material_id=a.material_id "
+                    f"JOIN search_index si ON si.doc_id={chunk_doc_id_sql('c.id')} AND si.entity_id=a.material_id "
+                    "WHERE si.doc_type='chunk' AND a.material_id=? AND a.source_version=? "
+                    "AND a.source_version=(SELECT v.id FROM source_versions v WHERE v.material_id=a.material_id "
+                    "ORDER BY v.version DESC LIMIT 1) "
+                    "AND a.`start`<=? AND a.`end`>=? AND (? IS NULL OR c.id=?) LIMIT 1",
+                    (subject, anchor["source_version"], anchor["start"], anchor["end"], chunk_id, chunk_id),
+                ).fetchone()
+            ):
+                raise ApiError("NOT_FOUND")
+            refs = [ref]
+        else:
+            refs = _visible_refs(conn, scope, entity)
     result = {"subject_id": subject, "subject_type": kind, "entity_version": version, "sources": [], "truncated": False}
     if scope.metadata_only or not refs:
         return result

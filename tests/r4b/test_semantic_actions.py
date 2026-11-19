@@ -128,6 +128,37 @@ class SemanticActionsHTTP(unittest.TestCase):
         self.assertIn(support["anchor_id"], source["href"])
         self.assertIn(support["source_version"], source["href"])
 
+    def test_material_reader_requires_a_visible_material_and_its_current_confirmed_passage(self) -> None:
+        owner, reviewer, viewer, analyst = (
+            self.login("b1." + name) for name in ("modeler", "reviewer", "viewer", "analyst")
+        )
+        bound, other = self.evidence(owner), self.evidence(owner)
+        material_id = bound["material_id"]
+        path = f"/api/v2/elements/{material_id}/passage"
+        location = {"chunk_id": bound["chunk_id"]}
+        self.rejected(viewer.get(path, params=location), 404)
+        for actor, action in ((owner, "submit"), (reviewer, "approve"), (reviewer, "publish")):
+            self.receipt(actor.post(f"/api/entities/{material_id}/action", json={"action": action}))
+        self.rejected(self.login("fixture.superadmin").get(path, params=location), 404)
+        for reader in (viewer, analyst):
+            self.rejected(reader.get(f"/api/materials/{material_id}"), 403)
+            for locator in (location, {"anchor_id": bound["anchor_id"], "source_version": bound["source_version"]}):
+                projected = self.get(reader, path, **locator)
+                self.assertEqual(projected, self.business(reader, TRACE, {"entity_id": material_id, **locator}))
+                (passage,) = projected["sources"]
+                for key in ("material_id", "anchor_id", "source_version", "start", "end", "quote"):
+                    self.assertEqual(passage[key], bound[key])
+            for wrong in (
+                {"chunk_id": other["chunk_id"]},
+                {"anchor_id": other["anchor_id"]},
+                {**location, "source_version": other["source_version"]},
+            ):
+                self.rejected(reader.get(path, params=wrong), 404)
+        self.rejected(viewer.get(path), 422)
+        self.rejected(viewer.get(path, params={"chunk_id": "z" * 256}), 422)
+        self.receipt(reviewer.post(f"/api/entities/{material_id}/action", json={"action": "archive"}))
+        self.rejected(viewer.get(path, params=location), 404)
+
     def test_trace_ignores_rebound_anchors_and_reveals_a_quote_after_separate_source_publication(self) -> None:
         owner, reviewer, viewer = (self.login(n) for n in ("b1.modeler", "b1.reviewer", "b1.viewer"))
         bound, other = self.evidence(owner), self.evidence(owner)
