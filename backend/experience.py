@@ -1371,7 +1371,7 @@ def _review_candidate(c, e, candidate_id, body):
                 contributors=item.get("draft_editor_ids", ()),
             )
             authors = Authors.from_draft(item)
-            authors.unverified = max(authors.unverified, meta.get("unverified_experience_edit_at") or "")
+            authors.merge(Authors.from_review(meta))
             authors.save_review(meta)
             c.execute(
                 "UPDATE entities SET title=?,summary=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?",
@@ -1680,6 +1680,7 @@ def edit_draft(session_id: str, body: AdoptRequest):
             editors.merge(Authors.from_draft(item))
             editors.save_draft(item)
         save_session(c, e, "人工编辑经验草稿")
+        log(c, session_id, "编辑经验草稿" if changed else "原样保存经验草稿")
     return get_session(session_id)
 
 

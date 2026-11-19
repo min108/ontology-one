@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,18 +19,35 @@ PROPOSAL_REASONS = {"人工采用AI修订建议": "revise", "人工采用AI拆�
 class Authors:
     ids: set[str] = field(default_factory=set)
     unverified: str = ""
+    possible: set[str] = field(default_factory=set)
 
     def merge(self, other: Authors) -> None:
         self.ids.update(other.ids)
         self.unverified = max(self.unverified, other.unverified)
+        self.possible.update(other.possible)
 
     @classmethod
     def from_draft(cls, item: dict) -> Authors:
-        return cls(set(item.get("draft_editor_ids") or []), item.get("unverified_edit_at") or "")
+        return cls(
+            set(item.get("draft_editor_ids") or []),
+            item.get("unverified_edit_at") or "",
+            set(item.get("possible_draft_editor_ids") or []),
+        )
+
+    @classmethod
+    def from_review(cls, meta: dict) -> Authors:
+        return cls(
+            unverified=meta.get("unverified_experience_edit_at") or "",
+            possible=set(meta.get("possible_experience_editor_ids") or []),
+        )
 
     def save_draft(self, item: dict) -> None:
         item["draft_editor_ids"] = sorted(self.ids)
-        item["draft_authorship_tracked"] = not self.unverified
+        item["draft_authorship_tracked"] = not (self.unverified or self.possible)
+        if self.possible:
+            item["possible_draft_editor_ids"] = sorted(self.possible)
+        else:
+            item.pop("possible_draft_editor_ids", None)
         if self.unverified:
             item["unverified_edit_at"] = self.unverified
         else:
@@ -38,13 +55,19 @@ class Authors:
 
     def save_review(self, meta: dict) -> None:
         meta["editor_ids"] = list(dict.fromkeys([*(meta.get("editor_ids") or []), *sorted(self.ids)]))
-        meta["experience_authorship_tracked"] = not self.unverified
+        meta["experience_authorship_tracked"] = not (self.unverified or self.possible)
+        if self.possible:
+            meta["possible_experience_editor_ids"] = sorted(self.possible)
+        else:
+            meta.pop("possible_experience_editor_ids", None)
         if self.unverified:
             meta["unverified_experience_edit_at"] = self.unverified
         else:
             meta.pop("unverified_experience_edit_at", None)
 
     def unresolved_for(self, person: Principal) -> bool:
+        if person.user_id in self.possible:
+            return True
         if not self.unverified:
             return False
         with store.control_connection() as control, control.cursor() as cursor:
@@ -61,6 +84,7 @@ class Edit:
     activity: str = ""
     detail: str = ""
     next_stamp: str = ""
+    changed: bool = True
 
 
 def section_facts(sections: list[dict] | None) -> list[tuple]:
@@ -82,22 +106,23 @@ def draft_changed(before: dict, after: dict) -> bool:
 
 
 def _signed_editors(conn: db.Connection, source_id: str, events: list[Edit]) -> Authors:
-    result = Authors()
-    result.unverified = max((event.stamp for event in events if not event.paths), default="")
+    result = Authors(unverified=max((event.stamp for event in events if not event.paths), default=""))
     events = [event for event in events if event.paths]
     if not events:
         return result
     times = defaultdict(list)
     for edit in events:
         for path in edit.paths:
-            times[(edit.method, path)].append((edit.stamp, datetime.fromisoformat(edit.stamp).timestamp()))
+            times[(edit.method, path)].append((edit, datetime.fromisoformat(edit.stamp).timestamp()))
     paths = sorted({path for _, path in times})
     stamps = [point for group in times.values() for _, point in group]
     params = ",".join(["%s"] * len(paths))
-    proven = set()
+    matches = {edit: set() for edit in events}
+    requests = {}
+    activities = {}
     with store.control_connection() as control, control.cursor() as cursor:
         cursor.execute(
-            "SELECT s.actor_id,s.resource,JSON_UNQUOTE(JSON_EXTRACT(s.details,'$.method')) method,"
+            "SELECT s.request_id,s.actor_id,s.resource,JSON_UNQUOTE(JSON_EXTRACT(s.details,'$.method')) method,"
             "s.created_at started,f.created_at finished FROM sec_audit s JOIN sec_audit f "
             "ON f.request_id=s.request_id AND f.tenant_id=s.tenant_id "
             "AND f.resource=s.resource AND f.actor_id=s.actor_id "
@@ -106,14 +131,11 @@ def _signed_editors(conn: db.Connection, source_id: str, events: list[Edit]) -> 
             (require_context().tenant_id, *paths, max(stamps), min(stamps)),
         )
         for row in cursor:
-            for stamp, point in times.get((row["method"], row["resource"]), ()):
+            for edit, point in times.get((row["method"], row["resource"]), ()):
                 if row["started"] <= point <= row["finished"]:
-                    result.ids.add(row["actor_id"])
-                    proven.add(stamp)
+                    matches[edit].add(row["request_id"])
+                    requests[row["request_id"]] = row["actor_id"]
         for edit in events:
-            if edit.stamp in proven:
-                continue
-            # The workbench also recorded the authenticated username in the same business transaction.
             actor = _activity_actor(conn, source_id, edit) if edit.activity else None
             if actor:
                 cursor.execute(
@@ -122,8 +144,34 @@ def _signed_editors(conn: db.Connection, source_id: str, events: list[Edit]) -> 
                 )
                 user = cursor.fetchone()
                 if user:
-                    result.ids.add(user["id"])
-                    continue
+                    activities[edit] = user["id"]
+                    matches[edit] = {r for r in matches[edit] if requests[r] == user["id"]}
+    # Each successful compatibility PATCH writes exactly one version, including a no-op.
+    # Its receipt cannot simultaneously belong to another PATCH that was waiting for the row lock.
+    pending = {edit for edit in events if edit.method == "PATCH"}
+    while pending:
+        fixed = {edit: next(iter(matches[edit])) for edit in pending if len(matches[edit]) == 1}
+        if not fixed:
+            break
+        repetitions = Counter(fixed.values())
+        for edit, request_id in fixed.items():
+            if repetitions[request_id] > 1:
+                matches[edit].clear()
+        pending.difference_update(fixed)
+        for edit in pending:
+            matches[edit].difference_update(fixed.values())
+    for edit in events:
+        if not edit.changed:
+            continue
+        if edit in activities:
+            result.ids.add(activities[edit])
+            continue
+        actors = {requests[r] for r in matches[edit]}
+        if len(actors) == 1:
+            result.ids.update(actors)
+        elif actors:
+            result.possible.update(actors)
+        else:
             result.unverified = max(result.unverified, edit.stamp)
     return result
 
@@ -159,6 +207,18 @@ def _source_versions(
         after, next_stamp = before, row["created_at"]
 
 
+def _patch_event(source_id: str, stamp: str, next_stamp: str, before: dict, after: dict) -> Edit:
+    changed = draft_changed(before.get("draft") or {}, after.get("draft") or {})
+    return Edit(
+        stamp,
+        "PATCH",
+        ("/api/experience/" + source_id + "/draft",),
+        "编辑经验草稿" if changed else "原样保存经验草稿",
+        next_stamp=next_stamp,
+        changed=changed,
+    )
+
+
 def draft_editors(conn: db.Connection, record: dict) -> Authors:
     draft = record["payload"].get("draft") or {}
     if not draft or "draft_editor_ids" in draft:
@@ -172,14 +232,15 @@ def draft_editors(conn: db.Connection, record: dict) -> Authors:
         record["payload"].get("adopted_entity_id"),
     )
     since = _last_publication(conn, linked) if linked else ""
-    path = "/api/experience/" + record["id"] + "/draft"
     return _signed_editors(
         conn,
         record["id"],
         [
-            Edit(stamp, "PATCH", (path,))
-            for reason, stamp, _, before, after in _source_versions(conn, record, since, None, candidates=False)
-            if reason == "人工编辑经验草稿" and draft_changed(before.get("draft") or {}, after.get("draft") or {})
+            _patch_event(record["id"], stamp, next_stamp, before, after)
+            for reason, stamp, next_stamp, before, after in _source_versions(
+                conn, record, since, None, candidates=False
+            )
+            if reason == "人工编辑经验草稿"
         ],
     )
 
@@ -258,13 +319,46 @@ def _timeline(
     return sorted(changes, key=lambda change: change[1], reverse=True)
 
 
-def _lineage_requests(conn: db.Connection, source: dict, candidate_id: str, since: str, through: str) -> list[Edit]:
+def _parent_authors_at(conn: db.Connection, asset_id: str, source_id: str, candidate_id: str, stamp: str) -> Authors:
+    from backend.domains.reviews import editor_ids
+
+    # A later snapshot contains the state before that write. Falling back to the live asset
+    # is valid only when it has not changed since the split/merge that inherited this parent.
+    row = conn.execute(
+        "SELECT snapshot FROM versions WHERE entity_id=? AND created_at>? ORDER BY created_at,id LIMIT 1",
+        (asset_id, stamp),
+    ).fetchone()
+    if row:
+        parent = json.loads(row["snapshot"])
+    else:
+        parent = db.entity_json(
+            conn.execute("SELECT * FROM entities WHERE id=? AND kind='knowledge'", (asset_id,)).fetchone()
+        )
+    if not parent:
+        return Authors(unverified=stamp)
+    if parent.get("created_at", "") > stamp:
+        return Authors()
+    payload = parent.get("payload") or {}
+    if payload.get("source_material_id") != source_id or payload.get("experience_candidate_id") != candidate_id:
+        return Authors(unverified=stamp)
+    if not parent.get("updated_at") or parent["updated_at"] > stamp:
+        return Authors(unverified=stamp)
+    identity = payload.get("r2_review") or {}
+    if parent.get("status") == "published" or identity.get("cycle_closed"):
+        return Authors()
+    authors = Authors.from_review(identity)
+    authors.ids.update(editor_ids(parent))
+    return authors
+
+
+def _lineage_authors(conn: db.Connection, source: dict, candidate_id: str, since: str, through: str) -> Authors | None:
     # Walk backward. A split child only inherits its parent's edits up to the split time.
     # A merge follows every input, bounded by each already-adopted input's own release.
     wanted = {candidate_id: since}
     legacy_ids = {i["id"] for i in source["payload"].get("knowledge_candidates", []) if i.get("legacy_draft")}
     base = "/api/experience/" + source["id"]
     events = []
+    inherited = Authors()
     for reason, stamp, next_stamp, before, after, applied in _timeline(conn, source, since, through):
         active = {ident for ident, cutoff in wanted.items() if stamp > cutoff}
         if not active:
@@ -291,7 +385,10 @@ def _lineage_requests(conn: db.Connection, source: dict, candidate_id: str, sinc
                     events.append(Edit(stamp, "", ()))
                 for ident in input_ids:
                     asset_id = inputs.get(ident, {}).get("adopted_entity_id")
-                    bound = max(floor, _last_publication(conn, asset_id, stamp)) if asset_id else floor
+                    bound = floor
+                    if asset_id:
+                        bound = max(floor, _last_publication(conn, asset_id, stamp))
+                        inherited.merge(_parent_authors_at(conn, asset_id, source["id"], ident, stamp))
                     wanted[ident] = min(wanted.get(ident, bound), bound)
         elif reason in {"人工核对经验点：save", "人工核对经验点：adopt"}:
             old, new = _by_id(before.get("knowledge_candidates")), _by_id(after.get("knowledge_candidates"))
@@ -305,13 +402,12 @@ def _lineage_requests(conn: db.Connection, source: dict, candidate_id: str, sinc
                     if adopted and ident in legacy_ids:
                         paths += (base + "/adopt",)
                     events.append(Edit(stamp, "POST", paths, "核对经验点", b["title"], next_stamp))
-        elif (
-            reason == "人工编辑经验草稿"
-            and active & legacy_ids
-            and draft_changed(before.get("draft") or {}, after.get("draft") or {})
-        ):
-            events.append(Edit(stamp, "PATCH", (base + "/draft",)))
-    return events
+        elif reason == "人工编辑经验草稿" and active & legacy_ids:
+            events.append(_patch_event(source["id"], stamp, next_stamp, before, after))
+    if not events:
+        return None
+    inherited.merge(_signed_editors(conn, source["id"], events))
+    return inherited
 
 
 def adopted_editors(conn: db.Connection, asset: dict) -> Authors:
@@ -327,7 +423,7 @@ def adopted_editors(conn: db.Connection, asset: dict) -> Authors:
         or meta.get("experience_authorship_tracked")
     ):
         return Authors()
-    fallback = Authors(unverified=meta.get("unverified_experience_edit_at") or "")
+    fallback = Authors.from_review(meta)
     dates = conn.execute(
         "SELECT MAX(CASE WHEN action IN ('经验形成知识草稿','经验稿修订知识') THEN created_at END) adopted, "
         "MAX(CASE WHEN action='发布成果' THEN created_at END) published FROM activities WHERE entity_id=?",
@@ -358,8 +454,7 @@ def adopted_editors(conn: db.Connection, asset: dict) -> Authors:
         or candidate.get("adopted_entity_id") != asset["id"]
     ):
         return Authors(unverified=max(fallback.unverified, through))
-    edits = _lineage_requests(conn, source, candidate_id, since, through)
-    return _signed_editors(conn, source["id"], edits) if edits else fallback
+    return _lineage_authors(conn, source, candidate_id, since, through) or fallback
 
 
 def pending_editors(conn: db.Connection, source: dict, item: dict) -> Authors:
@@ -367,9 +462,8 @@ def pending_editors(conn: db.Connection, source: dict, item: dict) -> Authors:
     if not item.get("draft_authorship_tracked"):
         asset_id = item.get("adopted_entity_id")
         since = _last_publication(conn, asset_id) if asset_id else ""
-        edits = _lineage_requests(conn, source, item["id"], since, db.now())
-        if edits:
-            history = _signed_editors(conn, source["id"], edits)
+        history = _lineage_authors(conn, source, item["id"], since, db.now())
+        if history:
             history.ids.update(known.ids)
             return history
     return known

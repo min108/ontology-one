@@ -5,7 +5,10 @@ import json
 import os
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from datetime import datetime
+from threading import Event
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -13,7 +16,7 @@ from httpx import Response
 
 from backend import db, experience, jobs
 from backend.security import store
-from backend.security.context import use_context
+from backend.security.context import require_context, use_context
 from tests.r2 import test_build as construction
 
 
@@ -148,6 +151,18 @@ class ExperienceReviewers(unittest.TestCase):
 
     def asset(self, ident: str) -> dict:
         return self.ok(self.builder.get("/api/entities/" + ident))
+
+    def edit_knowledge(self, client: TestClient, ident: str, definition: str) -> None:
+        current = self.asset(ident)
+        self.invoke(
+            client,
+            "element.update_draft",
+            {
+                "entity_id": ident,
+                "version": current["version"],
+                "payload": {**current["payload"], "definition": definition},
+            },
+        )
 
     def publish(self, ident: str, blocked: list[TestClient], independent: TestClient) -> None:
         self.decide(self.submit(ident), blocked, independent)
@@ -337,7 +352,8 @@ class ExperienceReviewers(unittest.TestCase):
         self.base["title"] = "旧稿领单与盖章核验"
         self.proposal_prefix = "领单"
         source = self.adopt_legacy()
-        self.publish(source["id"], [self.author], self.independent)
+        self.edit_knowledge(self.observer, source["id"], "按批核对签收联和归档联。")
+        self.publish(source["id"], [self.author, self.observer], self.independent)
         (parent,) = self.candidates()
         _, child = self.apply("split", [parent], self.applier)
         self.assertFalse(self.candidates()[child].get("legacy_draft"))
@@ -350,6 +366,111 @@ class ExperienceReviewers(unittest.TestCase):
         prior_author = self.ok(self.author.get("/api/v2/reviews/" + pending["id"]))["data"]
         self.assertTrue(prior_author["can_decide"], prior_author)
         self.decide(pending, [self.applier, self.secondary], self.observer)
+
+    def test_old_split_inherits_only_the_open_parent_knowledge_editors_at_the_split(self) -> None:
+        self.base["title"] = "父知识通用修订并分册核对"
+        self.proposal_prefix = "分册"
+        parent = self.adopt_legacy()["id"]
+        self.edit_knowledge(self.secondary, parent, "双人核对档案交接的签收原件。")
+        (candidate,) = self.candidates()
+        _, child = self.apply("split", [candidate], self.applier)
+        self.edit_knowledge(self.observer, parent, "另行核对拆分后的目录复印件。")
+        self.publish(parent, [self.author, self.secondary, self.observer], self.independent)
+        adopted = self.review(child, self.builder, "adopt", title="分册签收凭条归位")
+        pending = self.old_pending(adopted["entity_id"])
+        self.decide(pending, [self.secondary, self.author, self.applier], self.observer)
+
+    def test_overlapping_successful_identical_patches_use_business_actor_or_report_uncertainty(self) -> None:
+        self.base["title"] = "并发原样签收登记"
+        author = self.person(self.author)
+        second = self.person(self.observer)
+        acquired, waiting, second_committed = Event(), Event(), Event()
+        original_lock, original_get = experience.session, experience.get_session
+
+        def lock(conn: db.Connection, sid: str, *, lock: bool = False) -> dict:
+            actor = require_context().user_id
+            if lock and actor == second:
+                waiting.set()
+            record = original_lock(conn, sid, lock=lock)
+            if lock and actor == author:
+                acquired.set()
+                self.assertTrue(waiting.wait(12))
+            return record
+
+        def after_commit(sid: str) -> dict:
+            if require_context().user_id == author:
+                self.assertTrue(second_committed.wait(12))
+            else:
+                second_committed.set()
+            return original_get(sid)
+
+        with (
+            patch("backend.experience.session", lock),
+            patch("backend.experience.get_session", after_commit),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            first_run = pool.submit(self.author.patch, self.path + "/draft", json=self.base)
+            self.assertTrue(acquired.wait(12))
+            second_run = pool.submit(self.observer.patch, self.path + "/draft", json=self.base)
+            self.ok(first_run.result(20))
+            self.ok(second_run.result(20))
+        principal = store.authenticate_session(self.builder.cookies.get(store.COOKIE_NAME), "old-overlap")[0]
+        with use_context(principal), closing(db.connect()) as conn, conn:
+            versions = list(
+                conn.execute(
+                    "SELECT created_at,json_extract(snapshot,'$.payload.draft') draft FROM versions "
+                    "WHERE entity_id=? AND reason='人工编辑经验草稿' ORDER BY version,id",
+                    (self.sid,),
+                )
+            )
+            first_version, second_version = versions
+            self.assertFalse(json.loads(first_version["draft"] or "null"))
+            self.assertEqual(json.loads(second_version["draft"])["content"], self.base["content"])
+            conn.execute(
+                "UPDATE entities SET payload=JSON_REMOVE(payload,'$.draft.draft_editor_ids',"
+                "'$.draft.draft_authorship_tracked') WHERE id=?",
+                (self.sid,),
+            )
+        with store.control_connection() as control, control.cursor() as cursor:
+            cursor.execute(
+                "SELECT s.actor_id,s.created_at started,f.created_at finished FROM sec_audit s JOIN sec_audit f "
+                "ON s.request_id=f.request_id AND s.actor_id=f.actor_id AND s.resource=f.resource "
+                "WHERE s.tenant_id=%s AND s.resource=%s AND s.action='business_request' AND f.action=s.action "
+                "AND s.outcome='started' AND f.outcome='success' "
+                "AND JSON_UNQUOTE(JSON_EXTRACT(s.details,'$.method'))='PATCH'",
+                (principal.tenant_id, self.path + "/draft"),
+            )
+            receipts = list(cursor)
+        self.assertEqual({r["actor_id"] for r in receipts}, {author, second})
+        for receipt in receipts:
+            self.assertLessEqual(receipt["started"], datetime.fromisoformat(first_version["created_at"]).timestamp())
+            self.assertGreaterEqual(
+                receipt["finished"], datetime.fromisoformat(second_version["created_at"]).timestamp()
+            )
+        asset = self.ok(self.builder.post(self.path + "/adopt", json=self.base))["entity"]
+        self.assertEqual(set(asset["payload"]["r2_review"]["editor_ids"]), {author, self.person(self.builder)})
+        pending = self.old_pending(asset["id"])
+        detail_url = "/api/v2/reviews/" + asset["id"]
+        self.assertFalse(self.ok(self.author.get(detail_url))["data"]["can_decide"])
+        self.assertTrue(self.ok(self.observer.get(detail_url))["data"]["can_decide"])
+        # An older archive lacks these two newer, transaction-local actor records. Both signed
+        # requests and both business versions remain genuine, and their time windows fully overlap.
+        with use_context(principal), closing(db.connect()) as conn, conn:
+            conn.execute(
+                "UPDATE activities SET actor='系统' WHERE entity_id=? "
+                "AND action IN ('编辑经验草稿','原样保存经验草稿')",
+                (self.sid,),
+            )
+        for actor in (self.author, self.observer):
+            detail = self.ok(actor.get(detail_url))["data"]
+            self.assertFalse(detail["can_decide"])
+            self.assertIn("尚缺可核对的编辑人记录", detail["blocked_reason"])
+            denied = actor.post(
+                detail_url + ":decide", json={"decision": "approve_publish", "version": pending["version"]}
+            )
+            self.assertEqual(denied.status_code, 403, denied.text)
+            self.assertIn("尚缺可核对的编辑人记录", denied.text)
+        self.decide(pending, [], self.independent)
 
     def test_pending_preupgrade_merge_identifies_ancestor_and_secondary_manual_editors(self) -> None:
         self.base["title"] = "旧稿账册归并"
