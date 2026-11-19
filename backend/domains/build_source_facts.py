@@ -24,6 +24,11 @@ SELF_BEFORE_DATE = re.compile(
     CURRENT + r"(?:[（(](?:试行|暂行|修订)[）)])?\s*(?:(?:(?:经|重新)?修[订改正](?:完成)?后?|修订版)\s*[，,]?\s*)?"
     r"(?:将|原|曾|最初|原定|首次)?\s*$"
 )
+ELIDED_AMENDMENT = re.compile(
+    r"^(?:(?:现已?|本次|此次|本轮|再次|重新|已)\s*)*(?:经(?:过)?|予以|作|进行)?"
+    r"(?:(?:第[一二三四五六七八九十\d]+次|再次|重新|全面|部分|集中|正式)\s*)*"
+    r"(?:修订|修正|修改|增订|修编)(?:完成|通过|公布|完毕)?(?:后)?\s*[，,]\s*(?:决定|定|将|现定)?$"
+)
 ATTACHMENT = re.compile(
     r"^\s*(?:[【\u3014（(]\s*)?(?:附\s*[件录表页]|附(?=[：:]))(?=$|[\s：:、.\uff0e（(【《〈「『\u3014一二三四五六七八九十\dA-Z])"
 )
@@ -118,6 +123,7 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
             or bool(CITATION.search(prefix))
         )
         subject = SELF_BEFORE_DATE.search(prefix)
+        elided = found["preposition"] and ELIDED_AMENDMENT.fullmatch(ARTICLE.sub("", prefix))
         # A second date may share the first clause's subject (经修订，自…起施行).
         continued = bool(matches and found["preposition"] and re.search(r"[，,；;…]\s*$", prefix))
         cited_title = cited and re.search(rf"(?:[原旧该]{POLICY}|《[^》]+》)\s*$", prefix)
@@ -127,7 +133,7 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
             ARTICLE.sub("", prefix),
         )
         bare_provision = found["preposition"] and not ARTICLE.sub("", prefix).strip()
-        if not (subject or continued or cited_title or bare_excerpt or approved or bare_provision):
+        if not (subject or elided or continued or cited_title or bare_excerpt or approved or bare_provision):
             continue
         try:
             value = date(*(calendar_number(found[k]) for k in ("year", "month", "day"))).isoformat()
@@ -140,7 +146,7 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
             or "首次" in found.group()
             or re.search(r"(?:最初|原定|曾|首次)\s*$", prefix)
         )
-        matches.append((found, value, cited or historical))
+        matches.append((found, value, bool(cited or historical or elided)))
     # Two dates can share a sentence and its grammatical subject. Split only
     # before the next operative clause so the history between them remains visible.
     cuts = [0]

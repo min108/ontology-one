@@ -259,6 +259,23 @@ class SourceWorkflow(unittest.TestCase):
         self.assertIn("修订后", choice["quote"])
         self.assertTrue(choice["anchor_id"])
 
+    def test_omitted_subject_in_new_amendment_cannot_propagate_the_old_date(self) -> None:
+        client = self.login("fixture.builder")
+        text = "本办法自2018年5月1日起施行。现经修订，自2026年1月1日起施行。\n第三条 经办人应核对付款凭证。"
+        result = self.proposal(client, text)
+        dates = result["document_facts"]["valid_from_candidates"]
+        self.assertEqual([d["value"] for d in dates], ["2018-05-01", "2026-01-01"])
+        self.assertFalse(result["document_facts"]["valid_from"]["value"])
+        payment = next(i for i in result["items"] if "付款凭证" in i["after_data"]["content"])
+        self.assertFalse(payment["after_data"].get("valid_from"))
+        chosen = self.invoke(
+            client,
+            "changeset.confirm_facts",
+            {"changeset_id": result["id"], "valid_from_candidate_id": dates[1]["candidate_id"]},
+        )["document_facts"]["valid_from"]
+        self.assertEqual(chosen["quote"], "现经修订，自2026年1月1日起施行。")
+        self.assertEqual((chosen["origin"], chosen["value"]), ("manual", "2026-01-01"))
+
     def test_bulk_adoption_keeps_system_applicability_and_model_literal_sources_separate(self) -> None:
         client = self.login("fixture.builder")
         text = "本制度适用于账款核对。若凭证丢失，经办人应报告，抢险事项除外。本制度自2028年1月1日起施行。"
