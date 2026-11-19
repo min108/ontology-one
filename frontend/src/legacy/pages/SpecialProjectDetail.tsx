@@ -1,4 +1,4 @@
-import {selectableEntities} from '../entity-options';
+import {selectableEntities} from '../../features/ontology/selectableEntities';
 import {useWorkspaceDialogGuard} from '../../app/useWorkspaceGuard';
 import {AccessButton} from '../components/AccessButton';
 import {useEffect,useState,useRef} from 'react';

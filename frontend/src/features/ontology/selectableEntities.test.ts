@@ -1,10 +1,10 @@
 import { expect, it } from 'vitest';
-import { selectableEntities } from './entity-options';
+import { selectableEntities } from './selectableEntities';
 
-const material = { id: 'material-A', kind: 'material', title: '制度原件', payload: {} };
+const material = { id: 'material-A', kind: 'material', title: 'Original regulation', payload: {} };
 const chunk = (id: string) => ({ ...material, id, payload: { chunk_id: id, material_id: material.id } });
 it('preserves first-hit order and returns one selectable original across chunks and entity hits', () => {
-  const dataset = { id: 'D', kind: 'dataset', title: '账册', payload: {} };
+  const dataset = { id: 'D', kind: 'dataset', title: 'Register', payload: {} };
   expect(selectableEntities([chunk('c-1'), dataset, material, chunk('c-2')]).map((hit) => hit.id)).toEqual([
     material.id,
     dataset.id,
