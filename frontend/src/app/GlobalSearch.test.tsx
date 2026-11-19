@@ -210,6 +210,56 @@ it('rejects malformed responses and safely handles nullable entity text', () => 
     parseSearchItems({ items: [{ id: 'x', kind: 'material', title: null, summary: null }] })[0].label,
   ).toBe('x');
 });
+it('hides and disables same-query cached hits while their new request is pending, even on Enter', async () => {
+  const first = renderSearch();
+  await search('needle');
+  expect(screen.getByRole('option')).toHaveTextContent('Needle result');
+  first.unmount();
+  let complete!: (value: { items: [] }) => void;
+  vi.mocked(invokeCapability).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const second = renderSearch();
+  await search('needle');
+  expect(screen.queryByRole('option')).toBeNull();
+  fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+  expect(second.onClose).not.toHaveBeenCalled();
+  expect(screen.getByTestId('location')).toHaveTextContent('/');
+  await act(async () => {
+    complete({ items: [] });
+    await vi.advanceTimersByTimeAsync(2);
+  });
+  expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent(
+    terms.labels.global_search_insufficient,
+  );
+});
+it('marks real matched words and punctuation as literal text in the title, summary and alias excerpt', async () => {
+  vi.mocked(invokeCapability).mockResolvedValue({
+    items: [
+      {
+        id: 'A',
+        kind: 'rule',
+        title: '报销流程',
+        summary: '费用由财务核对。',
+        highlight: '退款按 C++ 申请。<img src=x>',
+        match_terms: ['费用', '报销', 'C++'],
+      },
+    ],
+  });
+  renderSearch();
+  await search('费用如何报销？');
+  const option = screen.getByRole('option');
+  expect([...option.querySelectorAll('mark')].map((node) => node.textContent)).toEqual([
+    '报销',
+    '费用',
+    'C++',
+  ]);
+  expect(option).toHaveTextContent('<img src=x>');
+  expect(option.querySelector('img')).toBeNull();
+});
 it('hides prior rows while a different query is debouncing', async () => {
   renderSearch();
   await search('needle');

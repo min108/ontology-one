@@ -241,6 +241,55 @@ export async function topSearch(page, q) {
   return { first, hits, dialog, options };
 }
 
+export async function reopenAfterArchive(page, q, cachedId) {
+  // Keep this tab and its live QueryClient. Only delay forwarding the second request.
+  await page.getByRole("combobox").press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const url = page.url();
+  let release, started;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const intercepted = new Promise((resolve) => {
+    started = resolve;
+  });
+  const target = (url) =>
+    url.pathname === "/api/v2/capabilities/semantic.search:invoke";
+  await page.route(
+    target,
+    async (route) => {
+      started();
+      await held;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  try {
+    await button(page, c.r3_ui_search).click();
+    const input = page.getByRole("combobox");
+    await input.fill(q);
+    await intercepted;
+    await expect(page.getByRole("option")).toHaveCount(0);
+    await input.press("Enter");
+    await expect(input).toBeVisible();
+    expect(page.url()).toBe(url);
+    const response = page.waitForResponse(
+      (r) => target(new URL(r.url())) && r.request().postDataJSON()?.q === q,
+    );
+    release();
+    const actual = await response;
+    expect(actual.ok()).toBe(true);
+    const result = await actual.json();
+    expect(result.items.some((row) => row.id === cachedId)).toBe(false);
+    await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
+      c.global_search_insufficient,
+    );
+  } finally {
+    release();
+    await page.unroute(target);
+  }
+}
+
 export async function screenshotComparison(browser, page) {
   const actual = await page.screenshot({
     path: resolve(evidence, "r4b-search-1366x768.png"),

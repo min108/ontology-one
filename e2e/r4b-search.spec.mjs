@@ -23,6 +23,7 @@ import {
   post,
   publishOriginal,
   registerAlias,
+  reopenAfterArchive,
   screenshotComparison,
   topSearch,
 } from "./r4b-search-support.mjs";
@@ -169,6 +170,7 @@ async function lifecycle(builder, viewer, reviewer, rule, receipt) {
     },
   );
   expect(archived.status).toBe("archived");
+  await reopenAfterArchive(builder, rule.id, rule.id);
   assertAbsent(
     (await topSearch(builder, rule.id)).hits,
     new Set([rule.id]),

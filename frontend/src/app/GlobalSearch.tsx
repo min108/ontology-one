@@ -31,6 +31,15 @@ export function parseSearchItems(value: unknown, query = ''): SearchItem[] {
         throw new Error(terms.labels.global_search_failed);
     if (item.doc_type && item.doc_type !== 'element' && item.doc_type !== 'chunk')
       throw new Error(terms.labels.global_search_failed);
+    const matches = item.match_terms;
+    if (
+      matches !== undefined &&
+      (!Array.isArray(matches) ||
+        matches.length > 8 ||
+        matches.some((term) => typeof term !== 'string' || !term.trim()))
+    )
+      throw new Error(terms.labels.global_search_failed);
+    const matchTerms = (matches ?? []) as string[];
     const id = item.doc_type ? JSON.stringify([item.doc_type, item.id]) : item.id;
     if (seen.has(id)) throw new Error(terms.labels.global_search_failed);
     seen.add(id);
@@ -59,14 +68,16 @@ export function parseSearchItems(value: unknown, query = ''): SearchItem[] {
     }
     const description = typeof item.summary === 'string' ? item.summary : undefined;
     const label = typeof item.title === 'string' && item.title.trim() ? item.title : item.id;
+    const visible = [label, description ?? ''].map((text) => text.toLowerCase());
+    const shown = (term: string) => visible.some((text) => text.includes(term.toLowerCase()));
     const matchAlreadyShown =
-      Boolean(query) &&
-      [label, description].some((text) => text?.toLowerCase().includes(query.toLowerCase()));
+      (Boolean(query) && shown(query)) || (matchTerms.length > 0 && matchTerms.every(shown));
     return {
       id,
       href,
       label,
       description,
+      matchTerms,
       excerpt:
         typeof item.highlight === 'string' && !matchAlreadyShown && !description?.includes(item.highlight)
           ? item.highlight
@@ -139,7 +150,9 @@ function WorkspaceSearch({
     },
     queryClient,
   );
-  const searchItems = ready && !query.isError ? (query.data ?? []) : [];
+  // A cached response can predate another person's edit or archive.
+  const confirmed = query.isSuccess && query.isFetchedAfterMount && query.fetchStatus === 'idle';
+  const searchItems = ready && confirmed ? query.data : [];
   const items: OmniboxItem[] = commandMode
     ? commands.map((item) => ({
         id: 'command:' + item.id,
@@ -177,7 +190,7 @@ function WorkspaceSearch({
             : terms.labels.global_search_insufficient
           : undefined
       }
-      loading={!commandMode && Boolean(text) && (!ready || query.isFetching)}
+      loading={!commandMode && Boolean(text) && (!ready || (!confirmed && !query.isError))}
       error={ready && query.isError ? terms.labels.global_search_failed : undefined}
       onRetry={() => {
         void query.refetch();

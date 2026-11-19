@@ -8,6 +8,7 @@ export interface OmniboxItem {
   label: string;
   description?: string;
   excerpt?: string;
+  matchTerms?: string[];
   group?: string;
 }
 export interface OmniboxProps {
@@ -25,17 +26,16 @@ export interface OmniboxProps {
   footer?: ReactNode;
 }
 
-function matchingText(value: string, query?: string): ReactNode {
-  if (!query) return value;
-  const index = value.toLowerCase().indexOf(query.toLowerCase());
-  if (index < 0) return value;
-  return (
-    <>
-      {value.slice(0, index)}
-      <mark>{value.slice(index, index + query.length)}</mark>
-      {value.slice(index + query.length)}
-    </>
-  );
+function matchingText(value: string, query?: string, matches: string[] = []): ReactNode {
+  const terms = [...new Set([query, ...matches].filter((term): term is string => Boolean(term)))];
+  if (!terms.length) return value;
+  const pattern = terms
+    .sort((a, b) => b.length - a.length)
+    .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  return value
+    .split(new RegExp('(' + pattern + ')', 'giu'))
+    .map((part, index) => (index % 2 === 1 ? <mark key={index}>{part}</mark> : part));
 }
 export function Omnibox({
   open,
@@ -124,9 +124,9 @@ export function Omnibox({
             onClick={() => onSelect(item)}
           >
             {item.group && <small>{item.group}</small>}
-            <strong>{matchingText(item.label, highlight)}</strong>
-            {item.description && <span>{matchingText(item.description, highlight)}</span>}
-            {item.excerpt && <span>{matchingText(item.excerpt, highlight)}</span>}
+            <strong>{matchingText(item.label, highlight, item.matchTerms)}</strong>
+            {item.description && <span>{matchingText(item.description, highlight, item.matchTerms)}</span>}
+            {item.excerpt && <span>{matchingText(item.excerpt, highlight, item.matchTerms)}</span>}
           </li>
         ))}
       </ul>
