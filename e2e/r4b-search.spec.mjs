@@ -2,7 +2,8 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test, expect } from "./runtime.mjs";
 import { accounts, evidence } from "./fixture.mjs";
-import { c, read, terms } from "./r3-support.mjs";
+import { c, read, terms, userRow } from "./r3-support.mjs";
+import { selectSavedViewMode } from "./select-saved-view-mode.mjs";
 import {
   assertAbsent,
   assertChunkLimit,
@@ -383,6 +384,24 @@ test("R4-B BA7–BA10 S1–S12 search the reviewed original regulation, all entr
     assertRebuilt(before, rebuilt);
     receipt.after_rebuild = orderedDocuments(rebuilt);
     receipt.passed.push("S12");
+    stage =
+      "administrator views the existing read-only account in the real institution directory";
+    await admin.page.goto("/admin/users");
+    await selectSavedViewMode(admin.page, "professional");
+    const viewerRow = userRow(admin.page, "b2.search.viewer");
+    await expect(viewerRow).toBeVisible();
+    await expect(
+      viewerRow.getByText(terms.roles.viewer, { exact: true }),
+    ).toBeVisible();
+    await admin.page.screenshot({
+      path: resolve(evidence, "r4b-users-1366x768.png"),
+    });
+    receipt.admin_users_screen = {
+      view: "professional",
+      account: "b2.search.viewer",
+      role_label: terms.roles.viewer,
+      viewport: admin.page.viewportSize(),
+    };
     receipt.passed.sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
     receipt.success = true;
   } catch (error) {
