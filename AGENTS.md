@@ -25,6 +25,7 @@ R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁
 ## 3 代码地图
 
 - R4-B1 的机构归属、提升与依赖由 `backend/kernel/modules.py` 管理。`releases.py` 调用 `release_snapshots.py` 生成差异和冻结条目，独立审核通过后在同一事务更新当前版本。后台批准保存在 `backend/infra/release_snapshot.py`。机构库 0005 对应可信恢复定义 v8。 [办理与恢复实测](docs/blueprint/rounds/R4-B-UPPER-EVIDENCE.md#b1-动作反例和恢复)
+- R4-B2 的可见范围由 `backend/security/visibility.py` 判定。顶部搜索、旧搜索与工具共用 `backend/kernel/search.py`。要素及原文片段在业务事务提交时写入机构自己的检索索引。重建任务与 0006 迁移都使用 `backend/infra/search_index.py`。可信恢复定义 v9 从原始业务数据重建索引。 [检索与语义服务演练](docs/blueprint/rounds/R4-DEMO.md#从原制度检索)
 
 - R4-A.2 用 `domains/reviews.py` 统一累计上次发布以来的编辑与提交人。核对、旧页、Excel 和经验修订对已存在的内容调用相同的工作面守卫。`domains/build_source_facts.py` 维护系统识别与模型原句的归属，`domains/build_sources.py` 按方案当时的阅读版列出未成条段落。新增写入口的角色、机构、独立审核及专用工作面反例见 [上半段核验附录](docs/blueprint/rounds/R4-B-UPPER-EVIDENCE.md)。
 

@@ -2,6 +2,8 @@
 
 R4-A.2 的单独交付提交为 `7d7cdc6`，快速层和原用例状态对照已通过。B1 已在旧机构升级、新机构开通、0.7 备份恢复和真实 HTTP 发布流程中验证。机构发布版本保存审核过的内容、关联和引用，普通用户继续按当前角色使用已发布的要素。 [A.2 CI](https://github.com/min108/ontology-one/actions/runs/44429274725) · [机构发布与恢复](rounds/R4-B-UPPER-EVIDENCE.md#b1-动作反例和恢复)
 
+B2 已用普通制度原件完成 S1–S12 浏览器演练，核对原始引文、同机构不同角色、跨机构过滤及旧接口顺序。机构库迁移 0006 的两个 MySQL 原生 ngram 索引已在 51 个机构实查，重复迁移后各库文档摘要相同。 [检索及反例](rounds/R4-B-UPPER-EVIDENCE.md#b2-检索与语义动作)
+
 | 轮 | 版本 | 状态 | 验收日期 | 报告 |
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
