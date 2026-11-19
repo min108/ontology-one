@@ -203,7 +203,7 @@ class IdentityMigration(unittest.TestCase):
         row = store.get_tenant(ident)
         self.assertRegex(ident, r"^org-[0-9a-f]{8}$")
         self.assertEqual(row["status"], "active")
-        self.assertEqual(migrations.migration_status("tenant", row["db_name"])["current"], 4)
+        self.assertEqual(migrations.migration_status("tenant", row["db_name"])["current"], 5)
         with closing(db._raw_connection(row["db_name"])) as raw:
             self.assertEqual(
                 db.Connection(raw).execute("SELECT title FROM entities WHERE id=?", (ident,)).fetchone()[0], row["name"]
