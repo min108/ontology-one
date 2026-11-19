@@ -25,6 +25,7 @@ import {
   publishOriginal,
   registerAlias,
   reopenAfterArchive,
+  verifyMatchedWords,
   screenshotComparison,
   topSearch,
 } from "./r4b-search-support.mjs";
@@ -320,6 +321,10 @@ test("R4-B BA7–BA10 S1–S12 search the reviewed original regulation, all entr
     receipt.passed.push("S1", "S2", "S3", "S4", "S5", "S6");
     receipt.queries = sample;
     receipt.before_rebuild = orderedDocuments(before);
+    receipt.highlighted_terms = await verifyMatchedWords(
+      builder.page,
+      rules.S5.id,
+    );
     const general = (await topSearch(builder.page, "付款")).hits;
     assertChunkLimit(general);
     const matchingChunks = chunks.filter((chunk) =>

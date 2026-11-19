@@ -268,6 +268,33 @@ export async function topSearch(page, q) {
   return { first, hits, dialog, options };
 }
 
+export async function verifyMatchedWords(page, aliasRuleId) {
+  const prefix = await topSearch(page, "质量保证");
+  const aliasIndex = prefix.first.items.findIndex(
+    (row) => row.id === aliasRuleId,
+  );
+  expect(aliasIndex).toBeGreaterThanOrEqual(0);
+  expect(prefix.first.items[aliasIndex].match_terms).toContain("质量保证");
+  const aliasRow = prefix.options.nth(aliasIndex);
+  await expect(aliasRow).toContainText(alias);
+  expect(await aliasRow.locator("mark").allTextContents()).toContain(
+    "质量保证",
+  );
+
+  const question = await topSearch(page, "合同如何付款？");
+  const words = ["合同", "付款"];
+  const index = question.first.items.findIndex((hit) =>
+    words.every((word) => hit.match_terms?.includes(word)),
+  );
+  expect(index).toBeGreaterThanOrEqual(0);
+  const marks = await question.options
+    .nth(index)
+    .locator("mark")
+    .allTextContents();
+  for (const word of words) expect(marks).toContain(word);
+  return { question: "合同如何付款？", words, alias_prefix: "质量保证" };
+}
+
 export async function reopenAfterArchive(page, q, cachedId) {
   // Keep this tab and its live QueryClient. Only delay forwarding the second request.
   await page.getByRole("combobox").press("Escape");
