@@ -1,3 +1,4 @@
+import reviewFixture from '../../../test-fixtures/r4a2-source-review.json';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ConfigProvider } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
@@ -35,6 +36,11 @@ const wrap = ({ children }: { children: React.ReactNode }) => (
     <MemoryRouter>{children}</MemoryRouter>
   </ConfigProvider>
 );
+function openOmissionLists() {
+  for (const summary of document.querySelectorAll('[data-omission-group] details:not([open]) > summary')) {
+    fireEvent.click(summary);
+  }
+}
 it('does not invent a file date and displays the source quote for an extracted date', () => {
   const value = proposal();
   const confirm = vi.fn();
@@ -57,6 +63,97 @@ it('does not invent a file date and displays the source quote for an extracted d
   expect(screen.getByText(terms.labels.r4a1_origin_manual)).toBeVisible();
   expect(screen.queryByText(terms.labels.r4a1_file_date_missing)).not.toBeInTheDocument();
 });
+it('keeps overlapping date suggestions unselected and sends the chosen source anchor with version guards', () => {
+  const value = proposal();
+  const candidates = [
+    { value: '2026-01-01', quote: 'The original policy started on 1 January.', anchor_id: 'old' },
+    { value: '2026-01-01', quote: 'This amended policy starts on 1 January.', anchor_id: 'current' },
+  ].map((fact) => ({ ...fact, material_id: 'M-1', source_version: 'V-1', origin: 'system' }));
+  value.document_facts!.valid_from_candidates = candidates;
+  value.items[1].applied_version = 3;
+  const confirm = vi.fn();
+  const { rerender } = render(<ChangesetFacts proposal={value} disabled={false} onConfirm={confirm} />, {
+    wrapper: wrap,
+  });
+  const date = screen.getByLabelText(terms.labels.r4a1_file_date);
+  const apply = screen.getByRole('button', { name: terms.labels.r4a1_file_date_apply });
+  expect(date).toHaveValue('');
+  for (const candidate of candidates) {
+    expect(screen.getByRole('radio', { name: candidate.quote })).not.toBeChecked();
+    expect(screen.getByText(candidate.quote)).toBeVisible();
+  }
+  expect(apply).toBeDisabled();
+  fireEvent.click(screen.getByRole('radio', { name: candidates[1].quote }));
+  expect(date).toHaveValue(candidates[1].value);
+  fireEvent.click(apply);
+  expect(confirm).toHaveBeenCalledExactlyOnceWith({
+    changeset_id: 'CS-1',
+    valid_from_candidate_id: 'current',
+    expected_versions: { B: 3 },
+  });
+  value.document_facts!.valid_from = {
+    ...candidates[1],
+    origin: 'manual',
+    method: 'selection',
+    confirmed_by: 'Builder Li',
+  };
+  rerender(<ChangesetFacts key="saved" proposal={value} disabled={false} onConfirm={confirm} />);
+  expect(screen.getByRole('radio', { name: candidates[1].quote })).toBeChecked();
+  expect(screen.getByText(/核对人选择.*Builder Li/)).toBeVisible();
+  expect(screen.getByRole('button', { name: terms.labels.r4a1_file_date_apply })).toBeDisabled();
+  fireEvent.click(screen.getByRole('radio', { name: candidates[0].quote }));
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4a1_file_date_apply }));
+  expect(confirm).toHaveBeenLastCalledWith({
+    changeset_id: 'CS-1',
+    valid_from_candidate_id: 'old',
+    expected_versions: { B: 3 },
+  });
+});
+it('shows a single confirmed current-file date and its sentence once without asking the builder to choose it again', () => {
+  const value = proposal();
+  const only = {
+    origin: 'system',
+    value: '2026-01-01',
+    anchor_id: 'effective',
+    material_id: 'M-1',
+    source_version: 'V-1',
+    quote: 'Only the current edition takes effect on this date.',
+  };
+  value.document_facts!.valid_from = only;
+  value.document_facts!.valid_from_candidates = [only];
+  render(<ChangesetFacts proposal={value} disabled={false} onConfirm={vi.fn()} />, { wrapper: wrap });
+  expect(screen.getByLabelText(terms.labels.r4a1_file_date)).toHaveValue(only.value);
+  expect(screen.getByText(terms.labels.r4a2_origin_system)).toBeVisible();
+  expect(screen.getByRole('link', { name: only.quote })).toHaveAttribute(
+    'href',
+    '/materials/M-1?anchor=effective&source_version=V-1',
+  );
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+});
+it('allows a historical proposal to select a stored source position before it has an anchor', () => {
+  const value = proposal();
+  const candidate = {
+    origin: 'system',
+    candidate_id: 'position-27',
+    quote: 'The amended edition starts on 1 May.',
+    value: '2027-05-01',
+    source_version: 'V-1',
+    material_id: 'M-1',
+  };
+  value.document_facts!.valid_from_candidates = [candidate];
+  const confirm = vi.fn();
+  render(<ChangesetFacts proposal={value} disabled={false} onConfirm={confirm} />, { wrapper: wrap });
+  const option = screen.getByRole('radio', { name: candidate.quote });
+  expect(option).not.toBeChecked();
+  expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  fireEvent.click(option);
+  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4a1_file_date_apply }));
+  expect(confirm).toHaveBeenCalledExactlyOnceWith({
+    changeset_id: 'CS-1',
+    valid_from_candidate_id: candidate.candidate_id,
+    expected_versions: {},
+  });
+});
 it('explicit batch confirmation sends only missing active rules and their version guards', () => {
   const value = proposal();
   value.items[0].applied_entity_id = 'R-1';
@@ -75,13 +172,20 @@ it('explicit batch confirmation sends only missing active rules and their versio
   const confirm = vi.fn();
   render(<ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />, { wrapper: wrap });
   expect(confirm).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4a1_confirm_exceptions }));
+  openOmissionLists();
+  const exceptions = screen.getByRole('button', { name: terms.labels.r4a1_confirm_exceptions });
+  expect(exceptions).toBeDisabled();
+  for (const box of within(exceptions.closest('details')!).getAllByRole('checkbox')) fireEvent.click(box);
+  fireEvent.click(exceptions);
   expect(confirm).toHaveBeenCalledExactlyOnceWith({
     changeset_id: 'CS-1',
     confirm_no_exceptions_item_ids: ['A'],
     expected_versions: { A: 4 },
   });
-  fireEvent.click(screen.getByRole('button', { name: terms.labels.r4a1_confirm_conditions }));
+  const conditions = screen.getByRole('button', { name: terms.labels.r4a1_confirm_conditions });
+  expect(conditions).toBeDisabled();
+  for (const box of within(conditions.closest('details')!).getAllByRole('checkbox')) fireEvent.click(box);
+  fireEvent.click(conditions);
   expect(confirm).toHaveBeenLastCalledWith({
     changeset_id: 'CS-1',
     confirm_unconditional_item_ids: ['A', 'B'],
@@ -106,27 +210,30 @@ it('lets each omission group independently select exact IDs and versions after r
     <ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />,
     { wrapper: wrap },
   );
+  openOmissionLists();
   const exceptions = container.querySelector('[data-omission-group="exceptions"]') as HTMLElement;
   const conditions = container.querySelector('[data-omission-group="conditions"]') as HTMLElement;
   const row = exceptions.querySelector('[data-omission-item="A"]') as HTMLElement;
   const quote = within(row).getByText(value.items[0].evidence[0].quote);
-  expect(quote).not.toBeVisible();
-  fireEvent.click(within(row).getByText(terms.labels.r4a1_source_sentence));
+  expect(exceptions.querySelector('summary')).toHaveTextContent(/请核对.*例外/);
+  expect(conditions.querySelector('summary')).toHaveTextContent(/请核对.*条件/);
+  expect(exceptions.querySelector('summary')).not.toHaveTextContent(reviewFixture.previousOmissionWording);
   expect(quote).toBeVisible();
   expect(within(row).queryByText(value.items[1].evidence[0].quote)).not.toBeInTheDocument();
   expect(within(row).getByRole('link')).toHaveAttribute(
     'href',
     '/materials/M-1?anchor=anchor-A&source_version=version-1',
   );
-  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'B' }));
-  expect(within(conditions).getByRole('checkbox', { name: 'B' })).toBeChecked();
+  for (const checkbox of screen.getAllByRole('checkbox')) expect(checkbox).not.toBeChecked();
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'A' }));
+  expect(within(conditions).getByRole('checkbox', { name: 'A' })).not.toBeChecked();
   fireEvent.click(within(exceptions).getByRole('button', { name: terms.labels.r4a1_confirm_exceptions }));
   expect(confirm).toHaveBeenLastCalledWith({
     changeset_id: 'CS-1',
     confirm_no_exceptions_item_ids: ['A'],
     expected_versions: { A: 3 },
   });
-  fireEvent.click(within(conditions).getByRole('checkbox', { name: 'A' }));
+  fireEvent.click(within(conditions).getByRole('checkbox', { name: 'B' }));
   fireEvent.click(within(conditions).getByRole('button', { name: terms.labels.r4a1_confirm_conditions }));
   expect(confirm).toHaveBeenLastCalledWith({
     changeset_id: 'CS-1',
@@ -156,19 +263,48 @@ it('never submits a deselected or newly ineligible row when the proposal refresh
     <ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />,
     { wrapper: wrap },
   );
+  openOmissionLists();
   const exceptions = container.querySelector('[data-omission-group="exceptions"]') as HTMLElement;
   fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'A' }));
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'A' }));
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'B' }));
   value.items[1].after_data.bulk_confirmation_blocked = true;
   value.items.push({ ...item('C'), applied_version: 5 });
   rerender(<ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />);
   expect(within(exceptions).queryByRole('checkbox', { name: 'B' })).not.toBeInTheDocument();
   expect(within(exceptions).getByRole('checkbox', { name: 'A' })).not.toBeChecked();
+  expect(within(exceptions).getByRole('checkbox', { name: 'C' })).not.toBeChecked();
+  expect(within(exceptions).getByRole('button')).toBeDisabled();
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'C' }));
   fireEvent.click(within(exceptions).getByRole('button', { name: terms.labels.r4a1_confirm_exceptions }));
   expect(confirm).toHaveBeenCalledExactlyOnceWith({
     changeset_id: 'CS-1',
     confirm_no_exceptions_item_ids: ['C'],
     expected_versions: { C: 5 },
   });
+});
+it('requires a fresh selection when a checked row changes version or gains a different source quote', () => {
+  const value = proposal();
+  value.items[0].applied_version = 3;
+  value.items[1].evidence = [
+    { material_id: 'M', source_version: 'V', anchor_id: 'A', quote: 'First wording.' },
+  ];
+  const confirm = vi.fn();
+  const { container, rerender } = render(
+    <ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />,
+    { wrapper: wrap },
+  );
+  openOmissionLists();
+  const list = container.querySelector('[data-omission-group="exceptions"]') as HTMLElement;
+  for (const box of within(list).getAllByRole('checkbox')) fireEvent.click(box);
+  expect(within(list).getByRole('button')).toBeEnabled();
+  const refreshed = structuredClone(value);
+  refreshed.items[0].applied_version = 4;
+  refreshed.items[1].evidence[0].quote = 'Amended wording.';
+  rerender(<ChangesetOmissions proposal={refreshed} disabled={false} onConfirm={confirm} />);
+  for (const box of within(list).getAllByRole('checkbox')) expect(box).not.toBeChecked();
+  expect(within(list).getByRole('button')).toBeDisabled();
+  expect(confirm).not.toHaveBeenCalled();
 });
 it('does not relabel a deleted source declaration as absent, independently for each field', () => {
   const value = proposal();
@@ -182,12 +318,15 @@ it('does not relabel a deleted source declaration as absent, independently for e
   const { container } = render(<ChangesetOmissions proposal={value} disabled={false} onConfirm={confirm} />, {
     wrapper: wrap,
   });
+  openOmissionLists();
   const exceptions = container.querySelector('[data-omission-group="exceptions"]') as HTMLElement;
   const conditions = container.querySelector('[data-omission-group="conditions"]') as HTMLElement;
   expect(within(exceptions).getAllByRole('checkbox')).toHaveLength(1);
-  expect(within(exceptions).getByRole('checkbox', { name: 'B' })).toBeChecked();
+  expect(within(exceptions).getByRole('checkbox', { name: 'B' })).not.toBeChecked();
+  fireEvent.click(within(exceptions).getByRole('checkbox', { name: 'B' }));
   expect(within(conditions).getAllByRole('checkbox')).toHaveLength(1);
-  expect(within(conditions).getByRole('checkbox', { name: 'A' })).toBeChecked();
+  expect(within(conditions).getByRole('checkbox', { name: 'A' })).not.toBeChecked();
+  fireEvent.click(within(conditions).getByRole('checkbox', { name: 'A' }));
   expect(screen.queryByRole('checkbox', { name: 'both' })).not.toBeInTheDocument();
   fireEvent.click(within(exceptions).getByRole('button'));
   expect(confirm).toHaveBeenLastCalledWith({

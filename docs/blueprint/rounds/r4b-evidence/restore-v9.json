@@ -1,0 +1,51 @@
+{
+  "revision": "5fe8a3d6a3cf83c86742010f4c3b65ecd76e5bfc",
+  "full_v9": {
+    "trusted_schema": 9,
+    "full_archive_index_rows": 0,
+    "restored_dept_authoritative_rows": 209,
+    "native_original_rule_title_hits": 1,
+    "native_original_confirmed_chunk_hits": 1,
+    "native_poisoned_cache_title_hits": 0,
+    "native_private_report_body_hits": 0,
+    "private_report_in_authoritative_storage": 1,
+    "rule_source_status": "draft",
+    "rule_index_status": "draft",
+    "documents_by_type": {
+      "chunk": 1,
+      "element": 24
+    }
+  },
+  "current_portable": {
+    "restored_rows": 200,
+    "restored_originals": 4,
+    "verified_original_digests": 4,
+    "native_original_rule_title_hits": 1,
+    "native_original_confirmed_chunk_hits": 1,
+    "native_poisoned_cache_title_hits": 0,
+    "native_private_report_body_hits": 0,
+    "private_report_in_authoritative_storage": 1,
+    "rule_source_status": "draft",
+    "rule_index_status": "draft",
+    "documents_by_type": {
+      "chunk": 1,
+      "element": 24
+    }
+  },
+  "accepted_070_portable": {
+    "restored_rows": 175,
+    "restored_originals": 4,
+    "verified_original_digests": 4,
+    "native_original_rule_title_hits": 1,
+    "native_original_confirmed_chunk_hits": 1,
+    "native_poisoned_cache_title_hits": 0,
+    "native_private_report_body_hits": 0,
+    "private_report_in_authoritative_storage": 0,
+    "rule_source_status": "draft",
+    "rule_index_status": "draft",
+    "documents_by_type": {
+      "chunk": 1,
+      "element": 24
+    }
+  }
+}

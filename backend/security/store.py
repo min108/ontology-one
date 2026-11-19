@@ -324,8 +324,11 @@ def _grant(cur, user_id, tenant_id):
 
 
 def _principal(cur, user, session, request_id):
+    from .permissions import ROLES as session_roles
+
     if (
         not user
+        or user["role"] not in session_roles
         or not user["is_active"]
         or session["revoked_at"] is not None
         or session["expires_at"] <= time.time()
@@ -381,6 +384,8 @@ def _session_row(cursor, *, raw=None, principal=None, captured_tenant=None):
 
 
 def _joined_principal(row, request_id):
+    from .permissions import ROLES as session_roles
+
     if (
         not row
         or not row["is_active"]
@@ -389,7 +394,7 @@ def _joined_principal(row, request_id):
         or row["auth_version"] != row["session_version"]
         or row["home_status"] != "active"
         or row["target_status"] != "active"
-        or row["role"] not in ROLES
+        or row["role"] not in session_roles
     ):
         return None
     superadmin = row["home_tenant_id"] == "hq" and row["role"] == "admin"

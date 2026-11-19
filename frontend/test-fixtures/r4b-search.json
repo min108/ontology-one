@@ -1,0 +1,19 @@
+{
+  "reimbursement": {
+    "title": "报销流程",
+    "summary": "费用由财务核对。",
+    "highlight": "退款按 C++ 申请。<img src=x>",
+    "query": "费用如何报销？",
+    "terms": [
+      "费用",
+      "报销",
+      "C++"
+    ]
+  },
+  "aliases": {
+    "title": "政策名称",
+    "existing": "原有称呼",
+    "condition": "原有条件",
+    "added": "另一个名称"
+  }
+}

@@ -19,7 +19,7 @@ class RecoverySchema(unittest.TestCase):
         columns = trusted_schema("tenant")["columns"]
         self.assertEqual(
             {table: frozenset(value) for table, value in columns.items() if table != "schema_migrations"},
-            schema_columns(),
+            schema_columns(include_rebuildable=True),
         )
 
     def test_normalization_does_not_change_quoted_defaults(self) -> None:

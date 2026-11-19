@@ -19,12 +19,19 @@ def command(args: list[str]) -> None:
 
 
 def require_migrated_schema(kind: str, status: dict) -> dict:
-    version, table = {"control": (6, "job_schedule_state"), "tenant": (4, "entity_meta")}[kind]
+    version, tables = {
+        "control": (6, ("job_schedule_state",)),
+        "tenant": (
+            6,
+            ("entity_meta", "ont_modules", "ont_module_deps", "ont_releases", "ont_release_items", "search_index"),
+        ),
+    }[kind]
     if status["current"] != version or status["pending"]:
         raise RuntimeError(f"Offline {kind} migration is incomplete: expected version {version}")
-    if table not in status["tables"]:
-        raise RuntimeError(f"Offline {kind} table is missing: {table}")
-    return {"version": version, "required_table": table}
+    for table in tables:
+        if table not in status["tables"]:
+            raise RuntimeError(f"Offline {kind} table is missing: {table}")
+    return {"version": version, "required_table": tables[0], "required_tables": list(tables)}
 
 
 def migrated_schema_inventory() -> dict:

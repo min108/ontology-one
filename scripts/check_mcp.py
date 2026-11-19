@@ -378,6 +378,11 @@ async def run_checks(box, external, ui_access=None):
         data = success(await caller.call(token(), "ontology_discover", {"query": "QA-A", "kind": "data"}))
         assert {item["id"] for item in data["entities"]} == {"MCP-KEY", "MCP-AMOUNT", "MCP-TEXT"}
         assert all(item["owner_tenant_id"] == "sub-01" and "payload" not in item for item in data["entities"])
+        # The registered application can discover published metadata. Private body text,
+        # a matching unpublished title and a different institution's title remain invisible.
+        for query in ("已审核的业务数据标准", "QA-A-未发布内容", "QA-B"):
+            hidden = success(await caller.call(token(), "ontology_discover", {"query": query, "kind": "data"}))
+            assert hidden["entities"] == []
         data = success(await caller.call(token(), "ontology_traverse", {"entity_id": "MCP-KEY", "depth": 3}))
         assert {item["id"] for item in data["nodes"]} == {"MCP-KEY", "MCP-AMOUNT", "MCP-TEXT"}
         assert len(records["sub-01"]["visible_edges"]) == 2

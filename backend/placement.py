@@ -412,6 +412,7 @@ def confirm(asset_id: str, body: ConfirmRequest):
             seen.add(key)
             audited.append((link, start, end, target, original))
         ids, created, reviews = [], 0, []
+        incoming_sources = {}
         before_relations = [
             dict(v) for v in c.execute("SELECT * FROM relations WHERE source=? OR target=?", (asset_id, asset_id))
         ]
@@ -450,7 +451,12 @@ def confirm(asset_id: str, body: ConfirmRequest):
                         dump(audit),
                     ),
                 )
+                from .kernel.modules import record_confirmed_references
+
+                record_confirmed_references(c, start["id"], [end["id"]])
                 created += 1
+                if start["id"] != asset_id:
+                    incoming_sources[start["id"]] = start
                 log(
                     c,
                     target["id"],
@@ -461,11 +467,23 @@ def confirm(asset_id: str, body: ConfirmRequest):
             ids.append(rid)
             reviews.append({"relation_id": rid, "reused_existing": bool(prior), **audit})
         if created:
+            from .domains.reviews import record_relation_editor
+            from .kernel.kinds import persisted_kind
+
             old = {**snapshot(e), "placement_audit": {"job_id": body.job_id, "relations_before": before_relations}}
             c.execute(
                 "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
                 (asset_id, e["version"], dump(old), now(), "人工审定图谱关联前的内容与关系快照"),
             )
+            for source in incoming_sources.values():
+                if persisted_kind(source["kind"]).governed:
+                    c.execute(
+                        "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
+                        (source["id"], source["version"], dump(source), now(), "登记从本项发出的关联"),
+                    )
+                    record_relation_editor(c, source, principal.user_id)
+                    c.execute("UPDATE entities SET version=version+1,updated_at=? WHERE id=?", (now(), source["id"]))
+            record_relation_editor(c, e, principal.user_id)
             c.execute("UPDATE entities SET version=version+1,updated_at=? WHERE id=?", (now(), asset_id))
         confirmation = {
             "fingerprint": fingerprint,

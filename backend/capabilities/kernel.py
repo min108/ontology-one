@@ -33,6 +33,21 @@ class ElementCreate(StrictModel):
     meta: ElementMetadata | None = None
 
 
+class ElementPayloadFields(StrictModel):
+    definition: str | None = None
+    unit: str | None = None
+    grain: str | None = None
+    scope: str | None = None
+    conditions: list[str] | None = None
+    exceptions: str | None = None
+    usage_conditions: str | None = None
+    boundary: str | None = None
+    applies_to_id: str | None = None
+    judgement: dict[str, JsonValue] | None = None
+    formula: dict[str, JsonValue] | None = None
+    test_cases: list[dict[str, JsonValue]] | None = None
+
+
 class ElementUpdate(ElementGet):
     kind: str | None = Field(default=None, min_length=1, max_length=64)
     waiver_applications: GateWaivers | None = None
@@ -41,6 +56,8 @@ class ElementUpdate(ElementGet):
     summary: str | None = Field(default=None, max_length=16000)
     domain: str | None = Field(default=None, max_length=255)
     payload: dict[str, JsonValue] | None = None
+    payload_fields: ElementPayloadFields | None = None
+    add_alias: str | None = Field(default=None, min_length=1, max_length=250)
     meta: ElementMetadata | None = None
     reason: str = Field(default="补充草稿内容", min_length=1, max_length=500)
     sentence_confirmed: bool = False

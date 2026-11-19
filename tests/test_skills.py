@@ -48,6 +48,8 @@ class Connection:
 
     def execute(self, statement, values=()):
         self.statements.append((statement, values))
+        if statement.startswith("SELECT action,actor,created_at FROM activities"):
+            return []
         return self.result
 
     def close(self):
@@ -197,7 +199,9 @@ class Governance(unittest.TestCase):
                 stack.enter_context(patch.object(s, "_connect", return_value=Connection()))
                 stack.enter_context(
                     patch.object(
-                        s, "_document", return_value=({"id": "S1", "version": 3, "status": "review"}, document)
+                        s,
+                        "_document",
+                        return_value=({"id": "S1", "version": 3, "status": "review", "payload": {}}, document),
                     )
                 )
                 with self.assertRaises(HTTPException) as error:
@@ -267,7 +271,7 @@ class Governance(unittest.TestCase):
     def test_restore_demotes_and_discards_proof(self):
         connection = Connection()
         connection.result.fetchall.return_value = [{"entity_id": "S1"}]
-        entity = {"id": "S1", "status": "published", "version": 4}
+        entity = {"id": "S1", "status": "published", "version": 4, "payload": {"managed_skill": True}}
         document = {"current_revision": 2}
         with (
             use_context(P),
@@ -280,6 +284,7 @@ class Governance(unittest.TestCase):
         self.assertEqual(connection.statements[0][0], "DELETE FROM skill_checks")
         self.assertTrue(any("SET status='draft'" in sql for sql, _ in connection.statements))
         self.assertTrue(any("submitted_by=NULL" in sql for sql, _ in connection.statements))
+        self.assertIn(P.user_id, entity["payload"]["r2_review"]["editor_ids"])
         sync.assert_called_once()
 
     def test_load_holds_published_entity_and_document_shared(self):

@@ -32,3 +32,8 @@
   color: var(--zy-gray-600);
   font-size: var(--zy-font-small);
 }
+
+.list mark {
+  background: var(--zy-color-accent-soft);
+  color: var(--zy-color-accent-active);
+}

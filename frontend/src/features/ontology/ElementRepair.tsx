@@ -95,8 +95,7 @@ export function ElementRepair({
     if (busy || disabled || missingAuthorityOrg || !reason.trim() || signal?.aborted) return;
     setBusy(true);
     setError('');
-    const payload: ElementDetail['entity']['payload'] =
-      entity.payload.authority_spec || entity.payload.managed_skill ? {} : { ...entity.payload };
+    const payload: ElementDetail['entity']['payload'] = {};
     const meta: NonNullable<ElementUpdate['meta']> = {};
     for (const field of fields) {
       if (values[field.key] === field.value) continue;
@@ -114,13 +113,15 @@ export function ElementRepair({
     if (entity.kind === 'rule' && authority && subjectsChanged) payload.applicable_subject_ids = subjects;
     else if (entity.kind === 'rule' && !authority && subject !== businessText(entity.payload.applies_to_id))
       payload.applies_to_id = subject;
+    const fieldChanges =
+      authority || entity.payload.managed_skill ? { payload } : { payload_fields: payload };
     try {
       await invokeCapability<ElementDetailResult>(
         'element.update_draft',
         {
           entity_id: entity.id,
           version: entity.version,
-          payload,
+          ...fieldChanges,
           meta,
           waiver_applications: Object.fromEntries(
             Object.entries(applications)

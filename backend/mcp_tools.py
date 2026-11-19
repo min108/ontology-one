@@ -34,9 +34,6 @@ from .mcp_contracts import (
 from .security.context import require_context
 from .security.store import assert_principal_current
 
-ONTOLOGY_KINDS = ("data", "rule", "skill", "knowledge", "organization")
-
-
 _SESSION_POLICY = ContextVar("ontology_mcp_session_policy", default=None)
 
 
@@ -59,14 +56,9 @@ def _principal():
 
 
 def _visible(alias="e"):
-    # Payload content is never projected. These predicates match the UI's active
-    # publication boundary while suppressing the synthetic headquarters root.
-    return (
-        f"{alias}.kind IN ('data','rule','skill','knowledge','organization') "
-        f"AND {alias}.status='published' "
-        f"AND COALESCE(json_extract({alias}.payload,'$.active_asset'),1)!=0 "
-        f"AND COALESCE(json_extract({alias}.payload,'$.hide_in_graph'),0)=0"
-    )
+    from .security.visibility import mcp_published_predicate
+
+    return mcp_published_predicate(alias)
 
 
 def _node(row):
@@ -195,21 +187,19 @@ def validate_receipts(receipts):
 
 
 def _discover(body: DiscoverInput):
+    from .kernel.search import search
+
     principal = _principal()
-    conditions, params = [_visible()], []
-    if body.kind:
-        conditions.append("e.kind=?")
-        params.append(body.kind)
-    if body.query:
-        conditions.append("(e.id LIKE ? OR e.title LIKE ? OR e.summary LIKE ?)")
-        params.extend(["%" + body.query + "%"] * 3)
     with business_readonly(True), closing(connect()) as conn:
-        rows = conn.execute(
-            "SELECT e.id,e.kind,e.title,e.summary,e.version FROM entities e WHERE "
-            + " AND ".join(conditions)
-            + " ORDER BY e.id LIMIT ?",
-            [*params, body.limit + 1],
-        ).fetchall()
+        rows = search(
+            conn,
+            body.query,
+            kind=body.kind or "",
+            include_chunks=False,
+            published_only=True,
+            metadata_only=True,
+            page_size=body.limit + 1,
+        )["items"]
     bindings, receipts = [], []
     # Authorized IDs are capped by the application registry. Do not scan or
     # disclose the entire source catalog to an application with ontology scope.

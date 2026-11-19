@@ -282,9 +282,25 @@ jobs:
       - name: Existing regressions and synthetic model evaluation
         run: |
           set -euo pipefail
-          for name in restore_v020 security workflows sources mcp skills entity_storage agent_runtime; do
-            python "scripts/check_${name}.py" 2>&1 | tee "work/evidence/r1/ci/check_${name}.log"
+          check_suite() {
+            python "scripts/check_${1}.py" 2>&1 | tee "work/evidence/r1/ci/check_${1}.log"
+          }
+          # Each service owns separate ports, storage and database names.
+          # The two harness suites inspect child processes and tmpfs, so run those in sequence.
+          (
+            failed=0
+            for name in restore_v020 security workflows sources mcp entity_storage; do
+              check_suite "$name" || failed=1
+            done
+            exit "$failed"
+          ) &
+          service_checks_pid=$!
+          failed=0
+          for name in skills agent_runtime; do
+            check_suite "$name" || failed=1
           done
+          wait "$service_checks_pid" || failed=1
+          exit "$failed"
       - name: Frontend build
         run: |
           set -euo pipefail

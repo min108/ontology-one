@@ -280,6 +280,8 @@ function UserDialog({
   });
   const own = target?.id === session!.user.id,
     reasonRequired = !!target?.is_superadmin && !own;
+  const selectedRole = roles.find((role) => role === form.role);
+  const retainedRole = target && !roles.some((role) => role === target.role) ? target.role : null;
   const update = (key: keyof typeof form, value: string) =>
     setForm((previous) => ({ ...previous, [key]: value }));
   const validName = !!form.display_name.trim() && form.display_name.trim().length <= 100;
@@ -287,12 +289,12 @@ function UserDialog({
     mode === 'create'
       ? validUsername(form.username) &&
         validName &&
-        roles.includes(form.role as User['role']) &&
+        !!selectedRole &&
         orgs.some((org) => org.id === form.tenant_id && org.status === 'active') &&
         validPassword(form.password)
       : validReason(form.reason, reasonRequired) &&
         (mode === 'edit'
-          ? validName && (own || roles.includes(form.role as User['role']))
+          ? validName && (own || !!retainedRole || !!selectedRole)
           : mode === 'password'
             ? validPassword(form.password)
             : !own);
@@ -319,18 +321,19 @@ function UserDialog({
   async function save() {
     if (!valid) throw new Error('Invalid account form');
     let body: UserManageInput;
-    if (mode === 'create')
+    if (mode === 'create') {
+      if (!selectedRole) throw new Error('Invalid account role');
       body = {
         action: 'create',
         create: {
           username: form.username.trim().toLowerCase(),
           display_name: form.display_name.trim(),
           tenant_id: form.tenant_id,
-          role: form.role as User['role'],
+          role: selectedRole,
           password: form.password,
         },
       };
-    else
+    } else
       body = {
         action: 'update',
         user_id: target!.id,
@@ -341,7 +344,7 @@ function UserDialog({
               ? { is_active: !target!.is_active }
               : {
                   display_name: form.display_name.trim(),
-                  ...(!own ? { role: form.role as User['role'] } : {}),
+                  ...(!own && selectedRole ? { role: selectedRole } : {}),
                 }),
           ...(form.reason.trim() ? { reason: form.reason.trim() } : {}),
         },
@@ -411,21 +414,25 @@ function UserDialog({
             )}
             <label className={styles.field} htmlFor="identity-user-role">
               {copy.identity_role}
-              <select
-                id="identity-user-role"
-                aria-label={copy.identity_role}
-                className={styles.control}
-                disabled={own}
-                value={form.role}
-                onChange={(event) => update('role', event.target.value)}
-              >
-                <option value="">{copy.identity_choose_role}</option>
-                {roles.map((role) => (
-                  <option key={role} value={role}>
-                    {terms.roles[role]}
-                  </option>
-                ))}
-              </select>
+              {retainedRole ? (
+                <output id="identity-user-role">{terms.roles[retainedRole]}</output>
+              ) : (
+                <select
+                  id="identity-user-role"
+                  aria-label={copy.identity_role}
+                  className={styles.control}
+                  disabled={own}
+                  value={form.role}
+                  onChange={(event) => update('role', event.target.value)}
+                >
+                  <option value="">{copy.identity_choose_role}</option>
+                  {roles.map((role) => (
+                    <option key={role} value={role}>
+                      {terms.roles[role]}
+                    </option>
+                  ))}
+                </select>
+              )}
               {own && <span className={styles.help}>{copy.identity_self_role}</span>}
             </label>
           </>

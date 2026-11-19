@@ -1,6 +1,48 @@
 {
   "components": {
     "schemas": {
+      "AffectedNode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticEdge"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "status",
+          "version",
+          "path"
+        ],
+        "title": "AffectedNode",
+        "type": "object"
+      },
       "AgentReportRun": {
         "additionalProperties": true,
         "properties": {
@@ -1102,6 +1144,19 @@
               }
             ],
             "title": "Valid From"
+          },
+          "valid_from_candidate_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From Candidate Id"
           }
         },
         "required": [
@@ -1139,6 +1194,14 @@
               }
             ]
           },
+          "expected_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 200,
+            "title": "Expected Versions",
+            "type": "object"
+          },
           "item_ids": {
             "items": {
               "type": "string"
@@ -1160,6 +1223,37 @@
           "decision"
         ],
         "title": "DecideItems",
+        "type": "object"
+      },
+      "DependentPart": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "min_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Version"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "min_version"
+        ],
+        "title": "DependentPart",
         "type": "object"
       },
       "DescribeInput": {
@@ -1242,6 +1336,11 @@
             "title": "Anchor Id",
             "type": "string"
           },
+          "candidate_id": {
+            "default": "",
+            "title": "Candidate Id",
+            "type": "string"
+          },
           "confirmed_at": {
             "default": "",
             "title": "Confirmed At",
@@ -1251,6 +1350,46 @@
             "default": "",
             "title": "Confirmed By",
             "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "const": "document",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "material_id": {
+            "default": "",
+            "title": "Material Id",
+            "type": "string"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "const": "selection",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
           },
           "origin": {
             "title": "Origin",
@@ -1265,6 +1404,17 @@
             "default": "",
             "title": "Source Version",
             "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
           },
           "value": {
             "default": "",
@@ -1286,6 +1436,13 @@
           },
           "valid_from": {
             "$ref": "#/components/schemas/DocumentFact"
+          },
+          "valid_from_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFact"
+            },
+            "title": "Valid From Candidates",
+            "type": "array"
           }
         },
         "required": [
@@ -1804,6 +1961,160 @@
         "title": "ElementMetadata",
         "type": "object"
       },
+      "ElementPayloadFields": {
+        "additionalProperties": false,
+        "properties": {
+          "applies_to_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applies To Id"
+          },
+          "boundary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundary"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditions"
+          },
+          "definition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition"
+          },
+          "exceptions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exceptions"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain"
+          },
+          "judgement": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judgement"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "test_cases": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/JsonValue"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Cases"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "usage_conditions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Conditions"
+          }
+        },
+        "title": "ElementPayloadFields",
+        "type": "object"
+      },
       "ElementRestore": {
         "additionalProperties": false,
         "properties": {
@@ -1881,6 +2192,19 @@
       "ElementUpdate": {
         "additionalProperties": false,
         "properties": {
+          "add_alias": {
+            "anyOf": [
+              {
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Add Alias"
+          },
           "domain": {
             "anyOf": [
               {
@@ -1935,6 +2259,16 @@
               }
             ],
             "title": "Payload"
+          },
+          "payload_fields": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ElementPayloadFields"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reason": {
             "default": "补充草稿内容",
@@ -2254,6 +2588,30 @@
             "title": "Confirmed By",
             "type": "string"
           },
+          "level": {
+            "anyOf": [
+              {
+                "const": "document",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "const": "selection",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
           "origin": {
             "title": "Origin",
             "type": "string"
@@ -2350,6 +2708,21 @@
       "GateField": {
         "additionalProperties": false,
         "properties": {
+          "actor_id": {
+            "default": "",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "anchor_id": {
+            "default": "",
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "default": "",
+            "title": "Confirmed At",
+            "type": "string"
+          },
           "confirmed_by": {
             "default": "",
             "title": "Confirmed By",
@@ -2368,9 +2741,34 @@
             "title": "Label",
             "type": "string"
           },
+          "material_id": {
+            "default": "",
+            "title": "Material Id",
+            "type": "string"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "const": "selection",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/GateFieldPart"
+            },
+            "title": "Parts",
+            "type": "array"
+          },
           "source": {
             "enum": [
               "source",
+              "system",
               "editor",
               "batch_confirmation",
               "legacy",
@@ -2382,6 +2780,11 @@
           "source_quote": {
             "default": "",
             "title": "Source Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "",
+            "title": "Source Version",
             "type": "string"
           },
           "value": {
@@ -2396,6 +2799,49 @@
           "source"
         ],
         "title": "GateField",
+        "type": "object"
+      },
+      "GateFieldPart": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "default": "",
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "material_id": {
+            "default": "",
+            "title": "Material Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "source",
+              "system"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_quote": {
+            "title": "Source Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "",
+            "title": "Source Version",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_quote"
+        ],
+        "title": "GateFieldPart",
         "type": "object"
       },
       "GateResult": {
@@ -2689,6 +3135,49 @@
           "permissions"
         ],
         "title": "IdentityOutput",
+        "type": "object"
+      },
+      "ImpactResult": {
+        "additionalProperties": false,
+        "properties": {
+          "dependent_modules": {
+            "items": {
+              "$ref": "#/components/schemas/DependentPart"
+            },
+            "title": "Dependent Modules",
+            "type": "array"
+          },
+          "direct": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedNode"
+            },
+            "title": "Direct",
+            "type": "array"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "indirect": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedNode"
+            },
+            "title": "Indirect",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entity_id",
+          "direct",
+          "indirect",
+          "dependent_modules",
+          "truncated"
+        ],
+        "title": "ImpactResult",
         "type": "object"
       },
       "ItemValidation": {
@@ -3058,6 +3547,149 @@
         "title": "ListResponse[User]",
         "type": "object"
       },
+      "MaterialPageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id"
+          },
+          "chunk_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
+          "citing_entity_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Entity Id"
+          },
+          "citing_relation_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Relation Id"
+          },
+          "offset": {
+            "default": 0,
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "title": "MaterialPageRequest",
+        "type": "object"
+      },
+      "MaterialSourcePage": {
+        "additionalProperties": false,
+        "properties": {
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4096,
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "material_id",
+          "title",
+          "status",
+          "source_version",
+          "version",
+          "locator",
+          "text",
+          "offset",
+          "total"
+        ],
+        "title": "MaterialSourcePage",
+        "type": "object"
+      },
       "MigrationSummary": {
         "additionalProperties": false,
         "properties": {
@@ -3173,6 +3805,314 @@
         "title": "ModelStatus",
         "type": "object"
       },
+      "ModuleMove": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_ids": {
+            "items": {
+              "maxLength": 191,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "source_module_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Source Module Id",
+            "type": "string"
+          },
+          "target_module_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Target Module Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "source_module_id",
+          "target_module_id",
+          "entity_ids"
+        ],
+        "title": "ModuleMove",
+        "type": "object"
+      },
+      "ModuleMoveResult": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "moved_count": {
+            "minimum": 1.0,
+            "title": "Moved Count",
+            "type": "integer"
+          },
+          "source_module_id": {
+            "title": "Source Module Id",
+            "type": "string"
+          },
+          "target_module_id": {
+            "title": "Target Module Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_module_id",
+          "target_module_id",
+          "entity_ids",
+          "moved_count"
+        ],
+        "title": "ModuleMoveResult",
+        "type": "object"
+      },
+      "ModuleResult": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "domain_code": {
+            "title": "Domain Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "module_key": {
+            "title": "Module Key",
+            "type": "string"
+          },
+          "module_type": {
+            "enum": [
+              "org_common",
+              "scenario",
+              "group_core"
+            ],
+            "title": "Module Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner User Id"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Preferences",
+            "type": "object"
+          },
+          "scope_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Note"
+          },
+          "sharing_level": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Sharing Level",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "deprecated",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_key",
+          "module_type",
+          "name",
+          "domain_code",
+          "owner_user_id",
+          "scope_note",
+          "status",
+          "sharing_level",
+          "preferences",
+          "current_release_id",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ModuleResult",
+        "type": "object"
+      },
+      "ModuleSave": {
+        "additionalProperties": false,
+        "properties": {
+          "domain_code": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Code"
+          },
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
+          "module_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Module Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner User Id"
+          },
+          "preferences": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferences"
+          },
+          "register_dependencies": {
+            "default": false,
+            "title": "Register Dependencies",
+            "type": "boolean"
+          },
+          "scope_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Note"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "module_id"
+        ],
+        "title": "ModuleSave",
+        "type": "object"
+      },
       "MutationOutput": {
         "additionalProperties": false,
         "properties": {
@@ -3191,6 +4131,96 @@
           "id"
         ],
         "title": "MutationOutput",
+        "type": "object"
+      },
+      "NeighborInput": {
+        "additionalProperties": false,
+        "properties": {
+          "depth": {
+            "default": 1,
+            "maximum": 2.0,
+            "minimum": 1.0,
+            "title": "Depth",
+            "type": "integer"
+          },
+          "entity_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "family": {
+            "default": "",
+            "enum": [
+              "",
+              "structure",
+              "provenance",
+              "input",
+              "formation",
+              "application",
+              "interpretation",
+              "organization",
+              "curation",
+              "evidence",
+              "reference",
+              "evolution"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "entity_id"
+        ],
+        "title": "NeighborInput",
+        "type": "object"
+      },
+      "NeighborResult": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticEdge"
+            },
+            "title": "Relations",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entity_id",
+          "nodes",
+          "relations",
+          "truncated"
+        ],
+        "title": "NeighborResult",
         "type": "object"
       },
       "NextAction": {
@@ -3417,6 +4447,13 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "unformed_sources": {
+            "items": {
+              "$ref": "#/components/schemas/UnformedSource"
+            },
+            "title": "Unformed Sources",
+            "type": "array"
           }
         },
         "required": [
@@ -3628,6 +4665,52 @@
         "title": "QualityResult",
         "type": "object"
       },
+      "QueryEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "mapping_id": {
+            "title": "Mapping Id",
+            "type": "string"
+          },
+          "mapping_version": {
+            "title": "Mapping Version",
+            "type": "integer"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "schema_hash": {
+            "title": "Schema Hash",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "required": [
+          "source_id",
+          "mapping_id",
+          "mapping_version",
+          "source_version",
+          "schema_hash",
+          "row_count"
+        ],
+        "title": "QueryEvidence",
+        "type": "object"
+      },
       "ReadinessCheck": {
         "additionalProperties": false,
         "properties": {
@@ -3677,6 +4760,31 @@
           "message"
         ],
         "title": "ReadinessOutput",
+        "type": "object"
+      },
+      "RebuildRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "RebuildRequest",
+        "type": "object"
+      },
+      "RebuildRequested": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "RebuildRequested",
         "type": "object"
       },
       "Recipe": {
@@ -3858,6 +4966,896 @@
         "title": "RelationPropose",
         "type": "object"
       },
+      "ReleaseCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "waived",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "status",
+          "reason"
+        ],
+        "title": "ReleaseCheck",
+        "type": "object"
+      },
+      "ReleaseCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "changelog": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Changelog",
+            "type": "string"
+          },
+          "module_id": {
+            "default": "MOD-DEFAULT",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Module Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "ReleaseCreate",
+        "type": "object"
+      },
+      "ReleaseDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "bump": {
+            "enum": [
+              "major",
+              "minor",
+              "patch"
+            ],
+            "title": "Bump",
+            "type": "string"
+          },
+          "changelog": {
+            "title": "Changelog",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "detail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Url"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/ReleaseDiff"
+          },
+          "gates": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseGate"
+            },
+            "title": "Gates",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "missing_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Dependencies",
+            "type": "array"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "no_changes": {
+            "title": "No Changes",
+            "type": "boolean"
+          },
+          "omitted_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Omitted Counts",
+            "type": "object"
+          },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ref_count": {
+            "minimum": 0.0,
+            "title": "Ref Count",
+            "type": "integer"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "candidate",
+              "published",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "suggested_version": {
+            "title": "Suggested Version",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "version",
+          "status",
+          "bump",
+          "changelog",
+          "manifest_hash",
+          "created_by",
+          "reviewed_by",
+          "submitted_by",
+          "created_at",
+          "published_at",
+          "current_release_id",
+          "suggested_version",
+          "previous_release_id",
+          "member_count",
+          "ref_count",
+          "no_changes",
+          "missing_dependencies",
+          "diff",
+          "items",
+          "gates"
+        ],
+        "title": "ReleaseDetail",
+        "type": "object"
+      },
+      "ReleaseDiff": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "promoted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Promoted",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "changed",
+          "removed",
+          "promoted"
+        ],
+        "title": "ReleaseDiff",
+        "type": "object"
+      },
+      "ReleaseGate": {
+        "additionalProperties": false,
+        "properties": {
+          "blocking": {
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entity_id",
+          "passed",
+          "blocking",
+          "checks"
+        ],
+        "title": "ReleaseGate",
+        "type": "object"
+      },
+      "ReleaseItem": {
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_version": {
+            "title": "Entity Version",
+            "type": "integer"
+          },
+          "item_role": {
+            "enum": [
+              "member",
+              "ref"
+            ],
+            "title": "Item Role",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "snapshot": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Snapshot",
+            "type": "object"
+          }
+        },
+        "required": [
+          "entity_id",
+          "entity_version",
+          "kind",
+          "snapshot",
+          "content_hash",
+          "item_role"
+        ],
+        "title": "ReleaseItem",
+        "type": "object"
+      },
+      "ReleaseList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ReleaseList",
+        "type": "object"
+      },
+      "ReleasePublication": {
+        "additionalProperties": false,
+        "properties": {
+          "bump": {
+            "enum": [
+              "major",
+              "minor",
+              "patch"
+            ],
+            "title": "Bump",
+            "type": "string"
+          },
+          "changelog": {
+            "title": "Changelog",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "detail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Url"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/ReleaseDiff"
+          },
+          "gates": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseGate"
+            },
+            "title": "Gates",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "missing_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Dependencies",
+            "type": "array"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "no_changes": {
+            "title": "No Changes",
+            "type": "boolean"
+          },
+          "omitted_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Omitted Counts",
+            "type": "object"
+          },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ref_count": {
+            "minimum": 0.0,
+            "title": "Ref Count",
+            "type": "integer"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "candidate",
+              "published",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "suggested_version": {
+            "title": "Suggested Version",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "version",
+          "status",
+          "bump",
+          "changelog",
+          "manifest_hash",
+          "created_by",
+          "reviewed_by",
+          "submitted_by",
+          "created_at",
+          "published_at",
+          "current_release_id",
+          "suggested_version",
+          "previous_release_id",
+          "member_count",
+          "ref_count",
+          "no_changes",
+          "missing_dependencies",
+          "diff",
+          "items",
+          "gates"
+        ],
+        "title": "ReleasePublication",
+        "type": "object"
+      },
+      "ReleasePublish": {
+        "additionalProperties": false,
+        "properties": {
+          "background": {
+            "default": false,
+            "title": "Background",
+            "type": "boolean"
+          },
+          "release_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Release Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "ReleasePublish",
+        "type": "object"
+      },
+      "ReleaseSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "release_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Release Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "ReleaseSubmit",
+        "type": "object"
+      },
+      "ReleaseSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "bump": {
+            "enum": [
+              "major",
+              "minor",
+              "patch"
+            ],
+            "title": "Bump",
+            "type": "string"
+          },
+          "changelog": {
+            "title": "Changelog",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "missing_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Dependencies",
+            "type": "array"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "no_changes": {
+            "title": "No Changes",
+            "type": "boolean"
+          },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ref_count": {
+            "minimum": 0.0,
+            "title": "Ref Count",
+            "type": "integer"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "candidate",
+              "published",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "suggested_version": {
+            "title": "Suggested Version",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "version",
+          "status",
+          "bump",
+          "changelog",
+          "manifest_hash",
+          "created_by",
+          "reviewed_by",
+          "submitted_by",
+          "created_at",
+          "published_at",
+          "current_release_id",
+          "suggested_version",
+          "previous_release_id",
+          "member_count",
+          "ref_count",
+          "no_changes",
+          "missing_dependencies"
+        ],
+        "title": "ReleaseSummary",
+        "type": "object"
+      },
+      "ReleaseTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "release_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Release Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "ReleaseTarget",
+        "type": "object"
+      },
       "RemainingItem": {
         "additionalProperties": true,
         "properties": {
@@ -3896,6 +5894,121 @@
           }
         },
         "title": "Report",
+        "type": "object"
+      },
+      "ResolveInput": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_kind": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Expected Kind",
+            "type": "string"
+          },
+          "limit": {
+            "default": 10,
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ResolveInput",
+        "type": "object"
+      },
+      "ResolveResult": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedNode"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ResolveResult",
+        "type": "object"
+      },
+      "ResolvedNode": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "match": {
+            "enum": [
+              "id",
+              "alias",
+              "title",
+              "prefix",
+              "partial"
+            ],
+            "title": "Match",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "status",
+          "version",
+          "match",
+          "confidence"
+        ],
+        "title": "ResolvedNode",
         "type": "object"
       },
       "RestoreInput": {
@@ -3939,6 +6052,36 @@
           "files"
         ],
         "title": "RestoreOutput",
+        "type": "object"
+      },
+      "RetainSource": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "changeset_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Changeset Id",
+            "type": "string"
+          },
+          "source_version": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Source Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeset_id",
+          "source_version",
+          "anchor_id"
+        ],
+        "title": "RetainSource",
         "type": "object"
       },
       "Review": {
@@ -4361,11 +6504,62 @@
       "SearchInput": {
         "additionalProperties": false,
         "properties": {
+          "kind": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Kind",
+            "type": "string"
+          },
+          "module_id": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Module Id",
+            "type": "string"
+          },
+          "page": {
+            "default": 1,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 25,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pillar": {
+            "default": "",
+            "maxLength": 16,
+            "title": "Pillar",
+            "type": "string"
+          },
           "q": {
             "default": "",
             "maxLength": 500,
             "title": "Q",
             "type": "string"
+          },
+          "status": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
           }
         },
         "title": "SearchInput",
@@ -4410,6 +6604,133 @@
         "title": "SearchOutput",
         "type": "object"
       },
+      "SemanticEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "family_label": {
+            "title": "Family Label",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "original_source": {
+            "title": "Original Source",
+            "type": "string"
+          },
+          "original_target": {
+            "title": "Original Target",
+            "type": "string"
+          },
+          "reading": {
+            "title": "Reading",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target",
+          "type",
+          "label",
+          "status",
+          "family",
+          "family_label",
+          "original_source",
+          "original_target",
+          "reading"
+        ],
+        "title": "SemanticEdge",
+        "type": "object"
+      },
+      "SemanticNode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "status",
+          "version"
+        ],
+        "title": "SemanticNode",
+        "type": "object"
+      },
+      "SemanticTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "entity_id"
+        ],
+        "title": "SemanticTarget",
+        "type": "object"
+      },
       "SystemMetadata": {
         "additionalProperties": false,
         "properties": {
@@ -4445,6 +6766,352 @@
           "workspace"
         ],
         "title": "SystemMetadata",
+        "type": "object"
+      },
+      "TraceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id"
+          },
+          "chunk_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
+          "citing_entity_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Entity Id"
+          },
+          "citing_relation_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citing Relation Id"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "relation_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Id"
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialPageRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "title": "TraceInput",
+        "type": "object"
+      },
+      "TraceResult": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Version"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueryEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialSourcePage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/TraceSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "entity",
+              "relation",
+              "receipt"
+            ],
+            "title": "Subject Type",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "subject_id",
+          "subject_type",
+          "sources"
+        ],
+        "title": "TraceResult",
+        "type": "object"
+      },
+      "TraceSource": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "integer"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "material_id",
+          "title",
+          "source_version",
+          "version",
+          "anchor_id",
+          "start",
+          "end",
+          "quote",
+          "locator",
+          "href",
+          "path"
+        ],
+        "title": "TraceSource",
+        "type": "object"
+      },
+      "TraceStep": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "label"
+        ],
+        "title": "TraceStep",
+        "type": "object"
+      },
+      "UnformedSource": {
+        "additionalProperties": true,
+        "properties": {
+          "anchor_id": {
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "end": {
+            "default": 0,
+            "title": "End",
+            "type": "integer"
+          },
+          "locator": {
+            "default": "",
+            "title": "Locator",
+            "type": "string"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "start": {
+            "default": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "unformed_reason": {
+            "enum": [
+              "invalid_quote",
+              "uncovered"
+            ],
+            "title": "Unformed Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_id",
+          "anchor_id",
+          "source_version",
+          "quote",
+          "unformed_reason"
+        ],
+        "title": "UnformedSource",
         "type": "object"
       },
       "UpgradeBackup": {
@@ -4508,7 +7175,9 @@
             "enum": [
               "admin",
               "modeler",
-              "reviewer"
+              "reviewer",
+              "analyst",
+              "viewer"
             ],
             "title": "Role",
             "type": "string"
@@ -5394,6 +8063,9 @@
                     "$ref": "#/components/schemas/ConfirmFacts"
                   },
                   {
+                    "$ref": "#/components/schemas/RetainSource"
+                  },
+                  {
                     "$ref": "#/components/schemas/ReviewList"
                   },
                   {
@@ -5446,6 +8118,36 @@
                   },
                   {
                     "$ref": "#/components/schemas/DescribeInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ResolveInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NeighborInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SemanticTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TraceInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModuleSave"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModuleMove"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleaseCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleaseSubmit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleasePublish"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleaseTarget"
                   }
                 ],
                 "title": "Body"
@@ -5507,6 +8209,30 @@
                     },
                     {
                       "$ref": "#/components/schemas/DescribeResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ResolveResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NeighborResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImpactResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TraceResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ModuleResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ModuleMoveResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReleaseDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReleasePublication"
                     }
                   ],
                   "title": "Response Invoke Api V2 Capabilities  Id  Invoke Post"
@@ -5726,6 +8452,55 @@
         "summary": "Decide Items"
       }
     },
+    "/api/v2/changesets/{id}/sources:retain": {
+      "post": {
+        "operationId": "retain_source_api_v2_changesets__id__sources_retain_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetainSource"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retain Source"
+      }
+    },
     "/api/v2/changesets/{id}:apply": {
       "post": {
         "operationId": "apply_api_v2_changesets__id__apply_post",
@@ -5913,6 +8688,125 @@
         "summary": "Element"
       }
     },
+    "/api/v2/elements/{id}/passage": {
+      "get": {
+        "operationId": "passage_api_v2_elements__id__passage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chunk_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chunk Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_relation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Relation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Passage"
+      }
+    },
     "/api/v2/grants": {
       "get": {
         "operationId": "grants_api_v2_grants_get",
@@ -5931,6 +8825,149 @@
         "summary": "Grants"
       }
     },
+    "/api/v2/materials/{id}/source": {
+      "get": {
+        "operationId": "source_api_v2_materials__id__source_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 191,
+              "minLength": 1,
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 4294967295,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chunk_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chunk Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "citing_relation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 191,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Citing Relation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialSourcePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Source"
+      }
+    },
     "/api/v2/meta/kinds": {
       "get": {
         "operationId": "kinds_api_v2_meta_kinds_get",
@@ -5947,6 +8984,120 @@
           }
         },
         "summary": "Kinds"
+      }
+    },
+    "/api/v2/modules/{module_id}": {
+      "get": {
+        "operationId": "settings_api_v2_modules__module_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "module_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Module Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings"
+      }
+    },
+    "/api/v2/modules/{module_id}/releases": {
+      "get": {
+        "operationId": "list_releases_api_v2_modules__module_id__releases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "module_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Module Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Releases"
       }
     },
     "/api/v2/orgs": {
@@ -6109,6 +9260,63 @@
           }
         },
         "summary": "Get Recipe"
+      }
+    },
+    "/api/v2/releases/{release_id}": {
+      "get": {
+        "operationId": "release_detail_api_v2_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Detail"
       }
     },
     "/api/v2/reviews": {
@@ -6349,6 +9557,51 @@
           }
         },
         "summary": "Download Release"
+      }
+    },
+    "/api/v2/system/search-index:rebuild": {
+      "post": {
+        "operationId": "rebuild_search_api_v2_system_search_index_rebuild_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RebuildRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebuildRequested"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rebuild Search"
       }
     },
     "/api/v2/users": {

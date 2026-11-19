@@ -29,7 +29,14 @@ class RunnerReceiptTests(unittest.TestCase):
             "incomplete",
             "service_running",
             *(
-                ["missing_evidence", "all_complete", "all_missing_retained", "all_missing_current"]
+                [
+                    "missing_evidence",
+                    "all_complete",
+                    "all_missing_retained",
+                    "all_missing_current",
+                    "all_missing_search",
+                    "all_partial_search",
+                ]
                 if round_name == "r4"
                 else []
             ),
@@ -56,14 +63,29 @@ class RunnerReceiptTests(unittest.TestCase):
                     command: list[str],
                     *_args: object,
                     emit: bool = (round_name == "r4" and mode not in {"missing_evidence", "all_missing_current"}),
-                    retained: bool = mode in {"all_complete", "all_missing_current"},
+                    retained: bool = mode
+                    in {"all_complete", "all_missing_current", "all_missing_search", "all_partial_search"},
+                    all_search: bool = mode.startswith("all_") and mode != "all_missing_search",
+                    count: int = 11 if mode == "all_partial_search" else 12,
                     evidence: Path = output / "a1-mainline-1.json",
                 ) -> None:
                     if emit and "test" in command:
-                        evidence.write_text(json.dumps({"success": True, "gate_repairs": [{"field": "exceptions"}]}))
+                        evidence.write_text(
+                            json.dumps(
+                                {
+                                    "success": True,
+                                    "gate_repairs": [{"field": "exceptions"}],
+                                    "submission_share": {"submitted": 2, "total": 3, "ratio": 2 / 3},
+                                }
+                            )
+                        )
                     if retained and "test" in command:
                         evidence.with_name("mainline-1.json").write_text(
                             json.dumps({"success": True, "gate_repairs": [{"fields": ["unit", "grain"]}]})
+                        )
+                    if all_search and "test" in command:
+                        evidence.with_name("r4b-search.json").write_text(
+                            json.dumps({"success": True, "passed": [f"S{i}" for i in range(1, count + 1)]})
                         )
 
                 with ExitStack() as stack, redirect_stdout(io.StringIO()):
@@ -95,9 +117,15 @@ class RunnerReceiptTests(unittest.TestCase):
                     self.assertEqual(receipt["error_type"], "MissingBrowserReceipt")
                 if mode == "all_missing_retained":
                     self.assertEqual(receipt["error_type"], "MissingRetainedBrowserReceipt")
+                if mode == "all_missing_search":
+                    self.assertEqual(receipt["error_type"], "MissingSearchReceipt")
+                if mode == "all_partial_search":
+                    self.assertEqual(receipt["error_type"], "ValueError")
                 if mode == "all_complete":
+                    self.assertEqual(receipt["search_actions"], [f"S{i}" for i in range(1, 13)])
                     self.assertEqual(receipt["retained_r3_mainline"]["gate_repairs"], [{"fields": ["unit", "grain"]}])
                 if mode == "complete" and round_name == "r4":
                     self.assertEqual(receipt["gate_repairs"], [{"field": "exceptions"}])
+                    self.assertEqual(receipt["submission_share"], {"submitted": 2, "total": 3, "ratio": 2 / 3})
                 if mode in {"exception", "exception_after_clean"}:
                     self.assertEqual(receipt["error_type"], "OSError")

@@ -35,6 +35,22 @@ def require_admin() -> CapabilityContext:
     return ctx
 
 
+class RebuildRequested(StrictModel):
+    job_id: str
+    status: str
+
+
+class RebuildRequest(StrictModel):
+    pass
+
+
+@router.post("/search-index:rebuild", response_model=RebuildRequested)
+def rebuild_search(body: RebuildRequest | None = None) -> RebuildRequested:
+    from backend.infra.search_job import enqueue_rebuild
+
+    return RebuildRequested(**enqueue_rebuild(require_admin().principal))
+
+
 @router.get("/model", response_model=ModelStatus)
 def model_status() -> ModelStatus:
     context()

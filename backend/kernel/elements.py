@@ -135,12 +135,12 @@ def _prepare(conn: db.Connection, entity: dict, *, legacy: bool = False) -> dict
     return result
 
 
-def _preserve_review(old: dict, payload: dict, changes: dict) -> dict:
+def _preserve_review(conn: db.Connection, old: dict, payload: dict, changes: dict) -> dict:
     from backend.domains.reviews import preserve_review_identity
 
     result = {key: value for key, value in payload.items() if key != "r2_review"}
     if old["payload"].get("r2_review") or persisted_kind(old["kind"]).governed:
-        return preserve_review_identity(old, result, changes)
+        return preserve_review_identity(old, result, changes, conn=conn)
     return result
 
 
@@ -173,7 +173,9 @@ def snapshot(conn: db.Connection, entity: dict, reason: str) -> dict:
     return result
 
 
-def sync_after_write(conn: db.Connection, entity: dict, meta_updates: dict | None = None) -> dict:
+def sync_after_write(
+    conn: db.Connection, entity: dict, meta_updates: dict | None = None, *, content_changed: bool = True
+) -> dict:
     """Shared adoption/write hook; B-stage search indexing attaches here too."""
     from backend.graph import invalidate_graph_cache
     from backend.kernel.cards import cache_card
@@ -183,7 +185,12 @@ def sync_after_write(conn: db.Connection, entity: dict, meta_updates: dict | Non
         meta = sync_meta(conn, entity, meta_updates)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
-    sync_derived(conn, entity)
+    if content_changed:
+        edges = sync_derived(conn, entity)
+        if edges and meta["module_id"] not in {None, "MOD-DEFAULT"}:
+            from backend.kernel.modules import record_confirmed_references
+
+            record_confirmed_references(conn, entity["id"], (edge["target"] for edge in edges))
     cache_card(conn, entity)
     invalidate_graph_cache(require_context().tenant_id)
     return {**entity, "_meta": get_meta(conn, entity["id"]) or meta}
@@ -203,9 +210,50 @@ def _enforce_identity_status(conn: db.Connection, entity: dict) -> None:
         enforce(conn, entity)
 
 
+def _guard_experience_payload(
+    kind: str, payload: object, previous: dict | None = None, *, old_kind: str | None = None
+) -> None:
+    """The experience workbench owns its source record and adopted knowledge identity."""
+    old = previous or {}
+    new = payload if isinstance(payload, dict) else {}
+    experience_source = old.get("record_type") == "experience_session" or new.get("record_type") == "experience_session"
+    if experience_source and (kind != old_kind or old != new):
+        raise HTTPException(400, "请从经验萃取记录编辑原文、草稿及修订建议。")
+    bound = (old_kind == "knowledge" and old.get("experience_candidate_id")) or (
+        kind == "knowledge" and new.get("experience_candidate_id")
+    )
+    if not bound:
+        return
+    source = old.get("source_material_id")
+
+    def original_refs(value: dict) -> list:
+        return [
+            ref
+            for ref in value.get("source_refs") or []
+            if isinstance(ref, dict)
+            and (ref.get("material_id") == source or ref.get("chunk_id") in (old.get("source_chunk_ids") or []))
+        ]
+
+    keys = (
+        "experience_candidate_id",
+        "source_material_id",
+        "source_id",
+        "source_chunk_ids",
+        "origin_type",
+        "knowledge_form",
+    )
+    if (
+        kind != "knowledge"
+        or any(old.get(key) != new.get(key) for key in keys)
+        or original_refs(old) != original_refs(new)
+    ):
+        raise HTTPException(400, "经验知识的来源、原文引用及经验点由采纳记录确定。")
+
+
 def create_draft(conn: db.Connection, body: dict) -> dict:
     _writable()
     kind = canonical_kind(body.get("kind", "knowledge"))
+    _guard_experience_payload(kind, body.get("payload"))
     try:
         definition = get_kind(kind)
     except ValueError as error:
@@ -256,7 +304,7 @@ def create_draft(conn: db.Connection, body: dict) -> dict:
     return entity
 
 
-def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
+def update_draft(conn: db.Connection, old: dict, changes: dict, *, restoring: bool = False) -> dict:
     _writable()
     check_version(old, changes)
     reason = _reason(changes.get("reason"), "内容修订")
@@ -274,6 +322,9 @@ def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
         if old["status"] not in {"draft", "returned"} or not allowed:
             raise HTTPException(422, "仅未提交的业务草稿可在核对后改种类。")
         entity["kind"] = changes["kind"]
+    _guard_experience_payload(
+        entity["kind"], changes.get("payload", old["payload"]), old["payload"], old_kind=old["kind"]
+    )
     for key in ("title", "summary", "domain", "status", "payload"):
         if key in changes:
             entity[key] = deepcopy(changes[key])
@@ -286,12 +337,14 @@ def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
             entity["status"] = "draft"
     entity = _prepare(conn, entity, legacy=True)
     _confirm_sentence(old, entity["payload"], changes)
-    entity["payload"] = _preserve_review(old, entity["payload"], changes)
+    entity["payload"] = _preserve_review(conn, old, entity["payload"], changes)
     current_meta = get_meta(conn, old["id"]) or {}
-    if entity["payload"].get("r2_review") and any(current_meta.get(key) != value for key, value in updates.items()):
-        record_editor(
-            entity, require_context().user_id, fresh_revision=old["status"] in {"published", "approved", "archived"}
-        )
+    if entity["payload"].get("r2_review") and (
+        restoring
+        or entity["status"] != old["status"]
+        or any(current_meta.get(key) != value for key, value in updates.items())
+    ):
+        record_editor({**old, "payload": entity["payload"]}, require_context().user_id, conn=conn)
     snapshot(conn, old, reason)
     entity.update(version=old["version"] + 1, updated_at=db.now())
     conn.execute(
@@ -324,7 +377,7 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
     if target not in STATUS_LABELS:
         raise HTTPException(400, "不支持此操作。")
     reason = _reason(reason, STATUS_LABELS[target])
-    from backend.domains.reviews import guard_marked_action, record_editor
+    from backend.domains.reviews import guard_marked_action, keep_release_boundary, record_editor
     from backend.kernel import gates
 
     actions = {"review": "submit", "approved": "approve", "published": "publish", "returned": "return"}
@@ -338,9 +391,9 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
     snapshot(conn, old, reason)
     entity = deepcopy(old)
     if target == "draft" and persisted_kind(old["kind"]).governed:
-        record_editor(
-            entity, require_context().user_id, fresh_revision=old["status"] in {"published", "approved", "archived"}
-        )
+        record_editor({**old, "payload": entity["payload"]}, require_context().user_id, conn=conn)
+    if persisted_kind(old["kind"]).governed:
+        keep_release_boundary(conn, entity, target)
     entity.update(status=target, version=old["version"] + 1, updated_at=db.now())
     conn.execute(
         "UPDATE entities SET status=?,payload=?,version=?,updated_at=? WHERE id=?",
@@ -352,7 +405,7 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
             entity["id"],
         ),
     )
-    entity = sync_after_write(conn, entity)
+    entity = sync_after_write(conn, entity, content_changed=False)
     _enforce_identity_status(conn, entity)
     db.log(conn, entity["id"], STATUS_LABELS[target], reason, actor)
     return entity
@@ -369,6 +422,6 @@ def restore(conn: db.Connection, old: dict, saved: dict, reason: str) -> dict:
     # Module/owner/sensitivity assignments are current authorization, not content
     # supplied by an old snapshot. Restore only publicly editable business dates.
     changes["meta"] = {key: value for key, value in saved.get("_meta", {}).items() if key in PUBLIC_META_FIELDS}
-    result = update_draft(conn, old, changes)
+    result = update_draft(conn, old, changes, restoring=True)
     db.log(conn, old["id"], "还原历史版本", f"还原版本{saved.get('version')}为草稿：{reason}")
     return result

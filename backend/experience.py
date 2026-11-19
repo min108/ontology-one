@@ -11,6 +11,14 @@ from typing import Literal
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from .db import connect, entity_json, log, now
+from .domains.experience_history import (
+    Authors,
+    adopted_editors,
+    draft_changed,
+    draft_editors,
+    pending_editors,
+    section_facts,
+)
 from .ai import complete, config
 from .work_context import validate_matter_context, attach_matter_context
 from .provenance import ensure_source_version, normalize_source_ref, register_chunk_anchor, get_active_chunks
@@ -109,8 +117,9 @@ def uid(prefix):
     return prefix + uuid.uuid4().hex[:12].upper()
 
 
-def session(conn, sid):
-    item = entity_json(conn.execute("SELECT * FROM entities WHERE id=? AND kind='material'", (sid,)).fetchone())
+def session(conn, sid, *, lock=False):
+    sql = "SELECT * FROM entities WHERE id=? AND kind='material'" + (" FOR UPDATE" if lock else "")
+    item = entity_json(conn.execute(sql, (sid,)).fetchone())
     if not item or item["payload"].get("record_type") != "experience_session":
         raise HTTPException(404, "未找到这次经验萃取记录")
     return item
@@ -415,7 +424,7 @@ async def create_session(body: CreateSession):
         log(c, sid, "发起经验萃取", "保存原话；按自由语境追问，不设固定完成模板。")
     question = await make_question(e, body.mode)
     with closing(connect()) as c, c:
-        current = session(c, sid)
+        current = session(c, sid, lock=True)
         current["payload"]["turns"].append(question)
         c.execute("UPDATE entities SET payload=? WHERE id=?", (dump(current["payload"]), sid))
     return get_session(sid)
@@ -461,7 +470,7 @@ async def add_turn(session_id: str, body: TurnRequest):
     if body.dimension not in {"free", *[d["id"] for d in DIMENSIONS]}:
         raise HTTPException(422, "请选择自由补充或有效关注点")
     with closing(connect()) as c, c:
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         validate_session_context(c, e["payload"], e["org_id"])
         if body.expected_version is not None and body.expected_version != e["version"]:
             raise HTTPException(409, "记录已有更新，请刷新后再保存；当前输入仍保留")
@@ -482,7 +491,7 @@ async def add_turn(session_id: str, body: TurnRequest):
     target = next((d for d in DIMENSIONS if d["id"] == body.dimension), None)
     question = await make_question(e, body.mode, target)
     with closing(connect()) as c, c:
-        current = session(c, session_id)
+        current = session(c, session_id, lock=True)
         current["payload"]["turns"].append(question)
         c.execute("UPDATE entities SET payload=? WHERE id=?", (dump(current["payload"]), session_id))
     return get_session(session_id)
@@ -499,7 +508,7 @@ async def retry_question(session_id: str, body: QuestionRequest):
         e = session(c, session_id)
     question = await make_question(e, body.mode, next((d for d in DIMENSIONS if d["id"] == body.dimension), None))
     with closing(connect()) as c, c:
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         e["payload"]["turns"].append(question)
         save_session(c, e, "准备针对当前记录的追问")
     return get_session(session_id)
@@ -917,7 +926,7 @@ async def run_record_analysis(session_id, run_id):
             batch["candidate_ids"] = batch.get("candidate_ids", [])
             while True:
                 with closing(connect()) as c, c:
-                    e = session(c, session_id)
+                    e = session(c, session_id, lock=True)
                     if source_signature(chunks_for(c, session_id)) != state["source_signature"]:
                         state.update(
                             status="stale",
@@ -1033,7 +1042,7 @@ async def run_record_analysis(session_id, run_id):
                     )
                     with closing(connect()) as c, c:
                         c.execute("BEGIN IMMEDIATE")
-                        current = session(c, session_id)
+                        current = session(c, session_id, lock=True)
                         if source_signature(chunks_for(c, session_id)) != state["source_signature"]:
                             state.update(
                                 status="stale", message="原话已有新增，本轮结果保留在历史批次中，未覆盖当前经验点。"
@@ -1064,7 +1073,7 @@ async def run_record_analysis(session_id, run_id):
                     )
                     with closing(connect()) as c, c:
                         write_job(c, state)
-                        sync_summary(c, session(c, session_id), state)
+                        sync_summary(c, session(c, session_id, lock=True), state)
                     break
         incomplete = [b for b in state["batches"] if b["status"] != "completed"]
         state["status"] = "partial" if incomplete else "completed"
@@ -1074,7 +1083,7 @@ async def run_record_analysis(session_id, run_id):
             else "经验发现与阅读范围分别记录，请逐条人工核对。"
         )
         with closing(connect()) as c, c:
-            e = session(c, session_id)
+            e = session(c, session_id, lock=True)
             if source_signature(chunks_for(c, session_id)) != state["source_signature"]:
                 state.update(status="stale", message="原始叙述已更新，本轮属于旧版范围，请重新分析。")
             else:
@@ -1098,7 +1107,7 @@ def analyze_record(session_id: str, body: AnalysisRequest = AnalysisRequest()):
         c.execute("BEGIN IMMEDIATE")
         if _analysis_busy(session_id):
             raise HTTPException(409, "正在处理这份记录，请等待本轮完成")
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         chunks = chunks_for(c, session_id)
         if not chunks:
             raise HTTPException(422, "缺少可分析的原始叙述")
@@ -1171,6 +1180,23 @@ def candidate_item(e, cid):
     return item
 
 
+def candidate_editors(conn, source, items):
+    """Contributors to the open draft, including an already-adopted parent of a split."""
+    from .domains.reviews import editor_ids
+
+    editors = Authors()
+    for item in items:
+        editors.merge(pending_editors(conn, source, item))
+    for ident in sorted({item["adopted_entity_id"] for item in items if item.get("adopted_entity_id")}):
+        row = conn.execute("SELECT * FROM entities WHERE id=? AND kind='knowledge' FOR SHARE", (ident,)).fetchone()
+        if row:
+            asset = entity_json(row)
+            if asset["status"] != "published" and not (asset["payload"].get("r2_review") or {}).get("cycle_closed"):
+                editors.ids.update(editor_ids(asset))
+                editors.merge(adopted_editors(conn, asset))
+    return editors
+
+
 def clean_manual_sections(body, item):
     sections = body.article_sections
     if sections is None:
@@ -1235,148 +1261,188 @@ class CandidateReview(AdoptRequest):
 @router.post("/experience/{session_id}/candidates/{candidate_id}/review")
 def review_record_candidate(session_id: str, candidate_id: str, body: CandidateReview):
     with closing(connect()) as c, c:
-        c.execute("BEGIN IMMEDIATE")
-        e = session(c, session_id)
-        item = candidate_item(e, candidate_id)
-        request_signature = hashlib.sha256(
-            json.dumps(body.model_dump(), ensure_ascii=False, sort_keys=True).encode()
-        ).hexdigest()
-        if (
-            body.action == "adopt"
-            and item.get("adopted_entity_id")
-            and item.get("last_adoption_request") == request_signature
-            and item.get("adopted_revision") == item.get("revision")
-        ):
-            return {"entity_id": item["adopted_entity_id"], "already_adopted": True, "status": "adopted"}
-        if body.expected_revision is not None and body.expected_revision != item.get("revision", 1):
-            raise HTTPException(409, "经验点已有更新，请保留当前编辑，核对新版后再提交")
-        if item.get("status") == "merged":
-            raise HTTPException(409, "该经验点已归并，请查看归并后的条目")
-        if body.action == "reject" and not body.reason.strip():
-            raise HTTPException(422, "请说明暂不采纳的理由")
-        if item.get("adopted_entity_id") and body.action in {"reject", "restore"}:
-            raise HTTPException(409, "已形成知识的条目请采用修订流程")
-        sections = clean_manual_sections(body, item)
-        changed = any(
-            getattr(body, k).strip() != item.get(k, "") for k in ["title", "summary", "boundary", "questions"]
-        ) or [(s["title"], s["content"]) for s in sections] != [
-            (s["title"], s["content"]) for s in item.get("article_sections", [])
-        ]
-        if (
-            body.action == "adopt"
-            and item.get("adopted_entity_id")
-            and not changed
-            and item.get("adopted_revision") == item.get("revision")
-        ):
-            return {"entity_id": item["adopted_entity_id"], "already_adopted": True, "status": "adopted"}
-        item.update(
-            **{k: getattr(body, k).strip() for k in ["title", "summary", "boundary", "questions"]},
-            article_sections=sections,
-            content="\n\n".join(s["title"] + "\n" + s["content"] for s in sections),
-            manually_edited=True,
-            review_note=body.reason,
-            revision=item.get("revision", 1) + 1,
-        )
-        if not item["title"] or len(item["summary"]) < 4:
-            raise HTTPException(422, "请填写具体标题和摘要")
-        kid = item.get("adopted_entity_id")
-        if body.action == "adopt":
-            validate_session_context(c, e["payload"], e["org_id"])
-            normalize_candidate_refs(c, session_id, item)
-            if any(s.get("origin") == "ai_suggestion" for s in item["article_sections"]):
-                raise HTTPException(422, "正文含尚待确认的AI补充建议，请逐章核对并转为人工确认后再采纳")
-            payload = {
-                "content": item["content"],
-                "article_sections": item["article_sections"],
-                "boundary": item["boundary"],
-                "questions": item["questions"],
-                "knowledge_form": "experience",
-                "knowledge_type": "实践经验与工作认识",
-                "origin_type": e["payload"].get("origin_type", "personal_note"),
-                "active_asset": True,
-                "source_material_id": session_id,
-                "source_id": session_id,
-                "source_refs": item["source_refs"],
-                "source_chunk_ids": list(dict.fromkeys(r["chunk_id"] for r in item["source_refs"])),
-                "experience_candidate_id": item["id"],
-                "evidence_status": "提供者叙述与整理认识，待业务审核",
-                "review_note": body.reason,
-                **{k: e["payload"].get(k, "") for k in ["project_id", "task_id", "matter_id", "case_id"]},
-            }
-            stamp = now()
-            if kid:
-                asset = entity_json(
-                    c.execute("SELECT * FROM entities WHERE id=? AND kind='knowledge'", (kid,)).fetchone()
-                )
-                if not asset:
-                    raise HTTPException(409, "原知识资产不存在，不能静默建立替代条目")
-                if body.expected_asset_version != asset["version"]:
-                    raise HTTPException(409, "关联知识已有其他修订，请查看当前版本后再更新")
-                c.execute(
-                    "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-                    (kid, asset["version"], dump(asset), stamp, "从经验萃取记录修订同一知识，重新进入草稿审核"),
-                )
-                c.execute(
-                    "UPDATE entities SET title=?,summary=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?",
-                    (item["title"], item["summary"], dump({**asset["payload"], **payload}), "draft", stamp, kid),
-                )
-                asset_version = asset["version"] + 1
-            else:
-                kid = uid("K-EXP-")
-                asset_version = 1
-                c.execute(
-                    "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (
-                        kid,
-                        "knowledge",
-                        item["title"],
-                        item["summary"],
-                        e["domain"],
-                        e["org_id"],
-                        "draft",
-                        e["source_kind"],
-                        dump(payload),
-                        stamp,
-                        stamp,
-                        1,
-                    ),
-                )
-                c.execute(
-                    "INSERT INTO relations VALUES(?,?,?,?,?,?,?)",
-                    (
-                        uid("rel-exp-"),
-                        kid,
-                        session_id,
-                        "derived_from",
-                        "经验原文来源",
-                        "confirmed",
-                        dump({"source_refs": item["source_refs"], "candidate_id": candidate_id}),
-                    ),
-                )
+        e = session(c, session_id, lock=True)
+        return _review_candidate(c, e, candidate_id, body)
+
+
+def _review_candidate(c, e, candidate_id, body):
+    from .security.context import require_context
+
+    session_id = e["id"]
+    item = candidate_item(e, candidate_id)
+    draft = e["payload"].get("draft") or {}
+    if item.get("legacy_draft") and draft and "draft_editor_ids" not in draft:
+        editors = draft_editors(c, e)
+        editors.save_draft(draft)
+        editors.merge(Authors.from_draft(item))
+        editors.save_draft(item)
+    request_signature = hashlib.sha256(
+        json.dumps(body.model_dump(), ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+    if (
+        body.action == "adopt"
+        and item.get("adopted_entity_id")
+        and item.get("last_adoption_request") == request_signature
+        and item.get("adopted_revision") == item.get("revision")
+    ):
+        return {"entity_id": item["adopted_entity_id"], "already_adopted": True, "status": "adopted"}
+    if body.expected_revision is not None and body.expected_revision != item.get("revision", 1):
+        raise HTTPException(409, "经验点已有更新，请保留当前编辑，核对新版后再提交")
+    if item.get("status") == "merged":
+        raise HTTPException(409, "该经验点已归并，请查看归并后的条目")
+    if body.action == "reject" and not body.reason.strip():
+        raise HTTPException(422, "请说明暂不采纳的理由")
+    if item.get("adopted_entity_id") and body.action in {"reject", "restore"}:
+        raise HTTPException(409, "已形成知识的条目请采用修订流程")
+    sections = clean_manual_sections(body, item)
+    changed = (
+        any(getattr(body, k).strip() != item.get(k, "") for k in ["title", "summary", "boundary", "questions"])
+        or section_facts(sections) != section_facts(item.get("article_sections"))
+        or (body.action in {"save", "adopt"} and body.reason != (item.get("review_note") or ""))
+    )
+    if (
+        body.action == "adopt"
+        and item.get("adopted_entity_id")
+        and not changed
+        and item.get("adopted_revision") == item.get("revision")
+    ):
+        return {"entity_id": item["adopted_entity_id"], "already_adopted": True, "status": "adopted"}
+    if body.action == "save" and not changed:
+        return {"entity_id": item.get("adopted_entity_id"), "candidate_id": candidate_id, "status": item["status"]}
+    if changed or body.action == "adopt":
+        authors = pending_editors(c, e, item)
+        if changed:
+            authors.ids.add(require_context().user_id)
+        authors.save_draft(item)
+    item.update(
+        **{k: getattr(body, k).strip() for k in ["title", "summary", "boundary", "questions"]},
+        article_sections=sections,
+        content="\n\n".join(s["title"] + "\n" + s["content"] for s in sections),
+        manually_edited=True,
+        review_note=body.reason,
+        revision=item.get("revision", 1) + 1,
+    )
+    if not item["title"] or len(item["summary"]) < 4:
+        raise HTTPException(422, "请填写具体标题和摘要")
+    kid = item.get("adopted_entity_id")
+    if body.action == "adopt":
+        from .api.v1.core import guard_generic_edit
+        from .domains.reviews import record_editor
+        from .kernel.elements import snapshot, sync_after_write
+
+        validate_session_context(c, e["payload"], e["org_id"])
+        normalize_candidate_refs(c, session_id, item)
+        if any(s.get("origin") == "ai_suggestion" for s in item["article_sections"]):
+            raise HTTPException(422, "正文含尚待确认的AI补充建议，请逐章核对并转为人工确认后再采纳")
+        payload = {
+            "content": item["content"],
+            "article_sections": item["article_sections"],
+            "boundary": item["boundary"],
+            "questions": item["questions"],
+            "knowledge_form": "experience",
+            "knowledge_type": "实践经验与工作认识",
+            "origin_type": e["payload"].get("origin_type", "personal_note"),
+            "active_asset": True,
+            "source_material_id": session_id,
+            "source_id": session_id,
+            "source_refs": item["source_refs"],
+            "source_chunk_ids": list(dict.fromkeys(r["chunk_id"] for r in item["source_refs"])),
+            "experience_candidate_id": item["id"],
+            "evidence_status": "提供者叙述与整理认识，待业务审核",
+            "review_note": body.reason,
+            **{k: e["payload"].get(k, "") for k in ["project_id", "task_id", "matter_id", "case_id"]},
+        }
+        stamp = now()
+        if kid:
+            asset = entity_json(
+                c.execute("SELECT * FROM entities WHERE id=? AND kind='knowledge' FOR UPDATE", (kid,)).fetchone()
+            )
+            if not asset:
+                raise HTTPException(409, "原知识资产不存在，不能静默建立替代条目")
+            if body.expected_asset_version != asset["version"]:
+                raise HTTPException(409, "关联知识已有其他修订，请查看当前版本后再更新")
+            guard_generic_edit(c, asset, {"payload": payload})
+            snapshot(c, asset, "从经验萃取记录修订同一知识，重新进入草稿审核")
+            payload = {**asset["payload"], **payload}
+            meta = record_editor(
+                {**asset, "payload": payload},
+                require_context().user_id,
+                conn=c,
+                contributors=item.get("draft_editor_ids", ()),
+            )
+            authors = Authors.from_draft(item)
+            authors.merge(Authors.from_review(meta))
+            authors.save_review(meta)
             c.execute(
-                "UPDATE relations SET payload=? WHERE source=? AND target=? AND type='derived_from'",
-                (dump({"source_refs": item["source_refs"], "candidate_id": candidate_id}), kid, session_id),
+                "UPDATE entities SET title=?,summary=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?",
+                (item["title"], item["summary"], dump(payload), "draft", stamp, kid),
             )
-            attach(c, e, kid, "produced_asset")
-            item.update(
-                status="adopted",
-                adopted_entity_id=kid,
-                adopted_revision=item["revision"],
-                asset_version=asset_version,
-                last_adoption_request=request_signature,
+            asset_version = asset["version"] + 1
+        else:
+            kid = uid("K-EXP-")
+            asset_version = 1
+            meta = record_editor({"payload": payload}, require_context().user_id)
+            Authors.from_draft(item).save_review(meta)
+            c.execute(
+                "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    kid,
+                    "knowledge",
+                    item["title"],
+                    item["summary"],
+                    e["domain"],
+                    e["org_id"],
+                    "draft",
+                    e["source_kind"],
+                    dump(payload),
+                    stamp,
+                    stamp,
+                    1,
+                ),
             )
-            log(
-                c,
-                kid,
-                "经验稿修订知识" if asset_version > 1 else "经验形成知识草稿",
-                "引用不可变原话；人工确认后仍需资产审核。",
+            c.execute(
+                "INSERT INTO relations VALUES(?,?,?,?,?,?,?)",
+                (
+                    uid("rel-exp-"),
+                    kid,
+                    session_id,
+                    "derived_from",
+                    "经验原文来源",
+                    "confirmed",
+                    dump({"source_refs": item["source_refs"], "candidate_id": candidate_id}),
+                ),
             )
-        elif body.action == "reject":
-            item["status"] = "rejected"
-        elif not kid:
-            item["status"] = "pending"
-        save_session(c, e, "人工核对经验点：" + body.action)
-        log(c, session_id, "核对经验点", item["title"])
+        c.execute(
+            "UPDATE relations SET payload=? WHERE source=? AND target=? AND type='derived_from'",
+            (dump({"source_refs": item["source_refs"], "candidate_id": candidate_id}), kid, session_id),
+        )
+        saved = entity_json(c.execute("SELECT * FROM entities WHERE id=?", (kid,)).fetchone())
+        sync_after_write(c, saved)
+        if asset_version == 1:
+            snapshot(c, saved, "经验记录首次形成知识草稿")
+        attach(c, e, kid, "produced_asset")
+        if item.get("legacy_draft") and isinstance(e["payload"].get("draft"), dict):
+            Authors().save_draft(e["payload"]["draft"])
+        Authors().save_draft(item)
+        item.update(
+            status="adopted",
+            adopted_entity_id=kid,
+            adopted_revision=item["revision"],
+            asset_version=asset_version,
+            last_adoption_request=request_signature,
+        )
+        log(
+            c,
+            kid,
+            "经验稿修订知识" if asset_version > 1 else "经验形成知识草稿",
+            "引用不可变原话；人工确认后仍需资产审核。",
+        )
+    elif body.action == "reject":
+        item["status"] = "rejected"
+    elif not kid:
+        item["status"] = "pending"
+    save_session(c, e, "人工核对经验点：" + body.action)
+    log(c, session_id, "核对经验点", item["title"])
     return {"entity_id": kid, "candidate_id": candidate_id, "status": item["status"]}
 
 
@@ -1459,7 +1525,7 @@ async def propose_revision(session_id: str, body: ProposalRequest):
         "created_at": now(),
     }
     with closing(connect()) as c, c:
-        current = session(c, session_id)
+        current = session(c, session_id, lock=True)
         for item in proposed:
             normalize_candidate_refs(c, session_id, item)
         current["payload"].setdefault("proposals", []).append(proposal)
@@ -1473,9 +1539,11 @@ class ProposalDecision(BaseModel):
 
 @router.post("/experience/{session_id}/proposals/{proposal_id}/decision")
 def decide_proposal(session_id: str, proposal_id: str, body: ProposalDecision):
+    from .security.context import require_context
+
     with closing(connect()) as c, c:
         c.execute("BEGIN IMMEDIATE")
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         p = e["payload"]
         proposal = next((x for x in p.get("proposals", []) if x["id"] == proposal_id), None)
         if not proposal:
@@ -1494,6 +1562,8 @@ def decide_proposal(session_id: str, proposal_id: str, body: ProposalDecision):
                 raise HTTPException(409, "经验点已被修改，不能用旧建议覆盖当前稿件")
         primary = next((x for x in items if x.get("adopted_entity_id")), items[0])
         outputs = proposal["outputs"]
+        editors = candidate_editors(c, e, items)
+        editors.ids.add(require_context().user_id)
         previous = {k: primary.get(k) for k in ["title", "summary", "article_sections", "content", "source_refs"]}
         primary.setdefault("revision_history", []).append(
             {
@@ -1515,10 +1585,12 @@ def decide_proposal(session_id: str, proposal_id: str, body: ProposalDecision):
         ]:
             primary[key] = outputs[0].get(key)
         primary.update(revision=primary["revision"] + 1, manually_edited=True)
+        editors.save_draft(primary)
         resulting = [primary["id"]]
         if proposal["operation"] == "split":
             for out in outputs[1:]:
-                out.update(manually_edited=True, split_from=primary["id"])
+                out = {**out, "manually_edited": True, "split_from": primary["id"]}
+                editors.save_draft(out)
                 p["knowledge_candidates"].append(out)
                 resulting.append(out["id"])
         if proposal["operation"] == "merge":
@@ -1540,7 +1612,7 @@ def decide_proposal(session_id: str, proposal_id: str, body: ProposalDecision):
 @router.post("/experience/{session_id}/candidates/{candidate_id}/updates/{update_id}")
 def accept_analysis_update(session_id: str, candidate_id: str, update_id: str):
     with closing(connect()) as c, c:
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         item = candidate_item(e, candidate_id)
         updates = item.get("analysis_updates", [])
         new = next((x for x in updates if x["id"] == update_id), None)
@@ -1570,9 +1642,10 @@ def accept_analysis_update(session_id: str, candidate_id: str, update_id: str):
 @router.post("/experience/{session_id}/draft")
 def build_draft(session_id: str):
     with closing(connect()) as c, c:
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         source = chunks_for(c, session_id)
         content = "\n\n".join(ch["content"] for ch in source)
+        editors = draft_editors(c, e)
         e["payload"]["draft"] = {
             "title": e["title"],
             "summary": e["summary"],
@@ -1582,23 +1655,39 @@ def build_draft(session_id: str):
             "article_sections": [{"id": uid("SEC-"), "title": "经验原述", "content": content, "source_refs": []}],
             "generated_from": "user_narratives",
         }
+        editors.save_draft(e["payload"]["draft"])
         save_session(c, e, "按原始叙述整理自由草稿，未用缺项模板补写")
     return get_session(session_id)
 
 
 @router.patch("/experience/{session_id}/draft")
 def edit_draft(session_id: str, body: AdoptRequest):
+    from .security.context import require_context
+
     with closing(connect()) as c, c:
-        e = session(c, session_id)
-        e["payload"]["draft"] = body.model_dump()
+        e = session(c, session_id, lock=True)
+        prior = e["payload"].get("draft") or {}
+        new = body.model_dump()
+        editors = draft_editors(c, e)
+        changed = draft_changed(prior, new)
+        if changed:
+            editors.ids.add(require_context().user_id)
+        editors.save_draft(new)
+        e["payload"]["draft"] = new
+        item = next((i for i in e["payload"].get("knowledge_candidates", []) if i.get("legacy_draft")), None)
+        if item and changed:
+            item["revision"] = item.get("revision", 1) + 1
+            editors.merge(Authors.from_draft(item))
+            editors.save_draft(item)
         save_session(c, e, "人工编辑经验草稿")
+        log(c, session_id, "编辑经验草稿" if changed else "原样保存经验草稿")
     return get_session(session_id)
 
 
 @router.post("/experience/{session_id}/adopt")
 def adopt_draft(session_id: str, body: AdoptRequest):
     with closing(connect()) as c, c:
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         source = chunks_for(c, session_id)
         item = next((x for x in e["payload"].get("knowledge_candidates", []) if x.get("legacy_draft")), None)
         if not item:
@@ -1624,24 +1713,24 @@ def adopt_draft(session_id: str, body: AdoptRequest):
                 allow_human_input=True,
             )
             item["legacy_draft"] = True
+            draft_editors(c, e).save_draft(item)
             if e["payload"].get("adopted_entity_id"):
                 item["adopted_entity_id"] = e["payload"]["adopted_entity_id"]
             e["payload"].setdefault("knowledge_candidates", []).append(item)
             save_session(c, e, "将综合草稿纳入统一经验点流程")
         cid = item["id"]
         asset = c.execute("SELECT version FROM entities WHERE id=?", (item.get("adopted_entity_id", ""),)).fetchone()
-    result = review_record_candidate(
-        session_id,
-        cid,
-        CandidateReview(
-            **body.model_dump(),
-            action="adopt",
-            expected_revision=item["revision"],
-            expected_asset_version=asset["version"] if asset else None,
-        ),
-    )
-    with closing(connect()) as c, c:
-        e = session(c, session_id)
+        result = _review_candidate(
+            c,
+            e,
+            cid,
+            CandidateReview(
+                **body.model_dump(),
+                action="adopt",
+                expected_revision=item["revision"],
+                expected_asset_version=asset["version"] if asset else None,
+            ),
+        )
         e["payload"]["adopted_entity_id"] = result["entity_id"]
         c.execute("UPDATE entities SET payload=? WHERE id=?", (dump(e["payload"]), session_id))
         asset = entity_json(c.execute("SELECT * FROM entities WHERE id=?", (result["entity_id"],)).fetchone())

@@ -25,6 +25,7 @@ importlib.import_module("backend.capabilities.elements")
 importlib.import_module("backend.capabilities.kernel")
 importlib.import_module("backend.capabilities.relations")
 importlib.import_module("backend.capabilities.semantic")
+importlib.import_module("backend.capabilities.releases")
 router = APIRouter(prefix="/api/v2")
 
 router.include_router(system_router)
@@ -42,5 +43,17 @@ def invoke(id: str, body: CapabilityInput, request: Request) -> BaseModel:
     return registry.invoke(id, ctx, body.model_dump(exclude_unset=True))
 
 
-for module in ("orgs", "users", "grants", "audit", "prefs", "build", "artifacts", "elements", "meta"):
+for module in (
+    "orgs",
+    "users",
+    "grants",
+    "audit",
+    "prefs",
+    "build",
+    "artifacts",
+    "elements",
+    "materials",
+    "meta",
+    "releases",
+):
     router.include_router(importlib.import_module("backend.api.v2." + module).router)

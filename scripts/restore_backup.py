@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend import db
+from backend.infra.tenant_defaults import common_part_name, initial_common_part
+from backend.system import REBUILDABLE_TABLES
 from backend.maintenance import runtime_guard, require_maintenance
 from backend.security import store
 from backend.security.context import use_context
@@ -78,10 +80,12 @@ def _parts(body):
     yield body[start:].strip()
 
 
-def schema_columns():
+def schema_columns(*, include_rebuildable: bool = False) -> dict:
     """Build the allowlist from executable application schema, never the archive."""
 
     class Collector:
+        schema_only = True
+
         def __init__(self):
             self.statements = list(db.SCHEMA)
 
@@ -120,12 +124,15 @@ def schema_columns():
     result = {}
     for sql in collector.statements:
         match = re.search(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_]+)\s*\((.*)\)\s*ENGINE", sql, re.I | re.S)
-        if not match:
+        if not match or (not include_rebuildable and match[1] in REBUILDABLE_TABLES):
             continue
         columns = []
         for definition in _parts(match[2]):
             name = definition.split(None, 1)[0].strip("`")
-            if name.upper() in {"PRIMARY", "UNIQUE", "KEY", "INDEX", "CONSTRAINT", "FOREIGN", "CHECK"} or "(" in name:
+            if (
+                name.upper() in {"PRIMARY", "UNIQUE", "KEY", "INDEX", "CONSTRAINT", "FOREIGN", "CHECK", "FULLTEXT"}
+                or "(" in name
+            ):
                 continue
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
                 raise RestoreError("应用表结构无法识别，恢复已停止。")
@@ -203,7 +210,7 @@ def validate_snapshot(snapshot, tenant_id, allowed=None):
     allowed = allowed or schema_columns()
     if not isinstance(tables, dict) or "entities" not in tables:
         raise RestoreError("备份缺少业务实体表。")
-    if set(tables) - allowed.keys():
+    if tables.keys() - allowed.keys() or tables.keys() & REBUILDABLE_TABLES:
         raise RestoreError("备份包含非业务白名单数据表，控制库和未知表不可导入。")
     for table, rows in tables.items():
         if not isinstance(rows, list):
@@ -239,21 +246,32 @@ def validate_snapshot(snapshot, tenant_id, allowed=None):
     for row in tables.get("relations", []):
         if row["source"] not in ids | {tenant_id} or row["target"] not in ids | {tenant_id}:
             raise RestoreError("备份关系包含不存在的端点。")
+    ontology_tables = {"ont_modules", "ont_module_deps", "ont_releases", "ont_release_items"}
+    if ontology_tables.intersection(tables):
+        if not ontology_tables.issubset(tables):
+            raise RestoreError("备份的机构本体与发布版本表不完整。")
+        common = [row for row in tables["ont_modules"] if row["module_type"] == "org_common"]
+        if len(common) != 1 or (common[0]["id"], common[0]["module_key"], common[0]["domain_code"]) != (
+            "MOD-DEFAULT",
+            "default",
+            "general",
+        ):
+            raise RestoreError("备份须包含本机构唯一的公共部分。")
     return tables
 
 
-def _empty_workspace(connection, tenant_id, allowed, *, lock=False):
+def _empty_workspace(connection, tenant, allowed, *, lock=False):
+    tenant_id = tenant["id"]
     existing = {
         row[0]
         for row in connection.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE'"
         )
     }
-    if existing - allowed.keys() - {"schema_migrations"}:
+    local_tables = {"schema_migrations"} | REBUILDABLE_TABLES
+    if existing - allowed.keys() - local_tables:
         raise RestoreError("目标库包含当前应用无法识别的表，拒绝恢复。")
-    for table in existing:
-        if table == "schema_migrations":
-            continue
+    for table in existing - local_tables:
         rows = connection.execute(f"SELECT * FROM `{table}`" + (" FOR UPDATE" if lock else "")).fetchall()
         if table == "entities":
             if any(
@@ -267,6 +285,9 @@ def _empty_workspace(connection, tenant_id, allowed, *, lock=False):
             root = connection.execute("SELECT * FROM entities WHERE id=?", (tenant_id,)).fetchone()
             if any(row["entity_id"] != tenant_id or root is None or dict(row) != defaults(dict(root)) for row in rows):
                 raise RestoreError("目标机构已有要素附加信息，禁止覆盖。")
+        elif table == "ont_modules":
+            if [dict(row) for row in rows] != [initial_common_part(tenant)]:
+                raise RestoreError("目标机构的公共部分已更改或已有场景本体，禁止覆盖。")
         elif table == "workspace_meta":
             if any(row["meta_key"] != "schema_version" for row in rows):
                 raise RestoreError("目标机构已有工作区状态，禁止覆盖。")
@@ -290,7 +311,7 @@ def restore_snapshot(snapshot, archive, principal, reason):
     # Refuse occupied workspaces before any schema initialization.
     try:
         with closing(db._raw_connection(tenant["db_name"])) as raw:
-            _empty_workspace(db.Connection(raw), tenant_id, allowed)
+            _empty_workspace(db.Connection(raw), tenant, allowed)
     except Exception as exc:
         if not getattr(exc, "args", None) or exc.args[0] != 1049:
             raise
@@ -328,7 +349,7 @@ def restore_snapshot(snapshot, archive, principal, reason):
             try:
                 with closing(db.connect()) as connection:
                     connection.begin()
-                    _empty_workspace(connection, tenant_id, allowed, lock=True)
+                    _empty_workspace(connection, tenant, allowed, lock=True)
                     # Compare against the actual provisioned schema as well as the source registry.
                     actual = {}
                     for row in connection.execute(
@@ -365,6 +386,14 @@ def restore_snapshot(snapshot, archive, principal, reason):
                         if table == "workspace_meta":
                             # Deployment schema markers belong to the current program.
                             continue
+                        if table == "ont_modules":
+                            # Under the exclusive lease and row lock, replace only the exact pristine seed.
+                            # A pre-0005 archive omits this table and retains the provisioned common part.
+                            connection.execute("DELETE FROM ont_modules WHERE id='MOD-DEFAULT'")
+                            rows = [
+                                {**row, "name": common_part_name(tenant["name"])} if row["id"] == "MOD-DEFAULT" else row
+                                for row in rows
+                            ]
                         selected = [
                             row
                             for row in rows
@@ -398,6 +427,10 @@ def restore_snapshot(snapshot, archive, principal, reason):
                         from backend.skills import demote_restored_skills
 
                         demote_restored_skills(connection)
+                    # Reconstruct documents only after all imports and skill demotions have completed.
+                    from backend.infra.search_index import rebuild_index
+
+                    rebuild_index(connection)
                     store.assert_principal_current(principal, require_write=True)
                     if uploads.exists():
                         uploads.rmdir()

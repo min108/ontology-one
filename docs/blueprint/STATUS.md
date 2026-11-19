@@ -1,13 +1,19 @@
 # 建设进度
 
+R4-A.2 的单独交付提交为 `7d7cdc6`，快速层和原用例状态对照已通过。B1 已在旧机构升级、新机构开通、0.7 备份恢复和真实 HTTP 发布流程中验证。机构发布版本保存审核过的内容、关联和引用，普通用户继续按当前角色使用已发布的要素。 [A.2 CI](https://github.com/min108/ontology-one/actions/runs/44429274725) · [机构发布与恢复](rounds/R4-B-UPPER-EVIDENCE.md#b1-动作反例和恢复)
+
+B2 已用普通制度原件完成 S1–S12 浏览器演练，核对原始引文、同机构不同角色、跨机构过滤及旧接口顺序。整份材料、命中片段与历史引文分别验证；长材料采用分页阅读，历史引文按当时保存的版本和引用范围读取。机构库迁移 0006 的两个 MySQL 原生 ngram 索引已在 51 个机构实查。10,000 条要素、17 个原文段上的 200 次连续检索实测 P95 为 224.839 毫秒。 [检索及反例](rounds/R4-B-UPPER-EVIDENCE.md#b2-检索与语义动作) · [原始样本](rounds/r4b-evidence/ba12.json)
+
 | 轮 | 版本 | 状态 | 验收日期 | 报告 |
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
 | R2 | 1.1.0 | 已验收（R2.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R2-REPORT](rounds/R2-REPORT.md)、[R2-ACCEPTANCE](rounds/R2-ACCEPTANCE.md) |
 | R3 | 1.2.0 | 已验收（R3.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R3-REPORT](rounds/R3-REPORT.md)、[R3-ACCEPTANCE](rounds/R3-ACCEPTANCE.md)、[R3-PLAN](rounds/R3-PLAN.md) |
-| R4 | 1.3.0 | A 段：首次验收不通过（2026-11-18），A.1 修复后复验有条件通过（2026-11-19），遗留 12 项列为 A.2；B 段分上、下两次交付，上半（A.2、机构本体与发布版本、检索）进行中 | — | [R4-PLAN](rounds/R4-PLAN.md)、[R4-REPORT](rounds/R4-REPORT.md)、[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) |
+| R4 | 1.3.0 | A.1 复验有条件通过。上半段的 A.2 遗留、机构本体与发布版本、检索与语义服务已实施，待规划方复验。真实模型按 D22 由规划方在交付代码上办理 | — | [R4-PLAN](rounds/R4-PLAN.md)、[R4-REPORT](rounds/R4-REPORT.md)、[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) |
 
 ## 当前基线
+
+A.2 已实现 12 项遗留修复，保留独立核验结论“待复验”。本地合成模型的普通制度主线从 11 条送审 9 条。旧素材、三行标准 Excel、权责新建及升级前已审核件均从原有浏览器入口走到发布。 [A.2 报告](rounds/R4-REPORT.md) · [修复、反例与行为变化](rounds/R4-B-UPPER-EVIDENCE.md)
 
 R4-A.1 交付 `5962caa` 经 Claude 复验（[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) 第 8 节）：有条件通过。三份普通写法的制度配真实 `deepseek-flash` 经界面共 11 次全部通过；旧页面修订的存量内容能补齐并重新发布；后端 1348、前端 542、合成模型全动作 41 项本地重跑通过。遗留 12 项（独立审核在两条旧路径上可绕开、核对页新写入口绕过技能包守卫、申请说明后补不齐、日期与例外识别换写法出错等）列为 A.2，按 R4-PLAN 第 8 节与 B 段（上）一起启动、最先完成。A.2 复验通过之前，R4-A 不记为已验收。规划起点为 `claude/affectionate-hopper-9bdpfg` 上的复验提交。以下各段是此前各次交付与验收时的记录。
 

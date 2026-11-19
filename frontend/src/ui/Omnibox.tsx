@@ -7,6 +7,8 @@ export interface OmniboxItem {
   id: string;
   label: string;
   description?: string;
+  excerpt?: string;
+  matchTerms?: string[];
   group?: string;
 }
 export interface OmniboxProps {
@@ -15,11 +17,25 @@ export interface OmniboxProps {
   value: string;
   onSearch: (value: string) => void;
   items: OmniboxItem[];
+  highlight?: string;
+  emptyMessage?: string;
   onSelect: (item: OmniboxItem) => void;
   loading?: boolean;
   error?: string;
   onRetry?: () => void;
   footer?: ReactNode;
+}
+
+function matchingText(value: string, query?: string, matches: string[] = []): ReactNode {
+  const terms = [...new Set([query, ...matches].filter((term): term is string => Boolean(term)))];
+  if (!terms.length) return value;
+  const pattern = terms
+    .sort((a, b) => b.length - a.length)
+    .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  return value
+    .split(new RegExp('(' + pattern + ')', 'giu'))
+    .map((part, index) => (index % 2 === 1 ? <mark key={index}>{part}</mark> : part));
 }
 export function Omnibox({
   open,
@@ -27,6 +43,8 @@ export function Omnibox({
   value,
   onSearch,
   items,
+  highlight,
+  emptyMessage,
   onSelect,
   loading = false,
   error,
@@ -106,12 +124,13 @@ export function Omnibox({
             onClick={() => onSelect(item)}
           >
             {item.group && <small>{item.group}</small>}
-            <strong>{item.label}</strong>
-            {item.description && <span>{item.description}</span>}
+            <strong>{matchingText(item.label, highlight, item.matchTerms)}</strong>
+            {item.description && <span>{matchingText(item.description, highlight, item.matchTerms)}</span>}
+            {item.excerpt && <span>{matchingText(item.excerpt, highlight, item.matchTerms)}</span>}
           </li>
         ))}
       </ul>
-      {!loading && !error && !items.length && <p>{terms.labels.no_results}</p>}
+      {!loading && !error && !items.length && <p role="status">{emptyMessage || terms.labels.no_results}</p>}
     </Modal>
   );
 }

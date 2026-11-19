@@ -20,12 +20,28 @@ class GateCheck(StrictModel):
     denial_reason: str = ""
 
 
+class GateFieldPart(StrictModel):
+    value: str
+    source: Literal["source", "system"]
+    source_quote: str
+    material_id: str = ""
+    source_version: str = ""
+    anchor_id: str = ""
+
+
 class GateField(StrictModel):
     key: str
     label: str
     value: str
-    source: Literal["source", "editor", "batch_confirmation", "legacy", "missing"]
+    parts: list[GateFieldPart] = Field(default_factory=list)
+    source: Literal["source", "system", "editor", "batch_confirmation", "legacy", "missing"]
     source_quote: str = ""
+    method: Literal["selection"] | None = None
+    actor_id: str = ""
+    confirmed_at: str = ""
+    material_id: str = ""
+    source_version: str = ""
+    anchor_id: str = ""
     confirmed_by: str = ""
     href: str = ""
 

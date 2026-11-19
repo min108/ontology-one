@@ -184,20 +184,27 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
         evidence = evidence and facts.get("regulation_evidence", False)
     if kind == "process":
         evidence = evidence and facts.get("step_evidence", False)
-    meaning = (
-        isinstance(payload.get("definition"), str)
-        and bool(payload["definition"].strip())
-        and not facts.get("duplicate", False)
-    )
+    missing_meaning = []
+    if not isinstance(payload.get("definition"), str) or not payload["definition"].strip():
+        missing_meaning.append("一句话定义")
     if kind in {"metric", "data"}:
-        meaning = meaning and bool(plain(payload.get("unit"))) and bool(plain(payload.get("grain")))
+        missing_meaning.extend(
+            label for key, label in (("unit", "单位"), ("grain", "粒度")) if not plain(payload.get(key))
+        )
     if kind == "object_type":
         identifiers = (payload.get("identity") or {}).get("properties") or []
         property_keys = {p.get("key") for p in payload.get("properties", []) if isinstance(p, dict)}
-        meaning = meaning and bool(identifiers) and set(identifiers) <= property_keys
-    if identity:
-        meaning = meaning and bool(
-            payload.get("org_id") if kind == "position" else payload.get("unified_code") or payload.get("identity")
+        if not identifiers or not set(identifiers) <= property_keys:
+            missing_meaning.append("指向已有属性的身份标识")
+    if kind == "position" and not payload.get("org_id"):
+        missing_meaning.append("所属机构")
+    if kind == "party" and not (payload.get("unified_code") or payload.get("identity")):
+        missing_meaning.append("统一代码或身份标识")
+    meaning = not missing_meaning and not facts.get("duplicate", False)
+    meaning_reason = "请补充" + "、".join(missing_meaning) + "。" if missing_meaning else ""
+    if facts.get("duplicate"):
+        meaning_reason += (
+            "已有同名内容《" + str(entity.get("title", "")) + "》使用不同定义，请核对现有内容或归档不用的草稿。"
         )
     complete = True
     missing = []
@@ -236,9 +243,7 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
     outcomes = (evidence, meaning, complete, facts.get("relations", False), facts.get("snapshot", False))
     reasons = (
         "请补充可逐字定位的原文出处。" if not hard else "时限、金额或审批要求须有制度原文依据；目前依据不足，待确认。",
-        "已有同名内容《" + str(entity.get("title", "")) + "》使用不同定义，请核对现有内容或归档不用的草稿。"
-        if facts.get("duplicate")
-        else "请补充一句话定义、单位与粒度或身份标识。",
+        meaning_reason + "使用者需要一致的业务口径，这项检查不能豁免。",
         (
             "；".join(
                 (["请补充：" + "、".join(missing)] if missing else [])
@@ -254,8 +259,8 @@ def evaluate_checks(entity: dict, meta: dict, facts: dict) -> dict:
         else "请补齐输入、输出、步骤并完成测试。"
         if kind == "skill"
         else "请补齐使用条件与适用边界。",
-        "请确认必备关系：规则的适用主体或对象、指标的业务对象、对象关系的两端、技能依赖或每步经办方。",
-        "请先保存带变更原因的版本快照，确保历史可还原。",
+        "请确认必备关系：规则的适用主体或对象、指标的业务对象、对象关系的两端、技能依赖或每步经办方。缺少这些关联就无法确定适用对象或责任方，这项检查不能豁免。",
+        "请先保存带变更原因的版本快照。缺少快照就无法追溯和还原修改，这项检查不能豁免。",
     )
     checks = []
     for index, (label, passed) in enumerate(zip(LABELS, outcomes, strict=True), 1):
@@ -636,29 +641,11 @@ def waive(conn: db.Connection, entity: dict, reasons: dict[str, str]) -> dict:
         raise ApiError("VALIDATION_FAILED", "口径、关系和版本三项不能豁免。")
     if any(not isinstance(reason, str) or not reason.strip() or len(reason) > 500 for reason in reasons.values()):
         raise ApiError("VALIDATION_FAILED", "豁免必须写明接受此项缺口的理由。")
-    from backend.domains.reviews import ensure_independent
+    from backend.domains.reviews import ensure_independent, legacy_approved
 
-    ensure_independent(entity)
+    ensure_independent(conn, entity)
     identity = entity["payload"].get("r2_review", {})
-    if person.user_id in {identity.get("last_editor_id"), identity.get("submitted_by")}:
-        raise ApiError("SEPARATION_OF_DUTIES")
-    if not identity:
-        from backend.domains.reviews import WORKFLOW_ACTIONS, is_same_person
-
-        actors = conn.execute(
-            "SELECT action,actor FROM activities WHERE entity_id=? ORDER BY id DESC", (entity["id"],)
-        ).fetchall()
-        editor = next((row["actor"] for row in actors if row["action"] not in WORKFLOW_ACTIONS), None)
-        submitter = next((row["actor"] for row in actors if row["action"] == "提交审核"), None)
-        if is_same_person(person, editor) or is_same_person(person, submitter):
-            raise ApiError("SEPARATION_OF_DUTIES")
-    if entity["payload"].get("managed_skill"):
-        document = conn.execute(
-            "SELECT last_editor_id,submitted_by FROM skill_documents WHERE entity_id=?", (entity["id"],)
-        ).fetchone()
-        if document and person.user_id in {document["last_editor_id"], document["submitted_by"]}:
-            raise ApiError("SEPARATION_OF_DUTIES")
-    if entity["status"] != "review":
+    if entity["status"] != "review" and not legacy_approved(entity):
         raise ApiError("PRECONDITION_FAILED", "请先提交申请，由独立审核人员在待审核内容中办理。")
     meta = get_meta(conn, entity["id"]) or sync_meta(conn, entity)
     stored = _object(meta.get("gates"))
@@ -716,22 +703,42 @@ def apply_for_waiver(conn: db.Connection, entity: dict, applications: dict) -> d
     if entity["status"] not in {"draft", "returned"}:
         raise ApiError("PRECONDITION_FAILED", "请在草稿中填写申请说明后提交审核。")
     applications = _application_reasons(applications)
+    result = check_entity(conn, entity)
+    current = {item["code"]: item for item in result["checks"]}
+    meta = get_meta(conn, entity["id"]) or sync_meta(conn, entity)
+    stored = _object(meta.get("gates"))
+    previous = _object(stored.get("applications"))
+    wanted = {code: reason for code, reason in applications.items() if current[code]["status"] in {"fail", "waived"}}
+    withdrawn = sorted(previous.keys() - wanted.keys())
+    fingerprint = _fingerprint(entity, meta, conn)
+    changed = {code: reason for code, reason in wanted.items() if _object(previous.get(code)).get("reason") != reason}
+    retained = [
+        code for code in wanted if code not in changed and _object(previous[code]).get("fingerprint") != fingerprint
+    ]
+    if not (changed or withdrawn or retained):
+        return result
     from backend.domains.reviews import record_editor
 
-    record_editor(entity, person.user_id)
+    record_editor(entity, person.user_id, conn=conn)
     conn.execute(
         "UPDATE entities SET payload=? WHERE id=?", (json.dumps(entity["payload"], ensure_ascii=False), entity["id"])
     )
-    result = check_entity(conn, entity)
-    current = {item["code"]: item for item in result["checks"]}
-    if any(current[code]["status"] != "fail" for code in applications):
-        raise ApiError("VALIDATION_FAILED", "只需为尚未通过的出处或条件项申请豁免。")
-    meta = get_meta(conn, entity["id"]) or sync_meta(conn, entity)
-    stored = _object(meta.get("gates"))
-    stored["applications"] = {}
     fingerprint = _fingerprint(entity, meta, conn)
-    for code, reason in applications.items():
-        stored["applications"][code] = {
+    records = dict(previous)
+    for code in withdrawn:
+        records.pop(code)
+        status = current.get(code, {}).get("status")
+        cause = (
+            "检查已通过，自动撤回申请。"
+            if status == "pass"
+            else "本项已不适用，自动撤回申请。"
+            if status == "not_applicable"
+            else "已撤回申请。"
+        )
+        label = current.get(code, {}).get("label", code)
+        db.log(conn, entity["id"], "撤回发布检查豁免申请", f"{label}：{cause}", person.username)
+    for code, reason in changed.items():
+        records[code] = {
             "reason": reason,
             "by": person.user_id,
             "name": person.username,
@@ -739,10 +746,20 @@ def apply_for_waiver(conn: db.Connection, entity: dict, applications: dict) -> d
             "fingerprint": fingerprint,
             "version": entity["version"],
         }
-        db.log(conn, entity["id"], "申请发布检查豁免", f"{LABELS[int(code[-1]) - 1]}：{reason}", person.username)
-    if not applications:
-        db.log(conn, entity["id"], "申请发布检查豁免", "撤回本次豁免申请。", person.username)
-    stored.pop("denials", None)
+        db.log(conn, entity["id"], "申请发布检查豁免", f"{current[code]['label']}：{reason}", person.username)
+    denials = _object(stored.get("denials"))
+    for code in retained:
+        # A partial edit keeps the applicant and date. An unchanged explanation cannot lift an independent denial.
+        records[code] = {**previous[code], "fingerprint": fingerprint, "version": entity["version"]}
+        if code in denials:
+            denials[code] = {**denials[code], "fingerprint": fingerprint}
+    for code in {*withdrawn, *changed}:
+        denials.pop(code, None)
+    stored["denials"] = denials
+    for code in {*withdrawn, *changed, *retained}:
+        # The independent waiver applies only to the reviewed content.
+        _object(stored.get("waivers")).pop(code, None)
+    stored["applications"] = records
     conn.execute(
         "UPDATE entity_meta SET gates=? WHERE entity_id=?", (json.dumps(stored, ensure_ascii=False), entity["id"])
     )
@@ -753,7 +770,7 @@ def deny_applications(conn: db.Connection, entity: dict, reasons: dict) -> None:
     from backend.domains.reviews import ensure_independent
     from backend.kernel.metadata import get_meta
 
-    ensure_independent(entity)
+    ensure_independent(conn, entity)
     reasons = _application_reasons(reasons)
     checks = {item["code"]: item for item in check_entity(conn, entity)["checks"]}
     meta = get_meta(conn, entity["id"]) or {}

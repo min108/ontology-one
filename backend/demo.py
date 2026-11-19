@@ -197,6 +197,10 @@ def _insert_entity(conn, ident, kind, title, summary, payload=None, status="draf
         "demo_pack": data.PACK,
         "demo_notice": "全部为模拟资料，不用于真实业务结论。",
     }
+    if kind in {"data", "rule", "knowledge"}:
+        from .domains.reviews import record_editor
+
+        record_editor({"payload": body}, require_context().user_id)
     conn.execute(
         "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (

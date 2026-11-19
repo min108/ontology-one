@@ -36,15 +36,11 @@ it('saves two actual cases and preserves other payload fields without silently c
     target: { value: JSON.stringify(judgement) },
   });
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
-  await waitFor(() =>
-    expect(onSave).toHaveBeenCalledWith({ scope: fixture.institutionScope, judgement }, false),
-  );
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ judgement }, false));
   await screen.findByText(terms.labels.r4_rule_saved);
   fireEvent.click(screen.getByRole('checkbox', { name: terms.labels.r4_rule_sentence_confirm }));
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
-  await waitFor(() =>
-    expect(onSave).toHaveBeenLastCalledWith({ scope: fixture.institutionScope, judgement }, true),
-  );
+  await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ judgement }, true));
 });
 it('counterexample: malformed judgement never calls save and retains the edit', async () => {
   const onSave = vi.fn();
@@ -73,8 +69,8 @@ it('edits metric test cases at the payload root while keeping the formula schema
     target: { value: JSON.stringify(cases) },
   });
   fireEvent.click(screen.getByRole('button', { name: terms.labels.r4_rule_save }));
-  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ ...metric.payload, test_cases: cases }, false));
-  expect(onSave.mock.calls[0][0].formula).toEqual({ oxl: 'amount * 2' });
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith({ test_cases: cases }, false));
+  expect(onSave.mock.calls[0][0]).not.toHaveProperty('formula');
 });
 it('rejects metric cases accidentally nested under formula and invalid root input records', async () => {
   const onSave = vi.fn();

@@ -23,10 +23,15 @@ FIELD_LABELS = {
     "outputs": "输出要求",
     "steps": "操作步骤",
 }
-SOURCES = {"source", "editor", "batch_confirmation", "legacy", "missing"}
+SOURCES = {"source", "system", "editor", "batch_confirmation", "legacy", "missing"}
 
 
-def field_values(conn: db.Connection, entity: dict, meta: dict) -> dict[str, str]:
+SOURCE_DETAILS = ("actor_id", "method", "confirmed_at", "material_id", "source_version", "anchor_id", "parts")
+
+
+def field_values(
+    conn: db.Connection, entity: dict, meta: dict, *, subject_titles: list[str] | None = None
+) -> dict[str, str]:
     payload = entity.get("payload") or {}
     keys = ["definition"]
     if entity["kind"] in {"data", "metric"}:
@@ -56,7 +61,9 @@ def field_values(conn: db.Connection, entity: dict, meta: dict) -> dict[str, str
                 for step in steps
             )
     if "subjects" in result:
-        result["subjects"] = "、".join(row["title"] for row in subjects(conn, entity))
+        if subject_titles is None:
+            subject_titles = [row["title"] for row in subjects(conn, entity)]
+        result["subjects"] = "、".join(subject_titles)
     return result
 
 
@@ -90,6 +97,7 @@ def project(conn: db.Connection, entity: dict, meta: dict) -> list[dict]:
                 "source": source if value else "missing",
                 "source_quote": record.get("source_quote", "") if current else "",
                 "confirmed_by": record.get("confirmed_by", "") if current else "",
+                **{key: record[key] for key in SOURCE_DETAILS if current and record.get(key)},
                 "href": "",
             }
         )
@@ -129,6 +137,7 @@ def record(conn: db.Connection, entity: dict, sources: dict) -> None:
             "source_quote": str(source.get("source_quote") or ""),
             "confirmed_by": str(source.get("confirmed_by") or ""),
             "at": db.now(),
+            **{key: source[key] for key in SOURCE_DETAILS if source.get(key)},
         }
     conn.execute(
         "UPDATE entity_meta SET gates=? WHERE entity_id=?", (json.dumps(stored, ensure_ascii=False), entity["id"])

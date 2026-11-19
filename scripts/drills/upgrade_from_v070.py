@@ -60,23 +60,43 @@ def main() -> None:
                 report["stages"].append("migrated_and_validated")
                 sequence = folder / "migrations"
                 shutil.copytree(migrations.ROOT, sequence)
-                (sequence / "tenant" / "0002_injected_failure.py").write_text(
-                    "def up(conn):\n    conn.execute('CREATE TABLE injected_partial (id INT)')\n"
-                    "    raise RuntimeError('deliberate upgrade drill failure')\n"
+                next_version = migrations.discover("tenant")[-1].version + 1
+                injected_name = f"{next_version:04d}_injected_failure"
+                (sequence / "tenant" / f"{injected_name}.py").write_text(
+                    "def up(conn):\n"
+                    "    conn.execute('CREATE TABLE injected_partial (id INT PRIMARY KEY)')\n"
+                    "    if conn.execute('SELECT 1').fetchall():\n"
+                    "        raise RuntimeError('deliberate upgrade drill failure')\n"
                 )
                 with patch.object(migrations, "ROOT", sequence):
                     try:
                         migrations.run_migrations()
-                    except RuntimeError:
-                        pass
+                    except RuntimeError as exc:
+                        if str(exc) != "deliberate upgrade drill failure":
+                            raise
                     else:
                         raise AssertionError("Injected migration did not fail")
-                    try:
-                        migrations.validate_runtime()
-                    except migrations.MigrationError:
-                        pass
-                    else:
-                        raise AssertionError("Failed deployment was allowed to start")
+                    partial = [
+                        ident for ident, name in names.items() if "injected_partial" in migrations.table_names(name)
+                    ]
+                    state = migrations.read_state()
+                    if len(partial) != 1 or not state or state["status"] != "failed" or not state.get("backup"):
+                        raise AssertionError("Missing partial tenant DDL or durable failed-upgrade backup state")
+                    status = migrations.migration_status("tenant", names[partial[0]])
+                    if status["current"] != next_version - 1 or status["pending"] != [injected_name]:
+                        raise AssertionError("An incomplete migration was recorded as applied")
+                    report["injected_failure"] = {
+                        "migration": injected_name,
+                        "tenant": partial[0],
+                        "state": state["status"],
+                    }
+                # Even the installed migration sequence must refuse restart after the injected runner disappears.
+                try:
+                    migrations.validate_runtime()
+                except migrations.MigrationError:
+                    pass
+                else:
+                    raise AssertionError("Failed deployment was allowed to start")
                 report["stages"].append("failed_upgrade_blocked_restart")
                 with runtime_guard(shared=False):
                     backup.restore_upgrade_backup(first["backup"])

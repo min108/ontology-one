@@ -70,16 +70,18 @@ test("every expected rule must pass and facts cannot leak from its neighbor", as
       },
     })),
   };
-  const after = structuredClone(before);
-  for (const item of after.items) {
-    item.gates = { passed: true };
-    item.after_data.valid_from = "2026-01-01";
+  for (const item of before.items) {
     item.after_data.field_provenance = Object.fromEntries(
       ["scope", "conditions", "exceptions"].map((key) => [
         key,
         { origin: "source", quote: item.evidence[0].quote },
       ]),
     );
+  }
+  const after = structuredClone(before);
+  for (const item of after.items) {
+    item.gates = { passed: true };
+    item.after_data.valid_from = "2026-01-01";
   }
   assert.deepEqual(assertAllOrdinaryRulesReady(before, after, articles), [
     "0",
@@ -92,9 +94,16 @@ test("every expected rule must pass and facts cannot leak from its neighbor", as
   inherited.items[1].after_data.conditions = ["if approved"];
   inherited.items[1].after_data.field_provenance.conditions.quote = articles[0];
   assert.throws(() => assertAllOrdinaryRulesReady(before, inherited, articles));
+  const relabelled = structuredClone(after);
+  relabelled.items[0].after_data.field_provenance.exceptions.origin = "system";
+  assert.throws(() =>
+    assertAllOrdinaryRulesReady(before, relabelled, articles),
+  );
   const fakeDocumentCondition = structuredClone(after);
-  fakeDocumentCondition.items[1].after_data.field_provenance.conditions.origin =
-    "document";
+  Object.assign(
+    fakeDocumentCondition.items[1].after_data.field_provenance.conditions,
+    { origin: "system", level: "document" },
+  );
   assert.throws(() =>
     assertAllOrdinaryRulesReady(before, fakeDocumentCondition, articles),
   );
@@ -106,7 +115,8 @@ test("document scope must be exact and inherited from its anchored current-file 
   const fact = {
     value: "all employees business travel",
     quote: "This policy applies to all employees business travel.",
-    origin: "document",
+    origin: "system",
+    level: "document",
     material_id: "M",
     anchor_id: "A",
     source_version: "V",

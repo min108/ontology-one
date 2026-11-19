@@ -10,13 +10,19 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
 from backend import federation
 from backend.db import Row
+from backend.security.context import Principal, use_context
+
+
+class TenantConnection(sqlite3.Connection):
+    principal: Principal
+    readonly: bool
 
 
 class FederationBoundaryTests(unittest.TestCase):
@@ -44,20 +50,14 @@ class FederationBoundaryTests(unittest.TestCase):
                 "visibility": "published",
             },
         }
-        self.principal = SimpleNamespace(
-            tenant_id="dept-01",
-            home_tenant_id="dept-01",
-            role="modeler",
-            readonly=False,
-            user_id="user-a",
-            is_superadmin=False,
-        )
+        self.principal = Principal("user-a", "builder", "dept-01", "dept-01", "modeler", False, "fixture", 1, "a")
         for tenant in self.tenants.values():
             connection = sqlite3.connect(self._path(tenant["id"]))
             connection.executescript("""
                 CREATE TABLE entities(id TEXT PRIMARY KEY,kind TEXT,title TEXT,summary TEXT,domain TEXT,org_id TEXT,
                                       status TEXT,source_kind TEXT,payload TEXT,created_at TEXT,updated_at TEXT,version INTEGER);
                 CREATE TABLE entity_access(entity_id TEXT PRIMARY KEY,visibility TEXT,updated_by TEXT,updated_at TEXT);
+                CREATE TABLE search_index(doc_id TEXT PRIMARY KEY,doc_type TEXT,entity_id TEXT,pillar TEXT,module_id TEXT,kind TEXT);
                 CREATE TABLE relations(id TEXT PRIMARY KEY,source TEXT,target TEXT,type TEXT,label TEXT,status TEXT,payload TEXT);
             """)
             connection.close()
@@ -100,12 +100,21 @@ class FederationBoundaryTests(unittest.TestCase):
             patch.object(federation, "_scope", side_effect=lambda: (self.principal, list(self.tenants.values()))),
             patch.object(federation.db, "tenant_connection", side_effect=self.connection),
             patch.object(federation, "_central_links", return_value=[]),
+            patch("backend.security.visibility.assert_execution_principal_current", side_effect=self.check_identity),
+            patch.object(
+                federation.store, "can_read_tenant", side_effect=lambda principal, target: self.tenants.get(target)
+            ),
             patch.object(
                 federation.store, "authorized_read_tenants", side_effect=lambda principal: list(self.tenants.values())
             ),
         ]
         for entry in self.patches:
             entry.start()
+
+    def check_identity(self, person):
+        if person != self.principal:
+            raise HTTPException(403, "revoked")
+        return person
 
     def tearDown(self):
         for entry in reversed(self.patches):
@@ -119,7 +128,10 @@ class FederationBoundaryTests(unittest.TestCase):
     def connection(self, tenant_id, readonly=True):
         if tenant_id not in self.tenants:
             raise HTTPException(403, "revoked")
-        connection = sqlite3.connect(self._path(tenant_id))
+        connection = sqlite3.connect(self._path(tenant_id), factory=TenantConnection)
+        connection.principal, connection.readonly = self.principal, readonly
+        connection.create_function("DATABASE", 0, lambda: self.tenants[tenant_id]["db_name"])
+        connection.create_function("LOCATE", 2, lambda part, value: value.casefold().find(part.casefold()) + 1)
         connection.row_factory = lambda cursor, row: Row(dict(zip([column[0] for column in cursor.description], row)))
         connection.execute("PRAGMA query_only=ON")
         try:
@@ -147,13 +159,17 @@ class FederationBoundaryTests(unittest.TestCase):
             ),
         )
         connection.execute("INSERT INTO entity_access VALUES(?,?,?,?)", (ident, visibility, "owner", "2026"))
+        connection.execute(
+            "INSERT INTO search_index VALUES(?,?,?,?,?,?)", ("el:" + ident, "element", ident, "asset", None, kind)
+        )
         connection.commit()
         connection.close()
 
     def search(self, **kwargs):
-        return federation.search(
-            **{"q": "", "kind": "", "status": "", "tenant_id": "", "page": 1, "page_size": 30, **kwargs}
-        )
+        with use_context(self.principal):
+            return federation.search(
+                **{"q": "", "kind": "", "status": "", "tenant_id": "", "page": 1, "page_size": 30, **kwargs}
+            )
 
     def test_department_sees_only_shared_published_assets(self):
         result = self.search()
@@ -163,6 +179,9 @@ class FederationBoundaryTests(unittest.TestCase):
         )
         self.assertNotIn("HIDDEN", json.dumps(result))
         self.assertEqual(self.search(q="HIDDEN")["total"], 0)
+        shared = self.search(q="Shared published article")
+        self.assertFalse(shared["partial"])
+        self.assertEqual([(row["tenant_id"], row["id"]) for row in shared["items"]], [("dept-02", "same")])
         self.assertEqual(self.search(page=2, page_size=1)["items"][0]["tenant_id"], "dept-02")
 
     def test_nested_hidden_citations_and_raw_metadata_are_removed(self):
@@ -303,7 +322,7 @@ class FederationBoundaryTests(unittest.TestCase):
         self.assertEqual(hidden, 1)
 
     def test_headquarters_business_survives_without_institution_root(self):
-        self.principal.home_tenant_id = "hq"
+        self.principal = replace(self.principal, home_tenant_id="hq")
         self.tenants["dept-01"]["category"] = "headquarters"
         self.add("dept-01", "dept-01", "organization", "HQ institution", "published", "institution")
         result = federation.graph(tenant_id="", kind="", q="", limit=100)
@@ -318,7 +337,7 @@ class FederationBoundaryTests(unittest.TestCase):
         self.assertEqual([tenant["id"] for tenant in scoped], ["dept-01"])
 
     def test_mid_request_grant_downgrade_rejects_broader_snapshot(self):
-        self.principal.home_tenant_id = "hq"
+        self.principal = replace(self.principal, home_tenant_id="hq")
         old = dict(self.tenants["dept-02"], visibility="private")
         with self.assertRaises(HTTPException) as error:
             federation._assert_scope_current(self.principal, [old])

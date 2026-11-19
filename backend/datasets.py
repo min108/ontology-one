@@ -1580,6 +1580,10 @@ def create_dictionary_draft(dataset_id: str, body: DictionaryDraftBody):
                 "增补理由：" + payload["draft_reason"],
             ]
         )
+        from .domains.reviews import record_editor
+        from .security.context import require_context
+
+        record_editor({"payload": payload}, require_context().user_id)
         conn.execute(
             "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (

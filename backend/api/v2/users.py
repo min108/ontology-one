@@ -24,7 +24,7 @@ class User(StrictModel):
     username: str
     display_name: str
     home_tenant_id: str
-    role: Literal["admin", "modeler", "reviewer"]
+    role: Literal["admin", "modeler", "reviewer", "analyst", "viewer"]
     is_active: bool
     is_superadmin: bool
     must_change_password: Literal[False] = False

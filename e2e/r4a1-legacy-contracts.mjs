@@ -63,7 +63,7 @@ export function assertReviewOrigins(fields, manualScope) {
   );
   assert.equal(
     fields.find((field) => field.key === "valid_from")?.source,
-    "source",
+    "system",
   );
   assert.ok(fields.some((field) => field.source === "batch_confirmation"));
 }

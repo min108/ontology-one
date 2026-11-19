@@ -27,6 +27,17 @@ export async function startRegulation(
     ),
     "utf8",
   );
+  return startRegulationText(page, name, text, {
+    filenamePrefix,
+    stopAtIntake,
+  });
+}
+export async function startRegulationText(
+  page,
+  name,
+  text,
+  { filenamePrefix = "", stopAtIntake = false } = {},
+) {
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "工作台", exact: true }),
@@ -71,13 +82,26 @@ export async function startRegulation(
   expect(proposal.items.length).toBeGreaterThan(0);
   return { proposal, text };
 }
+export async function openOmissionList(page, name) {
+  await expect(selected(page)).toBeVisible();
+  const group = page.locator(`[data-omission-group="${name}"]`);
+  if (
+    (await group.count()) &&
+    !(await group.locator("details").evaluate((node) => node.open))
+  )
+    await group.locator("summary").click();
+  return group;
+}
 export async function confirmOmissions(page, id) {
-  for (const selector of [
-    "[data-confirm-no-exceptions]",
-    "[data-confirm-unconditional]",
+  for (const [name, selector] of [
+    ["exceptions", "[data-confirm-no-exceptions]"],
+    ["conditions", "[data-confirm-unconditional]"],
   ]) {
-    const control = page.locator(selector);
+    const group = await openOmissionList(page, name);
+    const control = group.locator(selector);
     if (await control.count()) {
+      for (const box of await group.getByRole("checkbox").all())
+        await box.check();
       const confirmed = postResponse(page, "/changeset.confirm_facts:invoke");
       await control.click();
       expect((await confirmed).ok()).toBe(true);

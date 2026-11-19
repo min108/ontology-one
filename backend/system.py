@@ -73,6 +73,10 @@ TABLE_CLASSIFICATION = dict.fromkeys(
         "entity_ownership",
         "jobs",
         "mappings",
+        "ont_module_deps",
+        "ont_modules",
+        "ont_release_items",
+        "ont_releases",
         "reading_drafts",
         "reading_versions",
         "relations",
@@ -94,6 +98,8 @@ TABLE_CLASSIFICATION = dict.fromkeys(
     "export",
 )
 TABLE_CLASSIFICATION["schema_migrations"] = "deployment"
+TABLE_CLASSIFICATION["search_index"] = "rebuildable"
+REBUILDABLE_TABLES = frozenset(name for name, category in TABLE_CLASSIFICATION.items() if category == "rebuildable")
 EXPORTED_TABLES = frozenset(name for name, category in TABLE_CLASSIFICATION.items() if category == "export")
 
 

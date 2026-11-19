@@ -241,8 +241,13 @@ _EVIDENCE_REVIEW = re.compile(r"^/api/special-projects/[^/]+/evidence(?:/[^/]+)?
 
 # Empty permission tuples mean authenticated use; per-capability keys are checked by the gateway.
 V2_RULES = (
+    ("GET", "/api/v2/modules/{module_id}", ()),
+    ("GET", "/api/v2/modules/{module_id}/releases", ()),
+    ("GET", "/api/v2/releases/{release_id}", ()),
     ("GET", "/api/v2/elements", ()),
     ("GET", "/api/v2/elements/{id}", ()),
+    ("GET", "/api/v2/elements/{id}/passage", ()),
+    ("GET", "/api/v2/materials/{id}/source", ()),
     ("GET", "/api/v2/artifacts", ("artifact.read",)),
     ("GET", "/api/v2/artifacts/{id}", ("artifact.read",)),
     ("POST", "/api/v2/artifacts/{id}:render", ("artifact.create",)),
@@ -252,6 +257,7 @@ V2_RULES = (
     ("GET", "/api/v2/changesets/{id}", ("draft.read",)),
     ("POST", "/api/v2/changesets/{id}/items:bulk-decide", ("build.edit",)),
     ("POST", "/api/v2/changesets/{id}/facts:confirm", ("build.edit",)),
+    ("POST", "/api/v2/changesets/{id}/sources:retain", ("build.edit",)),
     ("POST", "/api/v2/changesets/{id}:apply", ("build.edit",)),
     ("POST", "/api/v2/changesets/{id}:apply-and-submit", ("build.submit",)),
     ("GET", "/api/v2/reviews", ("draft.read",)),
@@ -262,6 +268,7 @@ V2_RULES = (
     ("GET", "/api/v2/system/metadata", ()),
     ("GET", "/api/v2/meta/kinds", ()),
     ("POST", "/api/v2/system/model:test", ("admin.model",)),
+    ("POST", "/api/v2/system/search-index:rebuild", ("admin.settings",)),
     ("GET", "/api/v2/system/backup", ("admin.settings",)),
     ("GET", "/api/v2/system/backups", ("admin.settings",)),
     ("GET", "/api/v2/system/release", ("admin.settings",)),
@@ -317,6 +324,17 @@ def authorize(principal, method: str, path: str, body: Mapping | None = None) ->
         return authorize_v2(principal, method, path)
     if path.startswith("/api/integrations/applications") and principal.role != "admin":
         return Decision(False, 403, "应用管理需要机构管理员权限。")
+    if principal.role in {"analyst", "viewer"}:
+        # These authenticated roles can manage their own sessions, while the
+        # original business, federation and administration routes retain their role policy.
+        self_service = (method, path) in {
+            ("GET", "/api/auth/session"),
+            ("GET", "/api/auth/me"),
+            ("GET", "/api/auth/sessions"),
+            ("POST", "/api/auth/logout"),
+            ("POST", "/api/auth/password"),
+        } or (method == "DELETE" and re.fullmatch(r"/api/auth/sessions/[^/]+", path) is not None)
+        return Decision(self_service)
     if principal.role not in ROLES:
         return Decision(False)
     if is_control_path(path):

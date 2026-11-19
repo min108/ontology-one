@@ -214,39 +214,40 @@ class RefinementsMySQL(unittest.TestCase):
         self.assertEqual(allowed.json()["data"]["entity"]["status"], "published")
 
     def test_review_center_authority_rules_publish_and_return_with_version_guard(self) -> None:
-        from backend.authority import Spec
-
         builder, reviewer = self.login("fixture.builder"), self.login("fixture.reviewer")
-        person = store.authenticate_session(builder.cookies.get("ontology_session"), "r3-test")[0]
+        catalog = builder.get("/api/authority/catalog")
+        self.assertEqual(catalog.status_code, 200, catalog.text)
+        org_id = catalog.json()["organizations"][0]["id"]
         for decision, expected in (("approve_publish", "published"), ("return", "returned")):
             with self.subTest(decision=decision):
                 proposal = self.proposal(builder)
-                self.invoke(
-                    builder,
-                    "changeset.decide_items",
-                    {"changeset_id": proposal["id"], "item_ids": [proposal["items"][0]["id"]], "decision": "accepted"},
+                created = builder.post(
+                    "/api/authority/assets",
+                    json={
+                        "title": "付款核对职责" + expected,
+                        "org_id": org_id,
+                        "spec": {
+                            "type": "position",
+                            "org_ids": [org_id],
+                            "purpose": "核对付款",
+                            "scope": "付款岗位",
+                            "conditions": "办理付款时",
+                            "exceptions": "无例外",
+                            "effective_from": "2026-11-17",
+                            "basis": "付款管理制度",
+                            "sections": [{"id": "duties", "title": "职责", "content": "核对附件"}],
+                            "source_refs": proposal["items"][0]["evidence"],
+                        },
+                    },
                 )
-                entity_id = self.invoke(builder, "changeset.apply_and_submit", {"changeset_id": proposal["id"]})[
-                    "entity_ids"
-                ][0]
-                with use_context(person), closing(db.connect()) as conn, conn:
-                    entity = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (entity_id,)).fetchone())
-                    org = conn.execute("SELECT id FROM entities WHERE kind='organization' LIMIT 1").fetchone()["id"]
-                    entity["payload"]["authority_spec"] = Spec(
-                        type="position",
-                        org_ids=[org],
-                        purpose="核对付款",
-                        scope="付款岗位",
-                        conditions="办理付款时",
-                        exceptions="无例外",
-                        effective_from="2026-11-17",
-                        basis="付款管理制度",
-                        sections=[{"id": "duties", "title": "职责", "content": "核对附件"}],
-                        source_refs=entity["payload"]["source_refs"],
-                    ).model_dump()
-                    conn.execute(
-                        "UPDATE entities SET payload=? WHERE id=?", (materials.dump(entity["payload"]), entity_id)
-                    )
+                self.assertEqual(created.status_code, 200, created.text)
+                entity = created.json()["entity"]
+                entity_id = entity["id"]
+                submitted = builder.post(
+                    f"/api/entities/{entity_id}/action",
+                    json={"action": "submit", "expected_version": entity["version"], "reason": "请核对付款职责"},
+                )
+                self.assertEqual(submitted.status_code, 200, submitted.text)
                 if decision == "approve_publish":
                     from backend.authority import guard_action
 

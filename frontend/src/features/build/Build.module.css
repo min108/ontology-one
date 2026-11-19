@@ -298,15 +298,36 @@
   line-height: var(--zy-line-body);
 }
 
-.omission-row .omission-evidence summary {
-  min-height: var(--zy-none);
-  padding: var(--zy-none);
-  color: var(--zy-color-link);
-  text-decoration: underline;
-  font-size: var(--zy-font-body);
-  line-height: var(--zy-line-body);
+.file-facts,
+.date-candidates,
+.omission-evidence {
+  display: grid;
+  gap: var(--zy-space-2);
 }
 
-.omission-evidence[open] {
-  padding-bottom: var(--zy-space-2);
+.date-candidates {
+  min-width: var(--zy-content-min);
+  margin: var(--zy-none);
+  border: var(--zy-none);
+  padding: var(--zy-none);
+}
+
+.date-candidates legend {
+  margin-bottom: var(--zy-space-1);
+  color: var(--zy-color-text-secondary);
+}
+
+.date-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--zy-space-2);
+}
+
+.omission-row {
+  list-style: none;
+}
+
+.omission-evidence {
+  margin: var(--zy-space-1) var(--zy-none) var(--zy-space-2) var(--zy-space-6);
 }

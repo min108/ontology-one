@@ -24,6 +24,13 @@ R4（1.3.0）语义内核补齐，分 A、B 两段交付与验收：范围、裁
 
 ## 3 代码地图
 
+- R4-B1 的机构归属、提升与依赖由 `backend/kernel/modules.py` 管理。`releases.py` 调用 `release_snapshots.py` 生成差异和冻结条目，独立审核通过后在同一事务更新当前版本。后台批准保存在 `backend/infra/release_snapshot.py`。机构库 0005 对应可信恢复定义 v8。 [办理与恢复实测](docs/blueprint/rounds/R4-B-UPPER-EVIDENCE.md#b1-动作反例和恢复)
+- R4-B2 的可见范围由 `backend/security/visibility.py` 判定。顶部搜索、旧搜索与工具共用 `backend/kernel/search.py`。要素及原文片段在业务事务提交时写入机构自己的检索索引。重建任务与 0006 迁移都使用 `backend/infra/search_index.py`。可信恢复定义 v9 从原始业务数据重建索引。查阅人员的材料页通过同一项 `evidence.trace` 读取分页正文，历史引文按可见引用主体复核。 [检索与语义服务演练](docs/blueprint/rounds/R4-DEMO.md#从原制度检索)
+
+- 已发布规则和原文材料各自授权。卡片、关联、门禁字段和依据追溯按同一权限范围读取，两份材料只公开一份时只能展示那一份的引文。专题和项目从搜索结果归集原件使用材料编号，直接阅读时则使用片段编号和版本。
+
+- R4-A.2 用 `domains/reviews.py` 统一累计上次发布以来的编辑与提交人。核对、旧页、Excel 和经验修订对已存在的内容调用相同的工作面守卫。`domains/build_source_facts.py` 维护系统识别与模型原句的归属，`domains/build_sources.py` 按方案当时的阅读版列出未成条段落。新增写入口的角色、机构、独立审核及专用工作面反例见 [上半段核验附录](docs/blueprint/rounds/R4-B-UPPER-EVIDENCE.md)。
+
 - R4-A：`kernel/kinds/metadata/elements/relations/cards/oxl/rules/gates` 统一种类、侧表、写入、派生关系、卡片、表达式与五项检查；新能力与 v1 共用内核。岗位/外部主体的检查适用性独立于业务资产分类。配方 A 在 `domains/build.py` 提出适用关系并从明确原文补条件，有外部编辑时必须显式版本确认；豁免只由独立审核人记录。`e2e/run_r4.py` 复用隔离生命周期，完整动作包含原 R3 用例；AA2 的 200 条中合成扩充与原始夹具必须区分。
 
 - R4-A.1 按 D11–D16 办理。出处、条件各自允许申请、审核人员须逐项决定；口径、关系、版本缺项继续拦截。核对页保留普通制度原句、核对人填值及批量确认来源，分列本次送审、留存草稿、待核对数。旧资产与要素页共用草稿，权责规范、技能包仍从专用入口核验和发布。本次修订的编辑人及提交人均需其他审核人员办理，升级前已待审的历史件沿用原独立性规则。回归证据由真实上传、定位和公开业务操作取得。受验材料、运行渠道和复验进度见 [R4 演练](docs/blueprint/rounds/R4-DEMO.md) 与 [R4 报告](docs/blueprint/rounds/R4-REPORT.md)。

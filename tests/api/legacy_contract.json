@@ -895,5 +895,13 @@
   },
   "r4a1_functions": {
     "_confirm_relation": "a2639ce10f3df981bd68773c2629d9b314c0b51e4aec93275b64bc861af19e95"
+  },
+  "r4b1_functions": {
+    "_create_entity": "c96f0d33569fc3de7bd477d1ce9069f95a718752b8e259fb2436f9cde6f60291",
+    "_confirm_relation": "83b6758c38ffb000a44cd3955d35b3245c7b676be18b2437692efe830a9f7614"
+  },
+  "r4b2_functions": {
+    "entities": "570064889749bd354e882cd2d752b296d3afb13818cb28cc2d56a3cd2c18fb0f",
+    "entity_facets": "402c87e0b6508099ead171732b002cc86d382fd7c84ea083340e27a748427b8a"
   }
 }

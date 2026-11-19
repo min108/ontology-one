@@ -53,7 +53,7 @@ def catalog():
 @router.get("/api/entities")
 def entities(
     kind: str = "",
-    q: str = "",
+    q: str | None = None,
     domain: str = "",
     org_id: str = "",
     status: str = "",
@@ -65,6 +65,23 @@ def entities(
 ):
     page = max(1, page)
     page_size = min(max(1, page_size), 200)
+    from .search_results import needs_ranked_catalog, ranked_entities
+
+    if needs_ranked_catalog(q):
+        with closing(connect()) as c:
+            return ranked_entities(
+                c,
+                q or "",
+                kind=kind,
+                domain=domain,
+                org_id=org_id,
+                status=status,
+                source_kind=source_kind,
+                page=page,
+                page_size=page_size,
+                history=history,
+                asset_only=asset_only,
+            )
     where = []
     args = []
     if history != "all":
@@ -86,11 +103,6 @@ def entities(
             vals = v.split(",")
             where.append(f"{k} IN ({','.join('?' for _ in vals)})")
             args += vals
-    if q:
-        where.append(
-            "(title LIKE ? OR summary LIKE ? OR id LIKE ? OR CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?)"
-        )
-        args += ["%" + q + "%"] * 4
     filt = " WHERE " + " AND ".join(where) if where else ""
     with closing(connect()) as c, c:
         total = c.execute("SELECT COUNT(*) FROM entities" + filt, args).fetchone()[0]
@@ -109,13 +121,29 @@ def search(q: str = ""):
 @router.get("/api/entities/facets")
 def entity_facets(
     kind: str = "",
-    q: str = "",
+    q: str | None = None,
     domain: str = "",
     org_id: str = "",
     status: str = "",
     source_kind: str = "",
     history: str = "current",
 ):
+    from .search_results import needs_ranked_catalog
+
+    if needs_ranked_catalog(q):
+        from ...kernel.search import facet_counts
+
+        with closing(connect()) as c:
+            return facet_counts(
+                c,
+                q or "",
+                kind=kind,
+                status=status,
+                source_kind=source_kind,
+                domain=domain,
+                org_id=org_id,
+                history=history,
+            )
     filters = {"kind": kind, "domain": domain, "org_id": org_id, "status": status, "source_kind": source_kind}
 
     def clause(omit=""):
@@ -126,11 +154,6 @@ def entity_facets(
                 values = value.split(",")
                 terms.append(f"{field} IN ({','.join('?' for _ in values)})")
                 args.extend(values)
-        if q:
-            terms.append(
-                "(title LIKE ? OR summary LIKE ? OR id LIKE ? OR CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?)"
-            )
-            args.extend(["%" + q + "%"] * 4)
         return (" WHERE " + " AND ".join(terms) if terms else ""), args
 
     with closing(connect()) as c:
@@ -194,6 +217,9 @@ def _create_entity(b):
                     "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
                     ("rel-" + uuid.uuid4().hex, parent, eid, "contains", "组织开展", "confirmed", "{}"),
                 )
+                from ...kernel.modules import record_confirmed_references
+
+                record_confirmed_references(c, parent, [eid])
         element_kernel.sync_after_write(c, created)
         c.commit()
     return detail(eid)
@@ -276,6 +302,13 @@ def _guard_edit(c, old, b):
         raise HTTPException(409, "这是保留追溯的历史条目。请打开整合后的成果开展修订。")
 
 
+def guard_generic_edit(c, old, b):
+    """Check ownership when the caller cannot dispatch a dedicated work record."""
+    _guard_edit(c, old, b)
+    if old["kind"] in {"task", "project"}:
+        raise HTTPException(400, "请通过任务或专题工作档案修改。")
+
+
 @router.patch("/api/entities/{eid}")
 async def edit(eid: str, request: Request):
     b = await request.json()
@@ -310,9 +343,11 @@ def _edit_entity(eid, b, *, repair_gates=False):
         elif repair_gates and old["kind"] == "skill" and "waiver_applications" in b and skills.is_managed_skill(c, old):
             skills.apply_gate_notes(c, old, b)
         else:
-            _guard_edit(c, old, b)
-            if old["kind"] in {"task", "project"}:
-                raise HTTPException(400, "请通过任务或专题工作档案修改。")
+            guard_generic_edit(c, old, b)
+            if repair_gates and ("add_alias" in b or "payload_fields" in b):
+                from ...kernel.element_edits import draft_field_changes
+
+                b = draft_field_changes(c, old, b)
             element_kernel.update_draft(c, old, b)
     return detail(eid)
 
@@ -672,6 +707,10 @@ def _confirm_relation(rid, b):
         c.execute(
             "UPDATE relations SET status=?,payload=? WHERE id=?", (b["status"], json.dumps(p, ensure_ascii=False), rid)
         )
+        if b["status"] == "confirmed":
+            from ...kernel.modules import record_confirmed_references
+
+            record_confirmed_references(c, row["source"], [row["target"]])
         log(c, row["source"], "关联核对", b.get("reason", "关联状态已更新"))
         c.commit()
     return {"ok": True}

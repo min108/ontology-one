@@ -64,13 +64,13 @@ test("AB7–9 counterexamples reject draft state, identity loss and missing appl
   );
 });
 test("AB10 counterexamples reject missing date, altered fact and falsely attributed origin", () => {
-  const fields = [{ key: "valid_from", value: "2026-01-01", source: "source" }];
+  const fields = [{ key: "valid_from", value: "2026-01-01", source: "system" }];
   assertVisibleFacts(fields, [
-    { key: "valid_from", text: "生效日期 2026-01-01", source: "source" },
+    { key: "valid_from", text: "生效日期 2026-01-01", source: "system" },
   ]);
   for (const rows of [
     [],
-    [{ key: "valid_from", text: "2019-03-01", source: "source" }],
+    [{ key: "valid_from", text: "2019-03-01", source: "system" }],
     [{ key: "valid_from", text: "2026-01-01", source: "editor" }],
   ])
     assert.throws(() => assertVisibleFacts(fields, rows));
@@ -96,7 +96,7 @@ test("AB10 requires an actual manual scope alongside extracted date and confirme
   const scope = "总部采购与所属单位工程合同付款";
   const fields = [
     { key: "scope", value: scope, source: "editor" },
-    { key: "valid_from", value: "2026-01-01", source: "source" },
+    { key: "valid_from", value: "2026-01-01", source: "system" },
     { key: "exceptions", value: "无例外", source: "batch_confirmation" },
   ];
   assertReviewOrigins(fields, scope);

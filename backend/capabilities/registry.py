@@ -3,19 +3,22 @@
 import re
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from contextlib import ExitStack, closing
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
-from backend.capabilities.context import CapabilityContext
+from backend.capabilities.context import CapabilityContext, TenantTarget
 from backend.capabilities.preconditions import CHECKS, check_all
 from backend.core.config import CONFIG
 from backend.core.errors import ApiError
 from backend.db import business_readonly
 from backend.security import store
 from backend.security.context import use_context
-from backend.security.permissions import ALL_PERMISSIONS, ROLES
+from backend.security.permissions import ALL_PERMISSIONS, ROLES, PermissionScope, permissions_for
+
+ScopeResolver = Callable[[CapabilityContext, BaseModel], PermissionScope]
 
 READ_EFFECTS = frozenset({"none", "read", "external_read"})
 
@@ -40,10 +43,19 @@ class Capability:
     audit: str
     limits: Mapping[str, int]
     function: Callable[[CapabilityContext, BaseModel], BaseModel]
+    owner_scope: ScopeResolver | None
+    transactional: bool
 
     @property
     def tool_name(self) -> str:
         return self.id.replace(".", "_")
+
+
+def _confirm_binding(item: Capability) -> None:
+    if item.confirm == "L3":
+        raise ApiError("PAGE_ONLY_ACTION")
+    if item.confirm in {"L1", "L2"}:
+        raise ApiError("CONFIRMATION_REQUIRED")
 
 
 class Registry:
@@ -74,6 +86,8 @@ class Registry:
         idempotent: bool,
         audit: str,
         limits: dict[str, int],
+        owner_scope: ScopeResolver | None = None,
+        transactional: bool = False,
     ) -> Callable:
         if id in self._entries or not re.fullmatch(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*", id):
             raise ValueError("Capability identifier must be unique and domain.action")
@@ -87,6 +101,8 @@ class Registry:
             raise ValueError("Invalid confirmation or audit mode")
         if set(permissions) - ALL_PERMISSIONS or set(assistants) - {"builder", "analyst"}:
             raise ValueError("Unknown permission or assistant")
+        if owner_scope is not None and permissions != ["module.manage"]:
+            raise ValueError("Owner-scoped authorization requires module.manage")
         if set(preconditions) - CHECKS.keys():
             raise ValueError("Unknown precondition")
         if "analyst" in assistants and effect not in READ_EFFECTS and domain not in {"artifact", "feedback"}:
@@ -125,6 +141,8 @@ class Registry:
                 audit,
                 MappingProxyType(dict(limits)),
                 function,
+                owner_scope,
+                transactional,
             )
             return function
 
@@ -139,38 +157,49 @@ class Registry:
             person = ctx.principal
             if person.role not in ROLES or person.identity_kind != "session":
                 raise ApiError("PERMISSION_DENIED")
+            if issubclass(item.input, TenantTarget):
+                TenantTarget.require_local(person, raw.get("tenant_id"))
             if person.readonly and item.effect not in READ_EFFECTS:
                 raise ApiError("PERMISSION_DENIED")
-            if not set(item.permissions) <= ctx.permissions:
+            missing = set(item.permissions) - ctx.permissions
+            if missing and (not item.owner_scope or person.role != "modeler" or "build.edit" not in ctx.permissions):
                 raise ApiError("PERMISSION_DENIED")
-            if ctx.binding == "tool":
-                if ctx.assistant not in item.assistants:
-                    raise ApiError("PERMISSION_DENIED")
-                if item.confirm == "L3":
-                    raise ApiError("PAGE_ONLY_ACTION")
-                if item.confirm in {"L1", "L2"}:
-                    raise ApiError("CONFIRMATION_REQUIRED")
-            elif ctx.binding == "mcp" and not item.mcp:
+            if ctx.binding == "tool" and ctx.assistant not in item.assistants:
                 raise ApiError("PERMISSION_DENIED")
+            if ctx.binding == "mcp" and not item.mcp:
+                raise ApiError("PERMISSION_DENIED")
+            if not missing and ctx.binding == "tool":
+                _confirm_binding(item)
             try:
                 body = item.input.model_validate(raw)
             except ValidationError:
                 raise ApiError("VALIDATION_FAILED") from None
+            if missing:
+                with use_context(person), business_readonly(True):
+                    scope = item.owner_scope(ctx, body)
+                    if not missing <= permissions_for(person, scope):
+                        raise ApiError("PERMISSION_DENIED")
+                if ctx.binding == "tool":
+                    _confirm_binding(item)
             check_all(item.preconditions, ctx, body)
-            with use_context(person), business_readonly(item.effect in READ_EFFECTS):
+            with use_context(person), business_readonly(item.effect in READ_EFFECTS), ExitStack() as transaction:
+                if item.transactional:
+                    conn = transaction.enter_context(closing(ctx.connection_factory()))
+                    transaction.enter_context(conn)
+                    ctx = replace(ctx, transaction=conn)
                 result = item.output.model_validate(item.function(ctx, body))
-            if len(result.model_dump_json().encode()) > item.limits.get(
-                "max_result_bytes", CONFIG.maximum_result_bytes
-            ):
-                raise ApiError(
-                    "IMPORT_LIMIT_EXCEEDED",
-                    "这份材料整理后的内容超过单次方案容量（2 MiB）。原文与已保存条目仍保留；"
-                    "请在素材页继续处理，或按章节拆成较小文件，分批上传整理。"
-                    if ident.startswith("changeset.")
-                    else "返回内容超过上限，请缩小查询范围后重试。",
-                )
-            if time.monotonic() - started > item.limits.get("timeout_s", CONFIG.capability_timeout_seconds):
-                raise ApiError("QUERY_TIMEOUT")
+                if len(result.model_dump_json().encode()) > item.limits.get(
+                    "max_result_bytes", CONFIG.maximum_result_bytes
+                ):
+                    raise ApiError(
+                        "IMPORT_LIMIT_EXCEEDED",
+                        "这份材料整理后的内容超过单次方案容量（2 MiB）。原文与已保存条目仍保留；"
+                        "请在素材页继续处理，或按章节拆成较小文件，分批上传整理。"
+                        if ident.startswith("changeset.")
+                        else "返回内容超过上限，请缩小查询范围后重试。",
+                    )
+                if time.monotonic() - started > item.limits.get("timeout_s", CONFIG.capability_timeout_seconds):
+                    raise ApiError("QUERY_TIMEOUT")
             count = len(result.items) if isinstance(getattr(result, "items", None), list) else 1
             result_code = "OK"
             return result

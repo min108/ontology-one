@@ -152,7 +152,7 @@ class MigrationMySQL(unittest.TestCase):
         tenant = store.get_tenant("dept-02")
         self.assertEqual(migrations.table_names(tenant["db_name"]), [])
         migrations.provision_tenant("dept-02")
-        self.assertEqual(migrations.migration_status("tenant", tenant["db_name"])["current"], 4)
+        self.assertEqual(migrations.migration_status("tenant", tenant["db_name"])["current"], 6)
         self.assertIn("demo_installations", migrations.table_names(tenant["db_name"]))
 
     def test_existing_legacy_tenant_cannot_upgrade_online(self) -> None:

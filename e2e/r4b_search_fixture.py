@@ -1,0 +1,78 @@
+"""Provision browser identities or clear only the derived index for the S12 rebuild drill."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from contextlib import closing
+
+from run import ROOT, database_names
+
+from backend import db
+from backend.security import store
+from backend.security.context import use_context
+
+TENANT = "sub-01"
+ROLES = {"builder": "modeler", "reviewer": "reviewer", "admin": "admin", "viewer": "viewer"}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("accounts", "department_viewer", "clear"))
+    args = parser.parse_args()
+    namespace = os.environ["MYSQL_DATABASE"]
+    tenant = "dept-01" if args.action == "department_viewer" else TENANT
+    allowed = database_names(namespace, [tenant])
+    manifest = json.loads((ROOT / "tests/fixtures/v070/manifest.json").read_text())
+    password = manifest["browser"]["accounts"]["modeler"]["password"]
+    with store.control_connection() as connection, connection.cursor() as cursor:
+        cursor.execute("SELECT db_name FROM sec_tenants WHERE id=%s", (tenant,))
+        if cursor.fetchone()["db_name"] not in allowed - {namespace, namespace + "_control"}:
+            raise ValueError("Search fixture must belong to this runner's disposable tenant")
+    agent = "r4b-search-fixture"
+    if args.action in {"accounts", "department_viewer"}:
+        username = manifest["browser"]["accounts"]["superadmin"]["username"]
+        token = store.login(username, password, "127.0.0.1", agent)
+        principal = store.authenticate_session(token, agent)[0]
+        roles = {"viewer": "viewer"} if args.action == "department_viewer" else ROLES
+        prefix = "b2.passage." if args.action == "department_viewer" else "b2.search."
+        for name, role in roles.items():
+            ident = store.create_user(
+                principal,
+                username=prefix + name,
+                display_name={
+                    "builder": "合同建设人员",
+                    "reviewer": "合同审核人员",
+                    "admin": "机构管理员",
+                    "viewer": "查阅人员",
+                }[name],
+                tenant_id=tenant,
+                role="modeler" if role == "viewer" else role,
+                password=password,
+                must_change_password=False,
+            )
+            if role == "viewer":
+                # This represents an existing read-only account before its first session.
+                # R4-B upper retains the three original account-management role choices.
+                with store.control_connection() as connection, connection.cursor() as cursor:
+                    cursor.execute("UPDATE sec_users SET role=%s WHERE id=%s", (role, ident))
+        print(json.dumps({"tenant_id": tenant, "roles": list(roles.values())}))
+        return
+    token = store.login("b2.search.admin", password, "127.0.0.1", agent)
+    principal = store.authenticate_session(token, agent)[0]
+    if principal.tenant_id != TENANT or principal.role != "admin":
+        raise ValueError("S12 requires the institution's own administrator")
+    with use_context(principal), closing(db.connect()) as conn, conn:
+        before = conn.execute("SELECT COUNT(*) FROM search_index").fetchone()[0]
+        if before < 1:
+            raise ValueError("S12 must exercise a populated index")
+        conn.execute("DELETE FROM search_index")
+        after = conn.execute("SELECT COUNT(*) FROM search_index").fetchone()[0]
+        if after:
+            raise ValueError("Derived index was not cleared")
+    print(json.dumps({"tenant_id": TENANT, "before": before, "after": after}))
+
+
+if __name__ == "__main__":
+    main()

@@ -38,8 +38,14 @@ class Evidence(ReadModel):
     locator: str = ""
 
 
+class UnformedSource(Evidence):
+    unformed_reason: Literal["invalid_quote", "uncovered"]
+
+
 class FieldProvenance(ReadModel):
     origin: str
+    method: Literal["selection"] | None = None
+    level: Literal["document"] | None = None
     quote: str = ""
     actor_id: str = ""
     confirmed_by: str = ""
@@ -49,10 +55,15 @@ class FieldProvenance(ReadModel):
 
 
 class DocumentFact(FieldProvenance):
+    candidate_id: str = ""
     value: str = ""
+    material_id: str = ""
+    start: int | None = None
+    end: int | None = None
 
 
 class DocumentFacts(ReadModel):
+    valid_from_candidates: list[DocumentFact] = Field(default_factory=list)
     valid_from: DocumentFact
     scope: DocumentFact
 
@@ -138,10 +149,11 @@ class Proposal(ReadModel):
     submit_blockers: list[str] = Field(default_factory=list)
     document_facts: DocumentFacts = Field(
         default_factory=lambda: DocumentFacts(
-            valid_from=DocumentFact(origin="document"), scope=DocumentFact(origin="document")
+            valid_from=DocumentFact(origin="system"), scope=DocumentFact(origin="system")
         )
     )
     extraction_summary: ExtractionSummary = Field(default_factory=ExtractionSummary)
+    unformed_sources: list[UnformedSource] = Field(default_factory=list)
     applicability_options: list[ProposalApplicabilityOption] = Field(default_factory=list)
 
 

@@ -1,0 +1,98 @@
+{
+  "baseline_commit": "5962caa5df429bf17b7a846774c438eecc8018a3",
+  "baseline_actions_run": 44368957109,
+  "quick_commit": "77386d196ddb7fa4f22708985eb112e4b58fd37e",
+  "quick_actions_run": 44459105358,
+  "backend": {
+    "suite": "backend",
+    "original_tests": 1348,
+    "executed_tests": 1551,
+    "original_missing_or_changed": [],
+    "extra": 203,
+    "additional_or_existing_failures": [],
+    "statuses": {
+      "total": 1551,
+      "passed": 1512,
+      "skipped": 39,
+      "baseline": 489,
+      "added": 1062
+    }
+  },
+  "frontend": {
+    "suite": "frontend",
+    "original_tests": 542,
+    "executed_tests": 571,
+    "original_missing_or_changed": [],
+    "extra": 29,
+    "additional_or_existing_failures": [],
+    "passed": 571
+  },
+  "browser": {
+    "source_commit": "77386d196ddb7fa4f22708985eb112e4b58fd37e",
+    "status": "passed",
+    "selection": "all_actions",
+    "channel": "browser_ui",
+    "provider": "synthetic_messages_real_sdk",
+    "model_name": "synthetic-r2",
+    "model_requests": 110,
+    "source_sha256": "2df00f33bd91deab4af971baaa9d45501e552fc1b2bf715e018a34d2d951065b",
+    "search_actions": [
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S5",
+      "S6",
+      "S7",
+      "S8",
+      "S9",
+      "S10",
+      "S11",
+      "S12"
+    ],
+    "services_stopped": true,
+    "databases_removed": true,
+    "version": "Chromium 156.0.8078.79 built on Debian GNU/Linux 13 (trixie)",
+    "passed": 62,
+    "duration": "13.6m",
+    "by_spec": {
+      "e2e/r3-administration.spec.mjs": 4,
+      "e2e/r3-cross-role.spec.mjs": 1,
+      "e2e/r3-integration.spec.mjs": 1,
+      "e2e/r3-leakage.spec.mjs": 4,
+      "e2e/r3-mainline.spec.mjs": 1,
+      "e2e/r3-regressions.spec.mjs": 5,
+      "e2e/r4-legacy.spec.mjs": 1,
+      "e2e/r4-semantics.spec.mjs": 6,
+      "e2e/r4-ui-review.spec.mjs": 2,
+      "e2e/r4a1-changeset.spec.mjs": 5,
+      "e2e/r4a1-fallback.spec.mjs": 1,
+      "e2e/r4a1-kernel.spec.mjs": 3,
+      "e2e/r4a1-legacy.spec.mjs": 4,
+      "e2e/r4a1-mainline.spec.mjs": 1,
+      "e2e/r4a1-skill-handoff.spec.mjs": 1,
+      "e2e/r4a1-skill-review.spec.mjs": 1,
+      "e2e/r4a2-editor.spec.mjs": 3,
+      "e2e/r4a2-extraction.spec.mjs": 1,
+      "e2e/r4a2-facts.spec.mjs": 8,
+      "e2e/r4a2-guards.spec.mjs": 3,
+      "e2e/r4a2-legacy-intake.spec.mjs": 4,
+      "e2e/r4b-element-field-edits.spec.mjs": 1,
+      "e2e/r4b-search.spec.mjs": 1
+    }
+  },
+  "prior_integration": {
+    "quick_commit": "2a75f0cc70f33fe707f93c393a3ad4aea309e083",
+    "quick_actions_run": 44447581979,
+    "backend_cases": 1539,
+    "frontend_cases": 565,
+    "browser_commit": "d17b82f18e593640958032372964ef680d441092",
+    "browser_passed": 62
+  },
+  "first_full_run": {
+    "commit": "207b338e2d78c659c2bcf950c535f327d644dbd6",
+    "actions_run": 44449678738,
+    "conclusion": "failure",
+    "failing_step": "Foundation core pages home identity and SDK acceptance"
+  }
+}

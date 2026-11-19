@@ -98,7 +98,8 @@ export function assertAllOrdinaryRulesReady(before, after, expectedArticles) {
       );
       const provenance = saved.after_data.field_provenance[field];
       assert.ok(provenance, "each required fact has provenance");
-      if (provenance.origin === "document") {
+      if (provenance.level === "document") {
+        assert.equal(provenance.origin, "system");
         assert.equal(
           field,
           "scope",
@@ -106,7 +107,18 @@ export function assertAllOrdinaryRulesReady(before, after, expectedArticles) {
         );
         assert.equal(value, after.document_facts.scope.value);
         assert.equal(provenance.quote, after.document_facts.scope.quote);
-      } else if (provenance.origin === "source") {
+      } else if (["source", "system"].includes(provenance.origin)) {
+        const originalFact = original.after_data.field_provenance[field];
+        assert.equal(
+          provenance.origin,
+          originalFact?.origin,
+          "confirmation preserves the original extraction method",
+        );
+        assert.equal(
+          provenance.quote,
+          originalFact?.quote,
+          "confirmation preserves the original supporting sentence",
+        );
         assert.ok(
           provenance.quote &&
             ownQuotes.some((quote) => quote.includes(provenance.quote)),
@@ -167,8 +179,9 @@ export function assertDocumentScope(
   )) {
     assert.equal(item.after_data.scope, expectedValue);
     const provenance = item.after_data.field_provenance.scope;
-    if (provenance.origin === "document") {
+    if (provenance.level === "document") {
       inherited++;
+      assert.equal(provenance.origin, "system");
       for (const field of [
         "quote",
         "anchor_id",
@@ -181,7 +194,7 @@ export function assertDocumentScope(
           "inherited scope retains current-file provenance",
         );
     } else {
-      assert.equal(provenance.origin, "source");
+      assert.ok(["source", "system"].includes(provenance.origin));
       assert.ok(
         item.evidence.some(
           (evidence) =>

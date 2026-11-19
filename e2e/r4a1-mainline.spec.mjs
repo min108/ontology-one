@@ -12,6 +12,10 @@ import {
   postResponse,
   read,
 } from "./r3-support.mjs";
+import {
+  submissionShare,
+  assertSubmissionShare,
+} from "./r4a2-extraction-contracts.mjs";
 import { assertUnwaivedChecks } from "./r4-assertion-contracts.mjs";
 import {
   acceptItem,
@@ -147,6 +151,7 @@ test("R4-A.1 AB15: ordinary policy through independent publication and verified 
   try {
     stage = "上传原制度并完成提炼";
     const { proposal, text } = await startRegulation(page, material);
+    receipt.source_sha256 = createHash("sha256").update(text).digest("hex");
     receipt.extraction_summary = proposal.extraction_summary;
     expect(proposal.extraction_summary.fully_local).toBe(false);
     expect(proposal.extraction_summary.accepted_candidates).toBeGreaterThan(0);
@@ -223,9 +228,10 @@ test("R4-A.1 AB15: ordinary policy through independent publication and verified 
     receipt.submitted_count = submitted.submitted_count;
     receipt.remaining_count = submitted.remaining_count;
     receipt.pending_count = submitted.pending_count;
-    const queued = (await readProposal(page, proposal.id)).items.find(
-      (item) => item.id === rule.id,
-    );
+    const saved = await readProposal(page, proposal.id);
+    receipt.submission_share = submissionShare(proposal.items, saved.items);
+    assertSubmissionShare(proposal.items, saved.items, submitted);
+    const queued = saved.items.find((item) => item.id === rule.id);
     expect(queued.applied_status).toBe("review");
     const id = queued.applied_entity_id;
     expect(submitted.submitted_entity_ids).toContain(id);

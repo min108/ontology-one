@@ -35,6 +35,7 @@ class SQLiteTransaction:
             "label TEXT,status TEXT,payload TEXT);"
             " CREATE TABLE versions(id INTEGER PRIMARY KEY,entity_id TEXT,version INT,"
             "snapshot TEXT,created_at TEXT,reason TEXT);"
+            "CREATE TABLE activities(id INTEGER PRIMARY KEY,entity_id TEXT,action TEXT,actor TEXT,created_at TEXT);"
         )
 
     def execute(self, sql: str, args: tuple = ()) -> sqlite3.Cursor:
@@ -301,6 +302,8 @@ class DerivedRelations(unittest.TestCase):
         self.assertEqual(json.loads(row["payload"])["proposal_reason"], "口径相关")
         self.assertEqual(self.conn.execute("SELECT version FROM entities WHERE id='O'").fetchone()[0], 2)
         self.assertEqual(self.conn.execute("SELECT count(*) FROM versions").fetchone()[0], 1)
+        updated = self.conn.execute("SELECT payload FROM entities WHERE id='O'").fetchone()
+        self.assertIn(builder.user_id, json.loads(updated["payload"])["r2_review"]["editor_ids"])
         self.assertEqual(guard.call_count, 2)
         with self.assertRaises(AssertionError):
             self.assertEqual("confirmed", row["status"])

@@ -41,7 +41,15 @@ export function GateApplications({
             {check.application_reason && <span>{check.application_reason}</span>}
           </label>
         ))}
-        <Button disabled={disabled} onClick={() => onSave(snapshot, applications)}>
+        <Button
+          disabled={disabled}
+          onClick={() =>
+            onSave(
+              snapshot,
+              Object.fromEntries(Object.entries(applications).filter(([, value]) => value?.trim())),
+            )
+          }
+        >
           {copy.r4a1_gate_application_save}
         </Button>
       </div>

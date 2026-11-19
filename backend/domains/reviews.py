@@ -2,10 +2,12 @@
 
 import json
 import uuid
+from collections.abc import Iterable, Mapping
 from contextlib import closing
 
 from backend import db
 from backend.core.errors import ApiError
+from backend.domains.experience_history import Authors, adopted_editors
 from backend.kernel import gates
 from backend.security.context import Principal, require_context
 
@@ -19,27 +21,131 @@ WORKFLOW_ACTIONS = (
     "归档停用",
     "发布检查豁免",
     "申请发布检查豁免",
+    "撤回发布检查豁免申请",
     "拒绝发布检查豁免",
     "关联核对",
 )
 
 
-def record_editor(entity: dict, editor_id: str, *, fresh_revision: bool = False) -> dict:
+LEGACY_AUTHOR_ACTIONS = {
+    "创建",
+    "修订",
+    "还原历史版本",
+    "提交审核",
+    "提出关联",
+    "审定图谱关联",
+    "Excel资产导入",
+    "经验形成知识草稿",
+    "经验稿修订知识",
+    "新增字典草稿",
+    "加载演示草稿",
+    "采纳候选",
+    "创建权责规范",
+    "编辑权责规范",
+    "创建技能草稿",
+    "保存技能草稿",
+    "提交技能审核",
+    "申请发布检查豁免",
+}
+PUBLICATION_ACTIONS = {"发布成果", "发布技能版本"}
+SEPARATION_MESSAGE = "本次修订的编辑人和提交人需由其他审核人员办理。"
+MISSING_EXPERIENCE_AUTHOR = (
+    "本次经验稿存在已确认的历史改动，尚缺可核对的编辑人记录。"
+    "请恢复该次业务记录或签名回执，或由改动后开通账号的其他独立审核人办理。"
+)
+
+
+def _legacy_edits(actions: list[dict]) -> tuple[set[str], bool]:
+    """Return authenticated author names since the latest recorded publication."""
+    actors = set()
+    for row in actions:
+        if row["action"] in PUBLICATION_ACTIONS:
+            return actors, True
+        if row["action"] in LEGACY_AUTHOR_ACTIONS and row["actor"]:
+            actors.add(row["actor"])
+    return actors, False
+
+
+def _open_revision(entity: dict, conn: db.Connection | None) -> dict:
+    """Only publication closes the authorship period. Existing releases keep their receipt."""
     previous = entity["payload"].get("r2_review")
     meta = dict(previous) if isinstance(previous, dict) else {}
-    if fresh_revision or not meta.get("revision_id"):
+    if meta.get("cycle_closed"):
+        meta = {}
+    elif "cycle_closed" not in meta and conn is not None and entity.get("id"):
+        historic, released = _legacy_edits(_activities(conn, entity["id"]))
+        if entity.get("status") == "published":
+            # A.1 could append relationships after a release without changing
+            # its published status. Only those later activities belong here.
+            meta = {}
+            if not released:
+                historic.clear()
+        elif released and not historic:
+            meta = {}
+        if historic:
+            meta["legacy_actors"] = sorted(historic)
+        if (
+            entity["payload"].get("managed_skill")
+            and entity.get("status") != "published"
+            and (historic or not released)
+        ):
+            document = conn.execute(
+                "SELECT last_editor_id,submitted_by FROM skill_documents WHERE entity_id=?", (entity["id"],)
+            ).fetchone()
+            if document:
+                meta["editor_ids"] = [
+                    *(meta.get("editor_ids") or []),
+                    document["last_editor_id"],
+                    document["submitted_by"],
+                ]
+    if not meta.get("revision_id"):
         meta["revision_id"] = uuid.uuid4().hex
-        editors = [] if fresh_revision else [meta.get("last_editor_id")]
-    else:
-        editors = list(meta.get("editor_ids") or [])
-    meta.update(
-        editor_ids=list(dict.fromkeys([item for item in [*editors, editor_id] if item])),
-        last_editor_id=editor_id,
-        submitted_by=None,
-        submitted_at=None,
+    if conn is not None and entity.get("kind") == "knowledge" and entity["payload"].get("experience_candidate_id"):
+        adopted_editors(conn, entity).save_review(meta)
+    meta["cycle_closed"] = False
+    meta["editor_ids"] = list(
+        dict.fromkeys(
+            value
+            for value in [*(meta.get("editor_ids") or []), meta.get("last_editor_id"), meta.get("submitted_by")]
+            if value
+        )
     )
     entity["payload"]["r2_review"] = meta
     return meta
+
+
+def record_editor(
+    entity: dict, editor_id: str, *, conn: db.Connection | None = None, contributors: Iterable[str] = ()
+) -> dict:
+    meta = _open_revision(entity, conn)
+    meta["editor_ids"] = list(dict.fromkeys([*meta["editor_ids"], *contributors, editor_id]))
+    meta.pop("legacy_submitted_name", None)
+    meta.update(last_editor_id=editor_id, submitted_by=None, submitted_name="", submitted_at=None)
+    return meta
+
+
+def record_submission(conn: db.Connection, entity: dict, person: Principal) -> None:
+    meta = _open_revision(entity, conn)
+    if person.user_id not in meta["editor_ids"]:
+        meta["editor_ids"].append(person.user_id)
+    meta.update(submitted_by=person.user_id, submitted_name=person.username, submitted_at=db.now())
+
+
+def keep_release_boundary(conn: db.Connection, entity: dict, target: str) -> None:
+    meta = entity["payload"].get("r2_review") or {}
+    if target == "published":
+        meta["cycle_closed"] = True
+    elif target == "archived" and entity["status"] == "published" and "cycle_closed" not in meta:
+        # Persist the known boundary before an upgrade-era release loses its
+        # published status. Some such records have no publication activity.
+        actors, released = _legacy_edits(_activities(conn, entity["id"]))
+        if released and actors:
+            meta = {"revision_id": uuid.uuid4().hex, "legacy_actors": sorted(actors), "cycle_closed": False}
+        else:
+            meta["cycle_closed"] = True
+    else:
+        return
+    entity["payload"]["r2_review"] = meta
 
 
 def mark_draft(
@@ -47,15 +153,16 @@ def mark_draft(
 ) -> None:
     if entity["status"] != "draft":
         raise ApiError("ITEM_CHANGED")
-    meta = record_editor(entity, editor_id)
+    meta = record_editor(entity, editor_id, conn=conn, contributors=editor_ids or ())
     meta["changeset_id"] = changeset_id
-    meta["editor_ids"] = list(dict.fromkeys([*meta["editor_ids"], *(editor_ids or [])]))
     conn.execute(
         "UPDATE entities SET payload=? WHERE id=?", (json.dumps(entity["payload"], ensure_ascii=False), entity["id"])
     )
 
 
-def preserve_review_identity(old: dict, payload: dict, changes: dict | None = None) -> dict:
+def preserve_review_identity(
+    old: dict, payload: dict, changes: dict | None = None, *, conn: db.Connection | None = None
+) -> dict:
     meta = dict(old["payload"].get("r2_review") or {})
     result = {**payload, "r2_review": meta}
     content_changed = {k: v for k, v in payload.items() if k != "r2_review"} != {
@@ -65,11 +172,7 @@ def preserve_review_identity(old: dict, payload: dict, changes: dict | None = No
         for key in ("kind", "title", "summary", "domain", "org_id")
     )
     if content_changed or not meta:
-        record_editor(
-            {**old, "payload": result},
-            require_context().user_id,
-            fresh_revision=old.get("status") in {"published", "approved", "archived"},
-        )
+        record_editor({**old, "payload": result}, require_context().user_id, conn=conn)
     return result
 
 
@@ -82,76 +185,117 @@ def editor_ids(entity: dict) -> set[str]:
     }
 
 
-def ensure_independent(entity: dict) -> None:
-    person = require_context()
-    if person.readonly or person.role not in {"admin", "reviewer"}:
-        raise ApiError("PERMISSION_DENIED")
-    if person.user_id in editor_ids(entity):
-        raise ApiError("SEPARATION_OF_DUTIES", "本次修订的编辑人和提交人需由其他审核人员办理。")
-
-
-def guard_marked_action(conn: db.Connection, entity: dict, body: dict) -> None:
-    meta = entity["payload"].get("r2_review")
-    person, action = require_context(), body.get("action")
-    if not meta and action == "submit":
-        from backend.kernel.kinds import persisted_kind
-
-        if persisted_kind(entity["kind"]).governed:
-            meta = record_editor(entity, person.user_id)
-    if not meta:
-        return
-    if action == "submit":
-        if entity["status"] not in {"draft", "returned"}:
-            raise ApiError("VERSION_CONFLICT")
-        meta.update(submitted_by=person.user_id, submitted_name=person.username, submitted_at=db.now())
-        conn.execute(
-            "UPDATE entities SET payload=? WHERE id=?",
-            (json.dumps(entity["payload"], ensure_ascii=False), entity["id"]),
-        )
-    if action in {"approve", "publish", "return"}:
-        ensure_independent(entity)
-        if not meta.get("submitted_by"):
-            raise ApiError("PRECONDITION_FAILED", "这项内容需要先由建设人员提交审核。")
-        # The kernel checks all five gates after identity checks, including
-        # verified evidence and the two explicitly permitted reviewer waivers.
-
-
 def is_same_person(person: Principal, actor: str | None) -> bool:
     return bool(actor) and actor in {person.user_id, person.username}
 
 
-def review_info(conn: db.Connection, entity: dict) -> dict:
-    meta = entity["payload"].get("r2_review", {})
-    actions = [
+def _activities(conn: db.Connection, ident: str) -> list[dict]:
+    return [
         dict(row)
         for row in conn.execute(
-            "SELECT action,actor,created_at FROM activities WHERE entity_id=? ORDER BY id DESC", (entity["id"],)
+            "SELECT action,actor,created_at FROM activities WHERE entity_id=? ORDER BY id DESC", (ident,)
         )
     ]
+
+
+def is_review_participant(
+    conn: db.Connection,
+    entity: dict,
+    person: Principal,
+    *,
+    actions: list[dict] | None = None,
+    document: Mapping | None = None,
+    experience: Authors | None = None,
+) -> bool:
+    identity = entity["payload"].get("r2_review") or {}
+    if person.user_id in editor_ids(entity) or any(
+        is_same_person(person, name) for name in identity.get("legacy_actors", [])
+    ):
+        return True
+    if person.user_id in (experience or adopted_editors(conn, entity)).ids:
+        return True
+    if "cycle_closed" in identity:
+        return False
+    # Historic records can identify a person by username instead of stable ID.
+    if document is None and entity["payload"].get("managed_skill"):
+        document = conn.execute(
+            "SELECT last_editor_id,submitted_by FROM skill_documents WHERE entity_id=?", (entity["id"],)
+        ).fetchone()
+    if document and person.user_id in {document["last_editor_id"], document["submitted_by"]}:
+        return True
+    if actions is None:
+        actions = _activities(conn, entity["id"])
+    if legacy_approved(entity):
+        names, _ = _legacy_edits(actions)
+        if any(is_same_person(person, name) for name in names):
+            return True
+    editor = next((row["actor"] for row in actions if row["action"] not in WORKFLOW_ACTIONS), None)
+    submitter = next((row["actor"] for row in actions if row["action"] == "提交审核"), None)
+    return any(is_same_person(person, actor) for actor in (identity.get("submitted_name"), editor, submitter))
+
+
+def ensure_independent(conn: db.Connection, entity: dict) -> None:
+    person = require_context()
+    if person.readonly or person.role not in {"admin", "reviewer"}:
+        raise ApiError("PERMISSION_DENIED")
+    experience = adopted_editors(conn, entity)
+    if is_review_participant(conn, entity, person, experience=experience):
+        raise ApiError("SEPARATION_OF_DUTIES", SEPARATION_MESSAGE)
+    if experience.unresolved_for(person):
+        raise ApiError("SEPARATION_OF_DUTIES", MISSING_EXPERIENCE_AUTHOR)
+
+
+def guard_marked_action(conn: db.Connection, entity: dict, body: dict) -> None:
+    from backend.kernel.kinds import persisted_kind
+
+    meta = entity["payload"].get("r2_review")
+    if not meta and not persisted_kind(entity["kind"]).governed:
+        return
+    person, action = require_context(), body.get("action")
+    if action == "submit":
+        if entity["status"] not in {"draft", "returned"}:
+            raise ApiError("VERSION_CONFLICT")
+        record_submission(conn, entity, person)
+    if action in {"approve", "publish", "return"}:
+        ensure_independent(conn, entity)
+        if not meta:
+            return
+        recorded_release = action == "publish" and (
+            legacy_approved(entity) or (meta.get("cycle_closed") and entity["status"] == "published")
+        )
+        if not recorded_release and not (meta.get("submitted_by") or meta.get("legacy_submitted_name")):
+            raise ApiError("PRECONDITION_FAILED", "这项内容需要先由建设人员提交审核。")
+
+
+def review_info(conn: db.Connection, entity: dict) -> dict:
+    meta = entity["payload"].get("r2_review", {})
+    actions = _activities(conn, entity["id"])
     submission = next((row for row in actions if row["action"] == "提交审核"), {})
-    editor = next((row for row in actions if row["action"] not in WORKFLOW_ACTIONS), {})
     person = require_context()
     submitter = meta.get("submitted_name") or submission.get("actor", "")
-    blocked = person.user_id in editor_ids(entity) or any(
-        is_same_person(person, actor)
-        for actor in (meta.get("submitted_by"), meta.get("last_editor_id"), submitter, editor.get("actor"))
-    )
+    has_submission = bool(submitter) or legacy_approved(entity)
+    experience = adopted_editors(conn, entity)
+    blocked = is_review_participant(conn, entity, person, actions=actions, experience=experience)
+    unknown_author = experience.unresolved_for(person)
     package = bool(conn.execute("SELECT 1 FROM skill_documents WHERE entity_id=?", (entity["id"],)).fetchone())
     return {
         "entity": entity,
         "submitter": submitter or "历史记录未注明提交人",
         "submitted_at": meta.get("submitted_at") or submission.get("created_at", ""),
-        "can_decide": bool(submitter)
+        "can_decide": has_submission
         and not blocked
+        and not unknown_author
         and not package
         and person.role in {"admin", "reviewer"}
         and not person.readonly,
         "blocked_reason": "请在技能开发页完成技能包审核。"
         if package
-        else "本次修订的编辑人和提交人需由其他审核人员办理。"
+        else SEPARATION_MESSAGE
         if blocked
+        else MISSING_EXPERIENCE_AUTHOR
+        if unknown_author
         else "历史记录缺少提交人，请由建设人员重新提交。"
-        if not submitter
+        if not has_submission
         else "",
         "source_refs": entity["payload"].get("source_refs", []),
         "history": actions[:30],
@@ -167,12 +311,18 @@ def get(ident: str) -> dict:
         return review_info(conn, entity)
 
 
+def legacy_approved(entity: dict) -> bool:
+    return entity["status"] == "approved" and "cycle_closed" not in (entity["payload"].get("r2_review") or {})
+
+
 def inbox(kind: str = "") -> dict:
     if kind and kind not in ASSETS:
         raise ApiError("VALIDATION_FAILED")
     with closing(db.connect()) as conn:
         rows = conn.execute(
-            f"SELECT * FROM entities WHERE status='review' AND kind IN ({','.join('?' for _ in ASSETS)}) "
+            "SELECT * FROM entities WHERE (status='review' OR "
+            "(status='approved' AND JSON_EXTRACT(payload,'$.r2_review.cycle_closed') IS NULL)) "
+            f"AND kind IN ({','.join('?' for _ in ASSETS)}) "
             + ("AND kind=? " if kind else "")
             + "ORDER BY updated_at DESC LIMIT 200",
             (*ASSETS, kind) if kind else ASSETS,
@@ -196,7 +346,10 @@ def decide(
         entity = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (ident,)).fetchone())
         if not entity or entity["kind"] not in ASSETS:
             raise ApiError("NOT_FOUND")
-        if entity["version"] != version or entity["status"] != "review":
+        approved = legacy_approved(entity)
+        if entity["version"] != version or not (
+            entity["status"] == "review" or (approved and decision == "approve_publish")
+        ):
             raise ApiError("VERSION_CONFLICT")
         info = review_info(conn, entity)
         if not info["can_decide"]:
@@ -218,13 +371,21 @@ def decide(
         else:
             if waivers:
                 gates.waive(conn, entity, waivers)
+            if not approved:
+                entity_action_in_transaction(
+                    conn,
+                    ident,
+                    {"action": "approve", "reason": reason or "核对内容与原文后通过", "expected_version": version},
+                )
+                version += 1
             entity_action_in_transaction(
                 conn,
                 ident,
-                {"action": "approve", "reason": reason or "核对内容与原文后通过", "expected_version": version},
-            )
-            entity_action_in_transaction(
-                conn, ident, {"action": "publish", "reason": "独立审核通过并发布", "expected_version": version + 1}
+                {
+                    "action": "publish",
+                    "reason": reason or ("发布已审核的历史内容" if approved else "独立审核通过并发布"),
+                    "expected_version": version,
+                },
             )
     return get(ident)
 
@@ -236,9 +397,23 @@ def record_relation_editor(conn: db.Connection, entity: dict, editor_id: str) ->
     if not persisted_kind(entity["kind"]).governed:
         return
     previous = dict(entity["payload"].get("r2_review") or {})
-    submission = {key: previous[key] for key in ("submitted_by", "submitted_at", "submitted_name") if key in previous}
-    meta = record_editor(entity, editor_id)
-    meta.update(submission)
+    submission = {
+        key: previous[key]
+        for key in ("submitted_by", "submitted_at", "submitted_name", "legacy_submitted_name")
+        if key in previous
+    }
+    meta = record_editor(entity, editor_id, conn=conn)
+    if meta["revision_id"] == previous.get("revision_id"):
+        meta.update(submission)
+    if entity["status"] in {"review", "approved"} and "cycle_closed" not in previous and not meta.get("submitted_by"):
+        for row in _activities(conn, entity["id"]):
+            if row["action"] in PUBLICATION_ACTIONS:
+                break
+            if row["action"] == "提交审核" and row["actor"]:
+                meta.update(
+                    legacy_submitted_name=row["actor"], submitted_name=row["actor"], submitted_at=row["created_at"]
+                )
+                break
     conn.execute(
         "UPDATE entities SET payload=? WHERE id=?", (json.dumps(entity["payload"], ensure_ascii=False), entity["id"])
     )

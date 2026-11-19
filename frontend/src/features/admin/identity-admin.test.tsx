@@ -114,6 +114,27 @@ beforeEach(() => {
   );
 });
 describe('identity administration pages', () => {
+  it('keeps a preprovisioned read role when an administrator edits the display name', async () => {
+    request.mockImplementation(async (path: string) =>
+      path.includes('/users') ? { items: [{ ...other, role: 'viewer' }], total: 1 } : { items: orgs },
+    );
+    wrapper(<UsersPage />);
+    const row = await screen.findByRole('row', { name: /Other/ });
+    fireEvent.click(within(row).getByRole('button', { name: terms.actions.identity_edit_user }));
+    expect(screen.getByLabelText(terms.labels.identity_role)).toHaveTextContent(terms.roles.viewer);
+    expect(screen.queryByRole('option', { name: terms.roles.viewer })).toBeNull();
+    fireEvent.change(screen.getByLabelText(terms.labels.identity_name), { target: { value: 'Updated' } });
+    fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_review }));
+    fireEvent.click(screen.getByRole('button', { name: terms.actions.identity_confirm }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('user.manage', {
+        action: 'update',
+        user_id: other.id,
+        changes: { display_name: 'Updated' },
+      }),
+    );
+  });
+
   it.each([UsersPage, OrganizationsPage, AuditPage])(
     'denies direct access before issuing privileged reads',
     (Page) => {

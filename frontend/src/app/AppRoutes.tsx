@@ -13,6 +13,7 @@ import { primaryNavigation, secondaryNavigation, type NavigationPrincipal } from
 const IntakePage = lazy(() => import('../features/build/IntakePage'));
 const CatalogPage = lazy(() => import('../features/ontology/CatalogPage'));
 const ElementPage = lazy(() => import('../features/ontology/ElementPage'));
+const MaterialReaderPage = lazy(() => import('../features/ontology/MaterialReaderPage'));
 const ChangesetPage = lazy(() => import('../features/build/ChangesetPage'));
 const ReviewsPage = lazy(() => import('../features/build/ReviewsPage'));
 const Home = lazy(() => import('../features/home/Home'));
@@ -28,6 +29,7 @@ const IntegrationApplicationsPage = lazy(
   () => import('../features/admin/integrations/IntegrationApplicationsPage'),
 );
 const ReportsPage = lazy(() => import('../features/artifacts/ReportsPage'));
+const MaterialDetail = lazy(() => import('@legacy/pages/MaterialDetail'));
 const retained = [
   { path: '/group', component: lazy(() => import('@legacy/pages/Group')) },
   { path: '/briefing', component: lazy(() => import('@legacy/pages/Briefing')) },
@@ -35,7 +37,6 @@ const retained = [
   { path: '/impact', component: lazy(() => import('@legacy/pages/Impact')) },
   { path: '/work', component: lazy(() => import('@legacy/pages/Work')) },
   { path: '/materials', component: lazy(() => import('@legacy/pages/Materials')) },
-  { path: '/materials/:id', component: lazy(() => import('@legacy/pages/MaterialDetail')) },
   { path: '/projects', component: lazy(() => import('@legacy/pages/Projects')) },
   { path: '/projects/:id', component: lazy(() => import('@legacy/pages/ProjectDetail')) },
   { path: '/tasks/:id', component: lazy(() => import('@legacy/pages/TaskDetail')) },
@@ -91,6 +92,18 @@ export function AppRoutes({ principal }: { principal: NavigationPrincipal }) {
         <Route path="/" element={<Home />} />
         <Route path="/ontology/catalog" element={<CatalogPage />} />
         <Route path="/ontology/elements/:id" element={<ElementPage />} />
+        <Route
+          path="/materials/:id"
+          element={
+            principal.role === 'viewer' || principal.role === 'analyst' ? (
+              <MaterialReaderPage />
+            ) : (
+              <LegacyPage>
+                <MaterialDetail />
+              </LegacyPage>
+            )
+          }
+        />
         <Route path="/build/intake" element={<IntakePage />} />
         <Route path="/build/changesets/:id" element={<ChangesetPage />} />
         <Route path="/govern/reviews" element={<ReviewsPage />} />

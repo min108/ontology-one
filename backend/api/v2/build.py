@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from backend.capabilities.build import BuildResult, ChangesetGet, ConfirmFacts, DecideItems, RecipeStart
+from backend.capabilities.build import BuildResult, ChangesetGet, ConfirmFacts, DecideItems, RecipeStart, RetainSource
 from backend.capabilities.build_models import ApplyResult, ProposalResult, RecipeResult, ReviewListResult, ReviewResult
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.registry import registry
@@ -49,6 +49,15 @@ def confirm_facts(id: str, body: ConfirmFacts) -> BuildResult:
     if body.changeset_id != id:
         raise ApiError("VALIDATION_FAILED")
     return call("changeset.confirm_facts", body.model_dump(exclude_unset=True))
+
+
+@router.post("/changesets/{id}/sources:retain", response_model=ProposalResult)
+def retain_source(id: str, body: RetainSource) -> BuildResult:
+    from backend.core.errors import ApiError
+
+    if body.changeset_id != id:
+        raise ApiError("VALIDATION_FAILED")
+    return call("changeset.retain_source", body.model_dump())
 
 
 @router.post("/changesets/{id}:apply", response_model=ApplyResult)

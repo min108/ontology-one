@@ -50,6 +50,7 @@ function Inbox() {
     id: string;
     title: string;
     decision: ReviewBody['decision'];
+    previouslyApproved: boolean;
     reason: string;
   }>();
   const [waivers, setWaivers] = useState<GateWaivers>({});
@@ -67,6 +68,13 @@ function Inbox() {
   }, [rows, selected, confirmation]);
   const blocked = busy || !!list.refreshing || !!list.error || !current?.can_decide;
   const confirmedRow = rows?.find((row) => row.entity.id === confirmation?.id);
+  const releaseAction = current?.entity.status === 'approved' ? actions.catalog_2_4 : actions.catalog_2_5;
+  const confirmationAction =
+    confirmation?.decision === 'return'
+      ? actions.catalog_2_6
+      : confirmedRow?.entity.status === 'approved'
+        ? actions.catalog_2_4
+        : actions.catalog_2_5;
   const confirmationBlocked = busy || !!list.refreshing || !!list.error || !confirmedRow?.can_decide;
   const failedChecks = gateBlockers(current?.gates, waivers);
   const approvalBlocked = blocked || failedChecks.length > 0;
@@ -154,6 +162,7 @@ function Inbox() {
         id: confirmation.id,
         title: confirmation.title,
         decision: confirmation.decision,
+        previouslyApproved: confirmedRow?.entity.status === 'approved',
         reason: reason.trim(),
       });
       setReason('');
@@ -182,7 +191,7 @@ function Inbox() {
           primaryAction={
             current
               ? {
-                  label: actions.catalog_2_5,
+                  label: releaseAction,
                   disabled: approvalBlocked || !!confirmation,
                   onClick: () => confirm('approve_publish'),
                 }
@@ -203,7 +212,13 @@ function Inbox() {
         <Alert
           type="success"
           role="status"
-          title={result.decision === 'return' ? copy.r2_returned : copy.r2_reviewed}
+          title={
+            result.decision === 'return'
+              ? copy.r2_returned
+              : result.previouslyApproved
+                ? terms.statuses.element.published
+                : copy.r2_reviewed
+          }
           description={
             <>
               {result.title}
@@ -282,6 +297,8 @@ function Inbox() {
                     type="button"
                     key={row.entity.id}
                     data-review-item-id={row.entity.id}
+                    aria-description={copy.r2_submitter + ' · ' + row.submitter}
+                    title={copy.r2_submitter + ' · ' + row.submitter}
                     className={styles.pick}
                     aria-current={row.entity.id === current?.entity.id ? 'true' : undefined}
                     onClick={() => {
@@ -292,7 +309,8 @@ function Inbox() {
                   >
                     <strong>{row.entity.title}</strong>
                     <span>
-                      {row.submitter} · {formatDateTime(row.submitted_at, true)}
+                      {professional && row.submitter + ' · '}
+                      {formatDateTime(row.submitted_at, true)}
                     </span>
                     <span className={styles['pick-state']}>
                       {terms.kinds[row.entity.kind as keyof typeof terms.kinds] || copy.unknown_kind}
@@ -302,7 +320,11 @@ function Inbox() {
               </div>
             </div>
           }
-          footer={<NextStepBar current={3} onStep={revisit} description={copy.r3_main_next_ask} />}
+          footer={
+            current?.entity.status !== 'approved' && (
+              <NextStepBar current={3} onStep={revisit} description={copy.r3_main_next_ask} />
+            )
+          }
         >
           {current && (
             <article className={styles.detail} data-review-id={current.entity.id}>
@@ -339,8 +361,10 @@ function Inbox() {
                 )}
                 {!!current.gates?.fields?.length && (
                   <FoldRow
+                    key={'facts:' + current.entity.id}
                     title={copy.r4a1_legacy_facts}
                     summary={sentence(copy.r3_main_count, { count: current.gates.fields.length })}
+                    defaultOpen
                   >
                     <GovernanceFacts gates={current.gates} showHeading={false} />
                   </FoldRow>
@@ -398,9 +422,11 @@ function Inbox() {
                 </TechnicalDetails>
               </div>
               <div className={styles['pane-actions']}>
-                <Button autoInsertSpace={false} disabled={blocked} onClick={() => confirm('return')}>
-                  {actions.catalog_2_6}
-                </Button>
+                {current.entity.status === 'review' && (
+                  <Button autoInsertSpace={false} disabled={blocked} onClick={() => confirm('return')}>
+                    {actions.catalog_2_6}
+                  </Button>
+                )}
               </div>
             </article>
           )}
@@ -412,15 +438,15 @@ function Inbox() {
         styles={{ body: { maxHeight: 'calc(100dvh - var(--zy-space-10) * 4)', overflowY: 'auto' } }}
         cancelButtonProps={{ autoInsertSpace: false }}
         open={!!confirmation}
-        title={confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}
-        okText={confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5}
+        title={confirmationAction}
+        okText={confirmationAction}
         cancelText={actions.r2_cancel}
         onCancel={() => !busy && setConfirmation(undefined)}
         onOk={() => void decide()}
         confirmLoading={busy}
         okButtonProps={{
           autoInsertSpace: false,
-          'aria-label': confirmation?.decision === 'return' ? actions.catalog_2_6 : actions.catalog_2_5,
+          'aria-label': confirmationAction,
           disabled:
             confirmationBlocked ||
             confirmedGatesBlocked ||
@@ -435,9 +461,13 @@ function Inbox() {
         <p data-testid="review-confirmation-object" data-review-id={confirmation?.id}>
           {confirmation?.title}
         </p>
-        <p>
-          {confirmation?.decision === 'return' ? copy.r3_main_return_impact : copy.r3_main_approve_impact}
-        </p>
+        {confirmedRow?.entity.status === 'approved' ? (
+          <StatusTag status="approved" />
+        ) : (
+          <p>
+            {confirmation?.decision === 'return' ? copy.r3_main_return_impact : copy.r3_main_approve_impact}
+          </p>
+        )}
         {confirmation?.decision === 'approve_publish' && (
           <>
             <GovernanceFacts gates={confirmedRow?.gates} />

@@ -26,11 +26,18 @@ export type {
   CandidatePatch as Candidate,
 } from '../../api/generated/types';
 import type { Evidence } from '../../api/generated/types';
-export const sourceHref = (ref: Evidence) =>
-  '/materials/' +
-  encodeURIComponent(ref.material_id) +
-  '?' +
-  new URLSearchParams({ anchor: ref.anchor_id, source_version: ref.source_version });
+export function sourceParams(ref: Evidence, citingEntityId?: string) {
+  const params = new URLSearchParams({ anchor: ref.anchor_id, source_version: ref.source_version });
+  if (citingEntityId) {
+    const relation = ref.citing_relation_id || ref.relation_id;
+    if (typeof relation === 'string' && relation) params.set('citing_relation_id', relation);
+    else params.set('citing_entity_id', citingEntityId);
+  }
+  return params;
+}
+
+export const sourceHref = (ref: Evidence, citingEntityId?: string) =>
+  '/materials/' + encodeURIComponent(ref.material_id) + '?' + sourceParams(ref, citingEntityId);
 
 export function useBuildIdentity() {
   const session = useSessionStore((state) => state.session);

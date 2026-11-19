@@ -59,6 +59,7 @@ class BuildFacts(unittest.TestCase):
         quote = "应核对合同。"
         candidate = {
             "kind": "rule",
+            "extraction_mode": "online",
             "content": quote,
             "source_quotes": [{"quote": quote}],
             "conditions": ["异地出差时"],
@@ -76,6 +77,7 @@ class BuildFacts(unittest.TestCase):
         quote = "适用范围：采购付款；适用条件：验收完成后；例外：紧急付款除外。"
         candidate = {
             "kind": "rule",
+            "extraction_mode": "online",
             "content": quote,
             "source_quotes": [{"quote": quote}],
             "conditions": ["验收完成后"],
@@ -104,6 +106,7 @@ class BuildFacts(unittest.TestCase):
         quote = "第一条 付款应核对合同。第二条 外地出差时办理报销，紧急情况除外。"
         candidate = {
             "kind": "rule",
+            "extraction_mode": "online",
             "content": "付款应核对合同。",
             "source_quotes": [{"quote": quote}],
             "conditions": ["外地出差时"],
@@ -124,7 +127,7 @@ class BuildFacts(unittest.TestCase):
             with self.subTest(quote=quote):
                 result = self.enrich({"kind": "rule", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
                 self.assertTrue(result[field])
-                self.assertEqual(result["field_provenance"][field]["origin"], "source")
+                self.assertEqual(result["field_provenance"][field]["origin"], "system")
 
     def test_except_constructions_and_second_threshold_keep_their_own_wording(self) -> None:
         for clause in ("除抢险救灾情形以外，一律先行核对凭证。", "除紧急事项外，申请人应保存记录。"):
@@ -133,7 +136,13 @@ class BuildFacts(unittest.TestCase):
             self.assertIn(result["exceptions"], clause)
         clause = "第六条 单笔付款金额超过100万元的，须经分管领导审批；超过500万元的，须经总经理办公会审议。"
         result = self.enrich(
-            {"kind": "rule", "content": clause, "conditions": ["超过100万元的"], "source_quotes": [{"quote": clause}]},
+            {
+                "kind": "rule",
+                "content": clause,
+                "extraction_mode": "online",
+                "conditions": ["超过100万元的"],
+                "source_quotes": [{"quote": clause}],
+            },
             clause,
         )
         self.assertTrue(any("100万元" in value for value in result["conditions"]))
@@ -172,7 +181,7 @@ class BuildFacts(unittest.TestCase):
             with self.subTest(quote=quote):
                 result = self.enrich({"kind": "rule", "content": quote, "source_quotes": [{"quote": quote}]}, quote)
                 self.assertIn(expected, result[field])
-                self.assertEqual(result["field_provenance"][field]["origin"], "source")
+                self.assertEqual(result["field_provenance"][field]["origin"], "system")
 
     def test_unresolved_conditional_needs_human_and_unrelated_word_remains_ordinary(self) -> None:
         for quote, blocked in [
@@ -202,6 +211,7 @@ class BuildFacts(unittest.TestCase):
                 result = self.enrich(
                     {
                         "kind": kind,
+                        "extraction_mode": "online",
                         "content": quote,
                         "source_quotes": [{"quote": quote}],
                         "definition": "每笔必须收十万元",
@@ -224,6 +234,7 @@ class BuildFacts(unittest.TestCase):
         result = self.enrich(
             {
                 "kind": "data",
+                "extraction_mode": "online",
                 "content": quote,
                 "source_quotes": [{"quote": quote}],
                 "definition": "台账",
@@ -246,6 +257,7 @@ class BuildFacts(unittest.TestCase):
         result = self.enrich(
             {
                 "kind": "data",
+                "extraction_mode": "online",
                 "content": "登记付款办理情况。",
                 "source_quotes": [{"quote": quote}],
                 "unit": "美元",
@@ -258,6 +270,7 @@ class BuildFacts(unittest.TestCase):
         result = self.enrich(
             {
                 "kind": "data",
+                "extraction_mode": "online",
                 "content": "登记付款办理情况。",
                 "source_quotes": [{"quote": "登记付款办理情况。"}],
                 "unit": "美元",

@@ -1,20 +1,20 @@
 """Read-only catalog adapters over existing local/federated services."""
 
+import json
 from contextlib import closing
 from typing import Literal
 
 from pydantic import Field
 
 from backend import db, federation
-from backend.api.v1 import core
+from backend.api.v1.search_results import ranked_entities
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.element_models import ElementDetailResult, ElementListResult
-from backend.capabilities.read import read_capability
+from backend.capabilities.read import read_capability, search_restrictions
 from backend.core.errors import ApiError, StrictModel
-from backend.kernel import gates
+from backend.kernel import element_reads
 from backend.kernel.cards import build_card
-from backend.kernel.kinds import KINDS
-from backend.kernel.metadata import get_meta
+from backend.security import visibility
 
 APPLICABILITY_OPTION_LIMIT = 500
 
@@ -32,6 +32,32 @@ class ElementGet(StrictModel):
     entity_id: str = Field(min_length=1, max_length=191)
 
 
+def _catalog_page(ctx: CapabilityContext, body: ElementList) -> dict:
+    with closing(ctx.connection_factory()) as conn:
+        return ranked_entities(
+            conn,
+            body.q,
+            kind=body.kind,
+            page=body.page,
+            page_size=body.page_size,
+            asset_only=True,
+            **search_restrictions(ctx),
+        )
+
+
+def _material_ids(refs: object, tenant_id: str) -> list[str]:
+    if not isinstance(refs, list):
+        return []
+    return [
+        r["material_id"]
+        for r in refs
+        if isinstance(r, dict)
+        and isinstance(r.get("material_id"), str)
+        and r["material_id"]
+        and r.get("tenant_id", tenant_id) == tenant_id
+    ]
+
+
 @read_capability("element.list", "查看本体目录", ElementList, ElementListResult, assistants=["builder", "analyst"])
 def list_elements(ctx: CapabilityContext, body: ElementList) -> ElementListResult:
     if ctx.principal.readonly:
@@ -45,41 +71,44 @@ def list_elements(ctx: CapabilityContext, body: ElementList) -> ElementListResul
             item.pop("payload", None)
             item["source_title"] = item.get("tenant_name", "")
         return ElementListResult(data={key: result[key] for key in ("items", "total", "page", "page_size")})
-    result = core.entities(
-        **body.model_dump(), asset_only=True, status="" if "draft.read" in ctx.permissions else "published"
-    )
-    source_ids: dict[str, list[str]] = {}
-    for item in result["items"]:
-        payload = item.pop("payload", {})
-        refs = payload.get("source_refs", []) if isinstance(payload, dict) else []
-        source_ids[item["id"]] = list(
-            dict.fromkeys(
-                ref["material_id"]
-                for ref in (refs if isinstance(refs, list) else [])
-                if isinstance(ref, dict)
-                and isinstance(ref.get("material_id"), str)
-                and ref["material_id"]
-                and ref.get("tenant_id") in (None, "", ctx.principal.tenant_id)
-            )
-        )
-    wanted = sorted({ident for ids in source_ids.values() for ident in ids})
+    result = _catalog_page(ctx, body)
+    items = result["items"]
+    bodies = {row["id"]: row.pop("payload", {}) for row in items}
+    source_ids = {
+        ident: _material_ids(payload.get("source_refs"), ctx.principal.tenant_id)
+        for ident, payload in bodies.items()
+        if isinstance(payload, dict)
+    }
     titles = {}
-    if wanted:
-        # db.connect is bound to the authenticated tenant. Resolve only active
-        # material metadata, following the local element detail visibility rule.
-        with closing(db.connect()) as conn:
-            titles = {
-                row["id"]: row["title"]
-                for row in conn.execute(
-                    "SELECT id,title FROM entities WHERE kind='material' "
-                    "AND COALESCE(json_extract(payload,'$.active_asset'),1)!=0 "
-                    f"AND id IN ({','.join('?' for _ in wanted)})",
-                    wanted,
+    missing = [ident for ident, payload in bodies.items() if payload == {}]
+    if missing or any(source_ids.values()):
+        with closing(ctx.connection_factory()) as conn:
+            scope = visibility.scope_for(conn, **search_restrictions(ctx))
+            where, args = scope.predicate()
+            if missing and not scope.metadata_only:
+                # Public ranked hits carry no raw payload. Fetch only this authorized page's links.
+                marks = ",".join("?" for _ in missing)
+                rows = conn.execute(
+                    "SELECT e.id,JSON_EXTRACT(e.payload,'$.source_refs') refs FROM entities e "
+                    f"WHERE {where} AND e.id IN ({marks})",
+                    (*args, *missing),
                 )
-            }
-    for item in result["items"]:
+                for row in rows:
+                    source_ids[row["id"]] = _material_ids(json.loads(row["refs"] or "null"), scope.tenant_id)
+            wanted = sorted({ident for ids in source_ids.values() for ident in ids})
+            if wanted and not scope.external_tool:
+                marks = ",".join("?" for _ in wanted)
+                titles = {
+                    row["id"]: row["title"]
+                    for row in conn.execute(
+                        f"SELECT e.id,e.title FROM entities e WHERE {where} "
+                        f"AND e.kind='material' AND e.id IN ({marks})",
+                        (*args, *wanted),
+                    )
+                }
+    for item in items:
         item["source_title"] = "；".join(
-            dict.fromkeys(titles[ident] for ident in source_ids[item["id"]] if ident in titles)
+            dict.fromkeys(titles[mid] for mid in source_ids.get(item["id"], []) if mid in titles)
         )
     return ElementListResult(data=result)
 
@@ -88,65 +117,23 @@ def list_elements(ctx: CapabilityContext, body: ElementList) -> ElementListResul
     "element.get", "查看要素业务语言卡", ElementGet, ElementDetailResult, assistants=["builder", "analyst"]
 )
 def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult:
+    federated = None
     if ctx.principal.readonly:
-        result = federation.entity_detail(ctx.principal.tenant_id, body.entity_id)
-        entity = {**result["entity"], "relations": result["relations"], "activities": []}
-        if entity["kind"] not in federation.ASSETS or entity["status"] != "published":
+        federated = federation.entity_detail(ctx.principal.tenant_id, body.entity_id)
+        if federated["entity"]["kind"] not in federation.ASSETS or federated["entity"]["status"] != "published":
             raise ApiError("NOT_FOUND")
-        history = []
-    else:
-        entity = core.detail(body.entity_id)
-        if entity["kind"] not in KINDS or entity["payload"].get("active_asset") in (0, False):
-            raise ApiError("NOT_FOUND")
-        private = "draft.read" in ctx.permissions
-        if not private and entity["status"] != "published":
-            raise ApiError("NOT_FOUND")
-        history = core.versions(body.entity_id)["items"] if private else []
-        if not private:
-            # Never reveal draft relation titles or arbitrary nested payloads.
-            with closing(db.connect()) as conn:
-                visible = {
-                    row["id"]: dict(row)
-                    for row in conn.execute(
-                        "SELECT id,title,org_id FROM entities "
-                        "WHERE COALESCE(json_extract(payload,'$.active_asset'),1)!=0 "
-                        "AND (status='published' OR kind='material')"
-                    )
-                }
-            tenant = {"id": ctx.principal.tenant_id, "name": ""}
-            for item in visible.values():
-                item["detail_url"] = "/assets/" + item["id"]
-            entity["payload"], _ = federation._safe_payload(entity["payload"], tenant, visible)
-            for direction in ("incoming", "outgoing"):
-                entity["relations"][direction] = [
-                    row
-                    for row in entity["relations"][direction]
-                    if row["source"] in visible and row["target"] in visible
-                ]
-            entity["activities"] = []
-            entity.pop("relation_counts", None)
-        with closing(db.connect()) as conn:
-            # The same authorized entity drives the card and fresh gate checks.
-            entity["_meta"] = get_meta(conn, body.entity_id) or {}
-            gate_result = gates.check_entity(conn, entity)
-            for relation in entity["relations"]["incoming"]:
-                if relation.get("source_kind") == "rule" and relation.get("type") in {"governs", "applies_to"}:
-                    rule = conn.execute(
-                        "SELECT payload,status FROM entities WHERE id=? AND status='published'", (relation["source"],)
-                    ).fetchone()
-                    if rule:
-                        relation["source_status"] = rule["status"]
-                        relation["source_payload"] = rule["payload"]
-    if ctx.principal.readonly:
-        # Federation authorized this published item. Check its original tenant
-        # data, returning only the business gate result, never private payloads.
-        with db.tenant_connection(ctx.principal.tenant_id, readonly=True) as conn:
-            original = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (body.entity_id,)).fetchone())
-            if not original:
-                raise ApiError("NOT_FOUND")
-            gate_result = gates.check_entity(conn, original)
+    with closing(ctx.connection_factory()) as conn:
+        scope = visibility.scope_for(conn, **search_restrictions(ctx))
+        entity, gate_result, history = element_reads.details(scope, body.entity_id)
+        if federated:
+            # Keep authorized gateway metadata. Its cached payload can contain sources
+            # outside the narrower published-only scope of an element-detail request.
+            entity.update({k: v for k, v in federated["entity"].items() if k not in {"payload", "relations"}})
+            entity["relations"] = element_reads.published_federated_relations(federated["relations"])
+            entity.pop("_meta", None)
+    can_edit = scope.drafts and not scope.metadata_only and "build.edit" in ctx.permissions
     options = []
-    if "build.edit" in ctx.permissions and not ctx.principal.readonly:
+    if can_edit:
         authority = entity["payload"].get("authority_spec")
         selected = list(
             dict.fromkeys(
@@ -171,24 +158,15 @@ def get_element(ctx: CapabilityContext, body: ElementGet) -> ElementDetailResult
                     (int(bool(authority)), *selected, APPLICABILITY_OPTION_LIMIT),
                 )
             ]
-    if ctx.principal.readonly:
-        # Federated projections must not expose private field values, applicants or source text.
-        gate_result["fields"] = []
-        gate_result["ready_to_submit"] = gate_result["passed"]
-        gate_result["submission_blockers"] = list(gate_result["blockers"])
-        for check in gate_result["checks"]:
-            for key in ("application_reason", "application_by", "application_at", "denial_reason", "waiver_reason"):
-                check[key] = ""
-        entity.pop("_meta", None)
-    else:
-        # Gate storage includes stale decisions and internal fingerprints; expose only fresh projection.
-        entity.setdefault("_meta", {}).pop("gates", None)
+    card = build_card(entity)
+    if "_meta" in entity:
+        entity["_meta"]["card_text"] = card["text"]
     return ElementDetailResult(
         data={
             "entity": entity,
-            "card": build_card(entity),
+            "card": card,
             "versions": history,
-            "can_edit": "build.edit" in ctx.permissions and not ctx.principal.readonly,
+            "can_edit": can_edit,
             "gates": gate_result,
             "applicability_options": options,
         }

@@ -1,0 +1,21 @@
+{
+  "source_commit": "1359118dd672431dcd0cde2eb81f2b0f994eef37",
+  "current_commit": "d17b82f18e593640958032372964ef680d441092",
+  "passed": true,
+  "exact_response_equality": true,
+  "scopes": [
+    "hq",
+    "hq_in_department",
+    "department_admin",
+    "modeler",
+    "reviewer"
+  ],
+  "reserved_database_count": 4,
+  "created_database_count": 4,
+  "cleaned_database_count": 4,
+  "scope_count": 5,
+  "grant_count": 98,
+  "historical_audit_count": 15,
+  "hq_audit_count": 21,
+  "department_audit_count": 11
+}

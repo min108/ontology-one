@@ -1,0 +1,201 @@
+{
+  "success": true,
+  "passed": [
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6",
+    "S7",
+    "S8",
+    "S9",
+    "S10",
+    "S11",
+    "S12"
+  ],
+  "tenant_id": "sub-01",
+  "model_channel": "synthetic_messages_real_sdk",
+  "source": "regulation-plain.txt",
+  "builder_id": "f866a6e771ad4473b86dea10ca2f6a5b",
+  "reviewer_id": "1bf3be2a8f044a969c53a61c55907ba2",
+  "source_sha256": "2df00f33bd91deab4af971baaa9d45501e552fc1b2bf715e018a34d2d951065b",
+  "material_id": "material_1ab13833c0384689549a32c3",
+  "extraction": {
+    "retried_batches": 0,
+    "discarded_candidates": 0,
+    "accepted_candidates": 11,
+    "failed_batches": 0,
+    "fully_local": false
+  },
+  "citations": {
+    "S1": {
+      "entity_id": "rule_122a2086334e4f5d",
+      "chunk_id": "chunk_4203123a070243c3",
+      "anchor_id": "anchor_5667fdac2f4042f8843e",
+      "quote": "第四条 经办部门应在合同约定的验收通过后10个工作日内提出付款申请，并提交合同、验收单、发票等资料。"
+    },
+    "S2": {
+      "entity_id": "rule_32491423a9014345",
+      "chunk_id": "chunk_1bef4038fbdb46a2",
+      "anchor_id": "anchor_399d7220636747d7bbf1",
+      "quote": "第七条 预付款比例不得超过合同总金额的30%；确需超过的，应报财务负责人批准。"
+    },
+    "S5": {
+      "entity_id": "rule_02d57091e4444e3a",
+      "chunk_id": "chunk_37a1355810cb4bb0",
+      "anchor_id": "anchor_9ab649f7560249159c16",
+      "quote": "第八条 质保金按合同总金额的5%预留，质保期满且无质量问题后支付。"
+    },
+    "S6": {
+      "entity_id": "rule_4db12a2b34514182",
+      "chunk_id": "chunk_037311e4d74f4939",
+      "anchor_id": "anchor_fc769430c38a4faa9fdb",
+      "quote": "第五条 财务部门应在收到完整付款资料后5个工作日内完成审核；资料不齐全的，应一次性告知经办部门补正。"
+    },
+    "archive": {
+      "entity_id": "rule_c08933b51d604d01",
+      "chunk_id": "chunk_303a47d50a0d42e5",
+      "anchor_id": "anchor_4c5f6f0548184466a506",
+      "quote": "第十条 对未经审批擅自付款、超合同约定付款的，按公司有关规定追究责任。"
+    }
+  },
+  "published_rule_ids": [
+    "rule_122a2086334e4f5d",
+    "rule_32491423a9014345",
+    "rule_02d57091e4444e3a",
+    "rule_4db12a2b34514182",
+    "rule_c08933b51d604d01"
+  ],
+  "s1_rule_id": "rule_122a2086334e4f5d",
+  "alias": {
+    "id": "rule_02d57091e4444e3a",
+    "official_title": "第八条 质保金按合同总金额的5%预留，质保期满且",
+    "revision": 9
+  },
+  "lifecycle": {
+    "draft_id": "DATA-USER-5e2d7aebba",
+    "edited_version": 2,
+    "discarded_status": "archived",
+    "archived_id": "rule_c08933b51d604d01",
+    "archived_status": "archived"
+  },
+  "queries": {
+    "S1": "10个工作日",
+    "S2": "预付款比例",
+    "S3": "预付款比",
+    "S4": "rule_32491423a9014345",
+    "S5": "质量保证金",
+    "S5_title": "第八条 质保金按合同总金额的5%预留，质保期满且",
+    "S6": "一次性告知经办部门补正"
+  },
+  "before_rebuild": {
+    "S1": [
+      "el:rule_122a2086334e4f5d",
+      "chunk:chunk_4203123a070243c3"
+    ],
+    "S2": [
+      "el:rule_32491423a9014345",
+      "chunk:chunk_1bef4038fbdb46a2"
+    ],
+    "S3": [
+      "el:rule_32491423a9014345",
+      "chunk:chunk_1bef4038fbdb46a2"
+    ],
+    "S4": [
+      "el:rule_32491423a9014345"
+    ],
+    "S5": [
+      "el:rule_02d57091e4444e3a"
+    ],
+    "S5_title": [
+      "el:rule_02d57091e4444e3a",
+      "chunk:chunk_37a1355810cb4bb0"
+    ],
+    "S6": [
+      "el:rule_4db12a2b34514182",
+      "chunk:chunk_037311e4d74f4939"
+    ]
+  },
+  "highlighted_terms": {
+    "question": "合同如何付款？",
+    "words": [
+      "合同",
+      "付款"
+    ],
+    "alias_prefix": "质量保证"
+  },
+  "chunks": {
+    "confirmed": 17,
+    "matching_broader_query": 11,
+    "returned_for_broader_query": 2
+  },
+  "legacy": {
+    "endpoints": [
+      "/api/search",
+      "/api/entities",
+      "/api/integrations/tools/call (entities.search)"
+    ],
+    "page": "/maintenance",
+    "visible_ids": [
+      "rule_32491423a9014345"
+    ]
+  },
+  "cleared": {
+    "tenant_id": "sub-01",
+    "before": 25,
+    "after": 0
+  },
+  "rebuild_job": {
+    "id": "IDX-JOB-2f7f1174ed0d4c85ae8d64b9332a40eb",
+    "status": "completed"
+  },
+  "after_rebuild": {
+    "S1": [
+      "el:rule_122a2086334e4f5d",
+      "chunk:chunk_4203123a070243c3"
+    ],
+    "S2": [
+      "el:rule_32491423a9014345",
+      "chunk:chunk_1bef4038fbdb46a2"
+    ],
+    "S3": [
+      "el:rule_32491423a9014345",
+      "chunk:chunk_1bef4038fbdb46a2"
+    ],
+    "S4": [
+      "el:rule_32491423a9014345"
+    ],
+    "S5": [
+      "el:rule_02d57091e4444e3a"
+    ],
+    "S5_title": [
+      "el:rule_02d57091e4444e3a",
+      "chunk:chunk_37a1355810cb4bb0"
+    ],
+    "S6": [
+      "el:rule_4db12a2b34514182",
+      "chunk:chunk_037311e4d74f4939"
+    ]
+  },
+  "material_pickers": {
+    "special_project_id": "PROJECT-E53996EA80BD",
+    "project_id": "PROJECT-USER-00c4145167",
+    "material_id": "material_1ab13833c0384689549a32c3",
+    "chunk_hits": [
+      "chunk_f06a2ee1e1974bcf",
+      "chunk_303a47d50a0d42e5"
+    ],
+    "invalid_chunk_status": 404,
+    "invalid_work_object_status": 404
+  },
+  "admin_users_screen": {
+    "view": "professional",
+    "account": "b2.search.viewer",
+    "role_label": "查阅者",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    }
+  }
+}

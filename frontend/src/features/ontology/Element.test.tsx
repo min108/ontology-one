@@ -2,10 +2,12 @@ import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
 import { sentence } from '../build/model';
+import { gates } from '../build/gateFixtures';
 import { useUiStore } from '../../state/ui';
+import { useSessionStore } from '../../state/session';
 import { testQuery, testSession } from '../build/testQuery';
 import ElementPage, { type ElementDetail } from './ElementPage';
 
@@ -251,6 +253,71 @@ it('shows each source once, counts conditions, and keeps positions inside techni
     sourceLocations.characterRange,
   );
 });
+
+it.each([
+  ['viewer', '', 'citing_entity_id=rule_private_id'],
+  ['analyst', 'REL-7', 'citing_relation_id=REL-7'],
+] as const)(
+  'opens a published citation with its actual subject for a %s',
+  async (role, relation, subject) => {
+    useSessionStore.setState(({ session }) => ({
+      session: { ...session!, user: { ...session!.user, role } },
+    }));
+    const value = detail();
+    const source = {
+      material_id: 'M',
+      source_version: 'OLD',
+      anchor_id: 'A',
+      quote: 'Former wording',
+      ...(relation ? { citing_relation_id: relation } : {}),
+    };
+    value.entity.payload.source_refs = [source];
+    value.gates = gates();
+    value.gates.fields = [
+      {
+        ...source,
+        key: 'scope',
+        label: 'Scope',
+        source: 'source',
+        value: 'Branch',
+        source_quote: source.quote,
+      },
+    ];
+    await openElement(value);
+    const href = '/materials/M?anchor=A&source_version=OLD&' + subject;
+    expect(screen.getByRole('link', { name: source.quote })).toHaveAttribute('href', href);
+    const text = '📄' + 'a'.repeat(4095);
+    vi.mocked(api).mockResolvedValueOnce({
+      material_id: 'M',
+      title: 'Cited material',
+      source_version: 'OLD',
+      status: 'published',
+      version: 1,
+      locator: 'Article 2',
+      text,
+      offset: 0,
+      total: 5600,
+    });
+    vi.mocked(api).mockRejectedValueOnce(new ApiError('Original is no longer available', 404));
+    fireEvent.click(screen.getByRole('button', { name: terms.labels.r3_main_view_original }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByRole('link', { name: terms.labels.r3_main_source_page })).toHaveAttribute(
+      'href',
+      href,
+    );
+    expect(await within(drawer).findByText(text)).toBeVisible();
+    expect(vi.mocked(api).mock.calls.at(-1)?.[0]).toBe(
+      '/v2/materials/M/source?offset=0&anchor_id=A&source_version=OLD&' + subject,
+    );
+    fireEvent.click(within(drawer).getByRole('button', { name: terms.actions.identity_next }));
+    expect(await within(drawer).findByText('Original is no longer available')).toBeVisible();
+    expect(drawer.querySelector('[data-source-viewer]')).toBeNull();
+    expect(within(drawer).queryByText(source.quote)).toBeNull();
+    expect(vi.mocked(api).mock.calls.at(-1)?.[0]).toBe(
+      '/v2/materials/M/source?offset=4096&anchor_id=A&source_version=OLD&' + subject,
+    );
+  },
+);
 it('uses the catalog return for a direct archive visit and ignores arbitrary from destinations', async () => {
   await openElement(detail(), '/ontology/elements/rule_private_id?from=https%3A%2F%2Fexample.invalid');
   expect(screen.getByRole('link', { name: terms.actions.r2_card_back })).toHaveAttribute(
@@ -266,4 +333,21 @@ it('carries known extraction origin into published and draft business cards', as
   await openElement(value);
   expect(screen.getByText(terms.labels.r3_ui_ai_reviewed)).toBeVisible();
   expect(screen.queryByText('online')).not.toBeInTheDocument();
+});
+
+it('focuses the repair panel after a legacy repair link loads its editable draft', async () => {
+  const value = detail();
+  value.can_edit = true;
+  value.entity.status = 'draft';
+  value.gates = gates(['QG2']);
+  const scroll = vi.fn();
+  Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
+  try {
+    await openElement(value, '/ontology/elements/rule_private_id?repair=1');
+    const panel = screen.getByRole('region', { name: terms.labels.r4a1_legacy_repair_title });
+    expect(panel).toHaveFocus();
+    expect(scroll.mock.instances).toContain(panel);
+  } finally {
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+  }
 });

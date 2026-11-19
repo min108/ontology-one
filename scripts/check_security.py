@@ -508,7 +508,15 @@ def run_checks(box):
         denied = a.request("POST", route, json={}, headers={"X-Tenant-Id": "sub-02"})
         expect(denied, 403)
         assert denied.json()["error"]["code"] == "PERMISSION_DENIED"
-        for field in ("tenant_id", "org_id", "actor", "principal", "permissions"):
+        # A caller may pin its own workspace. A different target has the same
+        # response whether that institution exists or not.
+        local = a.ok("POST", route, json={"tenant_id": "sub-01", "q": "UniqueSecret-sub-01"}).json()
+        assert any(item["id"] == "SAME-ID" for item in local["items"])
+        for target in ("sub-02", "forged-superadmin"):
+            foreign = a.request("POST", route, json={"tenant_id": target, "q": "UniqueSecret-sub-02"})
+            expect(foreign, 404)
+            assert foreign.json()["error"]["code"] == "NOT_FOUND"
+        for field in ("org_id", "actor", "principal", "permissions"):
             forged = a.request("POST", route, json={field: "forged-superadmin"})
             expect(forged, 422)
             assert forged.json()["error"]["code"] == "VALIDATION_FAILED"
@@ -701,12 +709,16 @@ def run_checks(box):
         admin.ok("PATCH", "/admin/users/" + a.user["id"], json={"is_active": False})
         expect(a.request("GET", "/entities"), 401)
         before = box.business_snapshot("sub-01")
-        box.sql(
-            "UPDATE ontology_task_queue SET available_at=UTC_TIMESTAMP(6) WHERE job_id=%s", (job["id"],), box.control
-        )
-        box.python("import asyncio; from backend.jobs import run_one; asyncio.run(run_one())")
-        row = box.sql("SELECT status FROM ontology_task_queue WHERE job_id=%s", (job["id"],), box.control)
-        assert row[0]["status"] == "cancelled", row
+        # Publishing the department fixtures may have queued earlier work. Use
+        # the real scheduler in its own order and observe this specific job.
+        state_query = "SELECT status,attempts FROM ontology_task_queue WHERE job_id=%s"
+        deadline = time.monotonic() + 30
+        state = box.sql(state_query, (job["id"],), box.control)
+        assert state == [{"status": "queued", "attempts": 0}], state
+        while state[0]["status"] == "queued" and time.monotonic() < deadline:
+            box.python("import asyncio; from backend.jobs import run_one; asyncio.run(run_one())")
+            state = box.sql(state_query, (job["id"],), box.control)
+        assert state == [{"status": "cancelled", "attempts": 1}], state
         assert box.business_snapshot("sub-01") == before, "Revoked worker modified tenant data"
 
     check("same-ID job isolation, account disable and queued-worker pre-execution revocation", jobs_and_revocation)
@@ -795,7 +807,7 @@ def run_checks(box):
         "result": "passed" if all(x["passed"] for x in checks) else "failed",
         "checks": checks,
         "transport": "real loopback HTTP to uvicorn; real password sessions and CSRF",
-        "fixture_notes": "Business entity/file creation uses HTTP; same-ID job rows and worker availability use SQL only in disposable databases. No identity or authorization mocks.",
+        "fixture_notes": "Business entity/file creation uses HTTP. Same-ID job fixture rows use SQL in disposable databases. Worker scheduling and revocation use the real queue and sessions.",
         "database_namespace": box.namespace,
         "backend_snapshot_sha256": box.source_sha256,
     }

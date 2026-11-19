@@ -1,13 +1,15 @@
 import { Alert, Button, Descriptions } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { terms } from '../../i18n/zh-CN';
 import { invokeCapability } from '../../api/client';
 import { RuleEditor } from './RuleEditor';
 import { RuleTests } from './RuleTests';
 import { ElementRepair } from './ElementRepair';
+import { aliasesOf, ElementAliases } from './ElementAliases';
 import { GovernanceFacts } from '../build/GovernanceFacts';
 import { useUiStore } from '../../state/ui';
+import { useSessionStore } from '../../state/session';
 import {
   PageHeader,
   PageLayout,
@@ -53,8 +55,10 @@ function activityLabel(action: string): string {
 }
 export type { ElementDetail } from '../../api/generated/types';
 import type { ElementDetail, ElementDetailResult, ElementUpdate } from '../../api/generated/types';
-export function BusinessCard({ detail }: { detail: ElementDetail }) {
+
+export function BusinessCard({ detail, citingEntityId }: { detail: ElementDetail; citingEntityId?: string }) {
   const [source, setSource] = useState<Evidence>();
+  const aliases = aliasesOf(detail.entity);
   const sources = Array.isArray(detail.entity.payload.source_refs)
     ? detail.entity.payload.source_refs.filter(
         (value) => sourceDescription(value) || isAnchoredEvidence(value),
@@ -63,6 +67,11 @@ export function BusinessCard({ detail }: { detail: ElementDetail }) {
   return (
     <article className={styles.card} aria-label={detail.entity.title}>
       <p className={styles.statement}>{detail.card.one_liner}</p>
+      {aliases.length > 0 && (
+        <p>
+          {copy.r4b_aliases} · {aliases.join('、')}
+        </p>
+      )}
       {(detail.entity.payload.extraction_mode === 'online' ||
         detail.entity.payload.extraction_mode === 'local') && (
         <OriginTag
@@ -109,7 +118,7 @@ export function BusinessCard({ detail }: { detail: ElementDetail }) {
           ))}
         </FoldRow>
       )}
-      <SourceEvidence source={source} onClose={() => setSource(undefined)} />
+      <SourceEvidence source={source} citingEntityId={citingEntityId} onClose={() => setSource(undefined)} />
     </article>
   );
 }
@@ -118,9 +127,15 @@ export default function ElementPage() {
     identity = useBuildIdentity();
   return <Element key={identity.key + id} id={id} />;
 }
+function openRepair() {
+  const panel = document.getElementById('element-repair');
+  panel?.scrollIntoView({ block: 'start' });
+  panel?.focus({ preventScroll: true });
+}
 function Element({ id }: { id: string }) {
   const lifetime = useLifetime();
   const viewMode = useUiStore((state) => state.viewMode);
+  const role = useSessionStore((state) => state.session?.user.role);
   const navigate = useNavigate();
   const [notice, setNotice] = useState('');
   const [params] = useSearchParams();
@@ -130,6 +145,14 @@ function Element({ id }: { id: string }) {
     ? { label: copy.r2_changeset_title, href: from }
     : { label: terms.actions.r2_card_back, href: '/ontology/catalog' };
   const query = useResource<ElementDetailResult>('/v2/elements/' + encodeURIComponent(id));
+  const canRepair =
+    !!query.data?.data.can_edit &&
+    ['draft', 'returned'].includes(query.data.data.entity.status) &&
+    !!query.data.data.gates?.checks.some((check) => check.status !== 'not_applicable');
+  const repairRequested = params.get('repair') === '1';
+  useEffect(() => {
+    if (repairRequested && canRepair) openRepair();
+  }, [id, repairRequested, canRepair]);
   if (!query.data)
     return (
       <PageLayout variant="archive" header={<PageHeader title={copy.r2_catalog_title} />}>
@@ -139,6 +162,8 @@ function Element({ id }: { id: string }) {
   const detail = query.data.data,
     entity = detail.entity,
     professional = viewMode === 'professional';
+  const citingEntityId =
+    entity.status === 'published' && (role === 'viewer' || role === 'analyst') ? entity.id : undefined;
   const fields = Object.entries(fieldLabels).flatMap(([key, label]) => {
     const text = businessText(entity.payload[key]);
     return text ? [{ key, label, children: <span className={styles.paragraph}>{text}</span> }] : [];
@@ -148,15 +173,6 @@ function Element({ id }: { id: string }) {
     const label = activityLabel(event.action);
     return label ? [{ ...event, label }] : [];
   });
-  const canRepair =
-    detail.can_edit &&
-    ['draft', 'returned'].includes(entity.status) &&
-    !!detail.gates?.checks.some((check) => check.status !== 'not_applicable');
-  const openRepair = () => {
-    const panel = document.getElementById('element-repair');
-    panel?.scrollIntoView({ block: 'start' });
-    panel?.focus();
-  };
   return (
     <PageLayout
       variant="archive"
@@ -175,6 +191,16 @@ function Element({ id }: { id: string }) {
               )}
             </>
           }
+          extra={
+            <ElementAliases
+              detail={detail}
+              disabled={!!query.refreshing || !!query.error}
+              onSaved={(message) => {
+                setNotice(message ?? '');
+                query.reload();
+              }}
+            />
+          }
           primaryAction={
             entity.status === 'published'
               ? { label: copy.r3_main_ask, onClick: () => navigate(askHref(id)) }
@@ -191,8 +217,8 @@ function Element({ id }: { id: string }) {
       {notice && <Alert type="success" role="status" title={notice} />}
       <div className={styles['archive-columns']}>
         <div className={styles.stack}>
-          <BusinessCard detail={detail} />
-          <GovernanceFacts gates={detail.gates} />
+          <BusinessCard detail={detail} citingEntityId={citingEntityId} />
+          <GovernanceFacts gates={detail.gates} citingEntityId={citingEntityId} />
           <div className={styles.folds}>
             {conditions.length > 0 && (
               <FoldRow
@@ -299,13 +325,13 @@ function Element({ id }: { id: string }) {
                     key={entity.id + ':' + entity.version}
                     entity={entity}
                     disabled={!!query.refreshing || !!query.error}
-                    onSave={async (payload, sentenceConfirmed) => {
+                    onSave={async (fields, sentenceConfirmed) => {
                       await invokeCapability<ElementDetailResult>(
                         'element.update_draft',
                         {
                           entity_id: id,
                           version: entity.version,
-                          payload,
+                          payload_fields: fields,
                           sentence_confirmed: sentenceConfirmed,
                         } satisfies ElementUpdate,
                         { signal: lifetime.current?.signal },

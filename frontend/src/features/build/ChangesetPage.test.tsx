@@ -1,3 +1,4 @@
+import reviewFixture from '../../../test-fixtures/r4a2-source-review.json';
 import fixture from '../../../test-fixtures/r4-semantic-content.json';
 import sourceLocations from '../../../test-fixtures/source-locations.json';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -139,6 +140,11 @@ it('expires the undo notice together with its action', async () => {
     open();
     fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_2 }));
     expect(await screen.findByText(terms.labels.r3_main_undo_saved)).toBeVisible();
+    expect(invokeCapability).toHaveBeenCalledWith(
+      'changeset.decide_items',
+      expect.objectContaining({ decision: 'rejected', expected_versions: { 'item-1': 0 } }),
+      expect.anything(),
+    );
     expect(screen.getByRole('button', { name: terms.labels.r3_main_undo })).toBeVisible();
     expect(timers).toHaveLength(1);
     act(() => timers[0]());
@@ -209,6 +215,38 @@ it('requires all items handled before one L2 submit confirmation and then submit
   expect(
     vi.mocked(invokeCapability).mock.calls.filter(([op]) => op === 'changeset.apply_and_submit'),
   ).toHaveLength(1);
+});
+it('replaces the submission count if a refreshed queue leaves an open confirmation with no eligible draft', async () => {
+  const item = proposal.items[0];
+  Object.assign(item, {
+    decision: 'accepted',
+    applied_entity_id: 'R-1',
+    applied_status: 'draft',
+    can_submit: true,
+  });
+  proposal.can_submit = true;
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_6 }));
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() =>
+    expect(within(dialog).getByText(sentence(terms.labels.r3_main_submit_count, { count: 1 }))).toBeVisible(),
+  );
+  Object.assign(item, { can_submit: false });
+  proposal.can_submit = false;
+  proposal.submit_blockers = ['Recheck required'];
+  await act(async () => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  try {
+    expect(await within(dialog).findByText(terms.labels.r4a2_no_submittable)).toBeVisible();
+    expect(
+      within(dialog).queryByText(sentence(terms.labels.r3_main_submit_count, { count: 0 })),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: terms.actions.catalog_1_6 })).toBeDisabled();
+  } finally {
+    focusManager.setFocused(undefined);
+  }
 });
 it('shows the original in place with exact highlight and keeps the selected item after closing', async () => {
   const quote = 'Original';
@@ -417,19 +455,42 @@ it.each([true, false])(
 it('lets the builder discard an adopted draft without offering an invalid undo', async () => {
   proposal.items[0].decision = 'accepted';
   proposal.items[0].applied_entity_id = 'R-1';
-  Object.assign(proposal.items[0], { applied_status: 'draft', can_submit: false });
+  Object.assign(proposal.items[0], { applied_status: 'draft', applied_version: 4, can_submit: false });
   proposal.submit_blockers = ['Missing definition'];
-  vi.mocked(invokeCapability).mockResolvedValue({} as never);
+  vi.mocked(invokeCapability).mockImplementation(async () => {
+    Object.assign(proposal.items[0], { decision: 'rejected', applied_status: 'archived' });
+    return {} as never;
+  });
   open();
   fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_2 }));
+  const discard = screen.getByRole('dialog', { name: terms.labels.r4a2_discard_title });
+  expect(discard).toHaveTextContent(proposal.items[0].after_data.title);
+  expect(invokeCapability).not.toHaveBeenCalled();
+  fireEvent.click(within(discard).getByRole('button', { name: terms.actions.r2_cancel }));
+  expect(invokeCapability).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_2 }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: terms.labels.r4a2_discard_confirm }),
+  );
   await waitFor(() =>
     expect(invokeCapability).toHaveBeenCalledWith(
       'changeset.decide_items',
-      expect.objectContaining({ decision: 'rejected', item_ids: ['item-1'] }),
+      expect.objectContaining({
+        decision: 'rejected',
+        item_ids: ['item-1'],
+        expected_versions: { 'item-1': 4 },
+      }),
       expect.anything(),
     ),
   );
   expect(await screen.findByText(terms.labels.r4a1_discarded)).toBeVisible();
+  await waitFor(() =>
+    expect(screen.queryByRole('button', { name: terms.actions.catalog_1_1 })).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByRole('button', { name: terms.actions.catalog_1_2 })).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(sentence(terms.labels.r3_main_submit_count, { count: 0 })),
+  ).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: terms.labels.r3_main_undo })).not.toBeInTheDocument();
 });
 it('shows fully local extraction explicitly and retains safe retry and discarded counters', async () => {
@@ -528,5 +589,33 @@ it('keeps two untouched candidates explicit after nine drafts submit with zero b
   expect(screen.queryByRole('button', { name: terms.labels.r3_main_submitted })).not.toBeInTheDocument();
   expect(screen.getByRole('navigation', { name: terms.labels.r3_ui_next })).toHaveTextContent(
     sentence(terms.labels.r4a1_submit_totals, { s: 9, r: 0, p: 2 }),
+  );
+});
+
+it('requests a fresh Chinese sentence when an unchanged sentence describes the previous expression', async () => {
+  useUiStore.setState({ viewMode: 'professional' });
+  Object.assign(proposal.items[0].after_data, {
+    judgement: { requirement: { oxl: 'amount > 0', sentence: reviewFixture.originalJudgement } },
+  });
+  open();
+  fireEvent.click(await screen.findByRole('button', { name: terms.actions.catalog_1_1 }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.click(within(dialog).getByText(terms.labels.r3_ui_technical));
+  fireEvent.change(within(dialog).getByLabelText(terms.labels.r4_rule_judgement), {
+    target: {
+      value: JSON.stringify({
+        requirement: { oxl: 'amount >= 1', sentence: reviewFixture.originalJudgement },
+      }),
+    },
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: terms.actions.r2_save }));
+  await waitFor(() =>
+    expect(invokeCapability).toHaveBeenCalledWith(
+      'changeset.decide_items',
+      expect.objectContaining({
+        edit: expect.objectContaining({ judgement: { requirement: { oxl: 'amount >= 1' } } }),
+      }),
+      expect.anything(),
+    ),
   );
 });
