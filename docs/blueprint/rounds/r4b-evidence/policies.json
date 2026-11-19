@@ -1,0 +1,182 @@
+{
+  "commit": "7b96e31117144435edeb4cc2259db6377a4163e8",
+  "runs": [
+    {
+      "material": "regulation-plain.txt",
+      "source_sha256": "2df00f33bd91deab4af971baaa9d45501e552fc1b2bf715e018a34d2d951065b",
+      "channel": "browser_ui",
+      "provider": "synthetic_messages_real_sdk",
+      "success": true,
+      "total_seconds": 21.821,
+      "submission_share": {
+        "submitted": 9,
+        "total": 11,
+        "ratio": 0.8181818181818182
+      },
+      "extraction_summary": {
+        "retried_batches": 0,
+        "discarded_candidates": 0,
+        "accepted_candidates": 11,
+        "failed_batches": 0,
+        "fully_local": false
+      },
+      "publication_checks": [
+        {
+          "code": "QG1",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG2",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG3",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG4",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG5",
+          "status": "pass",
+          "reason": "检查通过。"
+        }
+      ],
+      "report_checks": {
+        "docx": {
+          "body_deadline": true,
+          "citation_link": true,
+          "source_quote": true
+        },
+        "html": {
+          "body_deadline": true,
+          "citation_link": true,
+          "source_quote": true
+        }
+      }
+    },
+    {
+      "material": "regulation-repeal.txt",
+      "source_sha256": "609c35a8a7484e193ac1e46f6d04e52329f33cb1a21b71fe55707fe597140656",
+      "channel": "browser_ui",
+      "provider": "synthetic_messages_real_sdk",
+      "success": true,
+      "total_seconds": 30.902,
+      "submission_share": {
+        "submitted": 9,
+        "total": 11,
+        "ratio": 0.8181818181818182
+      },
+      "extraction_summary": {
+        "retried_batches": 0,
+        "discarded_candidates": 0,
+        "accepted_candidates": 11,
+        "failed_batches": 0,
+        "fully_local": false
+      },
+      "publication_checks": [
+        {
+          "code": "QG1",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG2",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG3",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG4",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG5",
+          "status": "pass",
+          "reason": "检查通过。"
+        }
+      ],
+      "report_checks": {
+        "docx": {
+          "body_deadline": true,
+          "citation_link": true,
+          "source_quote": true
+        },
+        "html": {
+          "body_deadline": true,
+          "citation_link": true,
+          "source_quote": true
+        }
+      }
+    },
+    {
+      "material": "regulation-history.txt",
+      "source_sha256": "dffa77953b3a40b1e7e9fc22247febbdf67d0fdca10eb1cd243e61d82a09bfad",
+      "channel": "browser_ui",
+      "provider": "synthetic_messages_real_sdk",
+      "success": true,
+      "total_seconds": 27.399,
+      "submission_share": {
+        "submitted": 6,
+        "total": 6,
+        "ratio": 1
+      },
+      "extraction_summary": {
+        "retried_batches": 0,
+        "discarded_candidates": 0,
+        "accepted_candidates": 6,
+        "failed_batches": 0,
+        "fully_local": false
+      },
+      "publication_checks": [
+        {
+          "code": "QG1",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG2",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG3",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG4",
+          "status": "pass",
+          "reason": "检查通过。"
+        },
+        {
+          "code": "QG5",
+          "status": "pass",
+          "reason": "检查通过。"
+        }
+      ],
+      "report_checks": {
+        "docx": {
+          "body_deadline": true,
+          "citation_link": true,
+          "source_quote": true
+        },
+        "html": {
+          "body_deadline": true,
+          "citation_link": true,
+          "source_quote": true
+        }
+      }
+    }
+  ]
+}
