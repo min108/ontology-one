@@ -46,7 +46,12 @@ def main(round_name: str = "r3") -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--api-port", type=int, default=8895)
     parser.add_argument("--agent-port", type=int, default=8896)
+    if round_name == "r4":
+        parser.add_argument("--benchmark", action="store_true", help="Run BA12 once after the S1-S12 browser receipt")
     args = parser.parse_args()
+    benchmark = getattr(args, "benchmark", False)
+    if benchmark and (args.live or args.mainline_only or args.repetitions not in {None, 1}):
+        raise ValueError("BA12 attaches to one local R4-B browser acceptance run")
     if args.live and not os.getenv("DEEPSEEK_API_KEY"):
         raise ValueError("Live rehearsal requires DEEPSEEK_API_KEY in the process environment")
     repetitions = args.repetitions if args.repetitions is not None else (3 if args.live else 1)
@@ -242,6 +247,28 @@ def main(round_name: str = "r3") -> int:
                             raise subprocess.CalledProcessError(browser_result.returncode, browser_command)
                     else:
                         run_command(browser_command, ROOT, bootstrap, output / "browser.log")
+                    search_receipt = output / "r4b-search.json"
+                    if round_name == "r4" and (
+                        benchmark or report["selection"] == "all_actions" or search_receipt.exists()
+                    ):
+                        search = json.loads(search_receipt.read_text())
+                        if not search["success"] or set(search["passed"]) != {f"S{i}" for i in range(1, 13)}:
+                            raise ValueError("R4-B requires all twelve browser search actions")
+                        report["search_actions"] = search["passed"]
+                    if benchmark:
+                        run_command(
+                            [
+                                sys.executable,
+                                "scripts/drills/benchmark_r4b_search.py",
+                                "--evidence",
+                                str(search_receipt),
+                                "--output",
+                                str(output / "ba12.json"),
+                            ],
+                            ROOT,
+                            bootstrap,
+                            output / "ba12.log",
+                        )
                     report["status"] = "passed"
                 finally:
                     terminate_processes(processes)

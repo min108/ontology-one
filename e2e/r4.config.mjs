@@ -11,6 +11,7 @@ export default defineConfig({
           "**/r3-*.spec.mjs",
           "**/r4a1-*.spec.mjs",
           "**/r4a2-*.spec.mjs",
+          "**/r4b-*.spec.mjs",
         ],
   workers: 1,
   retries: 0,
