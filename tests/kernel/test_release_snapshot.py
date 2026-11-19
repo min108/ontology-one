@@ -79,6 +79,8 @@ class ReleaseSnapshotMySQL(unittest.TestCase):
         receipt = self.approve()
         job_id = receipt["job_id"]
         self.assertEqual(self.approve()["job_id"], job_id)
+        alias = self.call(self.reviewer, "release.publish", {"release_id": self.release_id.lower(), "background": True})
+        self.assertEqual(alias["job_id"], job_id)
         with store.control_connection() as conn, conn.cursor() as cursor:
             cursor.execute("SELECT principal_json,args_json FROM ontology_task_queue WHERE kind='release_snapshot'")
             rows = cursor.fetchall()

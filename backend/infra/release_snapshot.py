@@ -30,6 +30,9 @@ def enqueue_snapshot(conn: db.Connection, person: Principal, release_id: str) ->
     from backend.kernel import releases
 
     candidate = releases.authorize_publish(conn, person, release_id)
+    # MySQL matches identifiers using the estate's case-insensitive collation.
+    # Bind retries and the unique active job to the stored release identifier.
+    release_id = candidate["id"]
     version, manifest = candidate["version"], candidate["manifest_hash"]
     approval = _approval(person, release_id, version, manifest)
     # Both records are on the same MySQL instance. Commit the reviewer binding,
