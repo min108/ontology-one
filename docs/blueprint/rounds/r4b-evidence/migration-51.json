@@ -1,0 +1,104 @@
+{
+  "new_directory_organization": {
+    "navigation_id": "org-64984dd1",
+    "indexed_root_id": "el:org-64984dd1",
+    "title": "工程审计中心",
+    "native_title_hits": 1,
+    "default_module": "工程审计中心公共部分",
+    "second_provision_fixed_point": true
+  },
+  "revision": "5fe8a3d6a3cf83c86742010f4c3b65ecd76e5bfc",
+  "control_version": 6,
+  "tenant_version": 6,
+  "tenant_count": 51,
+  "real_v070_workspaces": {
+    "hq": {
+      "elements": 1,
+      "chunks": [],
+      "original_tables_unchanged": 34,
+      "old_table_fingerprints_before": "f2f30bf580e4c12e0a90fc5e9b584b7deb81bf57eae49225994674e729da826e",
+      "old_table_fingerprints_after": "f2f30bf580e4c12e0a90fc5e9b584b7deb81bf57eae49225994674e729da826e"
+    },
+    "dept-01": {
+      "elements": 24,
+      "chunks": [
+        "chunk:chunk_4c387f22b3d84f41"
+      ],
+      "original_tables_unchanged": 35,
+      "old_table_fingerprints_before": "cf4123c6ac99afa477afeec6c193e05411209a0bb025987f113b0424b95cf8bc",
+      "old_table_fingerprints_after": "cf4123c6ac99afa477afeec6c193e05411209a0bb025987f113b0424b95cf8bc"
+    },
+    "sub-01": {
+      "elements": 1,
+      "chunks": [],
+      "original_tables_unchanged": 34,
+      "old_table_fingerprints_before": "dd0487e18540531e0fc9146ae4d4ef940f428a99c1d05f1fe0bfacb90ff598e9",
+      "old_table_fingerprints_after": "dd0487e18540531e0fc9146ae4d4ef940f428a99c1d05f1fe0bfacb90ff598e9"
+    }
+  },
+  "migrated_count": 52,
+  "totals": {
+    "ngram": 102,
+    "element": 74,
+    "chunk": 1
+  },
+  "second_run": {
+    "backup": null,
+    "migrated": []
+  },
+  "index_fingerprints_unchanged": 51,
+  "index_sha256_by_tenant": {
+    "hq": "21e4867339ed0331a551ea47ae2be5624dfd9a79d99c505fb816f97dc3456c2c",
+    "resident-01": "048c626c50a83ab0df81d033d0d986fb6f27825c0b54d5b845ea76fce58bc927",
+    "dept-01": "fdeae53e20f42ff623baec917c718135da38c95ea917545d841af7eb427a38cb",
+    "dept-02": "6df370abb5fc1624ae3da1332913d68787a1610524e598797de26a25d30311d5",
+    "dept-03": "a05af24c397d390ee5b3d698a39e41795c0d52136e7b0db277ce58743f902dab",
+    "dept-04": "70c9b27f515450db1f0cfdab1a83d2036b7caff5b449ef3eed41e59b7eae5d80",
+    "dept-05": "a1f7d97f4682f07cbf0402c0059c7923bbc7f05bdce4c39e5cab9ecd2c0d4770",
+    "dept-06": "b2fd8b04822370b0524f385a04ecf3d51d6ff81d00ac713c3ff44be6e31f294e",
+    "dept-07": "49d0272a61fc9aeee794fb910b1ef4e6600a6d5d19adf4dcd8f89b4908d57606",
+    "dept-08": "48cb3d86c50b3d17178dfff79f9f0f7667882e686413900e9df19ec656e2b906",
+    "dept-09": "3d54ec5a7ff5e9c07d2af5eb5b0c27f3f9ef3a2a2b4bb3259cd5579b3ead8576",
+    "dept-10": "f2f130c2a909aa14098971eaa7033a707d6e8754ecd24e0bdd4d52f671b1d405",
+    "dept-11": "b7cdbb1b4f01c523d51a4025159f7a7e90f0af62ffc72006ae3788a8dd3e1124",
+    "dept-12": "1e69342b41e90376924d98e77f436dfb75b9c427a7747058ff287d36cb50d0e1",
+    "sub-01": "12e85a2573c0d8aeb50610ce5ff46e4276df0816d954d5d1b420d75692d5e036",
+    "sub-02": "5dcd71097d78142d87077d531a55a04805d70e123350649857d4197a4765cc26",
+    "sub-03": "b7664debb0e09d672cb430351a55d7184a8b2d24c21b86961d4b66354ef9405d",
+    "sub-04": "e7ad1cb88bf41e9bd6b0441973fa74de045670b0b1f1bb7a718026f88c6f3b5f",
+    "sub-05": "5378fb3f0545a7319193842dade7a68e77d71fa97ac50f6b389b1b170b8b3203",
+    "sub-06": "856f9bc0373a81716641f86c95ac0c826bfe933eda27b4a6cdffaa23b05b0c50",
+    "sub-07": "2c73b4ddaa23e236552745af374bcb7e1539fbbc924993fd84dd70298bb18bd3",
+    "sub-08": "a5c5e7aeea8644712e5181d719cc9f0c106586c5e14a39474ccf0a908ffd307b",
+    "sub-09": "e60253c85b074462eac20cb4fd3912cc2c7813cc2bf2c6b2d04ccc8462ab4990",
+    "sub-10": "d76b7769612e8f2f29c865f7ade5d33dfa0e17a49ddc2cab5a54826a0aa4ce11",
+    "sub-11": "b2d345037d5d8ad34cfeac113eaff24f63cf664f0e27265baa7f7cbdb5f29440",
+    "sub-12": "db2dcb9ba523567dd29642c2635cca84d33743e60ae2fc0bf5c4a63f4784e6ac",
+    "sub-13": "1bcc55cdf352fdd0da0b50806e13faad0617211da89c3a4f34832448e8855ac6",
+    "sub-14": "855e7f84a5a2efec3dcd4de0203bc6f2733fc378fcc0bde34247cc0d9f2367b3",
+    "sub-15": "6a6174372d08cbc33a47374cb3b17a78b0ea130110942c82f572f01d34226695",
+    "sub-16": "b4944f05fefbb080363e9c1416e13859501b938eed50c8e848e769e28ef3e095",
+    "sub-17": "e8601987d1f103c2bc1cd709cd352ce618983fabda7f411e3748a369ac8a1597",
+    "sub-18": "aa51bf2483af94c3aadbe706bc6aa74334a6f4d27aa4596aba0834782814fb8c",
+    "sub-19": "ae689bcc9fbbd06150fe3445d8fc3fe7f17250d9dc42bd4ee07eeb7963209464",
+    "sub-20": "2c87a42adf1ff0b3545e0d3c5b1259c4c42abc8a409e7c9cabf426447197ac99",
+    "sub-21": "a7d96ab78e99136e35a31a2730dfc9791b4dc2c7e24e23300e3dd57801aa072d",
+    "sub-22": "13330f4e10e5c850fd9eb17832e225751dbe6cf69b774c187ccc106461097995",
+    "sub-23": "262e5494c7013f53959b7e56c60941428563d44e056ac40c378b0b431368a9e3",
+    "sub-24": "b5609d507fde5afd699385a18850b12a4313ce867771d724e42aa9df53dae9fa",
+    "sub-25": "3f66b69a381408c04d23b055a3a322bf0bf7b0df7cfd6cf3f890a1e7107f502b",
+    "sub-26": "7a11fb9b814ea8c5e3beec72ba80b72d35afbf21acb0652a23cc5cd218de83da",
+    "sub-27": "2b4f7bd6f183f442f114095b0c98d0cef84e3729c0f2771342d724bb70908050",
+    "sub-28": "05b63c7b17a72e18bb4346b9e5d5a9b1765f768ed283361c08e02da6fee4836a",
+    "sub-29": "fb958c8f3d0ee299342f18cf7624bd9503655ae9808711f845b8c6a340f16db9",
+    "sub-30": "df5ababce495c924fad12fe625177789dfe2ec780ba31b34d480673c3a7ce526",
+    "sub-31": "981f47c13991d600c7facc8c3b919d93c23cac0d1127d7f211d658dd475a767d",
+    "sub-32": "1762e065965e61f2bf6187acd8785d34697b122a72dc5aea5671a890787a42d0",
+    "sub-33": "5f2ccf59a6a6dd5445cbb41fb0c7b3d5b4a9bd6c0a49a20e58b0a83f7dae487f",
+    "sub-34": "e50032fd7a169e11d1444b04725abc60401313df7ae94d168735b872a6215da9",
+    "sub-35": "724ab7f6ce7b557ef4466be0a99b7faa7e87e85dd32a649da3db2264eab2c1da",
+    "sub-36": "87e7d7314aee4c384dcf25fa6f7e164eb23df81a061dd5f2103c8cba6cff5ef3",
+    "sub-37": "82ab758c56577d3856f1f54b251022024bf38925ae214e43c78f9896e0d05f51"
+  },
+  "original_portable_sha256": "20dde3f14e74bc3e6542e6eac430856e095f582a2d9a533816fa7080d6314552"
+}

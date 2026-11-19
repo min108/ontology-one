@@ -2,14 +2,14 @@
 
 R4-A.2 的单独交付提交为 `7d7cdc6`，快速层和原用例状态对照已通过。B1 已在旧机构升级、新机构开通、0.7 备份恢复和真实 HTTP 发布流程中验证。机构发布版本保存审核过的内容、关联和引用，普通用户继续按当前角色使用已发布的要素。 [A.2 CI](https://github.com/min108/ontology-one/actions/runs/44429274725) · [机构发布与恢复](rounds/R4-B-UPPER-EVIDENCE.md#b1-动作反例和恢复)
 
-B2 已用普通制度原件完成 S1–S12 浏览器演练，核对原始引文、同机构不同角色、跨机构过滤及旧接口顺序。机构库迁移 0006 的两个 MySQL 原生 ngram 索引已在 51 个机构实查，重复迁移后各库文档摘要相同。 [检索及反例](rounds/R4-B-UPPER-EVIDENCE.md#b2-检索与语义动作)
+B2 已用普通制度原件完成 S1–S12 浏览器演练，核对原始引文、同机构不同角色、跨机构过滤及旧接口顺序。机构库迁移 0006 的两个 MySQL 原生 ngram 索引已在 51 个机构实查。10,000 条要素、17 个原文段上的 200 次连续检索实测 P95 为 224.839 毫秒。 [检索及反例](rounds/R4-B-UPPER-EVIDENCE.md#b2-检索与语义动作) · [原始样本](rounds/r4b-evidence/ba12.json)
 
 | 轮 | 版本 | 状态 | 验收日期 | 报告 |
 |---|---|---|---|---|
 | R1 | 1.0.0 | 已验收（标签待负责人决定） | 2026-11-16 | [R1-REPORT](rounds/R1-REPORT.md)、[R1-ACCEPTANCE](rounds/R1-ACCEPTANCE.md) |
 | R2 | 1.1.0 | 已验收（R2.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R2-REPORT](rounds/R2-REPORT.md)、[R2-ACCEPTANCE](rounds/R2-ACCEPTANCE.md) |
 | R3 | 1.2.0 | 已验收（R3.1 修复后复验通过；标签待负责人决定） | 2026-11-17 | [R3-REPORT](rounds/R3-REPORT.md)、[R3-ACCEPTANCE](rounds/R3-ACCEPTANCE.md)、[R3-PLAN](rounds/R3-PLAN.md) |
-| R4 | 1.3.0 | A 段：首次验收不通过（2026-11-18），A.1 修复后复验有条件通过（2026-11-19），遗留 12 项列为 A.2；B 段分上、下两次交付，上半（A.2、机构本体与发布版本、检索）进行中 | — | [R4-PLAN](rounds/R4-PLAN.md)、[R4-REPORT](rounds/R4-REPORT.md)、[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) |
+| R4 | 1.3.0 | A.1 复验有条件通过。上半段的 A.2 遗留、机构本体与发布版本、检索与语义服务已实施，待规划方复验。真实模型按 D22 由规划方在交付代码上办理 | — | [R4-PLAN](rounds/R4-PLAN.md)、[R4-REPORT](rounds/R4-REPORT.md)、[R4-ACCEPTANCE](rounds/R4-ACCEPTANCE.md) |
 
 ## 当前基线
 

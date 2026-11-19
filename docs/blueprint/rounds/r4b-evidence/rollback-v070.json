@@ -1,0 +1,25 @@
+{
+  "source_commit": "1359118dd672431dcd0cde2eb81f2b0f994eef37",
+  "namespace": "ontology_r12drill_e399fdab27",
+  "stages": [
+    "loaded_original_v070",
+    "migrated_and_validated",
+    "failed_upgrade_blocked_restart",
+    "restored_original_hashes",
+    "original_v070_process_healthy"
+  ],
+  "injected_failure": {
+    "migration": "0007_injected_failure",
+    "tenant": "hq",
+    "state": "failed"
+  },
+  "health": {
+    "ok": true,
+    "service": "集团本体平台",
+    "version": "0.7.0",
+    "database": "MySQL",
+    "mode": "enterprise-preview",
+    "time": "2026-11-19T01:36:45.333770+00:00"
+  },
+  "passed": true
+}
