@@ -3369,6 +3369,314 @@
         "title": "ModelStatus",
         "type": "object"
       },
+      "ModuleMove": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_ids": {
+            "items": {
+              "maxLength": 191,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "source_module_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Source Module Id",
+            "type": "string"
+          },
+          "target_module_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Target Module Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "source_module_id",
+          "target_module_id",
+          "entity_ids"
+        ],
+        "title": "ModuleMove",
+        "type": "object"
+      },
+      "ModuleMoveResult": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "moved_count": {
+            "minimum": 1.0,
+            "title": "Moved Count",
+            "type": "integer"
+          },
+          "source_module_id": {
+            "title": "Source Module Id",
+            "type": "string"
+          },
+          "target_module_id": {
+            "title": "Target Module Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_module_id",
+          "target_module_id",
+          "entity_ids",
+          "moved_count"
+        ],
+        "title": "ModuleMoveResult",
+        "type": "object"
+      },
+      "ModuleResult": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "domain_code": {
+            "title": "Domain Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "module_key": {
+            "title": "Module Key",
+            "type": "string"
+          },
+          "module_type": {
+            "enum": [
+              "org_common",
+              "scenario",
+              "group_core"
+            ],
+            "title": "Module Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner User Id"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Preferences",
+            "type": "object"
+          },
+          "scope_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Note"
+          },
+          "sharing_level": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Sharing Level",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "deprecated",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_key",
+          "module_type",
+          "name",
+          "domain_code",
+          "owner_user_id",
+          "scope_note",
+          "status",
+          "sharing_level",
+          "preferences",
+          "current_release_id",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ModuleResult",
+        "type": "object"
+      },
+      "ModuleSave": {
+        "additionalProperties": false,
+        "properties": {
+          "domain_code": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Code"
+          },
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
+          "module_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Module Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner User Id"
+          },
+          "preferences": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferences"
+          },
+          "register_dependencies": {
+            "default": false,
+            "title": "Register Dependencies",
+            "type": "boolean"
+          },
+          "scope_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Note"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "module_id"
+        ],
+        "title": "ModuleSave",
+        "type": "object"
+      },
       "MutationOutput": {
         "additionalProperties": false,
         "properties": {
@@ -4059,6 +4367,896 @@
           "reason"
         ],
         "title": "RelationPropose",
+        "type": "object"
+      },
+      "ReleaseCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "waived",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "status",
+          "reason"
+        ],
+        "title": "ReleaseCheck",
+        "type": "object"
+      },
+      "ReleaseCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "changelog": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Changelog",
+            "type": "string"
+          },
+          "module_id": {
+            "default": "MOD-DEFAULT",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Module Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "ReleaseCreate",
+        "type": "object"
+      },
+      "ReleaseDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "bump": {
+            "enum": [
+              "major",
+              "minor",
+              "patch"
+            ],
+            "title": "Bump",
+            "type": "string"
+          },
+          "changelog": {
+            "title": "Changelog",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "detail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Url"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/ReleaseDiff"
+          },
+          "gates": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseGate"
+            },
+            "title": "Gates",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "missing_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Dependencies",
+            "type": "array"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "no_changes": {
+            "title": "No Changes",
+            "type": "boolean"
+          },
+          "omitted_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Omitted Counts",
+            "type": "object"
+          },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ref_count": {
+            "minimum": 0.0,
+            "title": "Ref Count",
+            "type": "integer"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "candidate",
+              "published",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "suggested_version": {
+            "title": "Suggested Version",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "version",
+          "status",
+          "bump",
+          "changelog",
+          "manifest_hash",
+          "created_by",
+          "reviewed_by",
+          "submitted_by",
+          "created_at",
+          "published_at",
+          "current_release_id",
+          "suggested_version",
+          "previous_release_id",
+          "member_count",
+          "ref_count",
+          "no_changes",
+          "missing_dependencies",
+          "diff",
+          "items",
+          "gates"
+        ],
+        "title": "ReleaseDetail",
+        "type": "object"
+      },
+      "ReleaseDiff": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "promoted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Promoted",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "changed",
+          "removed",
+          "promoted"
+        ],
+        "title": "ReleaseDiff",
+        "type": "object"
+      },
+      "ReleaseGate": {
+        "additionalProperties": false,
+        "properties": {
+          "blocking": {
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entity_id",
+          "passed",
+          "blocking",
+          "checks"
+        ],
+        "title": "ReleaseGate",
+        "type": "object"
+      },
+      "ReleaseItem": {
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_version": {
+            "title": "Entity Version",
+            "type": "integer"
+          },
+          "item_role": {
+            "enum": [
+              "member",
+              "ref"
+            ],
+            "title": "Item Role",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "snapshot": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Snapshot",
+            "type": "object"
+          }
+        },
+        "required": [
+          "entity_id",
+          "entity_version",
+          "kind",
+          "snapshot",
+          "content_hash",
+          "item_role"
+        ],
+        "title": "ReleaseItem",
+        "type": "object"
+      },
+      "ReleaseList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ReleaseList",
+        "type": "object"
+      },
+      "ReleasePublication": {
+        "additionalProperties": false,
+        "properties": {
+          "bump": {
+            "enum": [
+              "major",
+              "minor",
+              "patch"
+            ],
+            "title": "Bump",
+            "type": "string"
+          },
+          "changelog": {
+            "title": "Changelog",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "detail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Url"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/ReleaseDiff"
+          },
+          "gates": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseGate"
+            },
+            "title": "Gates",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "missing_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Dependencies",
+            "type": "array"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "no_changes": {
+            "title": "No Changes",
+            "type": "boolean"
+          },
+          "omitted_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Omitted Counts",
+            "type": "object"
+          },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ref_count": {
+            "minimum": 0.0,
+            "title": "Ref Count",
+            "type": "integer"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "candidate",
+              "published",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "suggested_version": {
+            "title": "Suggested Version",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "version",
+          "status",
+          "bump",
+          "changelog",
+          "manifest_hash",
+          "created_by",
+          "reviewed_by",
+          "submitted_by",
+          "created_at",
+          "published_at",
+          "current_release_id",
+          "suggested_version",
+          "previous_release_id",
+          "member_count",
+          "ref_count",
+          "no_changes",
+          "missing_dependencies",
+          "diff",
+          "items",
+          "gates"
+        ],
+        "title": "ReleasePublication",
+        "type": "object"
+      },
+      "ReleasePublish": {
+        "additionalProperties": false,
+        "properties": {
+          "background": {
+            "default": false,
+            "title": "Background",
+            "type": "boolean"
+          },
+          "release_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Release Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "ReleasePublish",
+        "type": "object"
+      },
+      "ReleaseSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "release_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Release Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "ReleaseSubmit",
+        "type": "object"
+      },
+      "ReleaseSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "bump": {
+            "enum": [
+              "major",
+              "minor",
+              "patch"
+            ],
+            "title": "Bump",
+            "type": "string"
+          },
+          "changelog": {
+            "title": "Changelog",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "missing_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Dependencies",
+            "type": "array"
+          },
+          "module_id": {
+            "title": "Module Id",
+            "type": "string"
+          },
+          "no_changes": {
+            "title": "No Changes",
+            "type": "boolean"
+          },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ref_count": {
+            "minimum": 0.0,
+            "title": "Ref Count",
+            "type": "integer"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "candidate",
+              "published",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "suggested_version": {
+            "title": "Suggested Version",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "version",
+          "status",
+          "bump",
+          "changelog",
+          "manifest_hash",
+          "created_by",
+          "reviewed_by",
+          "submitted_by",
+          "created_at",
+          "published_at",
+          "current_release_id",
+          "suggested_version",
+          "previous_release_id",
+          "member_count",
+          "ref_count",
+          "no_changes",
+          "missing_dependencies"
+        ],
+        "title": "ReleaseSummary",
+        "type": "object"
+      },
+      "ReleaseTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "release_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Release Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "ReleaseTarget",
         "type": "object"
       },
       "RemainingItem": {
@@ -4794,7 +5992,9 @@
             "enum": [
               "admin",
               "modeler",
-              "reviewer"
+              "reviewer",
+              "analyst",
+              "viewer"
             ],
             "title": "Role",
             "type": "string"
@@ -5735,6 +6935,24 @@
                   },
                   {
                     "$ref": "#/components/schemas/DescribeInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModuleSave"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModuleMove"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleaseCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleaseSubmit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleasePublish"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReleaseTarget"
                   }
                 ],
                 "title": "Body"
@@ -5796,6 +7014,18 @@
                     },
                     {
                       "$ref": "#/components/schemas/DescribeResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ModuleResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ModuleMoveResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReleaseDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReleasePublication"
                     }
                   ],
                   "title": "Response Invoke Api V2 Capabilities  Id  Invoke Post"
@@ -6287,6 +7517,120 @@
         "summary": "Kinds"
       }
     },
+    "/api/v2/modules/{module_id}": {
+      "get": {
+        "operationId": "settings_api_v2_modules__module_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "module_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Module Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings"
+      }
+    },
+    "/api/v2/modules/{module_id}/releases": {
+      "get": {
+        "operationId": "list_releases_api_v2_modules__module_id__releases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "module_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Module Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Releases"
+      }
+    },
     "/api/v2/orgs": {
       "get": {
         "operationId": "orgs_api_v2_orgs_get",
@@ -6447,6 +7791,63 @@
           }
         },
         "summary": "Get Recipe"
+      }
+    },
+    "/api/v2/releases/{release_id}": {
+      "get": {
+        "operationId": "release_detail_api_v2_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Detail"
       }
     },
     "/api/v2/reviews": {
