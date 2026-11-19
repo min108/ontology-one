@@ -160,7 +160,17 @@ def date_candidates(sentence: str, start: int, external: bool, quotations: list[
 
 SCOPE_LIMIT = re.compile(r"不适用|不(?:包括|含|涵盖)|除外|另有规定的?除外|除[^，,。；;]{1,80}(?:以外|之外|外)")
 FILE_EXCLUSION = re.compile(r"(?:不适用(?:于)?" + CURRENT + r"|" + CURRENT + r"(?:不适用|的?适用范围不))")
-SCOPE_QUALIFIER = re.compile(r"^(?:但|其中)?[^，,。；;]{1,100}(?:除外|不在(?:上述|该|本)?适用范围(?:之内|内)?)$")
+SCOPE_QUALIFIER = re.compile(r"不(?:属于|纳入|列入)|不在[^，,。；;]{0,24}范围|排除在[^，,。；;]{0,24}范围")
+SEPARATE_OBLIGATION = re.compile(r"应(?!用|对|急|收|付)|必须|须经|可以|所称|是指")
+
+
+def following_scope_limit(sentence: str) -> bool:
+    phrase = re.sub(r"^(?:但是|但|其中|惟)[，,\s]*", "", ARTICLE.sub("", sentence))
+    if SEPARATE_OBLIGATION.search(phrase):
+        return False
+    # A new rule can state a condition, an obligation and its own exception.
+    # Only an explicit range reference or a standalone exclusion qualifies the preceding scope.
+    return bool(SCOPE_QUALIFIER.search(phrase) or (not re.search(r"[，,]", phrase) and SCOPE_LIMIT.search(phrase)))
 
 
 def scope_value(sentence: str, *, file_only: bool = False) -> str:
@@ -195,9 +205,7 @@ def document_facts(text: str) -> dict:
                     scope_conflict = True
                 else:
                     scope = file_fact(value, sentence, start)
-            elif FILE_EXCLUSION.search(sentence) or (
-                previous_scope and SCOPE_QUALIFIER.fullmatch(ARTICLE.sub("", sentence).rstrip("。；;").strip())
-            ):
+            elif FILE_EXCLUSION.search(sentence) or (previous_scope and following_scope_limit(sentence)):
                 scope_conflict = True
             previous_scope = bool(value)
         else:
@@ -229,22 +237,30 @@ PROHIBITED_EXEMPTION = re.compile(
 )
 
 
+def permitted_phrases(quote: str) -> Iterator[str]:
+    """Remove prohibited comma clauses while keeping each remaining condition and consequence together."""
+    for clause in re.split(r"[。；;！？\n]", quote):
+        start = 0
+        for part in re.finditer(r"[^，,]+", clause):
+            if PROHIBITED_EXEMPTION.search(part.group()):
+                before = clause[start : part.start()].strip("，, ")
+                if before:
+                    yield before
+                start = part.end()
+        if rest := clause[start:].strip("，, "):
+            yield rest
+
+
 def source_exception(quote: str) -> tuple[str, bool]:
     """An explicit exclusion or a different obligation. An uncertain branch needs review."""
     label = EXCEPTION_LABEL.search(quote)
     if label and not PROHIBITED_EXEMPTION.search(label.group(1)):
         return label.group(1).strip(), False
     unresolved = False
-    for clause in re.split(r"[。；;\n]", quote):
-        # A prohibition can include its reasons ("不得以紧急为由免予审批").
-        # Keep an independent permitted branch after a comma grounded in its own words.
-        parts = re.split(r"[，,]", clause) if PROHIBITED_EXEMPTION.search(clause) else [clause]
-        for part in parts:
-            if PROHIBITED_EXEMPTION.search(part):
-                continue
-            if EXCEPTION.search(ARTICLE.sub("", part)):
-                return part.strip(), False
-            unresolved |= bool(SPECIAL_PROCEDURE.search(part))
+    for part in permitted_phrases(quote):
+        if EXCEPTION.search(ARTICLE.sub("", part)):
+            return part.strip(), False
+        unresolved |= bool(SPECIAL_PROCEDURE.search(part))
     negative = NEGATIVE_BRANCH.search(quote)
     if negative and not PROHIBITED_EXEMPTION.search(negative.group()):
         return negative.group().strip(), False
@@ -381,10 +397,7 @@ def ground_candidate(candidate: dict, source_text: str, facts: dict | None = Non
                 (FALSE_EXCEPTION.search(value) and not source_exception(value)[0])
                 or (
                     PROHIBITED_EXEMPTION.search(support)
-                    and not any(
-                        value in part and not PROHIBITED_EXEMPTION.search(part) and source_exception(part)[0]
-                        for part in re.split(r"[。；;，,\n]", support)
-                    )
+                    and not any(value in part and source_exception(part)[0] for part in permitted_phrases(support))
                 )
             )
         ):

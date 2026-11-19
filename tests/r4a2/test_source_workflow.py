@@ -198,8 +198,9 @@ class SourceWorkflow(unittest.TestCase):
         text = (
             "办理办法修订对照\n原第十条：本办法自2015年7月1日起施行。\n"
             "修订后第十条：自2026年1月1日起施行。\n"
-            "第一条 本办法适用于公司各部门；海外分支机构除外。\n"
-            "第二条 财务人员应核对付款凭证。\n第三条 任何部门不得以任何理由免予审核。"
+            "第一条 本办法适用于公司各部门；但不包括海外分支机构。\n"
+            "第二条 财务人员应核对付款凭证。\n第三条 任何部门不得以任何理由免予审核。\n"
+            "第四条 不得以紧急为由免予审批，但经负责人书面批准的，可免予提交纸质副本。"
         )
         result = self.proposal(client, text)
         facts = result["document_facts"]
@@ -213,6 +214,8 @@ class SourceWorkflow(unittest.TestCase):
         restriction = next(i for i in result["items"] if "免予审核" in i["after_data"]["content"])
         self.assertFalse(restriction["after_data"].get("exceptions"))
         self.assertNotIn("exceptions", restriction["after_data"]["field_provenance"])
+        permitted = next(i for i in result["items"] if "纸质副本" in i["after_data"]["content"])
+        self.assertEqual(permitted["after_data"]["exceptions"], "但经负责人书面批准的，可免予提交纸质副本")
         saved = self.invoke(
             client,
             "changeset.confirm_facts",

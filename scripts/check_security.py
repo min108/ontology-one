@@ -508,7 +508,15 @@ def run_checks(box):
         denied = a.request("POST", route, json={}, headers={"X-Tenant-Id": "sub-02"})
         expect(denied, 403)
         assert denied.json()["error"]["code"] == "PERMISSION_DENIED"
-        for field in ("tenant_id", "org_id", "actor", "principal", "permissions"):
+        # A caller may pin its own workspace. A different target has the same
+        # response whether that institution exists or not.
+        local = a.ok("POST", route, json={"tenant_id": "sub-01", "q": "UniqueSecret-sub-01"}).json()
+        assert any(item["id"] == "SAME-ID" for item in local["items"])
+        for target in ("sub-02", "forged-superadmin"):
+            foreign = a.request("POST", route, json={"tenant_id": target, "q": "UniqueSecret-sub-02"})
+            expect(foreign, 404)
+            assert foreign.json()["error"]["code"] == "NOT_FOUND"
+        for field in ("org_id", "actor", "principal", "permissions"):
             forged = a.request("POST", route, json={field: "forged-superadmin"})
             expect(forged, 422)
             assert forged.json()["error"]["code"] == "VALIDATION_FAILED"

@@ -129,6 +129,10 @@ class SourceFacts(unittest.TestCase):
             ("本办法不适用于临时垫付。", "", False),
             ("本办法适用于公司各部门；海外分支机构除外。", "", False),
             ("本办法适用于公司各部门。海外分支机构不适用本办法。", "", False),
+            ("本办法适用于公司各部门；但不包括海外分支机构。", "", False),
+            ("本办法适用于公司各部门。海外分支机构不适用。", "", False),
+            ("本办法适用于公司各部门。新设派驻办公室不纳入上述范围。", "", False),
+            ("本办法适用于公司各部门。第二条 申请人应当提交原件，已联网核查的除外。", "公司各部门", True),
             ("本办法适用的具体问题由财务部说明。", "", False),
             ("符合时应参照本规定办理。", "", False),
             ("部门应当准确说明项目范围。", "", False),
@@ -218,6 +222,10 @@ class SourceFacts(unittest.TestCase):
             ("但任何人不得以职务需要为由豁免核验。", ""),
             ("例外：不得因项目紧急免除复核。", ""),
             ("不得以业务紧急为由免予审批，但获得书面授权的可免予交纸质副本。", "可免予交纸质副本"),
+            (
+                "不得以紧急为由免予审批，但经负责人书面批准的，可免予提交纸质副本。",
+                "但经负责人书面批准的，可免予提交纸质副本",
+            ),
         ]
         for text, needle in cases:
             with self.subTest(text=text):
@@ -274,6 +282,11 @@ class SourceFacts(unittest.TestCase):
             ground(mixed, extraction_mode="online", exceptions="免予审批")["exceptions"],
             "但获得书面授权的可免予交纸质副本",
         )
+        allowed = "但经负责人书面批准的，可免予提交纸质副本"
+        separated = "不得以紧急为由免予审批，" + allowed + "。"
+        permitted = ground(separated, extraction_mode="online", exceptions=allowed)
+        self.assertEqual(permitted["exceptions"], allowed)
+        self.assertEqual(permitted["field_provenance"]["exceptions"]["origin"], "source")
         text = "本办法适用于公司各部门，但不适用于海外分支机构。"
         own = ground(text, extraction_mode="online", scope="公司各部门")
         self.assertEqual(own["scope"], "公司各部门，但不适用于海外分支机构")
