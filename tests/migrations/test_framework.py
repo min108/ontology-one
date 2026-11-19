@@ -137,5 +137,5 @@ class Discovery(unittest.TestCase):
         for kind in ("control", "tenant"):
             self.assertEqual(
                 [m.version for m in migrations.discover(kind)],
-                [1, 2, 3, 4, 5, 6] if kind == "control" else [1, 2, 3, 4],
+                [1, 2, 3, 4, 5, 6],
             )

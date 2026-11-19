@@ -41,6 +41,7 @@ class ReviewBoundaryTests(unittest.TestCase):
                 CREATE TABLE activities(id INTEGER PRIMARY KEY,entity_id TEXT,action TEXT,detail TEXT,actor TEXT,created_at TEXT);
                 CREATE TABLE jobs(id TEXT PRIMARY KEY,kind TEXT,entity_id TEXT,status TEXT,progress INTEGER,message TEXT,result TEXT,created_at TEXT,updated_at TEXT);
                 CREATE TABLE skill_documents(entity_id TEXT PRIMARY KEY);
+                CREATE TABLE entity_meta(entity_id TEXT PRIMARY KEY,module_id TEXT);
                 CREATE TABLE federation_links(id TEXT PRIMARY KEY,source_tenant_id TEXT,source_entity_id TEXT,
                     target_tenant_id TEXT,target_entity_id TEXT,relation_type TEXT,label TEXT,status TEXT,reason TEXT,
                     created_by TEXT,reviewed_by TEXT,created_at TEXT,updated_at TEXT);

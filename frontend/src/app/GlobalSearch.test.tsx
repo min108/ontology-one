@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { GlobalSearch, parseSearchItems } from './GlobalSearch';
@@ -10,7 +10,8 @@ import { terms } from '../i18n/zh-CN';
 vi.mock('../api/client', () => ({ invokeCapability: vi.fn() }));
 const result = { items: [{ id: 'MAT-1', kind: 'material', title: 'Needle result', summary: 'Summary' }] };
 function Location() {
-  return <output data-testid="location">{useLocation().pathname}</output>;
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname + location.search}</output>;
 }
 function renderSearch(onClose = vi.fn()) {
   return {
@@ -119,6 +120,63 @@ it('navigates using the legacy entity route and closes the dialog', async () => 
   fireEvent.click(screen.getByRole('option'));
   expect(screen.getByTestId('location')).toHaveTextContent('/materials/MAT-1');
   expect(onClose).toHaveBeenCalledOnce();
+});
+it('shows the business card, source highlight and status, then opens the unified element', async () => {
+  vi.mocked(invokeCapability).mockResolvedValue({
+    items: [
+      {
+        id: 'R-1',
+        doc_type: 'element',
+        title: 'Payment',
+        kind: 'rule',
+        status: 'published',
+        summary: 'Independent approval',
+        highlight: 'Settle within ten days',
+      },
+    ],
+  });
+  renderSearch();
+  await search('ten');
+  const option = screen.getByRole('option');
+  expect(option).toHaveTextContent(terms.kinds.rule);
+  expect(option).toHaveTextContent(terms.statuses.element.published);
+  expect(option).toHaveTextContent('Independent approval');
+  expect(option.querySelector('mark')).toHaveTextContent('ten');
+  fireEvent.click(option);
+  expect(screen.getByTestId('location')).toHaveTextContent('/ontology/elements/R-1');
+});
+it('opens a material chunk at its actual location and ignores destinations supplied in a hit', async () => {
+  vi.mocked(invokeCapability).mockResolvedValue({
+    items: [
+      {
+        id: 'chunk a',
+        doc_type: 'chunk',
+        entity_id: 'm/1',
+        chunk_id: 'chunk a',
+        kind: 'material',
+        title: 'Receipt',
+        href: '/unrelated',
+      },
+    ],
+  });
+  renderSearch();
+  await search('receipt');
+  fireEvent.click(screen.getByRole('option'));
+  expect(screen.getByTestId('location')).toHaveTextContent('/materials/m%2F1?chunk=chunk%20a');
+});
+it('distinguishes a single-character prefix miss from an unsupported longer query', async () => {
+  vi.mocked(invokeCapability).mockResolvedValue({ items: [] });
+  renderSearch();
+  await act(() => vi.advanceTimersByTimeAsync(400));
+  await search('x');
+  expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent(
+    terms.labels.global_search_short,
+  );
+  await search('no relevant evidence');
+  expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent(
+    terms.labels.global_search_insufficient,
+  );
+  expect(screen.queryByRole('option')).toBeNull();
 });
 it('rejects malformed responses and safely handles nullable entity text', () => {
   for (const value of [

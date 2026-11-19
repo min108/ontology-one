@@ -58,6 +58,8 @@ class AssemblyTests(unittest.TestCase):
         self.assertEqual(set(CONTRACT["r4a1_functions"]), {"_confirm_relation"})
         # These two older writes now register dependencies for a confirmed cross-scene reference.
         self.assertEqual(set(CONTRACT["r4b1_functions"]), {"_create_entity", "_confirm_relation"})
+        # Both old catalog reads keep their response contracts and use the shared retrieval policy.
+        self.assertEqual(set(CONTRACT["r4b2_functions"]), {"entities", "entity_facets"})
         self.assertEqual(
             actual,
             {
@@ -66,6 +68,7 @@ class AssemblyTests(unittest.TestCase):
                 **CONTRACT["r4_functions"],
                 **CONTRACT["r4a1_functions"],
                 **CONTRACT["r4b1_functions"],
+                **CONTRACT["r4b2_functions"],
             },
         )
 

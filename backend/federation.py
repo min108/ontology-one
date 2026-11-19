@@ -275,12 +275,25 @@ def _filter_tenants(tenants, tenant_id):
 
 
 def _search_count(tenant, q, kind, status):
+    if q.strip():
+        from .kernel.search import search_federated
+
+        with db.tenant_connection(tenant["id"], readonly=True) as connection:
+            return search_federated(connection, tenant, q=q, kind=kind, status=status, limit=0)["total"]
     where, args = _predicate(tenant, q=q, kind=kind, status=status)
     with db.tenant_connection(tenant["id"], readonly=True) as connection:
         return connection.execute(f"SELECT count(*) FROM {_from()} WHERE {where}", args).fetchone()[0]
 
 
 def _search_rows(tenant, q, kind, status, offset, size, exclude_root=False):
+    if q.strip():
+        from .kernel.search import search_federated
+
+        with db.tenant_connection(tenant["id"], readonly=True) as connection:
+            page = search_federated(
+                connection, tenant, q=q, kind=kind, status=status, offset=offset, limit=size, exclude_root=exclude_root
+            )
+            return [_metadata(row, tenant) for row in page["items"]]
     where, args = _predicate(tenant, q=q, kind=kind, status=status)
     if exclude_root:
         where += " AND NOT (e.kind='organization' AND e.id=?)"

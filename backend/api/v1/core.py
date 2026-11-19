@@ -53,7 +53,7 @@ def catalog():
 @router.get("/api/entities")
 def entities(
     kind: str = "",
-    q: str = "",
+    q: str | None = None,
     domain: str = "",
     org_id: str = "",
     status: str = "",
@@ -65,6 +65,23 @@ def entities(
 ):
     page = max(1, page)
     page_size = min(max(1, page_size), 200)
+    from .search_results import needs_ranked_catalog, ranked_entities
+
+    if needs_ranked_catalog(q):
+        with closing(connect()) as c:
+            return ranked_entities(
+                c,
+                q or "",
+                kind=kind,
+                domain=domain,
+                org_id=org_id,
+                status=status,
+                source_kind=source_kind,
+                page=page,
+                page_size=page_size,
+                history=history,
+                asset_only=asset_only,
+            )
     where = []
     args = []
     if history != "all":
@@ -86,11 +103,6 @@ def entities(
             vals = v.split(",")
             where.append(f"{k} IN ({','.join('?' for _ in vals)})")
             args += vals
-    if q:
-        where.append(
-            "(title LIKE ? OR summary LIKE ? OR id LIKE ? OR CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?)"
-        )
-        args += ["%" + q + "%"] * 4
     filt = " WHERE " + " AND ".join(where) if where else ""
     with closing(connect()) as c, c:
         total = c.execute("SELECT COUNT(*) FROM entities" + filt, args).fetchone()[0]
@@ -109,13 +121,29 @@ def search(q: str = ""):
 @router.get("/api/entities/facets")
 def entity_facets(
     kind: str = "",
-    q: str = "",
+    q: str | None = None,
     domain: str = "",
     org_id: str = "",
     status: str = "",
     source_kind: str = "",
     history: str = "current",
 ):
+    from .search_results import needs_ranked_catalog
+
+    if needs_ranked_catalog(q):
+        from ...kernel.search import facet_counts
+
+        with closing(connect()) as c:
+            return facet_counts(
+                c,
+                q or "",
+                kind=kind,
+                status=status,
+                source_kind=source_kind,
+                domain=domain,
+                org_id=org_id,
+                history=history,
+            )
     filters = {"kind": kind, "domain": domain, "org_id": org_id, "status": status, "source_kind": source_kind}
 
     def clause(omit=""):
@@ -126,11 +154,6 @@ def entity_facets(
                 values = value.split(",")
                 terms.append(f"{field} IN ({','.join('?' for _ in values)})")
                 args.extend(values)
-        if q:
-            terms.append(
-                "(title LIKE ? OR summary LIKE ? OR id LIKE ? OR CAST(payload AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ?)"
-            )
-            args.extend(["%" + q + "%"] * 4)
         return (" WHERE " + " AND ".join(terms) if terms else ""), args
 
     with closing(connect()) as c:

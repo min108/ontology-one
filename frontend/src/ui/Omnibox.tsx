@@ -7,6 +7,7 @@ export interface OmniboxItem {
   id: string;
   label: string;
   description?: string;
+  excerpt?: string;
   group?: string;
 }
 export interface OmniboxProps {
@@ -15,11 +16,26 @@ export interface OmniboxProps {
   value: string;
   onSearch: (value: string) => void;
   items: OmniboxItem[];
+  highlight?: string;
+  emptyMessage?: string;
   onSelect: (item: OmniboxItem) => void;
   loading?: boolean;
   error?: string;
   onRetry?: () => void;
   footer?: ReactNode;
+}
+
+function matchingText(value: string, query?: string): ReactNode {
+  if (!query) return value;
+  const index = value.toLowerCase().indexOf(query.toLowerCase());
+  if (index < 0) return value;
+  return (
+    <>
+      {value.slice(0, index)}
+      <mark>{value.slice(index, index + query.length)}</mark>
+      {value.slice(index + query.length)}
+    </>
+  );
 }
 export function Omnibox({
   open,
@@ -27,6 +43,8 @@ export function Omnibox({
   value,
   onSearch,
   items,
+  highlight,
+  emptyMessage,
   onSelect,
   loading = false,
   error,
@@ -106,12 +124,13 @@ export function Omnibox({
             onClick={() => onSelect(item)}
           >
             {item.group && <small>{item.group}</small>}
-            <strong>{item.label}</strong>
-            {item.description && <span>{item.description}</span>}
+            <strong>{matchingText(item.label, highlight)}</strong>
+            {item.description && <span>{matchingText(item.description, highlight)}</span>}
+            {item.excerpt && <span>{matchingText(item.excerpt, highlight)}</span>}
           </li>
         ))}
       </ul>
-      {!loading && !error && !items.length && <p>{terms.labels.no_results}</p>}
+      {!loading && !error && !items.length && <p role="status">{emptyMessage || terms.labels.no_results}</p>}
     </Modal>
   );
 }

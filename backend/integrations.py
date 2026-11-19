@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .version import APP_VERSION
 from .security.context import require_context, use_context
 from .security.store import authenticate_session, assert_principal_current, append_audit
-from .db import connect, business_readonly, entity_json
+from .db import connect, business_readonly
 
 router = APIRouter(prefix="/integrations", tags=["集成调用边界"])
 TOOLS = ("entities.search", "entities.get", "group.search", "group.graph")
@@ -79,22 +79,17 @@ def _invoke(call):
                 raise HTTPException(403, "单机构工具不能覆盖会话工作区；跨机构查询使用group工具。")
             with closing(connect()) as conn:
                 if call.name == "entities.get":
-                    row = conn.execute("SELECT * FROM entities WHERE id=?", (args.entity_id,)).fetchone()
+                    from .security.visibility import visible_entities
+
+                    row = visible_entities(conn, [args.entity_id]).get(args.entity_id)
                     if not row:
                         raise HTTPException(404, "当前机构中未找到对象。")
-                    result = {"entity": entity_json(row)}
+                    result = {"entity": row}
                 else:
-                    where = " WHERE (title LIKE ? OR id LIKE ?)"
-                    params = ["%" + args.q + "%"] * 2
-                    if args.kind:
-                        where += " AND kind=?"
-                        params.append(args.kind)
-                    total = conn.execute("SELECT COUNT(*) FROM entities" + where, params).fetchone()[0]
-                    rows = conn.execute(
-                        "SELECT * FROM entities" + where + " ORDER BY id LIMIT ? OFFSET ?",
-                        params + [args.page_size, (args.page - 1) * args.page_size],
-                    )
-                    result = {"items": [entity_json(row) for row in rows], "total": total, "page": args.page}
+                    from .api.v1.search_results import ranked_entities
+
+                    page = ranked_entities(conn, args.q, kind=args.kind, page=args.page, page_size=args.page_size)
+                    result = {key: page[key] for key in ("items", "total", "page")}
         else:
             from . import federation
 
