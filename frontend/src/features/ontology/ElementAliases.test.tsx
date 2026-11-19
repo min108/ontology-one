@@ -1,3 +1,4 @@
+import searchFixture from '../../../test-fixtures/r4b-search.json';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { invokeCapability } from '../../api/client';
@@ -14,13 +15,17 @@ function detail(): ElementDetail {
     entity: {
       id: 'R1',
       kind: 'rule',
-      title: '政策名称',
+      title: searchFixture.aliases.title,
       status: 'published',
       version: 7,
       domain: '',
       activities: [],
       _meta: { pillar: 'asset' },
-      payload: { aliases: '原有称呼', source_refs: [{ anchor_id: 'original' }], conditions: ['原有条件'] },
+      payload: {
+        aliases: searchFixture.aliases.existing,
+        source_refs: [{ anchor_id: 'original' }],
+        conditions: [searchFixture.aliases.condition],
+      },
     },
   };
 }
@@ -61,9 +66,9 @@ it('keeps original scalar aliases and all other payload fields, prevents duplica
   const input = screen.getByRole('textbox', { name: terms.labels.r4b_alias_new });
   const revise = screen.getByRole('button', { name: terms.actions.catalog_2_8 });
   expect(revise).toBeDisabled();
-  fireEvent.change(input, { target: { value: ' 原有称呼 ' } });
+  fireEvent.change(input, { target: { value: ' ' + searchFixture.aliases.existing + ' ' } });
   expect(revise).toBeDisabled();
-  fireEvent.change(input, { target: { value: ' 另一个名称 ' } });
+  fireEvent.change(input, { target: { value: ' ' + searchFixture.aliases.added + ' ' } });
   fireEvent.click(revise);
   await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
   expect(vi.mocked(invokeCapability).mock.calls[0]).toEqual([
@@ -81,7 +86,10 @@ it('keeps original scalar aliases and all other payload fields, prevents duplica
       entity_id: 'R1',
       version: 8,
       reason: terms.labels.r4b_alias_register,
-      payload: { ...current.entity.payload, aliases: ['原有称呼', '另一个名称'] },
+      payload: {
+        ...current.entity.payload,
+        aliases: [searchFixture.aliases.existing, searchFixture.aliases.added],
+      },
     },
     { signal: expect.any(AbortSignal) },
   ]);

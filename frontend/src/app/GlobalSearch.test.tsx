@@ -1,3 +1,4 @@
+import searchFixture from '../../test-fixtures/r4b-search.json';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -242,19 +243,19 @@ it('marks real matched words and punctuation as literal text in the title, summa
       {
         id: 'A',
         kind: 'rule',
-        title: '报销流程',
-        summary: '费用由财务核对。',
-        highlight: '退款按 C++ 申请。<img src=x>',
-        match_terms: ['费用', '报销', 'C++'],
+        title: searchFixture.reimbursement.title,
+        summary: searchFixture.reimbursement.summary,
+        highlight: searchFixture.reimbursement.highlight,
+        match_terms: searchFixture.reimbursement.terms,
       },
     ],
   });
   renderSearch();
-  await search('费用如何报销？');
+  await search(searchFixture.reimbursement.query);
   const option = screen.getByRole('option');
   expect([...option.querySelectorAll('mark')].map((node) => node.textContent)).toEqual([
-    '报销',
-    '费用',
+    searchFixture.reimbursement.terms[1],
+    searchFixture.reimbursement.terms[0],
     'C++',
   ]);
   expect(option).toHaveTextContent('<img src=x>');
