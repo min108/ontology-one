@@ -10,11 +10,18 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend import db, jobs, provenance
+from backend import db, jobs, materials, provenance
 from backend.api.v2.orgs import OrgManageInput
 from backend.core.errors import ApiError
 from backend.infra import search_job
-from backend.infra.search_index import EVIDENCE_SEPARATOR, SearchChanges, chunk_doc_id, public_card_text, rebuild_index
+from backend.infra.search_index import (
+    EVIDENCE_SEPARATOR,
+    SearchChanges,
+    chunk_doc_id,
+    public_card_text,
+    rebuild_index,
+    verified_quotes,
+)
 from backend.kernel import elements
 from backend.security import directory, store
 from backend.security.context import Principal, use_context
@@ -31,7 +38,9 @@ class SearchWriteSet(unittest.TestCase):
             ("part", "date", "old", "C", "D"),
         )
         changes.observe("INSERT INTO reading_versions VALUES(?,?,?,?,?,?,?)", ("read", "M", "v", 1, "[]", "why", "now"))
+        changes.observe("UPDATE chunks SET status=? WHERE id=?", ("processed", "C-1"))
         changes.observe("UPDATE jobs SET progress=? WHERE id=?", (100, "job"))
+        self.assertEqual(changes.chunks, {"C-1"})
         self.assertEqual(changes.entities, {"A", "B", "C", "D", "M"})
         self.assertFalse(changes.full)
         changes.observe("DELETE FROM entities WHERE source_kind=?", ("demo",))
@@ -283,6 +292,68 @@ class SearchIndexMySQL(unittest.TestCase):
                 elements.update_draft(fresh, old, {"title": "终审核验后的回执"})
             delayed.execute("UPDATE entity_meta SET valid_from=? WHERE entity_id=?", ("2026-10-01", asset["id"]))
         self.assertEqual(self.docs(admin, asset["id"])[key]["title"], "终审核验后的回执")
+
+    def test_explicit_rebuild_uses_current_rows_and_journals_later_changes_in_same_transaction(self) -> None:
+        admin = self.login("fixture.admin")
+        earlier = self.create(admin, "首张验收登记")
+        with use_context(self.person(admin)), closing(db.connect()) as delayed, delayed:
+            delayed.execute("SELECT COUNT(*) FROM entities").fetchone()
+            asset = self.create(admin, "增补的验收登记")
+            rebuild_index(delayed)
+            key = "el:" + asset["id"]
+            self.assertIsNotNone(delayed.execute("SELECT doc_id FROM search_index WHERE doc_id=?", (key,)).fetchone())
+            old = db.entity_json(
+                delayed.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (earlier["id"],)).fetchone()
+            )
+            elements.update_draft(delayed, old, {"title": "首张验收登记修改稿"})
+        self.assertEqual(self.docs(admin, asset["id"])[key]["title"], "增补的验收登记")
+        self.assertEqual(self.docs(admin, earlier["id"])["el:" + earlier["id"]]["title"], "首张验收登记修改稿")
+
+    def test_inactive_source_removes_previously_committed_referrer_after_old_snapshot(self) -> None:
+        admin, other = self.login("fixture.admin"), self.login("r2.other")
+        person = self.person(admin)
+        private_text = "逐项核对移交资料的接收日期并登记原件册数。"
+        material = self.material(admin, private_text)
+        ref = self.confirm(admin, material)
+        with use_context(self.person(other)), closing(db.connect()) as foreign:
+            self.assertEqual(verified_quotes(foreign, {"source_refs": [ref]}), [])
+        with use_context(person), closing(db.connect()) as delayed, delayed:
+            delayed.execute("SELECT COUNT(*) FROM entities").fetchone()
+            for forged in [
+                {**ref, "span": {"start": 99, "end": 200}},
+                {**ref, "source_version": "stale-version"},
+                {**ref, "chunk_id": {"invalid": "type"}},
+                {**ref, "anchor_id": "missing-anchor"},
+                {**ref, "material_id": "foreign"},
+            ]:
+                self.assertEqual(verified_quotes(delayed, {"source_refs": [forged]}), [])
+            asset = self.create(admin, "资料交接凭据", payload={"source_refs": [ref]})
+            key = "el:" + asset["id"]
+            self.assertIn(private_text, self.docs(admin, asset["id"])[key]["body"])
+            source = materials.material(delayed, material, for_update=True)
+            materials.save_payload(delayed, source, {**source["payload"], "active_asset": False}, "停止采用原件")
+        self.assertNotIn(private_text, self.docs(admin, asset["id"])[key]["body"])
+        with use_context(person), closing(db.connect()) as conn, conn:
+            source = materials.material(conn, material, for_update=True)
+            materials.save_payload(conn, source, {**source["payload"], "active_asset": True}, "恢复使用原件")
+        self.assertIn(private_text, self.docs(admin, asset["id"])[key]["body"])
+
+    def test_revoked_rebuild_does_not_modify_the_cache_or_dispatch_across_tenants(self) -> None:
+        admin, other = self.login("fixture.admin"), self.login("r2.other")
+        with use_context(self.person(admin)), self.assertRaises(ApiError):
+            search_job.enqueue_rebuild(self.person(other))
+        before = self.docs(admin)
+        response = admin.post("/api/v2/system/search-index:rebuild")
+        self.assertEqual(response.status_code, 200, response.text)
+        ident = response.json()["job_id"]
+        self.assertEqual(admin.post("/api/auth/logout").status_code, 200)
+        self.assertTrue(asyncio.run(jobs.run_one()))
+        fresh = self.login("fixture.admin")
+        job = fresh.get("/api/jobs/" + ident)
+        self.assertEqual(job.status_code, 200, job.text)
+        self.assertEqual((job.json()["status"], job.json()["queue"]["status"]), ("failed", "cancelled"), job.text)
+        self.assertEqual(self.docs(fresh), before)
+        self.assertEqual(other.get("/api/jobs/" + ident).status_code, 404)
 
     def test_directory_rename_uses_target_workspace_and_rolls_back_together(self) -> None:
         hq, dept = self.login("fixture.superadmin"), self.login("fixture.admin")

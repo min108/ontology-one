@@ -63,7 +63,7 @@ class SearchChanges:
                     indices = [sum(token.count("?") for token in slots[:position])]
         else:
             where = re.search(r"\bWHERE\b", suffix, re.I)
-            if where and not re.search(r"\bOR\b", suffix[where.end() :], re.I):
+            if where and not re.search(r"\b(?:OR|SELECT)\b", suffix[where.end() :], re.I):
                 columns = "(material_id|id)" if table == "chunks" else f"({column})"
                 key = re.search(
                     rf"\b{columns}\b`?\s*(?:=\s*\?|IN\s*\((?:\?\s*,\s*)*\?\))",
@@ -130,7 +130,27 @@ def public_card_text(entity: dict, meta: dict | None = None) -> str:
 def _aliases(payload: dict) -> str:
     raw = payload.get("aliases")
     raw = [raw] if isinstance(raw, str) else raw if isinstance(raw, list) else []
-    return "\n".join(dict.fromkeys(v.strip() for v in raw if isinstance(v, str) and v.strip()))
+    result = {}
+    remaining = 65535  # MySQL TEXT limit, in bytes.
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        alias = " ".join(value.split())
+        if not alias or alias in result:
+            continue
+        size = len(alias.encode()) + bool(result)
+        if size <= remaining:
+            result[alias] = None
+            remaining -= size
+    return "\n".join(result)
+
+
+def _mediumtext(value: str) -> str:
+    # MySQL MEDIUMTEXT is limited by bytes; keep the matching Unicode prefix.
+    limit = 16_777_215
+    if len(value) <= limit // 4:
+        return value
+    return value.encode()[:limit].decode(errors="ignore")
 
 
 def verified_quotes(conn: db.Connection, payload: dict, *, locking: bool = False) -> list[str]:
@@ -197,7 +217,7 @@ def verified_quotes(conn: db.Connection, payload: dict, *, locking: bool = False
 def _element(conn: db.Connection, row: dict, *, locking: bool) -> tuple:
     kind = persisted_kind(row["kind"])
     payload = _payload(row)
-    body = public_card_text(row, row)
+    body = public_card_text(row, row).replace(EVIDENCE_SEPARATOR, EVIDENCE_SEPARATOR.strip("\n"))
     quotes = verified_quotes(conn, payload, locking=locking)
     if quotes:
         body += EVIDENCE_SEPARATOR + "\n".join(quotes)
@@ -212,7 +232,7 @@ def _element(conn: db.Connection, row: dict, *, locking: bool) -> tuple:
         row["status"],
         (row["title"] or "")[:500],
         _aliases(payload),
-        body,
+        _mediumtext(body),
         row["updated_at"] or row["created_at"] or "",
     )
 
@@ -270,7 +290,7 @@ def _chunks(conn: db.Connection, material: dict, *, locking: bool) -> list[tuple
                     material["status"],
                     (material["title"] or "")[:500],
                     "",
-                    content,
+                    _mediumtext(content),
                     current["created_at"] or material["updated_at"] or "",
                 )
             )
@@ -299,18 +319,20 @@ def _documents(conn: db.Connection, rows: list, *, locking: bool = False) -> tup
 
 def rebuild_index(conn: db.Connection) -> dict[str, int]:
     """Replace the cache atomically from tenant facts, using stable business timestamps."""
+    conn.lock_search_rebuild()
     conn.execute("SELECT meta_key FROM workspace_meta WHERE meta_key='schema_version' FOR UPDATE").fetchone()
     conn.execute("DELETE FROM search_index")
     counts = {"element_count": 0, "chunk_count": 0}
     after = None
     while True:
         rows = conn.execute(
-            _ENTITY_SELECT + ("WHERE e.id>? " if after is not None else "") + "ORDER BY e.id LIMIT 250",
+            _ENTITY_SELECT + ("WHERE e.id>? " if after is not None else "") + "ORDER BY e.id LIMIT 250 FOR SHARE",
             (after,) if after is not None else (),
         ).fetchall()
         if not rows:
+            conn.search_projection_rebuilt()
             return counts
-        elements, chunks = _documents(conn, rows)
+        elements, chunks = _documents(conn, rows, locking=True)
         _store_rows(conn, elements + chunks)
         counts["element_count"] += len(elements)
         counts["chunk_count"] += len(chunks)
@@ -389,7 +411,7 @@ def sync_changes(conn: db.Connection, changes: SearchChanges) -> None:
                 tuple("el:" + i for i in batch),
             )
         )
-    if materials:
+    if materials and not changes.full:
         ids.update(_committed_referrers(conn, materials))
     for batch in batched(sorted(ids), 400):
         slots = ",".join("?" for _ in batch)

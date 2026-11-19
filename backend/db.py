@@ -231,6 +231,11 @@ class Connection:
         for statement in split_script(script):
             self.execute(statement)
 
+    def search_projection_rebuilt(self):
+        # A portable restore can replace all facts and explicitly rebuild before
+        # its commit. Later business writes in this transaction start a new journal.
+        self._search_changes = None
+
     def flush_search_changes(self):
         changes = self._search_changes
         if changes and (changes.full or changes.entities or changes.chunks):
@@ -242,15 +247,15 @@ class Connection:
     def commit(self):
         try:
             self.flush_search_changes()
+            if self._dirty and self.principal:
+                from .jobs import assert_job_lease_current, assert_execution_principal_current
+
+                assert_execution_principal_current(self.principal, require_write=True)
+                assert_job_lease_current()
+            self.raw.commit()
         except BaseException:
             self.rollback()
             raise
-        if self._dirty and self.principal:
-            from .jobs import assert_job_lease_current, assert_execution_principal_current
-
-            assert_execution_principal_current(self.principal, require_write=True)
-            assert_job_lease_current()
-        self.raw.commit()
         if self._dirty and self.principal:
             import sys
 

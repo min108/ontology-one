@@ -12,7 +12,7 @@ from backend.core.errors import ApiError
 from backend.infra.migrations import database_name
 from backend.infra.search_index import rebuild_index
 from backend.security import store
-from backend.security.context import Principal
+from backend.security.context import Principal, require_context
 from backend.security.permissions import permissions_for
 
 
@@ -22,6 +22,8 @@ def _require_admin(person: Principal) -> None:
 
 
 def enqueue_rebuild(person: Principal) -> dict:
+    if require_context() != person:
+        raise ApiError("PERMISSION_DENIED")
     person = store.assert_principal_current(person, require_write=True)
     _require_admin(person)
     queue = f"`{database_name(store._config()['database'])}`.ontology_task_queue"
