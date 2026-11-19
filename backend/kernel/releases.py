@@ -83,9 +83,8 @@ def _summary(conn: db.Connection, person: Principal, release: dict, module: dict
         "no_changes": False,
     }
     if release["status"] == "draft":
-        refs = [item["entity_id"] for item in stats["preview_items"] if item["item_role"] == "ref"]
-        result["missing_dependencies"] = modules.missing_reference_dependencies(
-            conn, module["id"], person.tenant_id, refs
+        result["missing_dependencies"] = modules.missing_module_dependencies(
+            conn, module["id"], person.tenant_id, release_items=stats["preview_items"]
         )
     return result
 
@@ -277,7 +276,9 @@ def _prepare(conn: db.Connection, person: Principal, module: dict) -> tuple[dict
         "gates": checks,
         "preview_items": items,
         "private_refs": private_refs,
-        "missing_dependencies": modules.missing_reference_dependencies(conn, module["id"], person.tenant_id, refs),
+        "missing_dependencies": modules.missing_module_dependencies(
+            conn, module["id"], person.tenant_id, release_items=items
+        ),
     }
     return stats, bump, snapshots.manifest_hash(items)
 

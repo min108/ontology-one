@@ -326,6 +326,63 @@ class ReleaseActionsHTTP(ReleaseWorkerActions, unittest.TestCase):
             )
             conn.execute("UPDATE ont_modules SET current_release_id=? WHERE id=?", (draft["id"], draft["module_id"]))
 
+    def test_incoming_scene_term_resolves_in_the_public_snapshot_without_a_reverse_dependency(self) -> None:
+        admin, builder, reviewer = (self.login(name) for name in ("r2.other", "b1.modeler", "b1.reviewer"))
+        evidence = self.evidence(builder)
+
+        def term(title: str, uses: list[str]) -> dict:
+            payload = {
+                "schema": "term/1",
+                "definition": title + "的业务口径",
+                "source_refs": [evidence],
+                "refers_to": uses,
+            }
+            draft = self.invoke(builder, "element.create_draft", {"kind": "term", "title": title, "payload": payload})[
+                "entity"
+            ]
+            return self.publish_asset(builder, reviewer, draft)
+
+        public = term("已收讫记录", [])
+        source = term("现场交接登记", [])
+        edge = self.invoke(
+            builder,
+            "relation.propose",
+            {
+                "source": source["id"],
+                "target": public["id"],
+                "type": "references",
+                "reason": "场景登记采用公共收讫口径",
+            },
+        )
+        self.invoke(
+            reviewer,
+            "relation.decide",
+            {"relation_id": edge["id"], "status": "confirmed", "reason": "已核对术语间的单向引用"},
+        )
+        scene = self.scene_fixture(admin, [source["id"]])
+        preview = self.business(admin, "release.create_draft", {"module_id": scene})
+        common = self.business(admin, "release.create_draft", {"module_id": COMMON})
+        self.assertIn(COMMON, preview["missing_dependencies"])
+        self.assertNotIn(scene, common["missing_dependencies"])
+        incoming = next(item for item in common["items"] if item["entity_id"] == source["id"])
+        self.assertEqual(
+            (incoming["item_role"], set(incoming["snapshot"])), ("ref", {"id", "title", "kind", "version"})
+        )
+        for module in (COMMON, scene):
+            self.business(admin, "module.save", {"module_id": module, "register_dependencies": True})
+        self.assertEqual(self.detail(admin, preview["id"])["missing_dependencies"], [])
+        self.assertNotIn(scene, self.detail(admin, common["id"])["missing_dependencies"])
+        with use_context(self.identity(admin)), closing(db.connect()) as conn:
+            pairs = {
+                (row["module_id"], row["depends_on_module"])
+                for row in conn.execute(
+                    "SELECT module_id,depends_on_module FROM ont_module_deps WHERE module_id=? OR depends_on_module=?",
+                    (scene, scene),
+                )
+            }
+        self.assertIn((scene, COMMON), pairs)
+        self.assertNotIn((COMMON, scene), pairs)
+
     def test_scene_promotion_preserves_member_history_and_minimizes_external_refs(self) -> None:
         admin, builder, reviewer = (self.login(name) for name in ("r2.other", "b1.nonowner", "b1.reviewer"))
         evidence = self.evidence(builder)

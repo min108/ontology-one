@@ -169,14 +169,34 @@ def missing_reference_dependencies(
     )
 
 
-def _outgoing_refs(conn: db.Connection, module_id: str) -> set[str]:
+def missing_module_dependencies(
+    conn: db.Connection, module_id: str, tenant_id: str, *, release_items: list[dict] | None = None, lock: bool = False
+) -> list[str]:
+    """Only an owner using another module establishes a dependency (§4.8).
+
+    A release also retains incoming endpoints so both sides of a relation can be
+    resolved. Those records alone do not make the referenced module a consumer.
+    """
+    members = (
+        {item["entity_id"] for item in release_items if item["item_role"] == "member"}
+        if release_items is not None
+        else None
+    )
     rows = conn.execute(
-        "SELECT DISTINCT r.target,e.kind FROM relations r JOIN entities e ON e.id=r.source "
+        "SELECT DISTINCT r.source,r.target,e.kind FROM relations r JOIN entities e ON e.id=r.source "
         "LEFT JOIN entity_meta m ON m.entity_id=e.id WHERE (m.module_id=? OR (? AND m.entity_id IS NULL)) "
         "AND r.status IN (?,?)",
         (module_id, module_id == COMMON, *sorted(CONFIRMED)),
     )
-    return {row["target"] for row in rows if persisted_kind(row["kind"]).module_eligible}
+    refs = {
+        row["target"]
+        for row in rows
+        if persisted_kind(row["kind"]).module_eligible and (members is None or row["source"] in members)
+    }
+    refs.update(promoted_ids(conn, module_id))
+    if release_items is not None:
+        refs.intersection_update(item["entity_id"] for item in release_items if item["item_role"] == "ref")
+    return missing_reference_dependencies(conn, module_id, tenant_id, refs, lock=lock)
 
 
 def record_confirmed_references(conn: db.Connection, source: str, refs: Iterable[str]) -> None:
@@ -203,8 +223,7 @@ def save(conn: db.Connection, principal: Principal, module_id: str, changes: dic
     require_management(principal, part)
     values = _changes(conn, principal, part, changes)
     if changes.get("register_dependencies"):
-        refs = _outgoing_refs(conn, part["id"]) | set(part["preferences"].get(_PROMOTED, ()))
-        missing = missing_reference_dependencies(conn, part["id"], principal.tenant_id, refs, lock=True)
+        missing = missing_module_dependencies(conn, part["id"], principal.tenant_id, lock=True)
         _register(conn, part["id"], principal.tenant_id, missing)
     if values:
         values["updated_at"] = db.now()
