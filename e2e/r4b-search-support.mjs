@@ -300,6 +300,10 @@ export async function reopenAfterArchive(page, q, cachedId) {
     await input.press("Enter");
     await expect(input).toBeVisible();
     expect(page.url()).toBe(url);
+    await page.screenshot({
+      animations: "disabled",
+      path: resolve(evidence, "r4b-search-refresh-1366x768.png"),
+    });
     const response = page.waitForResponse(
       (r) => target(new URL(r.url())) && r.request().postDataJSON()?.q === q,
     );
