@@ -11,7 +11,7 @@ from urllib.parse import quote, urlencode
 
 from backend import db
 from backend.ai import _FACET_EQUIVALENTS, _STOP, _query_facets
-from backend.infra.search_index import EVIDENCE_SEPARATOR, chunk_doc_id_sql
+from backend.infra.search_index import EVIDENCE_SEPARATOR, chunk_doc_id, chunk_doc_id_sql
 from backend.security.visibility import Scope, federation_scope, scope_for, visible_entities
 
 _FACETS = ("kind", "status", "source_kind", "domain")
@@ -32,6 +32,7 @@ _ENTITY_FIELDS = (
 
 @dataclass(frozen=True)
 class Query:
+    original: str
     text: str
     terms: tuple[str, ...]
     facets: tuple[tuple[str, ...], ...]
@@ -42,7 +43,7 @@ class Query:
         question = bool(_STOP.search(text) or re.search(r"[?？]", text))
         facets = _query_facets(text) if question else ()
         terms = tuple(dict.fromkeys(word for word in text.split() if len(word) > 1))
-        return cls(text, terms, tuple(tuple(_FACET_EQUIVALENTS.get(facet, (facet,))) for facet in facets))
+        return cls(q.strip(), text, terms, tuple(tuple(_FACET_EQUIVALENTS.get(facet, (facet,))) for facet in facets))
 
     def fulltext(self) -> str:
         return " ".join([self.text, *(term for group in self.facets for term in group if term not in self.text)])
@@ -135,14 +136,23 @@ def _candidates(scope: Scope, query: Query, where: str, args: list) -> list:
             params.extend((fulltext, fulltext))
         else:
             # Raw document frequencies and scores could reflect a hidden source.
-            columns += "0 title_ft,0 body_ft,"
+            columns += f"0 title_ft,0 body_ft,({title_ft} OR {body_ft}) native_signal,"
+            params.extend((fulltext, fulltext))
         columns += (
             "(COALESCE(m.subtype,e.source_kind)='regulation' AND COALESCE(e.source_kind,'')!='demo' "
             "AND COALESCE(json_extract(e.payload,'$.is_demo'),'false') NOT IN ('1','true')) regulation"
         )
         extra_join = "LEFT JOIN entity_meta m ON m.entity_id=e.id "
-        candidates = f"{title_ft} OR {body_ft} OR i.doc_id=? OR LOCATE(?,i.title)>0 OR LOCATE(?,i.aliases)>0"
-        terms = [fulltext, fulltext, "el:" + query.text, query.text, query.text]
+        candidates = f"{title_ft} OR {body_ft} OR i.doc_id IN (?,?,?) OR LOCATE(?,i.title)>0 OR LOCATE(?,i.aliases)>0"
+        terms = [
+            fulltext,
+            fulltext,
+            "el:" + query.original,
+            chunk_doc_id(query.original),
+            query.original,
+            query.text,
+            query.text,
+        ]
     if len(query.text) == 1:
         candidates, terms = "LEFT(e.title,1)=?", [query.text]
     sql = f"SELECT {columns}{_FROM}{extra_join}WHERE {where} AND ({candidates})"
@@ -183,18 +193,22 @@ def _rank(row: dict, query: Query, scope: Scope) -> tuple[float, str] | None:
     if scope.metadata_only and not scope.external_tool:
         body += "\n" + (row["domain"] or "").casefold()
     if len(q) == 1:
-        if not title.startswith(q):
+        if not is_element or not title.startswith(q):
             return None
         score, match = 30, "prefix"
-    elif is_element and q == row["id"].casefold():
+    elif (
+        (is_element and q == row["id"].casefold())
+        or q == row["doc_id"].casefold()
+        or (not is_element and chunk_doc_id(query.original).casefold() == row["doc_id"].casefold())
+    ):
         score, match = 120, "id"
     elif is_element and q in aliases:
         score, match = 96, "alias"
     elif is_element and q == title:
         score, match = 92, "title"
-    elif q in title or any(q in alias for alias in aliases):
+    elif is_element and (q in title or any(q in alias for alias in aliases)):
         prefix = title.startswith(q) or any(alias.startswith(q) for alias in aliases)
-        score, match = (64 if is_element else 35), ("prefix" if prefix else "partial")
+        score, match = 64, ("prefix" if prefix else "partial")
     elif q in body:
         score, match = 36, "text"
     elif scope.metadata_only and q in row["id"].casefold():
@@ -206,7 +220,9 @@ def _rank(row: dict, query: Query, scope: Scope) -> tuple[float, str] | None:
         if not all(any(term in evidence for term in group) for group in query.facets):
             return None
         score, match = 25, "text"
-    elif len(query.terms) >= 2 and all(term in "\n".join((title, *aliases, body)) for term in query.terms):
+    elif len(query.terms) >= 2 and all(
+        term in ("\n".join((title, *aliases, body)) if is_element else body) for term in query.terms
+    ):
         score, match = 24, "text"
     else:
         return None
@@ -220,12 +236,31 @@ def _rank(row: dict, query: Query, scope: Scope) -> tuple[float, str] | None:
 
 
 def _ranked(scope: Scope, query: Query, where: str, args: list) -> list[dict]:
-    ranked = []
+    ranked, prefix = [], []
+    any_native = False
     for row in _candidates(scope, query, where, args):
         rank = _rank(row, query, scope)
-        if rank is not None:
-            row["score"], row["match"] = rank
+        if rank is None:
+            continue
+        row["score"], row["match"] = rank
+        native = bool(row["title_ft"] or row["body_ft"] or row.get("native_signal"))
+        if native:
+            any_native = True
+        if (
+            len(query.text) >= 2
+            and not scope.metadata_only
+            and not native
+            and row["match"] not in {"id", "alias", "title"}
+        ):
+            # MySQL can omit stopwords and punctuation completely. In that
+            # case a literal occurrence inside a name/body is not an FT hit.
+            if row["doc_type"] == "element" and (row["title"] or "").casefold().startswith(query.text):
+                row["match"] = "prefix"
+                prefix.append(row)
+        else:
             ranked.append(row)
+    if not any_native:
+        ranked.extend(prefix)
     ranked.sort(key=lambda row: (-row["score"], row["doc_id"]))
     # Bound each material on the entire ordered result set before totals,
     # offsets, category facets and old/new presentation projections.

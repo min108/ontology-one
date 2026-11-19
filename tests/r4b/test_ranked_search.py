@@ -130,6 +130,8 @@ def _examples(conn: db.Connection) -> None:
             "source_chunk_ids": [hidden[0]["chunk_id"], "不存在的片段"],
         },
     )
+    _entity(conn, "S-STOP-PRE", "knowledge", "Tornado Harbor")
+    _entity(conn, "S-STOP-IN", "knowledge", "Untold Harbor")
     rebuild_index(conn)
 
 
@@ -388,3 +390,25 @@ class RankedSearchMySQL(unittest.TestCase):
         ):
             visibility.scope_for(db.Connection(raw, forged))
         self.assertEqual(caught.exception.status_code, 401)
+
+    def test_native_stopword_only_falls_back_to_real_title_prefix(self) -> None:
+        # "to" is an InnoDB default English stopword, also for ngram indexing.
+        self.assertEqual(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE MATCH(title,aliases) AGAINST (? IN NATURAL LANGUAGE MODE) "
+                "OR MATCH(body) AGAINST (? IN NATURAL LANGUAGE MODE)",
+                ("to", "to"),
+            ).fetchone()[0],
+            0,
+        )
+        hits = search.search(self.conn, "to")["items"]
+        self.assertIn("S-STOP-PRE", [h["id"] for h in hits])
+        self.assertNotIn("S-STOP-IN", [h["id"] for h in hits])
+        self.assertTrue(all(h["title"].casefold().startswith("to") for h in hits))
+
+    def test_material_title_alone_does_not_fill_results_with_unrelated_chunks(self) -> None:
+        hits = search.search(self.conn, "分段原件")["items"]
+        self.assertEqual({h["id"] for h in hits}, {"M-RANK-A", "M-RANK-B"})
+        chunk = next(h for h in search.search(self.conn, "河流索引公开引文")["items"] if h["doc_type"] == "chunk")
+        self.assertEqual(search.search(self.conn, chunk["id"])["items"][0]["match"], "id")
+        self.assertEqual(search.search(self.conn, chunk["doc_id"])["items"][0]["id"], chunk["chunk_id"])

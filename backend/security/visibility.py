@@ -13,6 +13,7 @@ from backend.jobs import assert_execution_principal_current
 from backend.security import store
 from backend.security.context import Principal, require_context
 from backend.security.permissions import permissions_for
+from backend.security.reference_fields import PRIVATE_ID, PRIVATE_KEYS, reference_keys
 
 _METADATA = "e.id,e.kind,e.title,e.summary,e.status,e.domain,e.org_id,e.version,e.source_kind,e.created_at,e.updated_at"
 
@@ -114,42 +115,7 @@ def scope_for(conn: db.Connection, *, published_only: bool = False, metadata_onl
     return Scope(person.tenant_id, drafts, external, external, False, person, conn)
 
 
-_REFERENCE_KEYS = {
-    "entity_id": "owner",
-    "material_id": "owner",
-    "dataset_id": "owner",
-    "source_id": "owner",
-    "source_entity_id": "owner",
-    "target_id": "owner",
-    "target_entity_id": "owner",
-    "chunk_id": "chunk",
-    "source_chunk_id": "chunk",
-    "anchor_id": "anchor",
-    "span_id": "anchor",
-    "source_version": "version",
-    "revision_id": "version",
-}
-_PRIVATE_KEYS = {"artifact", "artifacts", "artifact_id", "artifact_ids", "report_id", "report_ids"}
-_PRIVATE_ID = re.compile(r"ART-[0-9a-f]{16}", re.I)
 _SKIP = object()
-
-
-def _reference_keys(record: dict, in_sources: bool) -> Iterator[tuple[str, str, str]]:
-    """Collect actual pointer fields, without interpreting business prose as IDs."""
-    for key, value in record.items():
-        base = key.removesuffix("s") if isinstance(value, list) else key
-        group = _REFERENCE_KEYS.get(base)
-        if (
-            not group
-            and in_sources
-            and key == "id"
-            and not any(k in record for k in ("material_id", "dataset_id", "source_id"))
-        ):
-            group = "owner"
-        if group:
-            for ident in value if isinstance(value, list) else (value,):
-                if isinstance(ident, str) and ident:
-                    yield key, group, ident
 
 
 def _records(value: object, in_sources: bool = False) -> Iterator[tuple[dict, bool]]:
@@ -166,7 +132,7 @@ def _visible_pointer_ids(scope: Scope, objects: Iterable[dict]) -> dict[str, set
     groups = {"owner": set(), "chunk": set(), "anchor": set(), "version": set()}
     for obj in objects:
         for record, in_sources in _records(obj):
-            for _, kind, ident in _reference_keys(record, in_sources):
+            for _, kind, ident in reference_keys(record, in_sources):
                 groups[kind].add(ident)
     where, params = scope.predicate()
     permitted = {}
@@ -192,12 +158,12 @@ def _clean_payload(
         result = [_clean_payload(v, scope, visible, in_sources=in_sources) for v in value]
         return [v for v in result if v is not _SKIP]
     if not isinstance(value, dict):
-        return _SKIP if isinstance(value, str) and _PRIVATE_ID.fullmatch(value) else value
-    pointers = list(_reference_keys(value, in_sources))
+        return _SKIP if isinstance(value, str) and PRIVATE_ID.fullmatch(value) else value
+    pointers = list(reference_keys(value, in_sources))
     hidden = {key for key, group, ident in pointers if ident not in visible[group]}
     private = (
         value.get("kind") in ("artifact", "report")
-        or any(key in value for key in _PRIVATE_KEYS)
+        or any(key in value for key in PRIVATE_KEYS)
         or value.get("tenant_id", scope.tenant_id) != scope.tenant_id
     )
     if not root and (private or any(not isinstance(value.get(key), list) for key in hidden)):
@@ -206,7 +172,7 @@ def _clean_payload(
         return _SKIP
     clean = {}
     for key, child in value.items():
-        if key in _PRIVATE_KEYS:
+        if key in PRIVATE_KEYS:
             continue
         if key in hidden:
             if not isinstance(child, list):
