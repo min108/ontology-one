@@ -98,9 +98,9 @@ def _granted_scope(
     return Scope(tenant_id, drafts, True, external, shared, person, conn)
 
 
-def federation_scope(conn: db.Connection, tenant_id: str) -> Scope:
+def federation_scope(conn: db.Connection, tenant_id: str, *, published_only: bool = False) -> Scope:
     person, database = _bound(conn)
-    return _granted_scope(conn, person, database, tenant_id, published_only=False, external=False)
+    return _granted_scope(conn, person, database, tenant_id, published_only=published_only, external=False)
 
 
 def scope_for(conn: db.Connection, *, published_only: bool = False, metadata_only: bool = False) -> Scope:
@@ -152,10 +152,16 @@ def _visible_pointer_ids(scope: Scope, objects: Iterable[dict]) -> dict[str, set
 
 
 def _clean_payload(
-    value: object, scope: Scope, visible: dict[str, set[str]], *, in_sources: bool = False, root: bool = False
+    value: object,
+    scope: Scope,
+    visible: dict[str, set[str]],
+    *,
+    in_sources: bool = False,
+    root: bool = False,
+    legacy_notes: bool = False,
 ) -> object:
     if isinstance(value, list):
-        result = [_clean_payload(v, scope, visible, in_sources=in_sources) for v in value]
+        result = [_clean_payload(v, scope, visible, in_sources=in_sources, legacy_notes=legacy_notes) for v in value]
         return [v for v in result if v is not _SKIP]
     if not isinstance(value, dict):
         return _SKIP if isinstance(value, str) and PRIVATE_ID.fullmatch(value) else value
@@ -168,7 +174,7 @@ def _clean_payload(
     )
     if not root and (private or any(not isinstance(value.get(key), list) for key in hidden)):
         return _SKIP
-    if in_sources and not pointers and value.get("kind") != "external":
+    if in_sources and not pointers and value.get("kind") != "external" and not legacy_notes:
         return _SKIP
     clean = {}
     for key, child in value.items():
@@ -182,10 +188,34 @@ def _clean_payload(
                 for ident in child
                 if any(k == key and ident == known and known in visible[group] for k, group, known in pointers)
             ]
-        resolved = _clean_payload(child, scope, visible, in_sources=key == "source_refs")
+        # The review cycle's revision id identifies editor history, unlike
+        # a source reference's revision_id which identifies an original version.
+        review_id = None
+        if root and legacy_notes and key == "r2_review" and isinstance(child, dict):
+            candidate = child.get("revision_id")
+            if isinstance(candidate, str) and re.fullmatch(r"[0-9a-f]{32}", candidate):
+                review_id = candidate
+                child = {k: v for k, v in child.items() if k != "revision_id"}
+        resolved = _clean_payload(child, scope, visible, in_sources=key == "source_refs", legacy_notes=legacy_notes)
+        if review_id and isinstance(resolved, dict):
+            resolved["revision_id"] = review_id
         if resolved is not _SKIP:
             clean[key] = resolved
     return clean
+
+
+def project_payloads(
+    scope: Scope, payloads: list[dict], *, records: bool = False, legacy_notes: bool = False
+) -> list[dict]:
+    """Remove inaccessible cross-record pointers and their cached titles and passages."""
+    if scope.principal != require_context():
+        raise ApiError("PERMISSION_DENIED")
+    permitted = _visible_pointer_ids(scope, payloads)
+    projected = [
+        _clean_payload(payload, scope, permitted, root=not records, legacy_notes=legacy_notes and scope.drafts)
+        for payload in payloads
+    ]
+    return [value if isinstance(value, dict) else {} for value in projected]
 
 
 def visible_entities(
@@ -207,9 +237,9 @@ def visible_entities(
             entity.update(owner_tenant_id=current.tenant_id, owner_org_id=current.tenant_id)
             result[entity["id"]] = entity
     if current.drafts and not current.metadata_only:
-        permitted = _visible_pointer_ids(current, (entity["payload"] for entity in result.values()))
-        for entity in result.values():
-            entity["payload"] = _clean_payload(entity["payload"], current, permitted, root=True)
+        payloads = project_payloads(current, [entity["payload"] for entity in result.values()])
+        for entity, payload in zip(result.values(), payloads, strict=True):
+            entity["payload"] = payload
     return result
 
 

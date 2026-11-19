@@ -429,7 +429,7 @@ def _reference_ids(value):
     return result
 
 
-def _safe_payload(payload, tenant, visible):
+def _safe_payload(payload, tenant, visible, *, validate_ref=None):
     hidden = 0
 
     def clean(value):
@@ -447,9 +447,18 @@ def _safe_payload(payload, tenant, visible):
                             if isinstance(ref, dict)
                             else None
                         )
-                        if ident not in visible or ref.get("tenant_id", tenant["id"]) != tenant["id"]:
+                        if (
+                            not isinstance(ident, str)
+                            or ident not in visible
+                            or ref.get("tenant_id", tenant["id"]) != tenant["id"]
+                        ):
                             hidden += 1
                             continue
+                        if validate_ref:
+                            ref = validate_ref(ref, ident)
+                            if ref is None:
+                                hidden += 1
+                                continue
                         safe = {
                             key: val
                             for key, val in ref.items()

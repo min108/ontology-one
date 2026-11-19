@@ -29,7 +29,9 @@ SOURCES = {"source", "system", "editor", "batch_confirmation", "legacy", "missin
 SOURCE_DETAILS = ("actor_id", "method", "confirmed_at", "material_id", "source_version", "anchor_id", "parts")
 
 
-def field_values(conn: db.Connection, entity: dict, meta: dict) -> dict[str, str]:
+def field_values(
+    conn: db.Connection, entity: dict, meta: dict, *, subject_titles: list[str] | None = None
+) -> dict[str, str]:
     payload = entity.get("payload") or {}
     keys = ["definition"]
     if entity["kind"] in {"data", "metric"}:
@@ -59,7 +61,9 @@ def field_values(conn: db.Connection, entity: dict, meta: dict) -> dict[str, str
                 for step in steps
             )
     if "subjects" in result:
-        result["subjects"] = "、".join(row["title"] for row in subjects(conn, entity))
+        if subject_titles is None:
+            subject_titles = [row["title"] for row in subjects(conn, entity)]
+        result["subjects"] = "、".join(subject_titles)
     return result
 
 

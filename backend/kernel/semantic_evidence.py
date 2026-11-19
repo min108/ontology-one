@@ -21,10 +21,18 @@ def _step(kind: str, ident: str, label: str) -> dict:
     return {"kind": kind, "id": ident, "label": label}
 
 
-def _refs(payload: dict) -> list[dict]:
+def _refs(payload: dict, tenant_id: str) -> list[dict]:
+    if payload.get("tenant_id", tenant_id) != tenant_id:
+        return []
     refs = payload.get("source_refs")
     if isinstance(refs, list) and refs:
-        return [item for item in refs if isinstance(item, dict) and item.get("kind", "anchor") == "anchor"]
+        return [
+            item
+            for item in refs
+            if isinstance(item, dict)
+            and item.get("kind", "anchor") == "anchor"
+            and item.get("tenant_id", tenant_id) == tenant_id
+        ]
     chunks = payload.get("source_chunk_ids")
     if isinstance(chunks, list) and isinstance(material := payload.get("source_material_id"), str):
         return [{"material_id": material, "chunk_id": chunk} for chunk in chunks if isinstance(chunk, str)]
@@ -43,10 +51,10 @@ def _visible_refs(conn: db.Connection, scope: visibility.Scope, entity: dict) ->
             conn.execute("SELECT payload FROM entities WHERE id=?", (entity["id"],)).fetchone()["payload"] or "{}"
         )
     )
-    return _refs(payload)
+    return _refs(payload, scope.tenant_id)
 
 
-def _anchor(conn: db.Connection, material_id: str, ref: dict) -> dict | None:
+def saved_anchor(conn: db.Connection, material_id: str, ref: dict) -> dict | None:
     anchor = ref.get("anchor_id") or ref.get("span_id")
     chunk = ref.get("chunk_id")
     if (anchor is not None and not isinstance(anchor, str)) or (chunk is not None and not isinstance(chunk, str)):
@@ -99,7 +107,7 @@ def _anchor(conn: db.Connection, material_id: str, ref: dict) -> dict | None:
     return dict(row)
 
 
-def _extraction(conn: db.Connection, entity_id: str) -> dict:
+def _extraction(conn: db.Connection, entity_id: str, tenant_id: str) -> dict:
     paths = {}
     rows = conn.execute(
         "SELECT i.id,i.changeset_id,i.evidence,r.id AS run_id FROM changeset_items i "
@@ -111,7 +119,7 @@ def _extraction(conn: db.Connection, entity_id: str) -> dict:
         evidence = row["evidence"]
         evidence = json.loads(evidence or "[]") if isinstance(evidence, str) else evidence
         for ref in evidence if isinstance(evidence, list) else []:
-            if not isinstance(ref, dict):
+            if not isinstance(ref, dict) or ref.get("tenant_id", tenant_id) != tenant_id:
                 continue
             key = (ref.get("material_id"), ref.get("source_version"), ref.get("anchor_id"))
             if all(isinstance(item, str) and item for item in key) and key not in paths:
@@ -138,9 +146,11 @@ def trace(
         edge = visible_relation(conn, scope, relation_id)
         subject, kind, version = edge["id"], "relation", None
         payload = json.loads(edge["payload"] or "{}") if isinstance(edge["payload"], str) else edge["payload"] or {}
-        refs = _refs(payload)
+        refs = _refs(payload, scope.tenant_id)
         if (
             not refs
+            and not payload.get("source_refs")
+            and payload.get("tenant_id", scope.tenant_id) == scope.tenant_id
             and edge["tk"] == "material"
             and edge["type"] in {"derived_from", "references_source", "sourced_from", "anchored_in"}
         ):
@@ -158,13 +168,13 @@ def trace(
     materials = visibility.visible_entities(
         conn, {ref["material_id"] for ref in refs if isinstance(ref.get("material_id"), str)}, scope=scope
     )
-    exposure = _extraction(conn, subject) if scope.drafts and kind == "entity" else {}
+    exposure = _extraction(conn, subject, scope.tenant_id) if scope.drafts and kind == "entity" else {}
     seen = set()
     for ref in refs:
         material = materials.get(ref.get("material_id")) if isinstance(ref.get("material_id"), str) else None
         if not material or material["kind"] != "material":
             continue
-        anchor = _anchor(conn, material["id"], ref)
+        anchor = saved_anchor(conn, material["id"], ref)
         if not anchor or anchor["id"] in seen:
             continue
         if len(seen) >= MAX_PASSAGES:

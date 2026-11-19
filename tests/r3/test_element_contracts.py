@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 from backend import db
 from backend.capabilities.context import CapabilityContext
 from backend.capabilities.elements import ElementList, list_elements
+from backend.security import visibility
+from backend.security.context import use_context
 from tests.r2 import test_build as construction
 from tests.security.test_permissions import principal
 
@@ -31,30 +33,37 @@ def row() -> dict:
 
 
 class ElementSourceContract(unittest.TestCase):
+    def bound_context(self, connection: MagicMock) -> CapabilityContext:
+        person = principal()
+        self.enterContext(use_context(person))
+        connection.principal = person
+        self.enterContext(patch.object(visibility, "assert_execution_principal_current", return_value=person))
+        self.enterContext(patch("backend.security.store.authorized_read_tenants", return_value=[]))
+        original = connection.execute.return_value
+        database = MagicMock()
+        database.fetchone.return_value = [person.database_name]
+        connection.execute.side_effect = lambda sql, *params: database if sql == "SELECT DATABASE()" else original
+        return CapabilityContext(person, connection_factory=lambda: connection)
+
     def test_local_list_returns_material_title_and_removes_all_payload(self) -> None:
         item = row()
         connection = MagicMock()
         connection.execute.return_value = [{"id": "material-1", "title": "付款制度"}]
-        with (
-            patch("backend.capabilities.elements.core.entities", return_value={"items": [item], "total": 1}),
-            patch("backend.capabilities.elements.db.connect", return_value=connection),
-        ):
-            result = list_elements(CapabilityContext(principal(), permissions=frozenset()), ElementList())
+        with patch("backend.capabilities.elements._catalog_page", return_value={"items": [item], "total": 1}):
+            result = list_elements(self.bound_context(connection), ElementList())
         self.assertEqual(result.data["items"][0]["source_title"], "付款制度")
         self.assertNotIn("payload", result.data["items"][0])
         sql, params = connection.execute.call_args.args
         self.assertIn("kind='material'", sql)
         self.assertIn("active_asset", sql)
-        self.assertEqual(params, ["material-1"])
+        self.assertIn("status='published'", sql)
+        self.assertEqual(list(params), ["material-1"])
 
     def test_missing_or_unavailable_source_never_falls_back_to_an_identifier(self) -> None:
         connection = MagicMock()
         connection.execute.return_value = []
-        with (
-            patch("backend.capabilities.elements.core.entities", return_value={"items": [row()], "total": 1}),
-            patch("backend.capabilities.elements.db.connect", return_value=connection),
-        ):
-            result = list_elements(CapabilityContext(principal(), permissions=frozenset()), ElementList())
+        with patch("backend.capabilities.elements._catalog_page", return_value={"items": [row()], "total": 1}):
+            result = list_elements(self.bound_context(connection), ElementList())
         self.assertEqual(result.data["items"][0]["source_title"], "")
         self.assertNotIn("material-1", str(result.model_dump()))
 
@@ -88,7 +97,7 @@ class ElementSourceContract(unittest.TestCase):
             item["payload"]["source_refs"] = refs
             with (
                 self.subTest(refs=refs),
-                patch("backend.capabilities.elements.core.entities", return_value={"items": [item], "total": 1}),
+                patch("backend.capabilities.elements._catalog_page", return_value={"items": [item], "total": 1}),
                 patch("backend.capabilities.elements.db.connect") as database,
             ):
                 result = list_elements(CapabilityContext(principal(), permissions=frozenset()), ElementList())
