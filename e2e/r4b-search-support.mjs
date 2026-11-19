@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { expect } from "./runtime.mjs";
 import { accounts, evidence } from "./fixture.mjs";
 import {
@@ -252,9 +251,25 @@ export async function screenshotComparison(browser, page) {
     reducedMotion: "reduce",
   });
   try {
+    // The separate reference context renders the checked-in design and fonts.
+    // The product context above uses only the real running application.
+    const files = new Set([
+      "docs/design/benchmarks/01-workbench.html",
+      "docs/design/tokens-v2.css",
+      "docs/design/benchmarks/assets/base.css",
+      "docs/design/benchmarks/assets/base.js",
+      "frontend/public/fonts/cn-sans-400.woff2",
+      "frontend/public/fonts/cn-sans-700.woff2",
+    ]);
+    await reference.route("**/*", (route) => {
+      const file = new URL(route.request().url()).pathname.slice(1);
+      return files.has(file)
+        ? route.fulfill({ path: resolve(file) })
+        : route.abort();
+    });
     const baseline = await reference.newPage();
     await baseline.goto(
-      pathToFileURL(resolve("docs/design/benchmarks/01-workbench.html")).href,
+      "http://127.0.0.1/docs/design/benchmarks/01-workbench.html",
     );
     await baseline.evaluate(() => document.fonts.ready);
     const design = await baseline.screenshot({
