@@ -1142,6 +1142,9 @@ def confirm_applicability(conn: db.Connection, entity: dict, candidate: dict) ->
         "VALUES(?,?,?,'applies_to','适用于','confirmed',?)",
         ("rel-" + uuid.uuid4().hex, entity["id"], relation["target"], materials.dump(payload)),
     )
+    from backend.kernel.modules import record_confirmed_references
+
+    record_confirmed_references(conn, entity["id"], [relation["target"]])
     db.log(conn, entity["id"], "确认适用关系", "核对条目时一并确认适用主体或对象")
 
 

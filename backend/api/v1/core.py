@@ -194,6 +194,9 @@ def _create_entity(b):
                     "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
                     ("rel-" + uuid.uuid4().hex, parent, eid, "contains", "组织开展", "confirmed", "{}"),
                 )
+                from ...kernel.modules import record_confirmed_references
+
+                record_confirmed_references(c, parent, [eid])
         element_kernel.sync_after_write(c, created)
         c.commit()
     return detail(eid)
@@ -677,6 +680,10 @@ def _confirm_relation(rid, b):
         c.execute(
             "UPDATE relations SET status=?,payload=? WHERE id=?", (b["status"], json.dumps(p, ensure_ascii=False), rid)
         )
+        if b["status"] == "confirmed":
+            from ...kernel.modules import record_confirmed_references
+
+            record_confirmed_references(c, row["source"], [row["target"]])
         log(c, row["source"], "关联核对", b.get("reason", "关联状态已更新"))
         c.commit()
     return {"ok": True}

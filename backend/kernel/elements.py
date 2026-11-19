@@ -186,7 +186,11 @@ def sync_after_write(
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     if content_changed:
-        sync_derived(conn, entity)
+        edges = sync_derived(conn, entity)
+        if edges and meta["module_id"] not in {None, "MOD-DEFAULT"}:
+            from backend.kernel.modules import record_confirmed_references
+
+            record_confirmed_references(conn, entity["id"], (edge["target"] for edge in edges))
     cache_card(conn, entity)
     invalidate_graph_cache(require_context().tenant_id)
     return {**entity, "_meta": get_meta(conn, entity["id"]) or meta}

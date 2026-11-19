@@ -451,6 +451,9 @@ def confirm(asset_id: str, body: ConfirmRequest):
                         dump(audit),
                     ),
                 )
+                from .kernel.modules import record_confirmed_references
+
+                record_confirmed_references(c, start["id"], [end["id"]])
                 created += 1
                 if start["id"] != asset_id:
                     incoming_sources[start["id"]] = start

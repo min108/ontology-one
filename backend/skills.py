@@ -691,7 +691,7 @@ def _detail(conn, entity, document):
 def _sync_relations(conn, entity, document):
     from .kernel.metadata import sync_meta
 
-    sync_meta(conn, entity)
+    meta = sync_meta(conn, entity)
     # The saved manifest owns these links; the entire package still requires
     # independent review before it becomes executable/published.
     status = "rejected" if entity["status"] == "archived" else "confirmed"
@@ -719,6 +719,14 @@ def _sync_relations(conn, entity, document):
         conn.execute(
             "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE type=VALUES(type),label=VALUES(label),status=VALUES(status),payload=VALUES(payload)",
             (ident, entity["id"], dep["entity_id"], predicate, label, status, _json(payload)),
+        )
+    if status == "confirmed" and meta["module_id"] not in {None, "MOD-DEFAULT"}:
+        from .kernel.modules import record_confirmed_references
+
+        record_confirmed_references(
+            conn,
+            entity["id"],
+            (dep["entity_id"] for dep in document["manifest"]["dependencies"]),
         )
 
 
