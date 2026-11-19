@@ -63,7 +63,7 @@ export function parseSearchItems(value: unknown, query = ''): SearchItem[] {
         throw new Error(terms.labels.global_search_failed);
       href =
         '/materials/' + encodeURIComponent(item.entity_id) + '?chunk=' + encodeURIComponent(item.chunk_id);
-    } else if (!item.doc_type && item.kind === 'material') {
+    } else if (item.kind === 'material') {
       href = '/materials/' + encodeURIComponent(item.id);
     }
     const description = typeof item.summary === 'string' ? item.summary : undefined;

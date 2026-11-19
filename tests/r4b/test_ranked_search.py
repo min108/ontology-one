@@ -410,6 +410,7 @@ class RankedSearchMySQL(unittest.TestCase):
     def test_material_title_alone_does_not_fill_results_with_unrelated_chunks(self) -> None:
         hits = search.search(self.conn, "分段原件")["items"]
         self.assertEqual({h["id"] for h in hits}, {"M-RANK-A", "M-RANK-B"})
+        self.assertEqual({h["href"] for h in hits}, {"/materials/M-RANK-A", "/materials/M-RANK-B"})
         chunk = next(h for h in search.search(self.conn, "河流索引公开引文")["items"] if h["doc_type"] == "chunk")
         self.assertEqual(search.search(self.conn, chunk["id"])["items"][0]["match"], "id")
         self.assertEqual(search.search(self.conn, chunk["doc_id"])["items"][0]["id"], chunk["chunk_id"])

@@ -394,7 +394,8 @@ def _project(scope: Scope, rows: list, query: Query, *, original: bool, card_byt
         entity_id, doc_id = row["entity_id"], row["doc_id"]
         chunk_id = None if element else chunk_ids.get(doc_id, doc_id.removeprefix("chunk:"))
         ident = entity_id if element else chunk_id
-        href = ("/ontology/elements/" if element else "/materials/") + quote(entity_id, safe="")
+        route = "/materials/" if not element or row["kind"] == "material" else "/ontology/elements/"
+        href = route + quote(entity_id, safe="")
         if not element:
             href += "?" + urlencode({"tab": "source", "chunk": chunk_id})
         item = {

@@ -172,15 +172,17 @@ it('keeps element and chunk identifiers distinct and presents a matching summary
       items: [
         { ...item, doc_type: 'element', highlight: 'Settlement within ten days. Another line of the card.' },
         { ...item, doc_type: 'chunk', entity_id: 'source', chunk_id: item.id, kind: 'material' },
+        { id: 'source/whole', doc_type: 'element', kind: 'material', href: '/unrelated' },
       ],
     },
     'TEN days',
   );
-  expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+  expect(new Set(rows.map((row) => row.id)).size).toBe(3);
   expect(rows[0].excerpt).toBeUndefined();
   expect(rows.map((row) => row.href)).toEqual([
     '/ontology/elements/shared',
     '/materials/source?chunk=shared',
+    '/materials/source%2Fwhole',
   ]);
 });
 it('distinguishes a single-character prefix miss from an unsupported longer query', async () => {
