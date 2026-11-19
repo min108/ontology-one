@@ -145,7 +145,7 @@ def missing_reference_dependencies(
     for batch in batched(sorted(set(entity_ids)), 500):
         rows = conn.execute(
             "SELECT e.kind,m.module_id FROM entities e LEFT JOIN entity_meta m ON e.id=m.entity_id "
-            "WHERE e.id IN (" + ",".join("?" for _ in batch) + ") ORDER BY e.id" + (" FOR SHARE" if lock else ""),
+            "WHERE e.id IN (" + ",".join("?" for _ in batch) + ") ORDER BY e.id" + (" FOR SHARE OF m" if lock else ""),
             batch,
         )
         for row in rows:

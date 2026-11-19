@@ -7,6 +7,7 @@ import unittest
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from unittest.mock import patch
 
 from backend import db
 from backend.api.v1 import core
@@ -46,7 +47,7 @@ class InstitutionModules(unittest.TestCase):
             return modules.move_elements(conn, person, origin, target, ids)
 
     def scene(self, *members: str, owner: Principal | None = None, module_type: str = "scenario") -> str:
-        # D19 only: fixtures may establish an existing scenario and its initial membership.
+        # D19 allows fixtures to establish an existing scenario and its initial membership.
         suffix = secrets.token_hex(4)
         ident = "MOD-" + suffix
         stamp = db.now()
@@ -235,6 +236,34 @@ class InstitutionModules(unittest.TestCase):
             self.assertEqual(
                 self.query(sql, (origin,)), [{"depends_on_tenant": self.admin.tenant_id, "depends_on_module": target}]
             )
+
+    def test_two_concurrent_opposite_confirmations_register_each_direction(self) -> None:
+        left, right = self.asset(), self.asset()
+        origin, target = self.scene(left), self.scene(right)
+        with use_context(self.builder):
+            first = relations.propose(left, right, "references", "复用合同验收记录")
+            second = relations.propose(right, left, "references", "复用付款结论")
+        ready = threading.Barrier(2)
+        record = modules.record_confirmed_references
+
+        def after_confirm(conn: db.Connection, source: str, refs: list[str]) -> None:
+            # Each review now holds its source entity lock. Reading the target needs its membership lock.
+            ready.wait(timeout=10)
+            record(conn, source, refs)
+
+        def review(edge: dict) -> dict:
+            with use_context(self.reviewer):
+                return core._confirm_relation(edge["id"], {"status": "confirmed", "reason": "实际对照两处内容"})
+
+        with (
+            patch.object(modules, "record_confirmed_references", after_confirm),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            self.assertEqual(list(pool.map(review, (first, second))), [{"ok": True}, {"ok": True}])
+        deps = self.query(
+            "SELECT module_id,depends_on_module FROM ont_module_deps WHERE module_id IN (?,?)", (origin, target)
+        )
+        self.assertEqual({(r["module_id"], r["depends_on_module"]) for r in deps}, {(origin, target), (target, origin)})
 
     def test_concurrent_promotions_retain_both_ids_after_stale_and_fresh_preference_writes(self) -> None:
         ids = [self.asset(), self.asset()]
