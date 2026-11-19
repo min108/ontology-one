@@ -96,6 +96,11 @@ async function readLargeMaterial(page, builder, reviewer) {
       path: resolve(evidence, "r4b-published-large-1366x768.png"),
     });
     await button(page, a.identity_next).click();
+    await expect(page).toHaveURL(
+      (url) =>
+        url.searchParams.get("source_version") === original.source_version &&
+        url.searchParams.get("offset") === "4096",
+    );
     await expect.poll(() => body.textContent()).toBe(second);
     await button(page, a.identity_previous).click();
     await expect.poll(() => body.textContent()).toBe(first);
@@ -115,6 +120,7 @@ async function readLargeMaterial(page, builder, reviewer) {
       original_sha256: original.sha256,
       utf8_bytes: Buffer.byteLength(text),
       codepoints: chars.length,
+      source_version: original.source_version,
       checked_page_offsets: [0, 4096, 0],
       selected_chunk: passage.chunk_id,
       selected_quote: focus.quote,
