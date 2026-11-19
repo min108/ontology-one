@@ -219,12 +219,38 @@ class ElementWrites(unittest.TestCase):
                 self.conn, self.read(created["id"]), {"title": "新标题", "meta": {"valid_from": "2026-06-01"}}
             )
         saved["_meta"]["owner_user_id"] = "forged-owner"
+        # An older snapshot may predate a promotion to the common ontology.
+        saved["_meta"]["module_id"] = "MOD-PREVIOUS-SCENARIO"
         with self.conn:
             restored = elements.restore(self.conn, self.read(created["id"]), saved, "核对原版后还原")
         self.assertEqual((restored["title"], restored["status"], restored["version"]), ("业务内容", "draft", 3))
         self.assertEqual(get_meta(self.conn, created["id"])["valid_from"], "2026-01-01")
         self.assertIsNone(get_meta(self.conn, created["id"])["owner_user_id"])
+        self.assertEqual(get_meta(self.conn, created["id"])["module_id"], "MOD-DEFAULT")
         self.assertEqual(self.conn.execute("SELECT count(*) FROM versions").fetchone()[0], 3)
+
+    def test_ordinary_write_cannot_reassign_ontology_membership(self) -> None:
+        from pydantic import ValidationError
+
+        from backend.capabilities.kernel import ElementCreate, ElementUpdate
+
+        data = {"kind": "term", "title": "支付方式", "payload": {"schema": "term/1"}}
+        assignment = {"module_id": "MOD-OTHER-SCENARIO"}
+        with self.assertRaises(ValidationError):
+            ElementCreate(**data, meta=assignment)
+        with self.assertRaises(HTTPException) as create_error:
+            core._create_entity({**data, "meta": assignment})
+        self.assertEqual(create_error.exception.status_code, 422)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM entities").fetchone()[0], 0)
+
+        item = core._create_entity(data)
+        with self.assertRaises(ValidationError):
+            ElementUpdate(entity_id=item["id"], version=1, meta=assignment)
+        with self.assertRaises(HTTPException) as update_error:
+            core._edit_entity(item["id"], {"expected_version": 1, "meta": assignment})
+        self.assertEqual(update_error.exception.status_code, 422)
+        self.assertEqual(self.read(item["id"])["version"], 1)
+        self.assertEqual(get_meta(self.conn, item["id"])["module_id"], "MOD-DEFAULT")
 
     def test_v1_create_update_and_restore_use_kernel(self) -> None:
         item = core._create_entity({"kind": "term", "title": "术语", "payload": {"schema": "term/1"}})
