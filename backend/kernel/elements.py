@@ -210,9 +210,50 @@ def _enforce_identity_status(conn: db.Connection, entity: dict) -> None:
         enforce(conn, entity)
 
 
+def _guard_experience_payload(
+    kind: str, payload: object, previous: dict | None = None, *, old_kind: str | None = None
+) -> None:
+    """The experience workbench owns its source record and adopted knowledge identity."""
+    old = previous or {}
+    new = payload if isinstance(payload, dict) else {}
+    experience_source = old.get("record_type") == "experience_session" or new.get("record_type") == "experience_session"
+    if experience_source and (kind != old_kind or old != new):
+        raise HTTPException(400, "请从经验萃取记录编辑原文、草稿及修订建议。")
+    bound = (old_kind == "knowledge" and old.get("experience_candidate_id")) or (
+        kind == "knowledge" and new.get("experience_candidate_id")
+    )
+    if not bound:
+        return
+    source = old.get("source_material_id")
+
+    def original_refs(value: dict) -> list:
+        return [
+            ref
+            for ref in value.get("source_refs") or []
+            if isinstance(ref, dict)
+            and (ref.get("material_id") == source or ref.get("chunk_id") in (old.get("source_chunk_ids") or []))
+        ]
+
+    keys = (
+        "experience_candidate_id",
+        "source_material_id",
+        "source_id",
+        "source_chunk_ids",
+        "origin_type",
+        "knowledge_form",
+    )
+    if (
+        kind != "knowledge"
+        or any(old.get(key) != new.get(key) for key in keys)
+        or original_refs(old) != original_refs(new)
+    ):
+        raise HTTPException(400, "经验知识的来源、原文引用及经验点由采纳记录确定。")
+
+
 def create_draft(conn: db.Connection, body: dict) -> dict:
     _writable()
     kind = canonical_kind(body.get("kind", "knowledge"))
+    _guard_experience_payload(kind, body.get("payload"))
     try:
         definition = get_kind(kind)
     except ValueError as error:
@@ -281,6 +322,9 @@ def update_draft(conn: db.Connection, old: dict, changes: dict, *, restoring: bo
         if old["status"] not in {"draft", "returned"} or not allowed:
             raise HTTPException(422, "仅未提交的业务草稿可在核对后改种类。")
         entity["kind"] = changes["kind"]
+    _guard_experience_payload(
+        entity["kind"], changes.get("payload", old["payload"]), old["payload"], old_kind=old["kind"]
+    )
     for key in ("title", "summary", "domain", "status", "payload"):
         if key in changes:
             entity[key] = deepcopy(changes[key])

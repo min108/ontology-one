@@ -1,0 +1,282 @@
+"""Authenticated human contributors follow an experience through legacy adoption, splitting and merging."""
+
+import json
+import os
+import unittest
+from contextlib import closing
+from unittest.mock import AsyncMock, patch
+
+from fastapi.testclient import TestClient
+from httpx import Response
+
+from backend import db
+from backend.security import store
+from backend.security.context import use_context
+from tests.r2 import test_build as construction
+
+
+@unittest.skipUnless(os.getenv("RUN_JOBS_MYSQL_TESTS") == "1", "opt-in MySQL experience review flows")
+class ExperienceReviewers(unittest.TestCase):
+    login = construction.BuildMySQL.login
+    invoke = construction.BuildMySQL.invoke
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        construction.BuildMySQL.setUpClass.__func__(cls)
+        cls.addClassCleanup(construction.BuildMySQL.tearDownClass.__func__, cls)
+        token = store.login("fixture.superadmin", "SyntheticFixture9!", "127.0.0.1", "experience-test")
+        person = store.authenticate_session(token, "experience-test")[0]
+        for name in ("x.editor", "x.applier", "x.secondary", "x.observer"):
+            store.create_user(
+                person,
+                username=name,
+                display_name=name,
+                tenant_id="dept-01",
+                role="admin",
+                password="SyntheticFixture9!",
+                must_change_password=False,
+            )
+
+    def setUp(self) -> None:
+        self.builder = self.login("fixture.builder")
+        self.author, self.applier, self.secondary, self.observer = (
+            self.login("x." + n) for n in ("editor", "applier", "secondary", "observer")
+        )
+        self.independent = self.login("fixture.reviewer")
+        self.narrative = "交接纸质档案时，双方逐份核对交接清册，分别签收并注明日期。"
+        self.base = {
+            "title": "档案移交登记",
+            "summary": "双人登记交接清册。",
+            "content": self.narrative,
+            "boundary": "仅适用于纸质卷宗。",
+            "questions": "",
+        }
+        created = self.ok(
+            self.builder.post(
+                "/api/experience/sessions",
+                json={"title": "核对档案的经验", "context": self.narrative, "mode": "structured"},
+            )
+        )
+        self.sid = created["entity"]["id"]
+        self.path = "/api/experience/" + self.sid
+
+    def ok(self, response: Response) -> dict:
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def person(self, client: TestClient) -> str:
+        return store.authenticate_session(client.cookies.get(store.COOKIE_NAME), "experience-test")[0].user_id
+
+    def record(self) -> dict:
+        return self.ok(self.builder.get(self.path))["entity"]
+
+    def candidates(self) -> dict:
+        return {item["id"]: item for item in self.record()["payload"]["knowledge_candidates"]}
+
+    def adopt_legacy(self) -> dict:
+        self.ok(self.author.patch(self.path + "/draft", json=self.base))
+        return self.ok(self.builder.post(self.path + "/adopt", json=self.base))["entity"]
+
+    def apply(self, operation: str, candidates: list[str], actor: TestClient) -> list[str]:
+        items = self.candidates()
+        refs = items[candidates[0]]["source_refs"]
+        outputs = [
+            {
+                "title": operation + "逐项核对",
+                "summary": "按交接清册逐笔登记",
+                "content": "核验交接清册的日期和两方签字。",
+                "source_refs": refs,
+                "boundary": "纸质凭单。",
+            }
+        ]
+        if operation == "split":
+            outputs.append({**outputs[0], "title": "交接日期复核", "content": "双方分别签字注明日期。"})
+        fake = AsyncMock(return_value=json.dumps({"candidates": outputs}, ensure_ascii=False))
+        with (
+            patch("backend.experience.config", return_value={"api_key": "local-fixture"}),
+            patch("backend.experience.complete", fake),
+        ):
+            proposal = self.ok(
+                self.builder.post(
+                    self.path + "/proposals",
+                    json={
+                        "operation": operation,
+                        "candidate_ids": candidates,
+                        "instruction": "逐项核对原文再调整",
+                        "expected_revisions": {i: items[i]["revision"] for i in candidates},
+                    },
+                )
+            )["proposal"]
+        self.assertEqual(fake.await_count, 1)
+        return self.ok(actor.post(self.path + "/proposals/" + proposal["id"] + "/decision", json={"action": "apply"}))[
+            "candidate_ids"
+        ]
+
+    def review(self, candidate: str, client: TestClient, action: str, **changes: object) -> dict:
+        item = self.candidates()[candidate]
+        body = {key: item.get(key, "") for key in ("title", "summary", "boundary", "questions", "article_sections")}
+        return self.ok(
+            client.post(
+                self.path + "/candidates/" + candidate + "/review",
+                json={
+                    **body,
+                    "action": action,
+                    "expected_revision": item["revision"],
+                    "expected_asset_version": item.get("asset_version"),
+                    **changes,
+                },
+            )
+        )
+
+    def asset(self, ident: str) -> dict:
+        return self.ok(self.builder.get("/api/entities/" + ident))
+
+    def publish(self, ident: str, blocked: list[TestClient], independent: TestClient) -> None:
+        draft = self.asset(ident)
+        repaired = self.invoke(
+            self.builder,
+            "element.update_draft",
+            {
+                "entity_id": ident,
+                "version": draft["version"],
+                "payload": {
+                    **draft["payload"],
+                    "definition": "按原始签收单逐份登记的办理方法。",
+                    "conditions": "纸质卷宗移交时使用。",
+                    "boundary": "纸质卷宗。",
+                },
+            },
+        )["entity"]
+        pending = self.invoke(
+            self.builder,
+            "element.submit_draft",
+            {"entity_id": ident, "version": repaired["version"], "reason": "送审核对"},
+        )["entity"]
+        self.assertEqual(pending["status"], "review")
+        for actor in blocked:
+            self.assertEqual(
+                actor.post("/api/entities/" + ident + "/action", json={"action": "approve"}).status_code, 403
+            )
+            denied = actor.post(
+                "/api/v2/reviews/" + ident + ":decide",
+                json={"decision": "approve_publish", "version": pending["version"]},
+            )
+            self.assertEqual(denied.status_code, 403, denied.text)
+            self.assertEqual(denied.json()["error"]["code"], "SEPARATION_OF_DUTIES")
+        result = self.ok(
+            independent.post(
+                "/api/v2/reviews/" + ident + ":decide",
+                json={"decision": "approve_publish", "version": pending["version"]},
+            )
+        )
+        self.assertEqual(result["data"]["entity"]["status"], "published")
+
+    def test_legacy_edits_no_op_and_reviewers_reset_after_publication(self) -> None:
+        self.ok(self.author.patch(self.path + "/draft", json={**self.base, "summary": "按登记表核对交接人。"}))
+        self.ok(self.secondary.patch(self.path + "/draft", json=self.base))
+        self.ok(
+            self.observer.patch(
+                self.path + "/draft", json={**self.base, "draft_editor_ids": [self.person(self.observer)]}
+            )
+        )
+        draft = self.ok(self.builder.post(self.path + "/adopt", json=self.base))["entity"]
+        ident = draft["id"]
+        self.assertEqual(
+            set(draft["payload"]["r2_review"]["editor_ids"]),
+            {self.person(x) for x in [self.author, self.secondary, self.builder]},
+        )
+        self.assertTrue(self.ok(self.observer.post(self.path + "/adopt", json=self.base))["already_adopted"])
+        self.publish(ident, [self.author, self.secondary], self.observer)
+        (cid,) = self.candidates()
+        self.apply("revise", [cid], self.applier)
+        self.review(cid, self.builder, "adopt")
+        current = self.asset(ident)["payload"]["r2_review"]
+        self.assertEqual(set(current["editor_ids"]), {self.person(self.applier), self.person(self.builder)})
+        self.publish(ident, [self.applier], self.author)
+
+    def test_pre_tracking_patch_uses_real_receipts_and_version_changes_to_recover_only_editors(self) -> None:
+        self.ok(self.author.patch(self.path + "/draft", json=self.base))
+        self.ok(self.observer.patch(self.path + "/draft", json=self.base))
+        # Represent a previously saved draft: the original content, versions, authenticated
+        # request starts/successes and actors are real. Only the newly introduced cache was absent.
+        principal = store.authenticate_session(self.builder.cookies.get(store.COOKIE_NAME), "legacy-experience")[0]
+        with use_context(principal), closing(db.connect()) as conn, conn:
+            conn.execute(
+                "UPDATE entities SET payload=JSON_REMOVE(payload,'$.draft.draft_editor_ids') WHERE id=?", (self.sid,)
+            )
+        draft = self.ok(self.builder.post(self.path + "/adopt", json=self.base))["entity"]
+        self.assertEqual(
+            set(draft["payload"]["r2_review"]["editor_ids"]), {self.person(self.author), self.person(self.builder)}
+        )
+        self.publish(draft["id"], [self.author], self.observer)
+
+    def test_split_inherits_the_open_adopted_parent_and_manual_applier(self) -> None:
+        self.adopt_legacy()
+        (cid,) = self.candidates()
+        primary, child = self.apply("split", [cid], self.applier)
+        self.assertEqual(primary, cid)
+        result = self.review(child, self.builder, "adopt")
+        editors = set(self.asset(result["entity_id"])["payload"]["r2_review"]["editor_ids"])
+        self.assertEqual(editors, {self.person(x) for x in [self.author, self.builder, self.applier]})
+        self.publish(result["entity_id"], [self.author, self.applier], self.independent)
+
+    def test_merge_carries_secondary_writers_and_generic_restore_cannot_rewrite_them(self) -> None:
+        initial = self.adopt_legacy()
+        (cid,) = self.candidates()
+        primary, secondary = self.apply("split", [cid], self.applier)
+        self.review(secondary, self.secondary, "save", summary="按日期分别核验各自的签收凭据。")
+        current = self.record()
+        payload = {**current["payload"], "knowledge_candidates": []}
+        self.assertEqual(self.builder.patch("/api/entities/" + self.sid, json={"payload": payload}).status_code, 400)
+        denied = self.builder.post(
+            "/api/v2/capabilities/element.update_draft:invoke",
+            json={
+                "entity_id": self.sid,
+                "version": current["version"],
+                "payload": {**current["payload"], "record_type": "material"},
+            },
+        )
+        self.assertEqual(denied.status_code, 422, denied.text)
+        self.assertEqual(denied.json()["error"]["code"], "VALIDATION_FAILED")
+        forged = self.builder.post("/api/entities", json={"kind": "material", "title": "伪造经验", "payload": payload})
+        self.assertEqual(forged.status_code, 400, forged.text)
+        v2_forged = self.builder.post(
+            "/api/v2/capabilities/element.create_draft:invoke",
+            json={"kind": "material", "title": "伪造记录", "payload": payload},
+        )
+        self.assertEqual(v2_forged.status_code, 422, v2_forged.text)
+        normal = self.ok(
+            self.builder.post(
+                "/api/materials/upload", files={"file": ("独立原件.txt", "逐份签收纸质凭据。".encode(), "text/plain")}
+            )
+        )
+        edited = self.ok(self.builder.patch("/api/entities/" + normal["id"], json={"title": "已查验的普通资料"}))
+        self.assertEqual(edited["title"], "已查验的普通资料")
+        restored = self.author.post(
+            "/api/entities/" + self.sid + "/restore", json={"version": current["version"] - 1, "reason": "恢复旧稿"}
+        )
+        self.assertEqual(restored.status_code, 400, restored.text)
+        v2_restore = self.author.post(
+            "/api/v2/capabilities/element.restore_version:invoke",
+            json={
+                "entity_id": self.sid,
+                "version": current["version"],
+                "restore_version": current["version"] - 1,
+                "reason": "恢复早期经验记录",
+            },
+        )
+        self.assertEqual(v2_restore.status_code, 422, v2_restore.text)
+        self.assertEqual(v2_restore.json()["error"]["code"], "VALIDATION_FAILED")
+        fake_binding = {**initial["payload"], "experience_candidate_id": "another-candidate"}
+        refused = self.author.patch("/api/entities/" + initial["id"], json={"payload": fake_binding})
+        self.assertEqual(refused.status_code, 400, refused.text)
+        without_refs = self.author.patch(
+            "/api/entities/" + initial["id"], json={"payload": {**initial["payload"], "source_refs": []}}
+        )
+        self.assertEqual(without_refs.status_code, 400, without_refs.text)
+        self.assertEqual(self.asset(initial["id"])["payload"]["experience_candidate_id"], cid)
+        self.assertEqual(self.record()["version"], current["version"])
+        self.assertEqual(self.apply("merge", [secondary, primary], self.observer), [primary])
+        merged = self.review(primary, self.builder, "adopt")
+        self.assertEqual(merged["entity_id"], initial["id"])
+        self.publish(initial["id"], [self.author, self.applier, self.secondary, self.observer], self.independent)
