@@ -48,14 +48,18 @@ class TraceInput(TenantTarget):
     chunk_id: Annotated[str, Field(min_length=1, max_length=255)] | None = None
     anchor_id: ResourceId | None = None
     source_version: ResourceId | None = None
+    citing_entity_id: ResourceId | None = None
+    citing_relation_id: ResourceId | None = None
 
     @model_validator(mode="after")
     def one_target(self) -> Self:
         if sum(value is not None for value in (self.entity_id, self.relation_id, self.receipt_id)) != 1:
             raise ValueError("请指定一个要素、关联或查询回执。")
-        if (self.chunk_id or self.anchor_id or self.source_version) and not (
-            self.entity_id and (self.chunk_id or self.anchor_id)
-        ):
+        if self.citing_entity_id and self.citing_relation_id:
+            raise ValueError("请指定一个引用这段原文的要素或关联。")
+        if (
+            self.chunk_id or self.anchor_id or self.source_version or self.citing_entity_id or self.citing_relation_id
+        ) and not (self.entity_id and (self.chunk_id or self.anchor_id)):
             raise ValueError("原文定位须指定材料和原文片段。")
         return self
 
