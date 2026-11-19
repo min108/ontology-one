@@ -49,7 +49,7 @@ it('shows actual effective date, provenance, evidence and applicable subject lin
   expect(screen.getByText(/批量确认/)).toHaveTextContent(legacyFixture.reviewer);
   expect(screen.getByRole('link', { name: legacyFixture.subjectValue })).toHaveAttribute(
     'href',
-    '/assets/org',
+    '/ontology/elements/org',
   );
   // Counterexample: absent date cannot retain the earlier real value or claim source extraction.
   result.fields = [{ ...result.fields[0], value: '', source: 'missing', source_quote: '' }];

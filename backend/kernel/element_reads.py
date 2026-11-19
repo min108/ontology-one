@@ -1,6 +1,7 @@
 """Read the current element, its citations and both endpoints in one authorized scope."""
 
 import json
+from urllib.parse import quote
 
 from backend import db, federation
 from backend.asset_kinds import canonical_entity
@@ -23,7 +24,8 @@ def display_payload(scope: visibility.Scope, payload: dict) -> dict:
     known = visibility.visible_entities(scope.connection, ids, scope=scope)
     tenant = {"id": scope.tenant_id, "name": ""}
     for ident, item in known.items():
-        item["detail_url"] = "/assets/" + ident
+        base = "/materials/" if item["kind"] == "material" else "/ontology/elements/"
+        item["detail_url"] = base + quote(ident, safe="")
 
     def validate_ref(ref: dict, ident: str) -> dict | None:
         if any(key in ref for key in ("anchor_id", "span_id", "chunk_id", "source_version", "revision_id", "span")):
@@ -146,7 +148,7 @@ def published_fields(scope: visibility.Scope, entity: dict, meta: dict, fields: 
             "label": gate_fields.FIELD_LABELS["subjects" if subject_id else key],
             "value": value,
             "source": "legacy" if value else "missing",
-            "href": "/assets/" + subject_id if subject_id else "",
+            "href": "/ontology/elements/" + quote(subject_id, safe="") if subject_id else "",
         }
         record = provenance.get(key, {})
         if value and record.get("value") == value:

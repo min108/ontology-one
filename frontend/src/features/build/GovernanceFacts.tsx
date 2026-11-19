@@ -36,8 +36,10 @@ export function GovernanceFacts({
               <dd>
                 {field.key === 'inputs' || field.key === 'outputs' ? (
                   <SchemaFacts value={field.value} direction={field.key} />
-                ) : field.href?.startsWith('/assets/') ? (
-                  <Link to={field.href}>{field.value || copy.r4a1_legacy_empty}</Link>
+                ) : field.href && field.key.startsWith('subject:') ? (
+                  <Link to={'/ontology/elements/' + encodeURIComponent(field.key.slice('subject:'.length))}>
+                    {field.value || copy.r4a1_legacy_empty}
+                  </Link>
                 ) : (
                   <span className={styles.paragraph}>{field.value || copy.r4a1_legacy_empty}</span>
                 )}

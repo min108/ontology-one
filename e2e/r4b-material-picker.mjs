@@ -78,7 +78,16 @@ export async function verifyMaterialPickers(page, materialId) {
   await button(page, "关联已有内容").click();
   const objects = page.getByRole("dialog", { name: "配置工作对象与成果" });
   await button(objects, "依据材料").click();
-  await chooseOriginal(page, objects, "搜索可关联内容", materialId);
+  const workHits = await chooseOriginal(page, objects, "搜索可关联内容", materialId);
+  const wrongObject = await page.request.post("/api/work/" + project.id + "/objects", {
+    headers: {
+      "X-Workspace-Id": session.workspace.tenant_id,
+      "X-CSRF-Token": session.csrf_token,
+    },
+    data: { target_id: workHits[0].id, role: "source_material" },
+  });
+  expect(wrongObject.status()).toBe(404);
+  expect((await read(page, "/api/projects/" + project.id + "/workspace")).objects).toHaveLength(0);
   const candidates = objects
     .locator("button.pw-search-result")
     .filter({ hasText: materialId });
@@ -112,5 +121,6 @@ export async function verifyMaterialPickers(page, materialId) {
     material_id: materialId,
     chunk_hits: hits.map((row) => row.id),
     invalid_chunk_status: invalid.status(),
+    invalid_work_object_status: wrongObject.status(),
   };
 }

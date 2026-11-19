@@ -1182,7 +1182,7 @@ def preview_item(conn: db.Connection, item: dict) -> dict:
             field.update(
                 key="subject:" + relation["target"],
                 value=relation["target_title"],
-                href="/assets/" + relation["target"],
+                href="/ontology/elements/" + url_quote(relation["target"], safe=""),
             )
         if field["value"] and key in sources:
             field.update(sources[key])

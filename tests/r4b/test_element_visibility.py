@@ -103,6 +103,7 @@ class PublishedElementDetail(unittest.TestCase):
             fields = {field["key"]: field for field in from_card["gates"]["fields"]}
             self.assertEqual(fields["scope"]["value"], "本机构签收事项")
             self.assertEqual(fields["subject:" + obj["id"]]["value"], obj["title"])
+            self.assertEqual(fields["subject:" + obj["id"]]["href"], "/ontology/elements/" + obj["id"])
             self.assertIn(governed["id"], [r["id"] for r in from_card["entity"]["relations"]["outgoing"]])
             self.assertNotIn(private_source["id"], [r["id"] for r in from_card["entity"]["relations"]["outgoing"]])
             self.assertEqual(from_card["entity"]["_meta"]["card_text"], from_card["card"]["text"])

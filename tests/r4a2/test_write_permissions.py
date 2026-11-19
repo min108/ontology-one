@@ -63,6 +63,12 @@ class WritePermissions(unittest.TestCase):
             ("POST", "/api/datasets/table/dictionary-drafts"),
             ("POST", "/api/special-projects/project/candidates/candidate/review"),
             ("POST", "/api/placement/item/confirm"),
+            ("POST", "/api/experience/session/proposals/proposal/decision"),
+            ("POST", "/api/experience/session/draft"),
+            ("PATCH", "/api/experience/session/draft"),
+            ("POST", "/api/experience/session/adopt"),
+            ("POST", "/api/special-projects/project/materials"),
+            ("POST", "/api/work/project/objects"),
         )
         for method, path in endpoints:
             with self.subTest(method=method, path=path):
