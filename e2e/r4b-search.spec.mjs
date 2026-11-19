@@ -273,10 +273,39 @@ test("R4-B BA7–BA10 S1–S12 search the reviewed original regulation, all entr
           await expect(option).toContainText(terms.statuses.element.published);
           await expect(option).toContainText(hit.summary);
           await screenshotComparison(browser, builder.page);
-          await option.click();
-          await expect(builder.page).toHaveURL(
-            new RegExp("/ontology/elements/" + rules.S1.id + "$"),
+          const rulePath =
+            "/ontology/elements/" + encodeURIComponent(rules.S1.id);
+          const target = new URL(rulePath, builder.page.url());
+          const detail = builder.page.waitForResponse(
+            (response) =>
+              response.request().method() === "GET" &&
+              new URL(response.url()).pathname ===
+                "/api/v2/elements/" + encodeURIComponent(rules.S1.id),
           );
+          await option.click();
+          await expect(builder.page).toHaveURL((url) => {
+            const destination = new URL(url);
+            destination.searchParams.delete("via");
+            return destination.href === target.href;
+          });
+          const response = await detail;
+          expect(response.ok()).toBe(true);
+          expect((await response.json()).data.entity).toMatchObject({
+            id: rules.S1.id,
+            kind: "rule",
+            status: "published",
+          });
+          await expect
+            .poll(() =>
+              builder.page.evaluate(() => {
+                const visit = new URLSearchParams(location.search).get("via");
+                const history = JSON.parse(
+                  localStorage.getItem("ontology-one-navigation") ?? "{}",
+                );
+                return visit ? history[visit]?.path : null;
+              }),
+            )
+            .toBe(rulePath);
           await expect(
             builder.page.getByRole("heading", {
               name: rules.S1.title,
