@@ -86,7 +86,10 @@ def derived_edges(entity: dict) -> list[dict]:
         add("measures", payload.get("object_type"))
     elif kind == "rule":
         add("applies_to", payload.get("applies_to_id"))
-        add("governs", (payload.get("judgement") or {}).get("applies_to", {}).get("object_type"))
+        judgement = payload.get("judgement")
+        scope = judgement.get("applies_to") if isinstance(judgement, dict) else None
+        if isinstance(scope, dict):
+            add("governs", scope.get("object_type"))
     elif kind == "person":
         add("holds_position", payload.get("position_id"))
     elif kind == "position":

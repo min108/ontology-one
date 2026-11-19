@@ -201,6 +201,11 @@ def reply(body: dict) -> dict:
                     }
                 )
             coverage.append({"chunk_id": chunk["id"], "reason": "按各条原文提炼；标题和施行说明保留为文件事实"})
+        if str(source.get("material", {}).get("title", "")).startswith("R4A2-invalid-one-"):
+            for candidate in candidates:
+                if candidate["content"].startswith("第三条 "):
+                    candidate["source_quotes"][0]["quote"] = "本段引文经过模型改写，不能用作原文。"
+                    break
         return {
             "type": "tool_use",
             "id": "r2-extract",

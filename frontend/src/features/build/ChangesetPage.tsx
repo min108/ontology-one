@@ -41,14 +41,17 @@ import {
   changesetGate,
   groupItems,
   isHandledElsewhere,
+  isAnchoredEvidence,
   isSubmitted,
   readyForBulkAccept,
   sentence,
 } from './model';
 import { sourceLocator } from './businessText';
 import { GateChecklist } from './GateChecklist';
+import { ChangesetUnformedSources } from './ChangesetUnformedSources';
 import { GovernanceFacts } from './GovernanceFacts';
 import { SubjectSelect } from '../ontology/SubjectSelect';
+import { isRuleObject, prepareRuleValue } from '../ontology/ruleEditorValues';
 import { GateApplications } from './GateApplications';
 import { ChangesetFacts, ChangesetOmissions, validCalendarDate } from './ChangesetFacts';
 import styles from './Build.module.css';
@@ -73,6 +76,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
     [focus, setFocus] = useState<Evidence>();
   const [editing, setEditing] = useState<Item>(),
     [confirm, setConfirm] = useState(false);
+  const [discarding, setDiscarding] = useState<Item>();
   const [judgementText, setJudgementText] = useState('');
   const [judgementError, setJudgementError] = useState('');
   const [undo, setUndo] = useState<Item[]>();
@@ -98,6 +102,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       if (signal?.aborted) return;
       setMessage(typeof success === 'function' ? success() : success);
       setEditing(undefined);
+      setDiscarding(undefined);
       setConfirm(false);
     } catch (failure) {
       if (!signal?.aborted) setError(failure instanceof Error ? failure.message : copy.r2_failure);
@@ -128,6 +133,13 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           decision,
           ...(candidateEdit ? { edit: candidateEdit } : {}),
           ...(onlyReady ? { only_ready: true } : {}),
+          ...(decision === 'rejected'
+            ? {
+                expected_versions: Object.fromEntries(
+                  items.map((item) => [item.id, item.applied_version || 0]),
+                ),
+              }
+            : {}),
         };
         const options = { signal: lifetime.current?.signal };
         await invokeCapability('changeset.decide_items', body, options);
@@ -149,7 +161,9 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
   function confirmFacts(body: ConfirmFacts) {
     return perform(
       () => invokeCapability('changeset.confirm_facts', body, { signal: lifetime.current?.signal }),
-      body.valid_from !== undefined ? copy.r4a1_file_facts_saved : copy.r4a1_omissions_saved,
+      body.valid_from !== undefined || body.valid_from_candidate_id
+        ? copy.r4a1_file_facts_saved
+        : copy.r4a1_omissions_saved,
     );
   }
   function submitReady() {
@@ -210,9 +224,14 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           (!item.applied_status || !['draft', 'returned'].includes(item.applied_status)),
       );
   const blocked = !canEdit || busy || resource.refreshing || !!resource.error;
-  const locked = blocked || !current || isHandledElsewhere(current) || isSubmitted(current) || submitted;
+  const archived =
+    current?.applied_status === 'archived' ||
+    (!!current?.applied_entity_id && current.decision === 'rejected');
+  const locked =
+    blocked || !current || archived || isHandledElsewhere(current) || isSubmitted(current) || submitted;
   const sure = proposal.items.filter(readyForBulkAccept);
   const chosen = current?.evidence[0];
+  const fileScope = proposal.document_facts?.scope;
   const note = !canEdit
     ? copy.r3_main_read_only
     : submitted
@@ -246,7 +265,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         />
       }
     >
-      {(error || resource.error) && !editing && !confirm && (
+      {(error || resource.error) && !editing && !confirm && !discarding && (
         <Alert
           type="error"
           title={error || resource.error}
@@ -270,7 +289,11 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
       )}
       {proposal.document_facts && (
         <ChangesetFacts
-          key={proposal.document_facts.valid_from.value}
+          key={JSON.stringify([
+            proposal.document_facts.valid_from.value,
+            proposal.document_facts.valid_from.anchor_id,
+            proposal.document_facts.valid_from.method,
+          ])}
           proposal={proposal}
           disabled={blocked || submitted}
           onConfirm={(body) => void confirmFacts(body)}
@@ -296,9 +319,19 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               discarded: proposal.extraction_summary.discarded_candidates || 0,
             })}
           </p>
-          {(proposal.extraction_summary.discarded_candidates || 0) > 0 && (
-            <p>{copy.r4a1_extraction_discarded}</p>
-          )}
+          <ChangesetUnformedSources
+            proposal={proposal}
+            disabled={blocked}
+            onRetain={(body) =>
+              void perform(async () => {
+                const { data } = await invokeCapability<ProposalResult>('changeset.retain_source', body, {
+                  signal: lifetime.current?.signal,
+                });
+                const kept = data.items.find((item) => item.after_data.retained_anchor_id === body.anchor_id);
+                if (kept && !lifetime.current?.signal.aborted) setSelected(kept.id);
+              }, copy.r4a2_source_kept)
+            }
+          />
         </div>
       )}
       <SplitView
@@ -382,20 +415,40 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         aside={
           <div className={`${styles.stack} ${styles['evidence-pane']}`}>
             <h2>{copy.r3_main_source}</h2>
-            <p>{proposal.title}</p>
+            {(!gate.pending || (!fileScope?.value && !sourceLocator(chosen?.locator))) && (
+              <p>{proposal.title}</p>
+            )}
             {chosen && sourceLocator(chosen.locator) && <p>{sourceLocator(chosen.locator)}</p>}
-            {proposal.document_facts?.scope.value && (
+            {fileScope?.value && (
               <>
                 <h2>{copy.r4a1_file_scope}</h2>
-                <p>{proposal.document_facts.scope.value}</p>
-                <p className={styles.muted}>
-                  {copy.r4a1_source_sentence}：{proposal.document_facts.scope.quote}
-                </p>
+                {fileScope.quote?.includes(fileScope.value) ? (
+                  <blockquote className={styles.quote}>
+                    {isAnchoredEvidence(fileScope) ? (
+                      <Link to={sourceHref(fileScope)}>{fileScope.quote}</Link>
+                    ) : (
+                      fileScope.quote
+                    )}
+                  </blockquote>
+                ) : (
+                  <>
+                    <p>{fileScope.value}</p>
+                    {fileScope.quote && (
+                      <blockquote className={styles.quote}>
+                        {isAnchoredEvidence(fileScope) ? (
+                          <Link to={sourceHref(fileScope)}>{fileScope.quote}</Link>
+                        ) : (
+                          fileScope.quote
+                        )}
+                      </blockquote>
+                    )}
+                  </>
+                )}
               </>
             )}
             <h2>{copy.r3_main_duplicate_check}</h2>
             <p>{current?.duplicate_of ? copy.r2_duplicate : copy.r3_main_no_duplicate}</p>
-            {current?.handoff && (
+            {current?.handoff && !archived && (
               <>
                 <p>{copy.r4a1_specialized_hint}</p>
                 <Link to={current.handoff.href}>{current.handoff.label}</Link>
@@ -469,12 +522,18 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                 <div className={styles.completed}>
                   <h2>{copy.r3_main_submit_content}</h2>
                   <p>
-                    {sentence(submitted ? copy.r31_submitted_count : copy.r3_main_submit_count, {
-                      count: submitted ? gate.accepted : gate.ready,
-                    })}
+                    {submitted
+                      ? sentence(copy.r31_submitted_count, { count: gate.accepted })
+                      : gate.ready
+                        ? sentence(copy.r3_main_submit_count, { count: gate.ready })
+                        : copy.r4a2_no_submittable}
                   </p>
-                  <h3>{copy.r3_main_after_submit}</h3>
-                  <p>{copy.r3_main_submit_impact}</p>
+                  {(submitted || gate.ready > 0) && (
+                    <>
+                      <h3>{copy.r3_main_after_submit}</h3>
+                      <p>{copy.r3_main_submit_impact}</p>
+                    </>
+                  )}
                 </div>
               )}
               <div className={styles.actions}>
@@ -606,44 +665,48 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
               </TechnicalDetails>
             </div>
             <div className={styles['pane-actions']}>
-              <Button
-                autoInsertSpace={false}
-                disabled={locked}
-                onClick={() => {
-                  setEditing(current);
-                  setError('');
-                  setJudgementError('');
-                  setJudgementText(
-                    current.after_data.judgement ? JSON.stringify(current.after_data.judgement, null, 2) : '',
-                  );
-                  setDraft({
-                    title: current.after_data.title,
-                    content: current.after_data.content || '',
-                    kind: current.after_data.kind as CandidatePatch['kind'],
-                    ...Object.fromEntries(
-                      (
-                        [
-                          'definition',
-                          'scope',
-                          'conditions',
-                          'exceptions',
-                          'valid_from',
-                          'judgement',
-                          'unit',
-                          'grain',
-                          'boundary',
-                          'applies_to_id',
-                          'waiver_applications',
-                        ] as const
-                      )
-                        .filter((key) => current.after_data[key] !== undefined)
-                        .map((key) => [key, current.after_data[key]]),
-                    ),
-                  });
-                }}
-              >
-                {actions.catalog_1_1}
-              </Button>
+              {!archived && (
+                <Button
+                  autoInsertSpace={false}
+                  disabled={locked}
+                  onClick={() => {
+                    setEditing(current);
+                    setError('');
+                    setJudgementError('');
+                    setJudgementText(
+                      current.after_data.judgement
+                        ? JSON.stringify(current.after_data.judgement, null, 2)
+                        : '',
+                    );
+                    setDraft({
+                      title: current.after_data.title,
+                      content: current.after_data.content || '',
+                      kind: current.after_data.kind as CandidatePatch['kind'],
+                      ...Object.fromEntries(
+                        (
+                          [
+                            'definition',
+                            'scope',
+                            'conditions',
+                            'exceptions',
+                            'valid_from',
+                            'judgement',
+                            'unit',
+                            'grain',
+                            'boundary',
+                            'applies_to_id',
+                            'waiver_applications',
+                          ] as const
+                        )
+                          .filter((key) => current.after_data[key] !== undefined)
+                          .map((key) => [key, current.after_data[key]]),
+                      ),
+                    });
+                  }}
+                >
+                  {actions.catalog_1_1}
+                </Button>
+              )}
               {current.applied_entity_id ? (
                 <Link
                   to={
@@ -653,7 +716,7 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                     new URLSearchParams({ from: '/build/changesets/' + encodeURIComponent(id) })
                   }
                 >
-                  {copy.r2_view_draft}
+                  {archived ? copy.r4a2_view_archived : copy.r2_view_draft}
                 </Link>
               ) : (
                 <>
@@ -666,14 +729,21 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
                   </Button>
                 </>
               )}
-              <Button
-                autoInsertSpace={false}
-                type="text"
-                disabled={locked || current.decision === 'rejected'}
-                onClick={() => void decide([current], 'rejected')}
-              >
-                {actions.catalog_1_2}
-              </Button>
+              {!archived && (
+                <Button
+                  autoInsertSpace={false}
+                  type="text"
+                  disabled={locked || current.decision === 'rejected'}
+                  onClick={() => {
+                    if (current.applied_entity_id) {
+                      setError('');
+                      setDiscarding(current);
+                    } else void decide([current], 'rejected');
+                  }}
+                >
+                  {actions.catalog_1_2}
+                </Button>
+              )}
             </div>
           </div>
         ) : (
@@ -699,6 +769,26 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
           </p>
         </TechnicalDetails>
       </EvidenceDrawer>
+      <Modal
+        width="var(--zy-dialog-width)"
+        title={copy.r4a2_discard_title}
+        open={!!discarding}
+        okText={copy.r4a2_discard_confirm}
+        cancelText={actions.r2_cancel}
+        cancelButtonProps={{ 'aria-label': actions.r2_cancel }}
+        confirmLoading={busy}
+        okButtonProps={{ danger: true, disabled: blocked }}
+        onCancel={() => {
+          if (!busy) {
+            setError('');
+            setDiscarding(undefined);
+          }
+        }}
+        onOk={() => discarding && void decide([discarding], 'rejected')}
+      >
+        {(error || resource.error) && <Alert type="error" title={error || resource.error} role="alert" />}
+        <p>{sentence(copy.r4a2_discard_detail, { title: discarding?.after_data.title || '' })}</p>
+      </Modal>
       <Modal
         width="var(--zy-dialog-width)"
         title={actions.catalog_1_6}
@@ -745,12 +835,15 @@ function Changeset({ id, canEdit }: { id: string; canEdit: boolean }) {
         onOk={() => {
           if (!editing) return;
           try {
-            const judgement = judgementText.trim() ? JSON.parse(judgementText) : null;
-            if (
-              judgementText.trim() &&
-              (!judgement || typeof judgement !== 'object' || Array.isArray(judgement))
-            )
-              throw new Error();
+            let judgement: CandidatePatch['judgement'] = null;
+            if (judgementText.trim()) {
+              const prepared = prepareRuleValue(
+                JSON.parse(judgementText),
+                editing.after_data.judgement ?? undefined,
+              );
+              if (!isRuleObject(prepared)) throw new Error();
+              judgement = prepared;
+            }
             void decide([editing], 'edited', {
               ...draft,
               ...(judgementText.trim() || editing.after_data.judgement ? { judgement } : {}),

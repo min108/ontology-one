@@ -149,6 +149,11 @@ def get_source_version(conn, material_id, source_version=None):
 
 def _anchor(conn, material_id, source_version, start, end, locator=""):
     source = get_source_version(conn, material_id, source_version)
+    return _anchor_in_version(conn, source, start, end, locator)
+
+
+def _anchor_in_version(conn, source, start, end, locator):
+    material_id, source_version = source["material_id"], source["id"]
     if type(start) is not int or type(end) is not int or not 0 <= start < end <= len(source["text"]):
         raise HTTPException(422, "出处范围超出原文或为空")
     quote = source["text"][start:end]
@@ -161,7 +166,8 @@ def _anchor(conn, material_id, source_version, start, end, locator=""):
         aid = _id("anchor")
         loc = locator or f"原文第 {start + 1}–{end} 字"
         conn.execute(
-            "INSERT INTO source_anchors VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO source_anchors(id,material_id,source_version,`start`,`end`,quote_sha256,locator,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?)",
             (aid, material_id, source_version, start, end, hashlib.sha256(quote.encode()).hexdigest(), loc, now()),
         )
         row = conn.execute("SELECT * FROM source_anchors WHERE id=?", (aid,)).fetchone()
@@ -187,6 +193,25 @@ def _ref(anchor, chunk_id=None, extra=None):
     return value
 
 
+def chunk_refs_for_version(conn, material_id, source, chunk_ids):
+    """Read confirmed whole-chunk anchors without creating or relocating history."""
+    selected = set(chunk_ids)
+    if not selected:
+        return []
+    refs = []
+    for row in conn.execute(
+        "SELECT a.*, c.chunk_id FROM source_anchors a JOIN chunk_anchors c ON c.anchor_id=a.id "
+        "JOIN chunks ch ON ch.id=c.chunk_id WHERE a.material_id=? AND a.source_version=? AND ch.material_id=? "
+        "ORDER BY a.start,a.end,c.chunk_id",
+        (material_id, source["id"], material_id),
+    ):
+        if row["chunk_id"] in selected:
+            quote = source["text"][row["start"] : row["end"]]
+            if quote.strip():
+                refs.append(_ref({**dict(row), "quote": quote}, row["chunk_id"]))
+    return refs
+
+
 def register_chunk_anchor(conn, material_id, chunk_id, source_version, start, end, locator=""):
     _schema(conn)
     row = conn.execute("SELECT * FROM chunks WHERE id=? AND material_id=?", (chunk_id, material_id)).fetchone()
@@ -205,6 +230,24 @@ def register_chunk_anchor(conn, material_id, chunk_id, source_version, start, en
         raise HTTPException(409, "片段出处尚未确认，请先保存材料分段。")
     conn.execute("INSERT INTO chunk_anchors VALUES(?,?)", (chunk_id, anchor["id"]))
     return _ref(anchor, chunk_id)
+
+
+def anchor_workbook_rows(conn, material_id):
+    """Bind each new workbook row to its exact position in the saved worksheet transcription."""
+    rows = list(
+        conn.execute("SELECT id,content,locator FROM chunks WHERE material_id=? ORDER BY position,id", (material_id,))
+    )
+    source = ensure_source_version(conn, material_id)
+    offset, refs = 0, {}
+    for row in rows:
+        end = offset + len(row["content"])
+        if source["text"][offset:end] != row["content"]:
+            raise HTTPException(422, "工作表行与保存的台账原文不一致")
+        anchor = _anchor_in_version(conn, source, offset, end, row["locator"])
+        conn.execute("INSERT INTO chunk_anchors(chunk_id,anchor_id) VALUES(?,?)", (row["id"], anchor["id"]))
+        refs[row["id"]] = _ref(anchor, row["id"])
+        offset = end + 2
+    return refs
 
 
 def ensure_chunk_anchor(conn, material_id, chunk_id):

@@ -22,6 +22,7 @@ class ContractTests(unittest.TestCase):
                 "recipe.status",
                 "changeset.get",
                 "changeset.confirm_facts",
+                "changeset.retain_source",
                 "changeset.decide_items",
                 "changeset.apply",
                 "changeset.apply_and_submit",
@@ -69,6 +70,7 @@ class ContractTests(unittest.TestCase):
             }
             draft = item.id in {
                 "changeset.confirm_facts",
+                "changeset.retain_source",
                 "recipe.start",
                 "changeset.decide_items",
                 "changeset.apply",
@@ -109,6 +111,7 @@ class ContractTests(unittest.TestCase):
         expected = {
             "element.submit_draft": ("build.submit",),
             "changeset.confirm_facts": ("build.edit",),
+            "changeset.retain_source": ("build.edit",),
             "element.create_draft": ("build.edit",),
             "element.update_draft": ("build.edit",),
             "element.start_revision": ("build.edit",),
@@ -150,6 +153,11 @@ class ContractTests(unittest.TestCase):
                                 "changeset.confirm_facts": {"changeset_id": "proposal", "valid_from": "2026-01-01"},
                                 "element.submit_draft": {"entity_id": "entity", "version": 1, "reason": "Submit"},
                                 "changeset.get": {"changeset_id": "proposal"},
+                                "changeset.retain_source": {
+                                    "changeset_id": "proposal",
+                                    "anchor_id": "anchor",
+                                    "source_version": "source",
+                                },
                                 "changeset.decide_items": {
                                     "changeset_id": "proposal",
                                     "item_ids": ["item"],

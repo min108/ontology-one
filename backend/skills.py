@@ -115,7 +115,7 @@ def is_managed_skill(conn, entity):
 
 def guard_generic_mutation(conn, entity):
     if is_managed_skill(conn, entity):
-        _fail("managed_skill_route", "此技能由技能开发模块维护，请在技能开发中编辑、测试和审核。", 409)
+        _fail("managed_skill_route", "此技能已建包，请前往技能工作台编辑、测试和审核。", 409)
 
 
 def guard_generic_entity(conn, entity_or_id=None, body=None):
@@ -123,7 +123,7 @@ def guard_generic_entity(conn, entity_or_id=None, body=None):
     if isinstance(payload, dict) and any(
         key in payload for key in ("managed_skill", "package_digest", "package_revision", "package_name")
     ):
-        _fail("managed_skill_route", "技能包标识由技能开发模块维护，不能通过通用编辑设置。", 409)
+        _fail("managed_skill_route", "请前往技能工作台维护技能包标识。", 409)
     if entity_or_id is not None:
         guard_generic_mutation(conn, entity_or_id)
 
@@ -639,7 +639,7 @@ def _last_check(conn, document):
 
 
 def _detail(conn, entity, document):
-    from .domains.reviews import editor_ids
+    from .domains.reviews import is_review_participant
     from .kernel.gates import check_entity
 
     principal = _role()
@@ -668,7 +668,7 @@ def _detail(conn, entity, document):
             dict(row)
             for row in conn.execute(
                 "SELECT action,detail,actor,created_at FROM activities WHERE entity_id=? "
-                "AND action IN ('申请发布检查豁免','发布检查豁免','拒绝发布检查豁免') ORDER BY id DESC LIMIT 30",
+                "AND action IN ('申请发布检查豁免','发布检查豁免','拒绝发布检查豁免','撤回发布检查豁免申请') ORDER BY id DESC LIMIT 30",
                 (entity["id"],),
             )
         ],
@@ -679,7 +679,7 @@ def _detail(conn, entity, document):
             "submit": principal.role in BUILD and entity["status"] in {"draft", "returned"},
             "review": principal.role in REVIEW
             and entity["status"] == "review"
-            and principal.user_id not in editor_ids(entity) | {document["last_editor_id"], document["submitted_by"]},
+            and not is_review_participant(conn, entity, principal, document=document),
             "test": principal.role in BUILD and entity["status"] in {"draft", "returned"},
             "assist": principal.role in BUILD,
         },
@@ -722,12 +722,6 @@ def _sync_relations(conn, entity, document):
         )
 
 
-def _record_skill_editor(payload, principal, *, fresh=False):
-    from .domains.reviews import record_editor
-
-    record_editor({"payload": payload}, principal.user_id, fresh_revision=fresh)
-
-
 def apply_gate_notes(conn, entity, changes):
     """Accept only governance notes here. Package mutations retain their separate proof and version checks."""
     from .kernel import gates
@@ -747,6 +741,8 @@ def apply_gate_notes(conn, entity, changes):
 
 
 def _create_document(conn, title, summary, files, manifest, legacy_id=None):
+    from .domains.reviews import record_editor
+
     principal = _role(BUILD)
     files, package = _coherent_files(files, manifest)
     package_name = package["frontmatter"]["name"]
@@ -763,7 +759,7 @@ def _create_document(conn, title, summary, files, manifest, legacy_id=None):
             "package_revision": 1,
             "package_digest": package["digest"],
         }
-        _record_skill_editor(payload, principal, fresh=entity["status"] in {"published", "archived"})
+        record_editor({**entity, "payload": payload}, principal.user_id, conn=conn)
         conn.execute(
             "UPDATE entities SET title=?,summary=?,status='draft',payload=?,version=version+1,updated_at=? WHERE id=?",
             (title, summary, _json(payload), stamp, ident),
@@ -775,7 +771,7 @@ def _create_document(conn, title, summary, files, manifest, legacy_id=None):
             "package_revision": 1,
             "package_digest": package["digest"],
         }
-        _record_skill_editor(payload, principal, fresh=True)
+        record_editor({"payload": payload}, principal.user_id)
         conn.execute(
             "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (
@@ -1116,7 +1112,9 @@ def _save_skill(ident, body):
             "package_revision": revision,
             "package_digest": package["digest"],
         }
-        _record_skill_editor(payload, principal)
+        from .domains.reviews import record_editor
+
+        record_editor({**entity, "payload": payload}, principal.user_id, conn=conn)
         conn.execute(
             "UPDATE entities SET title=?,summary=?,payload=?,status='draft',version=version+1,updated_at=? WHERE id=?",
             (body.title, body.summary, _json(payload), now(), ident),
@@ -1434,13 +1432,16 @@ def _action(ident, body):
         _expected(entity, body.expected_version)
         if entity["status"] not in allowed[body.action]:
             _fail("skill_transition_invalid", "当前技能状态不允许此操作。", 409)
-        from .domains.reviews import editor_ids
+        from .domains.reviews import (
+            SEPARATION_MESSAGE,
+            is_review_participant,
+            keep_release_boundary,
+            record_editor,
+            record_submission,
+        )
 
-        if body.action in {"publish", "return"} and principal.user_id in editor_ids(entity) | {
-            document["last_editor_id"],
-            document["submitted_by"],
-        }:
-            _fail("skill_self_review", "本次修订的编辑人和提交人需由其他审核人员办理。", 403)
+        if body.action in {"publish", "return"} and is_review_participant(conn, entity, principal, document=document):
+            _fail("skill_self_review", SEPARATION_MESSAGE, 403)
         from .kernel import gates
 
         if body.action in {"submit", "publish"}:
@@ -1466,11 +1467,10 @@ def _action(ident, body):
             else document["submitted_by"]
         )
         if body.action == "revise":
-            _record_skill_editor(entity["payload"], principal, fresh=entity["status"] in {"published", "archived"})
+            record_editor(entity, principal.user_id, conn=conn)
         if body.action == "submit":
-            entity["payload"].setdefault("r2_review", {}).update(
-                submitted_by=principal.user_id, submitted_name=principal.username, submitted_at=now()
-            )
+            record_submission(conn, entity, principal)
+        keep_release_boundary(conn, entity, statuses[body.action])
         conn.execute(
             "UPDATE entities SET status=?,payload=?,version=version+1,updated_at=? WHERE id=?",
             (statuses[body.action], _json(entity["payload"]), now(), ident),
@@ -1688,8 +1688,12 @@ def demote_restored_skills(conn):
     for row in conn.execute("SELECT entity_id FROM skill_documents").fetchall():
         entity, document = _document(conn, row["entity_id"], lock=True)
         _snapshot_entity(conn, entity, "恢复后重新校验技能发布权限")
+        from .domains.reviews import record_editor
+
+        record_editor(entity, require_context().user_id, conn=conn)
         conn.execute(
-            "UPDATE entities SET status='draft',version=version+1,updated_at=? WHERE id=?", (now(), entity["id"])
+            "UPDATE entities SET status='draft',payload=?,version=version+1,updated_at=? WHERE id=?",
+            (_json(entity["payload"]), now(), entity["id"]),
         )
         conn.execute(
             "UPDATE skill_documents SET submitted_by=NULL,last_editor_id=?,updated_at=? WHERE entity_id=?",

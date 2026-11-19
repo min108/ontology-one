@@ -60,7 +60,15 @@ class RunnerReceiptTests(unittest.TestCase):
                     evidence: Path = output / "a1-mainline-1.json",
                 ) -> None:
                     if emit and "test" in command:
-                        evidence.write_text(json.dumps({"success": True, "gate_repairs": [{"field": "exceptions"}]}))
+                        evidence.write_text(
+                            json.dumps(
+                                {
+                                    "success": True,
+                                    "gate_repairs": [{"field": "exceptions"}],
+                                    "submission_share": {"submitted": 2, "total": 3, "ratio": 2 / 3},
+                                }
+                            )
+                        )
                     if retained and "test" in command:
                         evidence.with_name("mainline-1.json").write_text(
                             json.dumps({"success": True, "gate_repairs": [{"fields": ["unit", "grain"]}]})
@@ -99,5 +107,6 @@ class RunnerReceiptTests(unittest.TestCase):
                     self.assertEqual(receipt["retained_r3_mainline"]["gate_repairs"], [{"fields": ["unit", "grain"]}])
                 if mode == "complete" and round_name == "r4":
                     self.assertEqual(receipt["gate_repairs"], [{"field": "exceptions"}])
+                    self.assertEqual(receipt["submission_share"], {"submitted": 2, "total": 3, "ratio": 2 / 3})
                 if mode in {"exception", "exception_after_clean"}:
                     self.assertEqual(receipt["error_type"], "OSError")

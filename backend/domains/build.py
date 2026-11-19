@@ -1,5 +1,6 @@
 """Recipe A composes legacy ingestion, extraction, anchors and adoption."""
 
+import hashlib
 import json
 import re
 import uuid
@@ -11,7 +12,10 @@ from urllib.parse import urlencode
 from fastapi import HTTPException
 
 from backend import ai, db, jobs, materials, provenance
-from backend.core.errors import ApiError
+from backend.core.errors import ApiError, NextAction, from_http
+from backend.domains.build_source_facts import document_facts, ground_candidate
+from backend.domains.build_source_facts import source_exception as source_exception
+from backend.domains.build_sources import proposal_sources, unformed_chunks
 from backend.kernel import gates
 from backend.kernel.metadata import get_meta, sync_meta
 from backend.security.context import require_context
@@ -178,10 +182,14 @@ async def run_recipe(ident: str) -> None:
                 fallback = [
                     chunk
                     for chunk in chunks
-                    if not online or coverage.get(chunk["id"], {}).get("status") != "completed"
+                    if not online or coverage.get(chunk["id"], {}).get("status") not in {"completed", "needs_review"}
                 ]
                 ids = {candidate["id"] for candidate in candidates}
                 for chunk in fallback:
+                    # A located rejected candidate needs an explicit reviewer
+                    # choice, even if every candidate in its batch was rejected.
+                    if online and coverage.get(chunk["id"], {}).get("discarded_source"):
+                        continue
                     if not chunk["content"].strip():
                         continue
                     title = chunk["content"].strip().splitlines()[0][:120]
@@ -217,9 +225,11 @@ async def run_recipe(ident: str) -> None:
             locked = conn.execute("SELECT * FROM recipe_runs WHERE id=? FOR UPDATE", (ident,)).fetchone()
             if locked["changeset_id"]:
                 return
+            conn.execute("SELECT id FROM entities WHERE id=? FOR UPDATE", (material_id,)).fetchone()
             item = materials.material(conn, material_id)
             cs_id, stamp = "CS-" + uuid.uuid4().hex[:24], db.now()
-            refs = [{"material_id": material_id, "source_version": item["payload"].get("source_version")}]
+            source = provenance.get_source_version(conn, material_id)
+            refs = [{"material_id": material_id, "source_version": source["id"]}]
             conn.execute(
                 "INSERT INTO changesets(id,title,summary,origin,origin_ref,source_refs,created_by,assigned_to,"
                 "created_at,updated_at) "
@@ -236,62 +246,26 @@ async def run_recipe(ident: str) -> None:
                     stamp,
                 ),
             )
-            source = provenance.get_source_version(conn, material_id)
             facts = anchored_document_facts(conn, material_id, source)
             extraction = dict(item["payload"].get("extraction_summary") or {})
-            extraction["fully_local"] = not bool(state.get("used_model"))
+            extraction["fully_local"] = bool(state.get("local")) and not bool(state.get("used_model"))
             conn.execute(
                 "UPDATE changesets SET stats=? WHERE id=?",
-                (materials.dump({"document_facts": facts, "extraction_summary": extraction}), cs_id),
+                (
+                    materials.dump(
+                        {
+                            "document_facts": facts,
+                            "extraction_summary": extraction,
+                            "unformed_chunks": unformed_chunks(item, provenance.get_active_chunks(conn, material_id)),
+                        }
+                    ),
+                    cs_id,
+                ),
             )
             for index, candidate in enumerate(item["payload"].get("candidates", []), 1):
                 if processed_elsewhere(candidate):
                     continue
-                candidate = enrich_candidate(conn, candidate, source["text"], facts)
-                evidence, issues = [], []
-                for quote in candidate.get("source_quotes", []):
-                    try:
-                        evidence.append(provenance.normalize_source_ref(conn, material_id, quote, min_quote_length=1))
-                    except HTTPException:
-                        issues.append("引文未逐字出现在原文中，请重新核对出处。")
-                if not evidence:
-                    issues.append("尚未找到可定位的原文，不能采纳。")
-                for origin in candidate.get("field_provenance", {}).values():
-                    if origin.get("origin") == "source":
-                        ref = next(
-                            (ref for ref in evidence if origin.get("quote") and origin["quote"] in ref["quote"]), None
-                        )
-                        if ref:
-                            origin.update({key: ref[key] for key in ("anchor_id", "source_version", "material_id")})
-                duplicate = conn.execute(
-                    "SELECT id FROM entities WHERE kind=? AND title=? LIMIT 1", (candidate["kind"], candidate["title"])
-                ).fetchone()
-                local = candidate.get("extraction_mode") != "online"
-                complete = not candidate.get("questions") and bool(candidate.get("content"))
-                score, tier = confidence(
-                    exact=bool(evidence) and not issues, complete=complete, unique=not duplicate, local=local
-                )
-                conn.execute(
-                    "INSERT INTO changeset_items(id,changeset_id,seq,op,target_kind,target_id,after_data,one_liner,"
-                    "rationale,evidence,content_origin,confidence,tier,validation,duplicate_of) "
-                    "VALUES(?,?,?,'create_element',?,?,?,?,?,?,?,?,?,?,?)",
-                    (
-                        "CSI-" + uuid.uuid4().hex[:24],
-                        cs_id,
-                        index,
-                        candidate["kind"],
-                        "tmp:" + str(index),
-                        materials.dump(candidate),
-                        (candidate.get("summary") or candidate["title"])[:500],
-                        "未经智能整理，请逐条完善" if local else "依据原文整理，请确认适用条件与例外",
-                        materials.dump(evidence),
-                        "local" if local else "source",
-                        score,
-                        tier,
-                        materials.dump({"level": "error" if issues else "warn" if local else "ok", "issues": issues}),
-                        duplicate["id"] if duplicate else None,
-                    ),
-                )
+                insert_candidate_item(conn, cs_id, index, material_id, candidate, source, facts)
             summary = (
                 "智能整理暂不可用，已按条款拆分，请逐条完善" if state["local"] else "建设方案已就绪，请对照原文核对"
             )
@@ -322,6 +296,68 @@ async def run_recipe(ident: str) -> None:
         raise
 
 
+def insert_candidate_item(
+    conn: db.Connection,
+    cs_id: str,
+    index: int,
+    material_id: str,
+    candidate: dict,
+    source: dict,
+    facts: dict,
+    *,
+    retained_by: str | None = None,
+) -> None:
+    candidate = enrich_candidate(conn, candidate, source["text"], facts)
+    evidence, issues = [], []
+    for quote in candidate.get("source_quotes", []):
+        try:
+            if not isinstance(quote, dict) or (quote.get("source_version") and quote["source_version"] != source["id"]):
+                raise HTTPException(422, "引文与方案的原文版本不一致")
+            evidence.append(
+                provenance.normalize_source_ref(
+                    conn, material_id, {**quote, "source_version": source["id"]}, min_quote_length=1
+                )
+            )
+        except HTTPException:
+            issues.append("引文未逐字出现在原文中，请重新核对出处。")
+    if not evidence:
+        issues.append("尚未找到可定位的原文，不能采纳。")
+    anchor_candidate_fields(candidate, evidence)
+    duplicate = conn.execute(
+        "SELECT id FROM entities WHERE kind=? AND title=? LIMIT 1", (candidate["kind"], candidate["title"])
+    ).fetchone()
+    local = candidate.get("extraction_mode") != "online"
+    complete = not candidate.get("questions") and bool(candidate.get("content"))
+    score, tier = confidence(exact=bool(evidence) and not issues, complete=complete, unique=not duplicate, local=local)
+    conn.execute(
+        "INSERT INTO changeset_items(id,changeset_id,seq,op,target_kind,target_id,after_data,one_liner,"
+        "rationale,evidence,content_origin,confidence,tier,validation,duplicate_of) "
+        "VALUES(?,?,?,'create_element',?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "CSI-" + uuid.uuid4().hex[:24],
+            cs_id,
+            index,
+            candidate["kind"],
+            "tmp:" + str(index),
+            materials.dump(candidate),
+            (candidate.get("summary") or candidate["title"])[:500],
+            "未经智能整理，请逐条完善" if local else "依据原文整理，请确认适用条件与例外",
+            materials.dump(evidence),
+            "local" if local else "source",
+            score,
+            tier,
+            materials.dump(
+                {
+                    "level": "error" if issues else "warn" if local else "ok",
+                    "issues": issues,
+                    **({"editor_ids": [retained_by]} if retained_by else {}),
+                }
+            ),
+            duplicate["id"] if duplicate else None,
+        ),
+    )
+
+
 def get(ident: str) -> dict:
     with closing(db.connect()) as conn:
         row = conn.execute("SELECT * FROM changesets WHERE id=?", (ident,)).fetchone()
@@ -336,8 +372,11 @@ def get(ident: str) -> dict:
         candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
         ref = result["source_refs"][0]
         source = provenance.get_source_version(conn, ref["material_id"], ref.get("source_version"))
-        facts = result.get("stats", {}).get("document_facts") or document_facts(source["text"])
+        facts = changeset_document_facts(conn, result, source)
+        legacy_facts = needs_legacy_projection(result)
         for item in result["items"]:
+            if legacy_facts:
+                align_legacy_item(item, candidates, source["text"], facts)
             item["processed_elsewhere"] = item_processed_elsewhere(item, candidates)
             if item["processed_elsewhere"]:
                 item["decision"] = "processed_elsewhere"
@@ -359,6 +398,8 @@ def get(ident: str) -> dict:
             if item["after_data"]["kind"] == "rule":
                 item["after_data"].update(source_confirmation_limits(item, candidates, source["text"], facts))
             item["gates"] = preview_item(conn, item)
+            if item["applied_entity_id"]:
+                item["after_data"]["waiver_applications"] = active_applications(item["gates"])
             judgement = item["after_data"].get("judgement")
             if judgement is not None and not isinstance(judgement, dict):
                 # Evaluate the stored historical value above so QG3 still reports the fault.
@@ -378,6 +419,14 @@ def get(ident: str) -> dict:
             )
             if item["validation"].get("level") == "error":
                 item["submit_blockers"] += item["validation"].get("issues", [])
+            if eligible and item["applied_entity_id"]:
+                if current:
+                    try:
+                        guard_adopted_write(conn, current)
+                    except ApiError as exc:
+                        item["submit_blockers"].append(exc.message)
+                else:
+                    item["submit_blockers"].append("找不到已采纳的草稿，请刷新核对页确认。")
             if item.get("stale_draft"):
                 item["submit_blockers"].append("草稿已变化，请查看最新内容并保存“改一改”后再提交。")
             item["can_submit"] = bool(eligible and not item["submit_blockers"])
@@ -413,6 +462,13 @@ def get(ident: str) -> dict:
             and not item["processed_elsewhere"]
             and item["submit_blockers"]
         ]
+        retained = {item["after_data"].get("retained_anchor_id") for item in result["items"]}
+        retained.update(
+            candidate.get("retained_anchor_id") for candidate in candidates.values() if processed_elsewhere(candidate)
+        )
+        result["unformed_sources"] = [
+            gap for gap in proposal_sources(conn, result, source, result["items"]) if gap["anchor_id"] not in retained
+        ]
         result["source_text"] = source["text"]
         result["source_material_id"] = ref["material_id"]
         result["document_facts"] = facts
@@ -437,7 +493,79 @@ def lock_changeset(conn: db.Connection, ident: str) -> dict:
     return decode(row)
 
 
-def current_candidate(conn: db.Connection, item: dict, entity: dict) -> dict:
+def retain_source(ident: str, anchor_id: str, source_version: str) -> dict:
+    person = require_context()
+    with closing(db.connect()) as conn, conn:
+        proposal = lock_changeset(conn, ident)
+        ref = proposal["source_refs"][0]
+        if ref.get("source_version") != source_version:
+            raise ApiError("VERSION_CONFLICT", "所选原文版本与方案不一致，请刷新后重试。")
+        material_id = ref["material_id"]
+        material = materials.material(conn, material_id, for_update=True)
+        source = provenance.get_source_version(conn, material_id, source_version)
+        items = [
+            decode(row)
+            for row in conn.execute(
+                "SELECT seq,after_data,evidence,content_origin FROM changeset_items WHERE changeset_id=? ORDER BY seq",
+                (ident,),
+            )
+        ]
+        existing = any(item["after_data"].get("retained_anchor_id") == anchor_id for item in items)
+        if not existing:
+            allowed = proposal_sources(conn, proposal, source, items)
+            gap = next((entry for entry in allowed if entry["anchor_id"] == anchor_id), None)
+            if not gap:
+                raise ApiError("NOT_FOUND")
+            evidence = provenance.normalize_source_ref(conn, material_id, gap)
+            title = evidence["quote"].strip().splitlines()[0][:120]
+            # This namespace cannot collide with a model candidate even when the
+            # model chose the original paragraph as its title on the same chunk.
+            candidate_id = "retained_" + anchor_id
+            candidates = material["payload"].setdefault("candidates", [])
+            previous = next((row for row in candidates if row["id"] == candidate_id), None)
+            candidate = {
+                "id": candidate_id,
+                "kind": "rule",
+                "title": title,
+                "content": evidence["quote"],
+                "summary": "按原文保留，请逐条核对。",
+                "source_chunk_ids": [evidence["chunk_id"]],
+                "source_quotes": [evidence],
+                "status": "pending",
+                "extraction_mode": "local",
+                "conditions": [],
+                "questions": ["请核对条目种类、适用范围与例外。"],
+                "retained_anchor_id": anchor_id,
+                "created_at": previous.get("created_at") if previous else db.now(),
+            }
+            if previous is None:
+                candidates.append(candidate)
+                materials.save_payload(conn, material, material["payload"], "核对建设方案时按原文保留条目")
+            else:
+                fields = ("title", "kind", "content", "retained_anchor_id")
+                quotes = previous.get("source_quotes") or []
+                if (
+                    processed_elsewhere(previous)
+                    or any(previous.get(key) != candidate[key] for key in fields)
+                    or len(quotes) != 1
+                    or not isinstance(quotes[0], dict)
+                    or any(quotes[0].get(key) != evidence[key] for key in ("anchor_id", "source_version", "quote"))
+                ):
+                    raise ApiError("ITEM_CHANGED", "这一段已在素材页或其他方案中办理，请核对最新记录。")
+            facts = (proposal.get("stats") or {}).get("document_facts") or anchored_document_facts(
+                conn, material_id, source
+            )
+            seq = items[-1]["seq"] + 1 if items else 1
+            insert_candidate_item(conn, ident, seq, material_id, candidate, source, facts, retained_by=person.user_id)
+            conn.execute(
+                "UPDATE changesets SET updated_at=?,status=IF(status='applied','partially_applied',status) WHERE id=?",
+                (db.now(), ident),
+            )
+            materials.activity(conn, material_id, "candidate_review", "按原文保留为待核对条目：" + title)
+    return get(ident)
+
+
+def current_candidate(conn: db.Connection, item: dict, entity: dict, *, include_applications: bool = False) -> dict:
     """Project current saved content; reading never accepts or rebases a stale decision."""
     payload = entity["payload"]
     result = dict(item["after_data"])
@@ -447,6 +575,13 @@ def current_candidate(conn: db.Connection, item: dict, entity: dict) -> dict:
     result["conditions"] = conditions if isinstance(conditions, list) else [gates.plain(conditions)]
     result.update(title=entity["title"], kind=entity["kind"], judgement=payload.get("judgement"))
     meta = get_meta(conn, entity["id"]) or {}
+    if include_applications:
+        # A sibling editor can withdraw a request outside the changeset. Never replay the proposal's old copy.
+        result["waiver_applications"] = (
+            active_applications(gates.check_entity(conn, entity))
+            if (meta.get("gates") or {}).get("applications")
+            else {}
+        )
     result.update({key: str(meta.get(key) or "") for key in ("valid_from", "valid_to")})
     target = conn.execute(
         "SELECT e.id,e.title FROM relations r JOIN entities e ON e.id=r.target "
@@ -493,7 +628,32 @@ def unchanged_return(conn: db.Connection, item: dict, entity: dict) -> bool:
     )
 
 
-def decide(ident: str, ids: list[str], decision: str, edit: dict | None, *, only_ready: bool = False) -> dict:
+def guard_adopted_write(conn: db.Connection, entity: dict) -> None:
+    from backend.api.v1.core import guard_generic_edit
+
+    try:
+        guard_generic_edit(conn, entity, {})
+    except HTTPException as exc:
+        if isinstance(exc.detail, dict) and exc.detail.get("code") == "managed_skill_route":
+            raise ApiError(
+                "PRECONDITION_FAILED",
+                exc.detail["message"],
+                next_actions=[
+                    NextAction(label="前往技能工作台", href="/skill-development/" + url_quote(entity["id"], safe=""))
+                ],
+            ) from exc
+        raise from_http(exc.status_code, exc.detail) from exc
+
+
+def decide(
+    ident: str,
+    ids: list[str],
+    decision: str,
+    edit: dict | None,
+    *,
+    only_ready: bool = False,
+    expected_versions: dict[str, int] | None = None,
+) -> dict:
     if (decision == "edited") != (edit is not None) or (edit and len(ids) != 1):
         raise ApiError("VALIDATION_FAILED")
     with closing(db.connect()) as conn, conn:
@@ -502,6 +662,7 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None, *, only
         conn.execute("SELECT id FROM entities WHERE id=? FOR UPDATE", (material_id,)).fetchone()
         material = materials.material(conn, material_id)
         candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
+        legacy = legacy_document(conn, proposal)
         for item_id in dict.fromkeys(ids):
             row = conn.execute(
                 "SELECT * FROM changeset_items WHERE id=? AND changeset_id=? FOR UPDATE", (item_id, ident)
@@ -509,6 +670,8 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None, *, only
             if not row:
                 raise ApiError("NOT_FOUND")
             item = decode(row)
+            if legacy:
+                align_legacy_item(item, candidates, legacy[0]["text"], legacy[1])
             if item_processed_elsewhere(item, candidates):
                 continue
             if only_ready and (
@@ -533,17 +696,25 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None, *, only
                         "SELECT * FROM entities WHERE id=? FOR UPDATE", (item["applied_entity_id"],)
                     ).fetchone()
                 )
-                expected = (edit or {}).get("expected_version")
-                expected = item["applied_version"] if expected is None else expected
-                if not old or old["status"] not in {"draft", "returned"} or old["version"] != expected:
+                if not old:
                     raise stale_draft()
-            after = (current_candidate(conn, item, old) if old else item["after_data"]) | changes
+                guard_adopted_write(conn, old)
+                expected = (edit or {}).get("expected_version")
+                if expected is None:
+                    expected = (expected_versions or {}).get(item_id, item["applied_version"])
+                if old["status"] not in {"draft", "returned"} or old["version"] != expected:
+                    raise stale_draft()
+            after = (
+                current_candidate(conn, item, old, include_applications=True) if old else item["after_data"]
+            ) | changes
             if after["kind"] == "rule" and item["after_data"]["kind"] != "rule":
                 source = provenance.get_source_version(
                     conn, material_id, proposal["source_refs"][0].get("source_version")
                 )
                 ensure_org_root(conn)
-                after = enrich_candidate(conn, after, source["text"], proposal.get("stats", {}).get("document_facts"))
+                after = enrich_candidate(
+                    conn, after, source["text"], legacy[1] if legacy else proposal["stats"]["document_facts"]
+                )
                 after.update(changes)
                 if "applies_to_id" not in changes:
                     suggest_applicability(conn, after)
@@ -555,26 +726,21 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None, *, only
             if decision in {"accepted", "edited"}:
                 validation["editor_ids"] = sorted(set(validation.get("editor_ids") or []) | {require_context().user_id})
             if edit:
-                if "waiver_applications" not in changes and any(
-                    after.get(key) != item["after_data"].get(key) for key in changes
-                ):
-                    after["waiver_applications"] = {}
                 validate_candidate(conn, item, after)
-                provenance_map = dict(item["after_data"].get("field_provenance") or {})
+                provenance_map = dict(after.get("field_provenance") or {})
                 for key in changes:
                     if key not in {"waiver_applications", "kind"} and after.get(key) != item["after_data"].get(key):
                         provenance_map[key] = manual_provenance()
                 after["field_provenance"] = provenance_map
-            if decision in {"accepted", "edited"} and after.get("applies_to_id"):
-                after["field_provenance"] = {
-                    **(after.get("field_provenance") or {}),
-                    "applies_to_id": manual_provenance(),
-                }
             if old:
                 if decision == "rejected":
-                    from backend.kernel.elements import transition
+                    from backend.api.v1.core import entity_action_in_transaction
 
-                    updated = transition(conn, old, "archived", "核对页放弃未提交草稿")
+                    updated = entity_action_in_transaction(
+                        conn,
+                        old["id"],
+                        {"action": "archive", "reason": "核对页放弃未提交草稿", "expected_version": expected},
+                    )
                 else:
                     updated = save_adopted_candidate(conn, item, old, after)
                 conn.execute("UPDATE changeset_items SET applied_version=? WHERE id=?", (updated["version"], item_id))
@@ -600,12 +766,39 @@ def decide(ident: str, ids: list[str], decision: str, edit: dict | None, *, only
     return get(ident)
 
 
-def apply(ident: str, *, submit: bool) -> dict:
-    from backend.api.v1.core import entity_action_in_transaction
+def adopt_changeset_item(conn: db.Connection, material_id: str, item: dict) -> dict:
     from backend.domains.reviews import mark_draft
     from backend.kernel.elements import sync_after_write
 
-    person = require_context()
+    candidate_data = item["after_data"]
+    validate_candidate(conn, item, candidate_data)
+    for ref in item["evidence"]:
+        provenance.normalize_source_ref(conn, material_id, ref)
+    material = materials.material(conn, material_id)
+    candidate = materials.find_candidate(material, candidate_data["id"])
+    candidate.update(candidate_data)
+    materials.save_payload(conn, material, material["payload"])
+    entity = materials.adopt_candidate_in_transaction(conn, material_id, candidate["id"])["entity"]
+    mark_draft(
+        conn,
+        entity,
+        item["validation"].get("last_content_editor_id") or item["decided_by"] or require_context().user_id,
+        item["changeset_id"],
+        editor_ids=item["validation"].get("editor_ids") or [],
+    )
+    confirm_applicability(conn, entity, candidate_data)
+    entity = sync_after_write(conn, entity, meta_updates=candidate_meta(candidate_data))
+    record_candidate_sources(conn, entity, candidate_data)
+    conn.execute(
+        "UPDATE changeset_items SET applied_entity_id=?,applied_version=?,after_data=? WHERE id=?",
+        (entity["id"], entity["version"], materials.dump(candidate_data), item["id"]),
+    )
+    return entity
+
+
+def apply(ident: str, *, submit: bool) -> dict:
+    from backend.api.v1.core import entity_action_in_transaction
+
     with closing(db.connect()) as conn, conn:
         proposal = lock_changeset(conn, ident)
         material_id = proposal["source_refs"][0]["material_id"]
@@ -620,76 +813,81 @@ def apply(ident: str, *, submit: bool) -> dict:
         candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
         entity_ids, submitted_ids, remaining = [], [], []
         stale_items = 0
+        legacy = legacy_document(conn, proposal)
         for item in items:
-            if item_processed_elsewhere(item, candidates):
+            if legacy:
+                align_legacy_item(item, candidates, legacy[0]["text"], legacy[1])
+            if item_processed_elsewhere(item, candidates) or item["decision"] not in {"accepted", "edited"}:
                 continue
-            if item["decision"] not in {"accepted", "edited"}:
-                continue
-            if not item["applied_entity_id"]:
-                if item["validation"]["level"] == "error" or not item["evidence"]:
-                    remaining.append(
-                        {
-                            "item_id": item["id"],
-                            "title": item["after_data"]["title"],
-                            "reasons": item["validation"].get("issues") or ["尚未找到可定位的原文，不能采纳。"],
-                        }
-                    )
-                    continue
-                try:
-                    validate_candidate(conn, item, item["after_data"])
-                except ApiError as exc:
-                    if not submit or exc.code != "VALIDATION_FAILED":
-                        raise
-                    remaining.append(
-                        {"item_id": item["id"], "title": item["after_data"]["title"], "reasons": [exc.message]}
-                    )
-                    continue
-                for ref in item["evidence"]:
-                    provenance.normalize_source_ref(conn, material_id, ref)
-                material = materials.material(conn, material_id)
-                candidate = materials.find_candidate(material, item["after_data"]["id"])
-                candidate.update(item["after_data"])
-                materials.save_payload(conn, material, material["payload"])
-                entity = materials.adopt_candidate_in_transaction(conn, material_id, candidate["id"])["entity"]
-                mark_draft(
-                    conn,
-                    entity,
-                    item["validation"].get("last_content_editor_id") or item["decided_by"] or person.user_id,
-                    ident,
-                    editor_ids=item["validation"].get("editor_ids") or [],
-                )
-                entity = db.entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (entity["id"],)).fetchone())
-                confirm_applicability(conn, entity, item["after_data"])
-                entity = sync_after_write(conn, entity, meta_updates=candidate_meta(item["after_data"]))
-                record_candidate_sources(conn, entity, item["after_data"])
-                item["applied_entity_id"] = entity["id"]
-                item["applied_version"] = entity["version"]
-                conn.execute(
-                    "UPDATE changeset_items SET applied_entity_id=?,applied_version=? WHERE id=?",
-                    (entity["id"], entity["version"], item["id"]),
-                )
             entity_id = item["applied_entity_id"]
-            entity = db.entity_json(
-                conn.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (entity_id,)).fetchone()
-            )
-            if not entity:
-                raise ApiError("NOT_FOUND")
-            if entity["status"] == "archived":
+            title = item["after_data"]["title"]
+            if not entity_id and (item["validation"]["level"] == "error" or not item["evidence"]):
+                remaining.append(
+                    {
+                        "item_id": item["id"],
+                        "title": title,
+                        "reasons": item["validation"].get("issues") or ["尚未找到可定位的原文，不能采纳。"],
+                    }
+                )
                 continue
-            if submit and entity["status"] in {"draft", "returned"}:
-                if entity["version"] != item["applied_version"] and not unchanged_return(conn, item, entity):
-                    stale_items += 1
-                    blockers = [stale_draft().message]
+            blockers = []
+            conn.execute("SAVEPOINT changeset_item")
+            try:
+                if entity_id:
+                    entity = db.entity_json(
+                        conn.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (entity_id,)).fetchone()
+                    )
+                    if not entity:
+                        entity_id = None
+                        raise ApiError("NOT_FOUND")
                 else:
-                    blockers = submission_blockers(gates.check_entity(conn, entity))
-                if blockers:
-                    remaining.append({"item_id": item["id"], "title": entity["title"], "reasons": blockers})
-                    entity_ids.append(entity_id)
-                    continue
-                conn.execute("UPDATE changeset_items SET applied_version=? WHERE id=?", (entity["version"], item["id"]))
-                entity_action_in_transaction(conn, entity_id, {"action": "submit", "reason": "建设方案核对后提交审核"})
-                submitted_ids.append(entity_id)
-            entity_ids.append(entity_id)
+                    entity = adopt_changeset_item(conn, material_id, item)
+                title = entity["title"]
+                if submit and entity["status"] in {"draft", "returned"}:
+                    guard_adopted_write(conn, entity)
+                    if (
+                        entity_id
+                        and entity["version"] != item["applied_version"]
+                        and not unchanged_return(conn, item, entity)
+                    ):
+                        stale_items += 1
+                        blockers = [stale_draft().message]
+                    else:
+                        blockers = submission_blockers(gates.check_entity(conn, entity))
+                    if not blockers:
+                        entity_action_in_transaction(
+                            conn,
+                            entity["id"],
+                            {
+                                "action": "submit",
+                                "reason": "建设方案核对后提交审核",
+                                "expected_version": entity["version"],
+                            },
+                        )
+                        conn.execute(
+                            "UPDATE changeset_items SET applied_version=? WHERE id=?", (entity["version"], item["id"])
+                        )
+                        submitted_ids.append(entity["id"])
+                entity_id = entity["id"] if entity["status"] != "archived" else None
+            except (ApiError, HTTPException) as exc:
+                error = from_http(exc.status_code, exc.detail) if isinstance(exc, HTTPException) else exc
+                if not submit or error.code not in {
+                    "VALIDATION_FAILED",
+                    "EVIDENCE_NOT_FOUND",
+                    "GATE_NOT_PASSED",
+                    "NOT_FOUND",
+                    "ITEM_CHANGED",
+                    "PRECONDITION_FAILED",
+                    "VERSION_CONFLICT",
+                }:
+                    raise
+                conn.execute("ROLLBACK TO SAVEPOINT changeset_item")
+                blockers = [error.message]
+            conn.execute("RELEASE SAVEPOINT changeset_item")
+            if blockers:
+                remaining.append({"item_id": item["id"], "title": title, "reasons": blockers})
+            if entity_id:
+                entity_ids.append(entity_id)
         if stale_items and stale_items == len(remaining) and not submitted_ids:
             # Preserve the historical conflict when every outstanding draft needs a fresh version.
             raise stale_draft()
@@ -740,73 +938,110 @@ def ensure_org_root(conn: db.Connection) -> dict:
     return entity
 
 
-def document_facts(source_text: str) -> dict:
-    """Only an operative sentence about this file establishes its effective date."""
-    facts = {key: {"value": "", "origin": "document", "quote": ""} for key in ("valid_from", "scope")}
-    prefix = r"(?:第[一二三四五六七八九十百零\d]+条\s*)?本(?:办法|制度|规定|细则|规程|规则)"
-    for sentence in re.finditer(r"[^。\n]+(?:。|$)", source_text):
-        quote = sentence.group().strip()
-        start = sentence.start() + len(sentence.group()) - len(sentence.group().lstrip())
-        match = re.match(
-            prefix + r"(?:自|于)\s*(\d{4})[年-](\d{1,2})[月-](\d{1,2})日?\s*起?(?:施行|实施|执行|生效)(?=$|[。；;，,])",
-            quote,
-        )
-        if match and not facts["valid_from"]["value"]:
-            try:
-                value = date(*map(int, match.groups())).isoformat()
-            except ValueError:
+def date_choice_id(fact: dict, source_id: str) -> str:
+    basis = f"{source_id}:{fact['start']}:{fact['end']}"
+    return "date-" + hashlib.sha256(basis.encode()).hexdigest()
+
+
+def changeset_document_facts(conn: db.Connection, proposal: dict, source: dict, *, anchor: bool = False) -> dict:
+    stored = (proposal.get("stats") or {}).get("document_facts") or {}
+    if "valid_from_candidates" in stored:
+        return stored
+    # A.1 only stored the first candidate. A read can offer exact offsets
+    # from the frozen source without writing anchors under read permissions.
+    material_id = proposal["source_refs"][0]["material_id"]
+    if anchor:
+        facts = anchored_document_facts(conn, material_id, source)
+    else:
+        facts = document_facts(source["text"])
+        for fact in [facts["scope"], *facts["valid_from_candidates"]]:
+            if not fact["value"]:
                 continue
-            facts["valid_from"] = {
-                "value": value,
-                "origin": "document",
-                "quote": match.group(),
-                "start": start,
-                "end": start + len(match.group()),
-            }
-        scope = re.fullmatch(prefix + r"适用于(.+?)[。]?", quote)
-        if scope and not facts["scope"]["value"]:
-            facts["scope"] = {
-                "value": scope.group(1),
-                "origin": "document",
-                "quote": quote,
-                "start": start,
-                "end": start + len(quote),
-            }
+            row = conn.execute(
+                "SELECT id FROM source_anchors WHERE material_id=? AND source_version=? AND start=? AND end=?",
+                (material_id, source["id"], fact["start"], fact["end"]),
+            ).fetchone()
+            fact.update(material_id=material_id, source_version=source["id"])
+            if row:
+                fact["anchor_id"] = row["id"]
+        for option in facts["valid_from_candidates"]:
+            option["candidate_id"] = date_choice_id(option, source["id"])
+        if facts["valid_from"]["value"]:
+            facts["valid_from"] = dict(facts["valid_from_candidates"][0])
+    for key in ("valid_from", "scope"):
+        if (stored.get(key) or {}).get("origin") == "manual":
+            facts[key] = dict(stored[key])
     return facts
+
+
+def needs_legacy_projection(proposal: dict) -> bool:
+    stats = proposal.get("stats") or {}
+    return bool(stats.get("legacy_fact_items")) or "valid_from_candidates" not in (stats.get("document_facts") or {})
+
+
+def legacy_document(conn: db.Connection, proposal: dict) -> tuple[dict, dict] | None:
+    if not needs_legacy_projection(proposal):
+        return None
+    ref = proposal["source_refs"][0]
+    source = provenance.get_source_version(conn, ref["material_id"], ref.get("source_version"))
+    return source, changeset_document_facts(conn, proposal, source, anchor=True)
+
+
+def align_legacy_item(item: dict, originals: dict, text: str, facts: dict) -> None:
+    after = item["after_data"]
+    origins = after.get("field_provenance") or {}
+    original = originals.get(after.get("id"))
+    grounded = None
+    if not item.get("applied_entity_id") and original and not original.get("field_provenance"):
+        grounded = ground_candidate({**original, "source_quotes": item["evidence"]}, text, facts)
+        anchor_candidate_fields(grounded, item["evidence"])
+    for key, record in list(origins.items()):
+        if not isinstance(record, dict):
+            continue
+        if record.get("origin") == "document":
+            if item.get("applied_entity_id"):
+                origins[key] = {**record, "origin": "system", "level": "document"}
+            elif key in {"valid_from", "scope"}:
+                after[key] = facts[key]["value"]
+                if after[key]:
+                    origins[key] = dict(facts[key])
+                else:
+                    origins.pop(key)
+        elif record.get("origin") == "source":
+            if grounded is not None and key in grounded:
+                after[key] = grounded[key]
+                if key in grounded["field_provenance"]:
+                    origins[key] = grounded["field_provenance"][key]
+                else:
+                    origins.pop(key)
+            elif after.get("extraction_mode") == "local":
+                origins[key] = {**record, "origin": "system"}
 
 
 def anchored_document_facts(conn: db.Connection, material_id: str, source: dict) -> dict:
     facts = document_facts(source["text"])
-    for fact in facts.values():
+    for fact in [facts["scope"], *facts["valid_from_candidates"]]:
         if fact["value"]:
             ref = provenance.normalize_source_ref(conn, material_id, {**fact, "source_version": source["id"]})
             fact.update({key: ref[key] for key in ("anchor_id", "source_version", "material_id")})
+    for option in facts["valid_from_candidates"]:
+        option["candidate_id"] = option["anchor_id"]
+    if facts["valid_from"]["value"]:
+        facts["valid_from"] = dict(facts["valid_from_candidates"][0])
     return facts
 
 
-def source_exception(own: str) -> tuple[str, bool]:
-    """Return a literal exception, or flag a possible alternative for individual review."""
-    unresolved = False
-    for clause in re.split(r"[。；;\n]", own):
-        # Explicit exclusion, relaxation or substitution of an obligation.
-        if re.search(
-            r"确需|(?<!不)但|另有规定|免予|免于|豁免|"
-            r"(?<![清消排扣解剔去切])除(?:外|非|[^，,。；;\n]{1,100}?外)|"
-            r"(?:可以|可|准予)免除|不受[^，,。；;\n]{1,80}?限制|"
-            r"(?:无|毋|勿)(?:需|须)|不(?:必|需要|用再|再要求)|"
-            r"(?:可以|可|允许)(?:不(?:经|再|予|履行|提交|执行)|省略|跳过|免[办审核报签检交缴])|不适用",
-            clause,
-        ):
-            return clause.strip(), False
-        # A separate special procedure can be described without an exemption verb.
-        # Its presence is enough to withhold a bulk negative; the reviewer determines the value.
-        if re.search(r"特殊(?:情况|情形|事项)|紧急|抢险|抢救|救灾|另行|另按|酌情|视情|变通|绿色通道", clause):
-            unresolved = True
-    negative_branch = re.search(
-        r"(?<=[；;])\s*[^。；;\n]{0,60}(?:不|未|缺|无法|不能|不足|争议|异议|逾期)[^。；;\n]{0,60}?的[，,][^。；;\n]{1,160}",
-        own,
-    )
-    return (negative_branch.group().strip(), False) if negative_branch else ("", unresolved)
+def anchor_candidate_fields(candidate: dict, evidence: list[dict]) -> None:
+    for field in candidate.get("field_provenance", {}).values():
+        for origin in [field, *field.get("parts", [])]:
+            if origin.get("origin") not in {"source", "system"} or origin.get("level") == "document":
+                continue
+            ref = next((ref for ref in evidence if origin.get("quote") and origin["quote"] in ref["quote"]), None)
+            if ref:
+                origin.update({key: ref[key] for key in ("anchor_id", "source_version", "material_id")})
+                if isinstance(ref.get("start"), int):
+                    start = ref["start"] + ref["quote"].index(origin["quote"])
+                    origin.update(start=start, end=start + len(origin["quote"]))
 
 
 def enrich_candidate(conn: db.Connection, candidate: dict, source_text: str, facts: dict | None = None) -> dict:
@@ -832,125 +1067,6 @@ def source_confirmation_limits(item: dict, candidates: dict, text: str, facts: d
     }
 
 
-def ground_candidate(candidate: dict, source_text: str, facts: dict | None = None) -> dict:
-    """Item facts must be literal own-quote facts; only file scope/date are shared."""
-    result = dict(candidate)
-    facts = facts if facts is not None else document_facts(source_text)
-    quotes = [
-        item["quote"]
-        for item in (candidate.get("source_quotes") or [])
-        if isinstance(item, dict) and isinstance(item.get("quote"), str) and item["quote"] in source_text
-    ]
-    local_quotes = []
-    ambiguous = False
-    for quote in quotes:
-        pieces = re.split(r"(?=第[一二三四五六七八九十百零\d]+条)", quote)
-        articles = [piece for piece in pieces if re.match(r"第[一二三四五六七八九十百零\d]+条", piece)]
-        if len(articles) < 2:
-            local_quotes.append(quote)
-            continue
-        content = str(candidate.get("content") or "")
-        grounded = [piece.strip() for piece in articles if piece.strip() in content]
-        if not grounded and content.strip() and content.strip() in quote:
-            grounded = [content.strip()]
-        if not grounded:
-            ambiguous = True
-            # A model's field may still be a supported literal in its own
-            # content, but a neighbouring article is never an automatic default.
-            values = [candidate.get(key) for key in ("scope", "exceptions")]
-            values += candidate.get("conditions") if isinstance(candidate.get("conditions"), list) else []
-            grounded = [
-                value for value in values if isinstance(value, str) and value and value in quote and value in content
-            ]
-        local_quotes.extend(grounded)
-    quotes = local_quotes
-    own = "\n".join(quotes)
-    origins = {}
-    # A generated paraphrase is not a source fact. Keep only a literal own-quote
-    # definition, otherwise use a short original sentence (never model content).
-    for field in ("definition", "unit", "grain", "boundary"):
-        value = result.get(field)
-        support = next((quote for quote in quotes if isinstance(value, str) and value.strip() and value in quote), "")
-        if not support:
-            value = ""
-            if field == "definition" and quotes:
-                value = re.split(r"[。；;\n]", quotes[0], maxsplit=1)[0].strip()[:250]
-                support = quotes[0] if value else ""
-        result[field] = value
-        if support:
-            origins[field] = {"origin": "source", "quote": support}
-    for field in ("scope", "exceptions"):
-        value = result.get(field)
-        value = value if isinstance(value, str) and value.strip() and any(value in quote for quote in quotes) else ""
-        if not value:
-            pattern = (
-                r"(?:适用范围[：:]|本(?:制度|办法|规定|细则)适用于)([^。\n；]+)"
-                if field == "scope"
-                else r"(?:例外(?:情形)?[：:])([^。\n；]+)"
-            )
-            match = re.search(pattern, own)
-            value = match.group(1).strip() if match else ""
-        if field == "exceptions" and (not value or value in {"无例外", "没有例外"}):
-            literal, unresolved = source_exception(own)
-            value = literal or ("" if unresolved else value)
-            ambiguous |= unresolved
-        result[field] = value
-        if value:
-            origins[field] = {"origin": "source", "quote": next(quote for quote in quotes if value in quote)}
-    conditions = result.get("conditions")
-    conditions = (
-        [
-            value
-            for value in conditions
-            if isinstance(value, str) and value.strip() and any(value in quote for quote in quotes)
-        ]
-        if isinstance(conditions, list)
-        else []
-    )
-    if not conditions:
-        match = re.search(r"适用条件[：:]([^。\n；]+)", own)
-        if match:
-            conditions = [match.group(1).strip()]
-    # Separate branches can have different triggers, including two amounts in the same article.
-    conditional = r"(?:如果|假如|若|一旦|倘若|倘使|凡是|凡|如(?:遇|有|需|发现|发生|无法|未|不)|当(?!(?:事人|前|月|地)))"
-    for clause in re.split(r"[。；;\n]", own):
-        clause = re.sub(r"^\s*第[一二三四五六七八九十百零\d]+条\s*", "", clause)
-        if any(value in clause for value in conditions):
-            continue
-        introduced = re.search(r"(?:^|(?<=[，,]))\s*(" + conditional + r"[^，,。；;\n]{1,100})(?=[，,])", clause)
-        if introduced:
-            conditions.append(introduced.group(1))
-            continue
-        trigger = re.search(
-            r"(?:在|当|若|如果)[^，,。；;\n]{1,80}?(?:后|时|前)|[^，,。；;\n]{1,80}的(?=[，,])|(?:期满|完成|通过|收到)[^，,。；;\n]{0,60}?(?:后|时)",
-            clause,
-        )
-        if not trigger:
-            trigger = re.search(
-                r"(?:发现|存在|发生|出现|遇到|未经|未按|未取得|不符合|不满足|符合|满足)[^，。；;\n]{1,80}?(?:的|者)(?=不予|不得|不应|不再|应|须|必须|予以)",
-                clause,
-            )
-        if trigger:
-            conditions.append(trigger.group().strip())
-        elif re.search(r"(?:^|[，,])\s*" + conditional, clause):
-            # An explicit conditional without a reliable boundary needs a human reading.
-            ambiguous = True
-    result["bulk_confirmation_blocked"] = ambiguous
-    result["conditions"] = conditions
-    if conditions:
-        origins["conditions"] = {"origin": "source", "quote": next(quote for quote in quotes if conditions[0] in quote)}
-    if not result["scope"] and facts["scope"]["value"]:
-        result["scope"] = facts["scope"]["value"]
-        origins["scope"] = dict(facts["scope"])
-    # Never trust candidate/model dates or unrelated dated passages.
-    result["valid_from"] = facts["valid_from"]["value"]
-    result["valid_to"] = ""
-    if result["valid_from"]:
-        origins["valid_from"] = dict(facts["valid_from"])
-    result["field_provenance"] = origins
-    return result
-
-
 def suggest_applicability(conn: db.Connection, result: dict) -> None:
     root = conn.execute(
         "SELECT id,title FROM entities WHERE id=? AND kind='organization'", (require_context().tenant_id,)
@@ -967,6 +1083,7 @@ def suggest_applicability(conn: db.Connection, result: dict) -> None:
     target = matches[0] if matches else root
     if target:
         result.update(applies_to_id=target["id"], applies_to_title=target["title"])
+        result.setdefault("field_provenance", {})["applies_to_id"] = {"origin": "system", "quote": ""}
 
 
 def candidate_meta(candidate: dict) -> dict:
@@ -995,6 +1112,7 @@ def suggested_relation(conn: db.Connection, entity: dict, candidate: dict) -> di
         "label": "适用于",
         "status": "confirmed",
         "target_kind": target["kind"],
+        "target_title": target["title"],
         "payload": {"recipe_applicability": True},
     }
 
@@ -1051,6 +1169,12 @@ def preview_item(conn: db.Connection, item: dict) -> dict:
     sources = candidate_field_sources(candidate)
     for field in checks["fields"]:
         key = "subjects" if field["key"].startswith("subject:") else field["key"]
+        if key == "subjects" and relation:
+            field.update(
+                key="subject:" + relation["target"],
+                value=relation["target_title"],
+                href="/assets/" + relation["target"],
+            )
         if field["value"] and key in sources:
             field.update(sources[key])
     return checks
@@ -1105,7 +1229,13 @@ def validate_candidate(conn: db.Connection, item: dict, candidate: dict) -> None
 
 
 def candidate_field_sources(candidate: dict) -> dict:
-    origins = {"source": "source", "document": "source", "manual": "editor", "bulk_confirmation": "batch_confirmation"}
+    origins = {
+        "source": "source",
+        "system": "system",
+        "document": "system",
+        "manual": "editor",
+        "bulk_confirmation": "batch_confirmation",
+    }
     sources = {}
     allowed = {
         "rule": {"definition", "scope", "conditions", "exceptions", "valid_from", "valid_to", "subjects"},
@@ -1126,8 +1256,32 @@ def candidate_field_sources(candidate: dict) -> dict:
                 "source": origins[value["origin"]],
                 "source_quote": value.get("quote", ""),
                 "confirmed_by": value.get("confirmed_by", ""),
+                **{
+                    name: value[name]
+                    for name in ("actor_id", "method", "confirmed_at", "material_id", "source_version", "anchor_id")
+                    if value.get(name)
+                },
             }
+            if value.get("parts"):
+                sources[key]["parts"] = [
+                    {
+                        "value": part["value"],
+                        "source": part["origin"],
+                        "source_quote": part["quote"],
+                        **{
+                            name: part[name]
+                            for name in ("material_id", "source_version", "anchor_id")
+                            if part.get(name)
+                        },
+                    }
+                    for part in value["parts"]
+                    if isinstance(part, dict) and part.get("origin") in {"source", "system"} and part.get("value")
+                ]
     return sources
+
+
+def active_applications(result: dict) -> dict:
+    return {item["code"]: item["application_reason"] for item in result["checks"] if item.get("application_reason")}
 
 
 def record_candidate_sources(conn: db.Connection, entity: dict, candidate: dict) -> None:
@@ -1136,7 +1290,12 @@ def record_candidate_sources(conn: db.Connection, entity: dict, candidate: dict)
         gates.record_field_sources(conn, entity, sources)
     applications = candidate.get("waiver_applications")
     if applications is not None:
-        gates.apply_for_waiver(conn, entity, {key: value for key, value in applications.items() if value is not None})
+        if not applications and not ((get_meta(conn, entity["id"]) or {}).get("gates") or {}).get("applications"):
+            return
+        result = gates.apply_for_waiver(
+            conn, entity, {key: value for key, value in applications.items() if value is not None}
+        )
+        candidate["waiver_applications"] = active_applications(result)
 
 
 def save_adopted_candidate(conn: db.Connection, item: dict, old: dict, after: dict) -> dict:
@@ -1171,9 +1330,11 @@ def confirm_facts(ident: str, body: dict) -> dict:
     with closing(db.connect()) as conn, conn:
         proposal = lock_changeset(conn, ident)
         source_ref = proposal["source_refs"][0]
+        conn.execute("SELECT id FROM entities WHERE id=? FOR UPDATE", (source_ref["material_id"],)).fetchone()
         source = provenance.get_source_version(conn, source_ref["material_id"], source_ref.get("source_version"))
         stats = proposal.get("stats") or {}
-        facts = stats.get("document_facts") or anchored_document_facts(conn, source_ref["material_id"], source)
+        legacy_facts = needs_legacy_projection(proposal)
+        facts = changeset_document_facts(conn, proposal, source, anchor=True)
         items = [
             decode(row)
             for row in conn.execute(
@@ -1184,8 +1345,28 @@ def confirm_facts(ident: str, body: dict) -> dict:
         conditions = set(body.get("confirm_unconditional_item_ids") or [])
         if not (exceptions | conditions).issubset({item["id"] for item in items}):
             raise ApiError("NOT_FOUND")
-        date_changed = "valid_from" in body and body["valid_from"] is not None
-        if date_changed:
+        selection = body.get("valid_from_candidate_id")
+        typed_date = body.get("valid_from") is not None
+        date_changed = selection is not None or typed_date
+        if selection is not None:
+            if typed_date:
+                raise ApiError("VALIDATION_FAILED", "请从原句中选择或手工填写一个生效日期。")
+            # The client supplies only an ID. Re-derive eligible spans from this
+            # changeset's immutable document version and validate the actual anchor.
+            verified = anchored_document_facts(conn, source_ref["material_id"], source)
+            chosen = next(
+                (
+                    c
+                    for c in verified["valid_from_candidates"]
+                    if selection in {c["anchor_id"], date_choice_id(c, source["id"])}
+                ),
+                None,
+            )
+            if chosen is None:
+                raise ApiError("VALIDATION_FAILED", "请选择本方案原文中列出的施行日期候选句。")
+            facts["valid_from_candidates"] = verified["valid_from_candidates"]
+            facts["valid_from"] = {**chosen, **manual_provenance(), "method": "selection", "quote": chosen["quote"]}
+        elif typed_date:
             value = body["valid_from"]
             if value:
                 try:
@@ -1198,6 +1379,8 @@ def confirm_facts(ident: str, body: dict) -> dict:
         material = materials.material(conn, source_ref["material_id"])
         candidates = {candidate["id"]: candidate for candidate in material["payload"].get("candidates", [])}
         for item in items:
+            if legacy_facts:
+                align_legacy_item(item, candidates, source["text"], facts)
             if (
                 item["after_data"]["kind"] != "rule"
                 or item["decision"] == "rejected"
@@ -1214,10 +1397,11 @@ def confirm_facts(ident: str, body: dict) -> dict:
                 old = db.entity_json(row) if row else None
                 if not old or old["status"] not in {"draft", "returned"}:
                     continue
+                guard_adopted_write(conn, old)
                 expected = body.get("expected_versions", {}).get(item["id"], item["applied_version"])
                 if old["version"] != expected:
                     raise stale_draft()
-            after = current_candidate(conn, item, old) if old else dict(item["after_data"])
+            after = current_candidate(conn, item, old, include_applications=True) if old else dict(item["after_data"])
             origins = dict(after.get("field_provenance") or {})
             if date_changed:
                 after["valid_from"] = facts["valid_from"]["value"]
@@ -1237,7 +1421,6 @@ def confirm_facts(ident: str, body: dict) -> dict:
                     after[key] = value
                     origins[key] = manual_provenance("bulk_confirmation")
             after["field_provenance"] = origins
-            after["waiver_applications"] = {}
             validate_candidate(conn, item, after)
             if old:
                 updated = save_adopted_candidate(conn, item, old, after)
@@ -1254,5 +1437,7 @@ def confirm_facts(ident: str, body: dict) -> dict:
                 (materials.dump(after), materials.dump(validation), require_context().user_id, db.now(), item["id"]),
             )
         stats["document_facts"] = facts
+        if legacy_facts:
+            stats["legacy_fact_items"] = True
         conn.execute("UPDATE changesets SET stats=?,updated_at=? WHERE id=?", (materials.dump(stats), db.now(), ident))
     return get(ident)

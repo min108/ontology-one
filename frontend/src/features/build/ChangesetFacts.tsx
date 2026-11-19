@@ -1,11 +1,11 @@
-import { Button, Checkbox, DatePicker } from 'antd';
+import { Button, Checkbox, DatePicker, Radio } from 'antd';
 import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Proposal, ProposalItem, ConfirmFacts } from '../../api/generated/types';
-import { FoldRow, SourceViewer } from '../../ui';
+import { FoldRow } from '../../ui';
 import { copy, sourceHref } from './shared';
-import { sentence, isSubmitted, isHandledElsewhere } from './model';
+import { sentence, isSubmitted, isHandledElsewhere, isAnchoredEvidence } from './model';
 import styles from './Build.module.css';
 
 export const validCalendarDate = (value: string) =>
@@ -21,39 +21,95 @@ export function ChangesetFacts({
   onConfirm: (body: ConfirmFacts) => void;
 }) {
   const fact = proposal.document_facts?.valid_from;
+  const candidates = proposal.document_facts?.valid_from_candidates || [];
+  const onlyDateRecognized =
+    candidates.length === 1 &&
+    fact?.origin === 'system' &&
+    !!fact.value &&
+    fact.value === candidates[0].value;
+  const savedAnchor = fact?.method === 'selection' ? fact.candidate_id || fact.anchor_id || '' : '';
+  const [candidateId, setCandidateId] = useState(savedAnchor);
   const [date, setDate] = useState(fact?.value || '');
+  const origin =
+    fact?.method === 'selection'
+      ? copy.r4a2_origin_selection
+      : fact?.origin === 'manual'
+        ? copy.r4a1_origin_manual
+        : fact?.origin === 'source'
+          ? copy.r4a1_origin_source
+          : copy.r4a2_origin_system;
+  const changed = candidateId ? candidateId !== savedAnchor : date !== (fact?.value || '');
   return (
-    <div data-document-facts className={styles['document-facts']}>
-      <label htmlFor="file-valid-from">{copy.r4a1_file_date}</label>
-      <DatePicker
-        id="file-valid-from"
-        data-file-valid-from
-        aria-label={copy.r4a1_file_date}
-        value={validCalendarDate(date) ? dayjs(date) : null}
-        disabled={disabled}
-        placeholder={copy.r4_rule_date_hint}
-        onChange={(value) => setDate(value?.format('YYYY-MM-DD') || '')}
-      />
-      <Button
-        disabled={disabled || (!!date && !validCalendarDate(date)) || date === (fact?.value || '')}
-        onClick={() =>
-          onConfirm({
-            changeset_id: proposal.id,
-            valid_from: date,
-            expected_versions: Object.fromEntries(
-              proposal.items
-                .filter((item) => item.applied_version)
-                .map((item) => [item.id, item.applied_version!]),
-            ),
-          })
-        }
-      >
-        {copy.r4a1_file_date_apply}
-      </Button>
-      {date && !validCalendarDate(date) && <span role="alert">{copy.r4a1_invalid_date}</span>}
-      <span className={styles.muted}>
-        {fact?.quote || (fact?.value ? copy.r4a1_origin_manual : copy.r4a1_file_date_missing)}
-      </span>
+    <div data-document-facts className={styles['file-facts']}>
+      <div className={styles['document-facts']}>
+        <label htmlFor="file-valid-from">{copy.r4a1_file_date}</label>
+        <DatePicker
+          id="file-valid-from"
+          data-file-valid-from
+          aria-label={copy.r4a1_file_date}
+          value={validCalendarDate(date) ? dayjs(date) : null}
+          disabled={disabled}
+          placeholder={copy.r4_rule_date_hint}
+          onChange={(value) => {
+            setCandidateId('');
+            setDate(value?.format('YYYY-MM-DD') || '');
+          }}
+        />
+        <Button
+          disabled={disabled || (!!date && !validCalendarDate(date)) || !changed}
+          onClick={() =>
+            onConfirm({
+              changeset_id: proposal.id,
+              ...(candidateId ? { valid_from_candidate_id: candidateId } : { valid_from: date }),
+              expected_versions: Object.fromEntries(
+                proposal.items
+                  .filter((item) => item.applied_version)
+                  .map((item) => [item.id, item.applied_version!]),
+              ),
+            })
+          }
+        >
+          {copy.r4a1_file_date_apply}
+        </Button>
+        {date && !validCalendarDate(date) && <span role="alert">{copy.r4a1_invalid_date}</span>}
+        {fact?.value ? (
+          <span className={styles.muted} data-document-date-origin>
+            {origin}
+            {fact.confirmed_by && ` · ${fact.confirmed_by}`}
+          </span>
+        ) : (
+          !candidates.length && <span className={styles.muted}>{copy.r4a1_file_date_missing}</span>
+        )}
+        {fact?.quote &&
+          (isAnchoredEvidence(fact) ? (
+            <Link to={sourceHref(fact)}>{fact.quote}</Link>
+          ) : (
+            <span className={styles.muted}>{fact.quote}</span>
+          ))}
+      </div>
+      {candidates.length > 0 && !onlyDateRecognized && (
+        <fieldset className={styles['date-candidates']}>
+          <legend>{copy.r4a2_date_candidates}</legend>
+          {candidates.map((candidate) => (
+            <div className={styles['date-option']} key={candidate.candidate_id || candidate.anchor_id}>
+              <Radio
+                name="valid-from-candidate"
+                checked={candidateId === (candidate.candidate_id || candidate.anchor_id)}
+                disabled={disabled}
+                onChange={() => {
+                  setCandidateId(candidate.candidate_id || candidate.anchor_id || '');
+                  setDate(candidate.value || '');
+                }}
+              >
+                {candidate.quote}
+              </Radio>
+              {isAnchoredEvidence(candidate) && (
+                <Link to={sourceHref(candidate)}>{copy.r3_main_source_page}</Link>
+              )}
+            </div>
+          ))}
+        </fieldset>
+      )}
     </div>
   );
 }
@@ -102,7 +158,7 @@ export function ChangesetOmissions({
     <>
       {groups
         .filter((group) => group.ids.length)
-        .map((group, index) => (
+        .map((group) => (
           <OmissionGroup
             key={proposal.id + group.field}
             proposalId={proposal.id}
@@ -111,13 +167,27 @@ export function ChangesetOmissions({
             label={group.label}
             action={group.action}
             selector={group.selector}
-            showHint={index === 0}
             disabled={disabled}
             onConfirm={onConfirm}
           />
         ))}
     </>
   );
+}
+
+function omissionSnapshot(item: ProposalItem) {
+  return JSON.stringify([
+    item.id,
+    item.applied_version,
+    item.after_data.title,
+    item.after_data.content,
+    item.evidence.map(({ material_id, source_version, anchor_id, quote }) => [
+      material_id,
+      source_version,
+      anchor_id,
+      quote,
+    ]),
+  ]);
 }
 
 function OmissionGroup({
@@ -127,7 +197,6 @@ function OmissionGroup({
   label,
   action,
   selector,
-  showHint,
   disabled,
   onConfirm,
 }: {
@@ -137,48 +206,44 @@ function OmissionGroup({
   label: string;
   action: string;
   selector: string;
-  showHint: boolean;
   disabled: boolean;
   onConfirm: (body: ConfirmFacts) => void;
 }) {
-  const [excluded, setExcluded] = useState<string[]>([]);
-  const selected = items.filter((item) => !excluded.includes(item.id));
+  const [checks, setChecks] = useState<Record<string, string>>({});
+  const selected = items.filter((item) => checks[item.id] === omissionSnapshot(item));
   return (
     <div data-omission-group={selector}>
-      <FoldRow
-        title={sentence(label, { count: items.length })}
-        summary={showHint ? copy.r4a1_omissions_hint : null}
-        defaultOpen
-      >
+      <FoldRow title={sentence(label, { count: items.length })} summary={null}>
+        <p className={styles.muted}>{copy.r4a1_omissions_hint}</p>
         <ul className={styles.checks}>
           {items.map((item) => (
             <li key={item.id} data-omission-item={item.id} className={styles['omission-row']}>
               <Checkbox
-                checked={!excluded.includes(item.id)}
+                checked={selected.includes(item)}
                 disabled={disabled}
                 onChange={(event) =>
-                  setExcluded((old) =>
-                    event.target.checked ? old.filter((id) => id !== item.id) : [...old, item.id],
-                  )
+                  setChecks((old) => ({
+                    ...old,
+                    [item.id]: event.target.checked ? omissionSnapshot(item) : '',
+                  }))
                 }
               >
                 {item.after_data.title}
               </Checkbox>
-              <details className={styles['omission-evidence']}>
-                <summary>{copy.r4a1_source_sentence}</summary>
+              <div className={styles['omission-evidence']}>
                 {item.evidence.some((source) => source.quote.trim()) ? (
                   item.evidence
                     .filter((source) => source.quote.trim())
                     .map((source, index) => (
                       <div key={index}>
-                        <SourceViewer text={source.quote} quote={source.quote} />
+                        <blockquote className={styles.quote}>{source.quote}</blockquote>
                         <Link to={sourceHref(source)}>{copy.r3_main_source_page}</Link>
                       </div>
                     ))
                 ) : (
                   <p>{copy.r4a1_omission_quote_missing}</p>
                 )}
-              </details>
+              </div>
             </li>
           ))}
         </ul>

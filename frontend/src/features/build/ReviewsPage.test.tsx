@@ -357,9 +357,8 @@ it('shows source-tagged facts and application reasons again in publication confi
     },
   ];
   open();
-  expect(await screen.findByText('2026-01-01')).not.toBeVisible();
-  fireEvent.click(screen.getByText(terms.labels.r4a1_legacy_facts));
-  expect(screen.getByText('2026-01-01')).toBeVisible();
+  expect(await screen.findByText('2026-01-01')).toBeVisible();
+  expect(screen.getByText(terms.labels.r4a1_legacy_facts).closest('details')).toHaveAttribute('open');
   expect(screen.getByText(/原件尚在归档，请先核对经办记录/)).toBeVisible();
   const approve = screen.getByRole('button', { name: terms.actions.catalog_2_5 });
   // A builder application is not a reviewer waiver.
@@ -375,6 +374,39 @@ it('shows source-tagged facts and application reasons again in publication confi
   expect(within(dialog).getByText(/已核对经办记录，批准本次出处豁免/)).toBeVisible();
 });
 
+it('keeps the submitter in the detail and the row hint, and displays it in every professional queue row', async () => {
+  const { container } = open();
+  await screen.findByRole('heading', { name: current.entity.title });
+  const queueRow = container.querySelector('[data-review-item-id="rule-1"]') as HTMLElement;
+  expect(queueRow).toHaveAccessibleDescription(terms.labels.r2_submitter + ' · ' + current.submitter);
+  expect(queueRow).not.toHaveTextContent(current.submitter);
+  expect(container.querySelector('[data-review-id="rule-1"] dd')).toHaveTextContent(current.submitter);
+  act(() => useUiStore.setState({ viewMode: 'professional' }));
+  expect(queueRow).toHaveTextContent(current.submitter);
+});
+it('opens the next review’s facts when the reviewer collapsed those of the previous item', async () => {
+  const next = row();
+  next.entity.id = 'rule-other';
+  next.entity.title = 'Another payment rule';
+  for (const [index, review] of [current, next].entries()) {
+    review.gates = gates();
+    review.gates.fields = [
+      {
+        key: 'valid_from',
+        label: legacyFixture.dateLabel,
+        value: `2026-01-0${index + 1}`,
+        source: 'system',
+      },
+    ];
+  }
+  vi.mocked(api).mockResolvedValue({ data: { items: [current, next], total: 2 } } as never);
+  const { container } = open();
+  expect(await screen.findByText('2026-01-01')).toBeVisible();
+  fireEvent.click(screen.getByText(terms.labels.r4a1_legacy_facts));
+  expect(screen.getByText('2026-01-01')).not.toBeVisible();
+  fireEvent.click(container.querySelector('[data-review-item-id="rule-other"]')!);
+  expect(await screen.findByText('2026-01-02')).toBeVisible();
+});
 it('keeps per-check waiver and refusal decisions disjoint when returning an application', async () => {
   current.gates = gates(['QG1', 'QG3']);
   current.gates.checks[0].application_reason = legacyFixture.reviewApplication;

@@ -5,6 +5,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../api/client';
 import { terms } from '../../i18n/zh-CN';
 import { sentence } from '../build/model';
+import { gates } from '../build/gateFixtures';
 import { useUiStore } from '../../state/ui';
 import { testQuery, testSession } from '../build/testQuery';
 import ElementPage, { type ElementDetail } from './ElementPage';
@@ -266,4 +267,21 @@ it('carries known extraction origin into published and draft business cards', as
   await openElement(value);
   expect(screen.getByText(terms.labels.r3_ui_ai_reviewed)).toBeVisible();
   expect(screen.queryByText('online')).not.toBeInTheDocument();
+});
+
+it('focuses the repair panel after a legacy repair link loads its editable draft', async () => {
+  const value = detail();
+  value.can_edit = true;
+  value.entity.status = 'draft';
+  value.gates = gates(['QG2']);
+  const scroll = vi.fn();
+  Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
+  try {
+    await openElement(value, '/ontology/elements/rule_private_id?repair=1');
+    const panel = screen.getByRole('region', { name: terms.labels.r4a1_legacy_repair_title });
+    expect(panel).toHaveFocus();
+    expect(scroll.mock.instances).toContain(panel);
+  } finally {
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+  }
 });

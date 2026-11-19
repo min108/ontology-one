@@ -53,7 +53,33 @@ class ExtractionRecovery(unittest.IsolatedAsyncioTestCase):
         bad["candidates"][0]["source_chunk_ids"] = ["other-document"]
         with self.assertRaisesRegex(ValueError, "不存在的原文位置"):
             await self.extract([bad, bad])
-        self.assertEqual(self.summary, {"retried_batches": 1, "discarded_candidates": 2})
+        self.assertEqual(self.summary, {"retried_batches": 1, "discarded_candidates": 1})
+
+    async def test_repaired_retry_replaces_only_its_own_discard_count(self) -> None:
+        self.summary["discarded_candidates"] = 3  # final results from earlier batches
+        bad = response()
+        bad["candidates"][0]["source_quotes"][0]["quote"] = "没有出现在原文中的句子。"
+        (accepted, _), calls = await self.extract([bad, response()])
+        self.assertEqual(calls, 2)
+        self.assertEqual(len(accepted), 1)
+        self.assertEqual(self.summary, {"retried_batches": 1, "discarded_candidates": 3})
+
+    async def test_adjacent_batches_report_a_rejected_context_source_once_even_if_the_owner_batch_accepts_it(
+        self,
+    ) -> None:
+        mixed = response()
+        wrong = copy.deepcopy(mixed["candidates"][0])
+        wrong["title"] = "另一项建议"
+        wrong["source_quotes"][0]["quote"] = "模型改写的引文未通过。"
+        mixed["candidates"].append(wrong)
+        seen, discarded = set(), []
+        with patch("backend.ai.complete", AsyncMock(side_effect=[response(), mixed, mixed])):
+            for _ in range(3):
+                await materials._extract_online_batch(
+                    "document", GROUP, {}, self.summary, seen_discarded=seen, discarded=discarded
+                )
+        self.assertEqual(self.summary, {"retried_batches": 0, "discarded_candidates": 1})
+        self.assertEqual({cid for sources in discarded for cid in sources}, {"chunk-1"})
 
     async def test_unavailable_provider_is_not_retried_as_bad_model_output(self) -> None:
         model = AsyncMock(side_effect=AIError("AI_RATE_LIMIT"))

@@ -256,7 +256,8 @@ def detail(eid: str, version: int = 0):
         return d
 
 
-def _guard_edit(c, old, b):
+def guard_generic_edit(c, old, b, *, dispatch_work_record=False):
+    """Check ownership on the locked entity before a generic writer changes content or lifecycle."""
     from ...skills import guard_generic_entity
 
     guard_generic_entity(c, old, b)
@@ -274,6 +275,8 @@ def _guard_edit(c, old, b):
         raise HTTPException(400, "请从专项事项与依据工作面修改，确保归属、原文引用和办理状态一致。")
     if old["payload"].get("active_asset") is False:
         raise HTTPException(409, "这是保留追溯的历史条目。请打开整合后的成果开展修订。")
+    if not dispatch_work_record and old["kind"] in {"task", "project"}:
+        raise HTTPException(400, "请通过任务或专题工作档案修改。")
 
 
 @router.patch("/api/entities/{eid}")
@@ -283,7 +286,7 @@ async def edit(eid: str, request: Request):
         old = entity_json(c.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (eid,)).fetchone())
         if not old:
             raise HTTPException(404, "未找到内容。")
-        _guard_edit(c, old, b)
+        guard_generic_edit(c, old, b, dispatch_work_record=True)
         if old["kind"] == "task":
             from ...projects import edit_task
 
@@ -310,9 +313,7 @@ def _edit_entity(eid, b, *, repair_gates=False):
         elif repair_gates and old["kind"] == "skill" and "waiver_applications" in b and skills.is_managed_skill(c, old):
             skills.apply_gate_notes(c, old, b)
         else:
-            _guard_edit(c, old, b)
-            if old["kind"] in {"task", "project"}:
-                raise HTTPException(400, "请通过任务或专题工作档案修改。")
+            guard_generic_edit(c, old, b)
             element_kernel.update_draft(c, old, b)
     return detail(eid)
 

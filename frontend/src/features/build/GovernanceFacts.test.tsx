@@ -61,3 +61,44 @@ it('shows actual effective date, provenance, evidence and applicable subject lin
   expect(screen.queryByText(terms.labels.r4a1_legacy_origin_source)).not.toBeInTheDocument();
   expect(screen.getByText(terms.labels.r4a1_legacy_origin_missing, { selector: 'p' })).toBeVisible();
 });
+
+it('distinguishes system recognition from verbatim extraction and identifies a reviewer-selected source sentence', () => {
+  const result = gates();
+  result.fields = [
+    {
+      key: 'conditions',
+      label: '条件',
+      value: '系统识别的条件值',
+      source: 'system',
+      source_quote: '条件的原句。',
+    },
+    {
+      key: 'valid_from',
+      label: '生效日期',
+      value: '2026-01-01',
+      source: 'editor',
+      method: 'selection',
+      source_quote: '新版自该日起施行。',
+      material_id: 'M-1',
+      anchor_id: 'selected-anchor',
+      source_version: 'V-3',
+      confirmed_by: '李某',
+    },
+  ];
+  const { container } = render(
+    <MemoryRouter>
+      <GovernanceFacts gates={result} />
+    </MemoryRouter>,
+  );
+  expect(
+    container.querySelector('[data-governance-field="conditions"] [data-fact-origin]'),
+  ).toHaveTextContent('系统识别');
+  expect(screen.queryByText(terms.labels.r4a1_legacy_origin_source)).not.toBeInTheDocument();
+  expect(container.querySelector('[data-governance-field="valid_from"]')).toHaveTextContent(
+    '核对人选择 · 李某',
+  );
+  expect(screen.getByRole('link', { name: '新版自该日起施行。' })).toHaveAttribute(
+    'href',
+    '/materials/M-1?anchor=selected-anchor&source_version=V-3',
+  );
+});

@@ -271,6 +271,8 @@ def main(round_name: str = "r3") -> int:
                     "extraction_summary",
                     "document_date",
                     "submitted_count",
+                    "submission_share",
+                    "source_sha256",
                     "remaining_count",
                     "pending_count",
                     "failure",

@@ -71,8 +71,9 @@ def entity_dict(row: Any) -> dict:
     return result
 
 
-def material(conn, material_id: str) -> dict:
-    row = conn.execute("SELECT * FROM entities WHERE id=? AND kind='material'", (material_id,)).fetchone()
+def material(conn, material_id: str, *, for_update: bool = False) -> dict:
+    sql = "SELECT * FROM entities WHERE id=? AND kind='material'" + (" FOR UPDATE" if for_update else "")
+    row = conn.execute(sql, (material_id,)).fetchone()
     if not row:
         raise HTTPException(404, "未找到这份材料")
     return entity_dict(row)
@@ -948,9 +949,9 @@ class ReadingConfirm(BaseModel):
 def reading_confirm(material_id: str, body: ReadingConfirm):
     with closing(connect()) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
+        item = material(conn, material_id, for_update=True)
         draft, source = _reading_draft(conn, material_id)
         _check_revision(draft, body.revision)
-        item = material(conn, material_id)
         if draft["pending_ai"].get("groups"):
             raise HTTPException(409, "仍有未处理的 AI 建议，请先采纳或放弃建议再确认")
         rid = _confirm_reading(conn, item, draft, source, body.reason)
@@ -1163,7 +1164,7 @@ async def segment_preview(material_id: str, request: SegmentRequest):
         }
         with closing(connect()) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
-            current = material(conn, material_id)
+            current = material(conn, material_id, for_update=True)
             if current["version"] != item["version"]:
                 raise HTTPException(409, "材料在分段期间发生变化，请刷新后重新预览")
             current["payload"]["segmentation_preview"] = preview
@@ -1187,7 +1188,7 @@ async def segment_preview(material_id: str, request: SegmentRequest):
 def segment_confirm(material_id: str, request: SegmentConfirm):
     with closing(connect()) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
-        item = material(conn, material_id)
+        item = material(conn, material_id, for_update=True)
         preview = item["payload"].get("segmentation_preview")
         if not preview or preview["id"] != request.preview_id:
             raise HTTPException(409, "预览已失效，请重新生成")
@@ -1500,7 +1501,20 @@ async def online_candidates(
         except ValueError as error:
             last_evidence_error = error
             if diagnostics is not None:
-                diagnostics["discarded_candidates"] += 1
+                # Retain identifiers from this input batch only. Never keep rejected
+                # model prose or follow an identifier into another document.
+                sources = entry.get("source_chunk_ids")
+                quotes = entry.get("source_quotes")
+                claimed = list(sources) if isinstance(sources, list) else []
+                if isinstance(quotes, list):
+                    claimed.extend(q.get("chunk_id") for q in quotes if isinstance(q, dict))
+                located = list(dict.fromkeys(cid for cid in claimed if isinstance(cid, str) and cid in by_id))
+                ident = (
+                    candidate_id(material_id, entry["kind"], str(entry.get("title") or ""), located)
+                    if located
+                    else None
+                )
+                diagnostics["discarded"].append((ident, located))
             continue
         if any(not isinstance(entry.get(field, []), list) for field in ("conditions", "questions")):
             raise ValueError("AI候选条件或待核问题格式不正确")
@@ -1548,16 +1562,41 @@ async def online_candidates(
     return candidates, coverage_by_id
 
 
-async def _extract_online_batch(material_id: str, group: list[dict], context: dict, summary: dict):
+async def _extract_online_batch(
+    material_id: str,
+    group: list[dict],
+    context: dict,
+    summary: dict,
+    *,
+    discarded: list[list[str]] | None = None,
+    seen_discarded: set[str] | None = None,
+):
     from .ai import AIError
 
+    diagnostics = {"discarded": []}
+
+    async def attempt():
+        return await online_candidates(material_id, group, context, diagnostics=diagnostics)
+
     try:
-        return await online_candidates(material_id, group, context, diagnostics=summary)
-    except (ValueError, AIError) as error:
-        if isinstance(error, AIError) and error.code not in {"AI_RESPONSE_INVALID", "AI_OUTPUT_INCOMPLETE"}:
-            raise
-    summary["retried_batches"] += 1
-    return await online_candidates(material_id, group, context, diagnostics=summary)
+        try:
+            return await attempt()
+        except (ValueError, AIError) as error:
+            if isinstance(error, AIError) and error.code not in {"AI_RESPONSE_INVALID", "AI_OUTPUT_INCOMPLETE"}:
+                raise
+        summary["retried_batches"] += 1
+        diagnostics["discarded"].clear()
+        return await attempt()
+    finally:
+        # Commit only the final attempt. Adjacent batches repeat source context,
+        # so use the same candidate identity as accepted results when it is known.
+        for ident, located in diagnostics["discarded"]:
+            if ident is None or seen_discarded is None or ident not in seen_discarded:
+                summary["discarded_candidates"] += 1
+                if seen_discarded is not None and ident is not None:
+                    seen_discarded.add(ident)
+            if discarded is not None:
+                discarded.append(located)
 
 
 def job_update(conn, job_id: str, status: str, progress: int, message: str, result: dict | None = None):
@@ -1625,7 +1664,10 @@ async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
         failed = 0
         generated = 0
         summary = {"retried_batches": 0, "discarded_candidates": 0, "accepted_candidates": 0, "failed_batches": 0}
+        seen_discarded: set[str] = set()
+        rejected_chunks: set[str] = set()
         for n, group in enumerate(batches):
+            discarded: list[list[str]] = []
             try:
                 reasons = {}
                 first_position, last_position = group[0]["position"], group[-1]["position"]
@@ -1641,6 +1683,8 @@ async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
                             "source_kind": item["source_kind"],
                         },
                         summary,
+                        discarded=discarded,
+                        seen_discarded=seen_discarded,
                     )
                 else:
                     found = local_candidates(material_id, context_group)
@@ -1661,8 +1705,7 @@ async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
                 failed += len(group)
                 summary["failed_batches"] += 1
             with closing(connect()) as conn, conn:
-                conn.execute("BEGIN IMMEDIATE")
-                current = material(conn, material_id)
+                current = material(conn, material_id, for_update=True)
                 payload = current["payload"]
                 existing = payload.setdefault("candidates", [])
                 ids = {c["id"] for c in existing}
@@ -1674,13 +1717,19 @@ async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
                         if mode == "online":
                             summary["accepted_candidates"] += 1
                 coverage = payload.setdefault("coverage", {})
+                rejected_here = {cid for sources in discarded for cid in sources}
+                rejected_chunks.update(rejected_here)
                 for chunk in group:
                     count = sum(chunk["id"] in c["source_chunk_ids"] for c in found)
+                    needs_review = chunk["id"] in rejected_chunks or (not count and [] in discarded)
+                    status = "failed" if error else "needs_review" if needs_review else "completed"
                     coverage[chunk["id"]] = {
-                        "status": "failed" if error else "completed",
+                        "status": status,
                         "mode": mode,
                         "candidate_count": count,
+                        "discarded_source": chunk["id"] in rejected_chunks,
                         "message": error
+                        or ("部分引文未通过核对，请对照原文确认遗漏。" if needs_review else "")
                         or reasons.get(chunk["id"])
                         or (
                             f"本轮识别 {count} 项候选，仍需人工复核完整性"
@@ -1690,8 +1739,22 @@ async def run_extraction(material_id: str, job_id: str, mode: str, retry: bool):
                         "updated_at": now(),
                     }
                     conn.execute(
-                        "UPDATE chunks SET status=? WHERE id=?", ("failed" if error else "reviewed", chunk["id"])
+                        "UPDATE chunks SET status=? WHERE id=?",
+                        ("reviewed" if status == "completed" else status, chunk["id"]),
                     )
+                # A later batch can report a gap in its preceding or following
+                # context. Preserve its original coverage count and error, if any.
+                for cid in rejected_here.difference(chunk["id"] for chunk in group):
+                    previous = coverage.get(cid)
+                    if previous:
+                        previous["discarded_source"] = True
+                        if previous["status"] == "completed":
+                            previous.update(
+                                status="needs_review",
+                                message="部分引文未通过核对，请对照原文确认遗漏。",
+                                updated_at=now(),
+                            )
+                            conn.execute("UPDATE chunks SET status='needs_review' WHERE id=?", (cid,))
                 payload["processing_mode"] = mode
                 payload["extraction_summary"] = dict(summary)
                 payload["last_extraction_at"] = now()
@@ -1805,7 +1868,7 @@ def find_candidate(item: dict, candidate_id: str) -> dict:
 def edit_candidate(material_id: str, candidate_id: str, edit: CandidateEdit):
     with closing(connect()) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
-        item = material(conn, material_id)
+        item = material(conn, material_id, for_update=True)
         candidate = find_candidate(item, candidate_id)
         if candidate.get("status") == "adopted":
             raise HTTPException(409, "该成果已采纳，请前往资产详情修订")
@@ -1849,7 +1912,7 @@ class MergeRequest(BaseModel):
 def merge_candidates(material_id: str, request: MergeRequest):
     with closing(connect()) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
-        item = material(conn, material_id)
+        item = material(conn, material_id, for_update=True)
         selected = [find_candidate(item, cid) for cid in dict.fromkeys(request.candidate_ids)]
         if len(selected) < 2:
             raise HTTPException(400, "请至少选择两项不同候选")
@@ -1890,7 +1953,7 @@ def adopt_candidate(material_id: str, candidate_id: str):
 
 
 def adopt_candidate_in_transaction(conn, material_id: str, candidate_id: str):
-    item = material(conn, material_id)
+    item = material(conn, material_id, for_update=True)
     candidate = find_candidate(item, candidate_id)
     if candidate.get("entity_id"):
         row = conn.execute("SELECT * FROM entities WHERE id=?", (candidate["entity_id"],)).fetchone()

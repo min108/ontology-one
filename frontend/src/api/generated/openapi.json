@@ -1102,6 +1102,19 @@
               }
             ],
             "title": "Valid From"
+          },
+          "valid_from_candidate_id": {
+            "anyOf": [
+              {
+                "maxLength": 191,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From Candidate Id"
           }
         },
         "required": [
@@ -1138,6 +1151,14 @@
                 "type": "null"
               }
             ]
+          },
+          "expected_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 200,
+            "title": "Expected Versions",
+            "type": "object"
           },
           "item_ids": {
             "items": {
@@ -1242,6 +1263,11 @@
             "title": "Anchor Id",
             "type": "string"
           },
+          "candidate_id": {
+            "default": "",
+            "title": "Candidate Id",
+            "type": "string"
+          },
           "confirmed_at": {
             "default": "",
             "title": "Confirmed At",
@@ -1251,6 +1277,46 @@
             "default": "",
             "title": "Confirmed By",
             "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "const": "document",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "material_id": {
+            "default": "",
+            "title": "Material Id",
+            "type": "string"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "const": "selection",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
           },
           "origin": {
             "title": "Origin",
@@ -1265,6 +1331,17 @@
             "default": "",
             "title": "Source Version",
             "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
           },
           "value": {
             "default": "",
@@ -1286,6 +1363,13 @@
           },
           "valid_from": {
             "$ref": "#/components/schemas/DocumentFact"
+          },
+          "valid_from_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentFact"
+            },
+            "title": "Valid From Candidates",
+            "type": "array"
           }
         },
         "required": [
@@ -2254,6 +2338,30 @@
             "title": "Confirmed By",
             "type": "string"
           },
+          "level": {
+            "anyOf": [
+              {
+                "const": "document",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "const": "selection",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
           "origin": {
             "title": "Origin",
             "type": "string"
@@ -2350,6 +2458,21 @@
       "GateField": {
         "additionalProperties": false,
         "properties": {
+          "actor_id": {
+            "default": "",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "anchor_id": {
+            "default": "",
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "default": "",
+            "title": "Confirmed At",
+            "type": "string"
+          },
           "confirmed_by": {
             "default": "",
             "title": "Confirmed By",
@@ -2368,9 +2491,34 @@
             "title": "Label",
             "type": "string"
           },
+          "material_id": {
+            "default": "",
+            "title": "Material Id",
+            "type": "string"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "const": "selection",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/GateFieldPart"
+            },
+            "title": "Parts",
+            "type": "array"
+          },
           "source": {
             "enum": [
               "source",
+              "system",
               "editor",
               "batch_confirmation",
               "legacy",
@@ -2382,6 +2530,11 @@
           "source_quote": {
             "default": "",
             "title": "Source Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "",
+            "title": "Source Version",
             "type": "string"
           },
           "value": {
@@ -2396,6 +2549,49 @@
           "source"
         ],
         "title": "GateField",
+        "type": "object"
+      },
+      "GateFieldPart": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "default": "",
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "material_id": {
+            "default": "",
+            "title": "Material Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "source",
+              "system"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_quote": {
+            "title": "Source Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "",
+            "title": "Source Version",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_quote"
+        ],
+        "title": "GateFieldPart",
         "type": "object"
       },
       "GateResult": {
@@ -3417,6 +3613,13 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "unformed_sources": {
+            "items": {
+              "$ref": "#/components/schemas/UnformedSource"
+            },
+            "title": "Unformed Sources",
+            "type": "array"
           }
         },
         "required": [
@@ -3941,6 +4144,36 @@
         "title": "RestoreOutput",
         "type": "object"
       },
+      "RetainSource": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_id": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "changeset_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Changeset Id",
+            "type": "string"
+          },
+          "source_version": {
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Source Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeset_id",
+          "source_version",
+          "anchor_id"
+        ],
+        "title": "RetainSource",
+        "type": "object"
+      },
       "Review": {
         "additionalProperties": true,
         "properties": {
@@ -4445,6 +4678,59 @@
           "workspace"
         ],
         "title": "SystemMetadata",
+        "type": "object"
+      },
+      "UnformedSource": {
+        "additionalProperties": true,
+        "properties": {
+          "anchor_id": {
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "end": {
+            "default": 0,
+            "title": "End",
+            "type": "integer"
+          },
+          "locator": {
+            "default": "",
+            "title": "Locator",
+            "type": "string"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "start": {
+            "default": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "unformed_reason": {
+            "enum": [
+              "invalid_quote",
+              "uncovered"
+            ],
+            "title": "Unformed Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_id",
+          "anchor_id",
+          "source_version",
+          "quote",
+          "unformed_reason"
+        ],
+        "title": "UnformedSource",
         "type": "object"
       },
       "UpgradeBackup": {
@@ -5394,6 +5680,9 @@
                     "$ref": "#/components/schemas/ConfirmFacts"
                   },
                   {
+                    "$ref": "#/components/schemas/RetainSource"
+                  },
+                  {
                     "$ref": "#/components/schemas/ReviewList"
                   },
                   {
@@ -5724,6 +6013,55 @@
           }
         },
         "summary": "Decide Items"
+      }
+    },
+    "/api/v2/changesets/{id}/sources:retain": {
+      "post": {
+        "operationId": "retain_source_api_v2_changesets__id__sources_retain_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetainSource"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retain Source"
       }
     },
     "/api/v2/changesets/{id}:apply": {

@@ -1,5 +1,5 @@
 import { Alert, Button, Descriptions } from 'antd';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { terms } from '../../i18n/zh-CN';
 import { invokeCapability } from '../../api/client';
@@ -118,6 +118,11 @@ export default function ElementPage() {
     identity = useBuildIdentity();
   return <Element key={identity.key + id} id={id} />;
 }
+function openRepair() {
+  const panel = document.getElementById('element-repair');
+  panel?.scrollIntoView({ block: 'start' });
+  panel?.focus({ preventScroll: true });
+}
 function Element({ id }: { id: string }) {
   const lifetime = useLifetime();
   const viewMode = useUiStore((state) => state.viewMode);
@@ -130,6 +135,14 @@ function Element({ id }: { id: string }) {
     ? { label: copy.r2_changeset_title, href: from }
     : { label: terms.actions.r2_card_back, href: '/ontology/catalog' };
   const query = useResource<ElementDetailResult>('/v2/elements/' + encodeURIComponent(id));
+  const canRepair =
+    !!query.data?.data.can_edit &&
+    ['draft', 'returned'].includes(query.data.data.entity.status) &&
+    !!query.data.data.gates?.checks.some((check) => check.status !== 'not_applicable');
+  const repairRequested = params.get('repair') === '1';
+  useEffect(() => {
+    if (repairRequested && canRepair) openRepair();
+  }, [id, repairRequested, canRepair]);
   if (!query.data)
     return (
       <PageLayout variant="archive" header={<PageHeader title={copy.r2_catalog_title} />}>
@@ -148,15 +161,6 @@ function Element({ id }: { id: string }) {
     const label = activityLabel(event.action);
     return label ? [{ ...event, label }] : [];
   });
-  const canRepair =
-    detail.can_edit &&
-    ['draft', 'returned'].includes(entity.status) &&
-    !!detail.gates?.checks.some((check) => check.status !== 'not_applicable');
-  const openRepair = () => {
-    const panel = document.getElementById('element-repair');
-    panel?.scrollIntoView({ block: 'start' });
-    panel?.focus();
-  };
   return (
     <PageLayout
       variant="archive"

@@ -29,7 +29,7 @@ async def http_error(request: Request, exc: HTTPException) -> Response:
     if not request.url.path.startswith("/api/v2/"):
         return await http_exception_handler(request, exc)
     return response_for(
-        from_http(exc.status_code, exc.detail if isinstance(exc.detail, str) else ""),
+        from_http(exc.status_code, exc.detail),
         getattr(request.state, "request_id", ""),
     )
 

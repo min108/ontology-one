@@ -52,6 +52,7 @@ class ManagementTests(unittest.TestCase):
                 "recipe.status",
                 "changeset.get",
                 "changeset.confirm_facts",
+                "changeset.retain_source",
                 "changeset.decide_items",
                 "changeset.apply",
                 "changeset.apply_and_submit",

@@ -109,8 +109,9 @@ def uid(prefix):
     return prefix + uuid.uuid4().hex[:12].upper()
 
 
-def session(conn, sid):
-    item = entity_json(conn.execute("SELECT * FROM entities WHERE id=? AND kind='material'", (sid,)).fetchone())
+def session(conn, sid, *, lock=False):
+    sql = "SELECT * FROM entities WHERE id=? AND kind='material'" + (" FOR UPDATE" if lock else "")
+    item = entity_json(conn.execute(sql, (sid,)).fetchone())
     if not item or item["payload"].get("record_type") != "experience_session":
         raise HTTPException(404, "未找到这次经验萃取记录")
     return item
@@ -1234,9 +1235,11 @@ class CandidateReview(AdoptRequest):
 
 @router.post("/experience/{session_id}/candidates/{candidate_id}/review")
 def review_record_candidate(session_id: str, candidate_id: str, body: CandidateReview):
+    from .security.context import require_context
+
     with closing(connect()) as c, c:
         c.execute("BEGIN IMMEDIATE")
-        e = session(c, session_id)
+        e = session(c, session_id, lock=True)
         item = candidate_item(e, candidate_id)
         request_signature = hashlib.sha256(
             json.dumps(body.model_dump(), ensure_ascii=False, sort_keys=True).encode()
@@ -1269,6 +1272,8 @@ def review_record_candidate(session_id: str, candidate_id: str, body: CandidateR
             and item.get("adopted_revision") == item.get("revision")
         ):
             return {"entity_id": item["adopted_entity_id"], "already_adopted": True, "status": "adopted"}
+        if changed:
+            item["draft_editor_ids"] = sorted(set(item.get("draft_editor_ids") or []) | {require_context().user_id})
         item.update(
             **{k: getattr(body, k).strip() for k in ["title", "summary", "boundary", "questions"]},
             article_sections=sections,
@@ -1281,6 +1286,10 @@ def review_record_candidate(session_id: str, candidate_id: str, body: CandidateR
             raise HTTPException(422, "请填写具体标题和摘要")
         kid = item.get("adopted_entity_id")
         if body.action == "adopt":
+            from .api.v1.core import guard_generic_edit
+            from .domains.reviews import record_editor
+            from .kernel.elements import snapshot, sync_after_write
+
             validate_session_context(c, e["payload"], e["org_id"])
             normalize_candidate_refs(c, session_id, item)
             if any(s.get("origin") == "ai_suggestion" for s in item["article_sections"]):
@@ -1306,26 +1315,34 @@ def review_record_candidate(session_id: str, candidate_id: str, body: CandidateR
             stamp = now()
             if kid:
                 asset = entity_json(
-                    c.execute("SELECT * FROM entities WHERE id=? AND kind='knowledge'", (kid,)).fetchone()
+                    c.execute("SELECT * FROM entities WHERE id=? AND kind='knowledge' FOR UPDATE", (kid,)).fetchone()
                 )
                 if not asset:
                     raise HTTPException(409, "原知识资产不存在，不能静默建立替代条目")
                 if body.expected_asset_version != asset["version"]:
                     raise HTTPException(409, "关联知识已有其他修订，请查看当前版本后再更新")
-                c.execute(
-                    "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-                    (kid, asset["version"], dump(asset), stamp, "从经验萃取记录修订同一知识，重新进入草稿审核"),
+                guard_generic_edit(c, asset, {"payload": payload})
+                snapshot(c, asset, "从经验萃取记录修订同一知识，重新进入草稿审核")
+                payload = {**asset["payload"], **payload}
+                record_editor(
+                    {**asset, "payload": payload},
+                    require_context().user_id,
+                    conn=c,
+                    contributors=item.get("draft_editor_ids", ()),
                 )
                 c.execute(
                     "UPDATE entities SET title=?,summary=?,payload=?,status=?,version=version+1,updated_at=? WHERE id=?",
-                    (item["title"], item["summary"], dump({**asset["payload"], **payload}), "draft", stamp, kid),
+                    (item["title"], item["summary"], dump(payload), "draft", stamp, kid),
                 )
                 asset_version = asset["version"] + 1
             else:
                 kid = uid("K-EXP-")
                 asset_version = 1
+                record_editor(
+                    {"payload": payload}, require_context().user_id, contributors=item.get("draft_editor_ids", ())
+                )
                 c.execute(
-                    "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         kid,
                         "knowledge",
@@ -1357,9 +1374,14 @@ def review_record_candidate(session_id: str, candidate_id: str, body: CandidateR
                 "UPDATE relations SET payload=? WHERE source=? AND target=? AND type='derived_from'",
                 (dump({"source_refs": item["source_refs"], "candidate_id": candidate_id}), kid, session_id),
             )
+            saved = entity_json(c.execute("SELECT * FROM entities WHERE id=?", (kid,)).fetchone())
+            sync_after_write(c, saved)
+            if asset_version == 1:
+                snapshot(c, saved, "经验记录首次形成知识草稿")
             attach(c, e, kid, "produced_asset")
             item.update(
                 status="adopted",
+                draft_editor_ids=[],
                 adopted_entity_id=kid,
                 adopted_revision=item["revision"],
                 asset_version=asset_version,

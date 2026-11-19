@@ -5,6 +5,7 @@ import { login, button, c, a, postResponse, read } from "./r3-support.mjs";
 import {
   startRegulation,
   confirmOmissions,
+  openOmissionList,
   setFileDate,
   readProposal,
   pickItem,
@@ -43,7 +44,7 @@ test("R4-A.1 AB1: clearing a declared exception never re-enlists it and the rema
     expect(applied.ok()).toBe(true);
     await expect(modal).not.toBeVisible();
     await page.reload();
-    const group = page.locator('[data-omission-group="exceptions"]');
+    const group = await openOmissionList(page, "exceptions");
     const rows = group.locator("[data-omission-item]");
     await expect(rows.first()).toBeVisible();
     await expect(
@@ -54,9 +55,15 @@ test("R4-A.1 AB1: clearing a declared exception never re-enlists it and the rema
     );
     expect(selectedId).toBeTruthy();
     const keptOut = group.locator(`[data-omission-item="${unselected}"]`);
-    await keptOut.locator("summary").click();
+    await expect(keptOut.getByRole("checkbox")).not.toBeChecked();
     const original = proposal.items.find((item) => item.id === unselected);
-    await expect(keptOut).toContainText(original.evidence[0].quote);
+    await expect(
+      keptOut
+        .locator("blockquote")
+        .filter({ hasText: original.evidence[0].quote }),
+    ).toBeVisible();
+    for (const box of await group.getByRole("checkbox").all())
+      await box.check();
     await keptOut.getByRole("checkbox").uncheck();
     const [saved] = await Promise.all([
       postResponse(page, "/changeset.confirm_facts:invoke"),
@@ -176,7 +183,7 @@ test("R4-A.1 AB1: current document facts and explicit omission confirmation pres
     await expect(preview).toBeVisible();
     await expect(
       preview.locator(
-        '[data-governance-field="valid_from"] [data-fact-origin="source"]',
+        '[data-governance-field="valid_from"] [data-fact-origin="system"]',
       ),
     ).toBeVisible();
     await expect(
@@ -357,6 +364,10 @@ test("R4-A.1 AB4–AB6: bulk excludes incomplete items; adopted types and discar
     ).toHaveAttribute("href", skill.handoff.href);
     const rejecting = postResponse(page, "/changeset.decide_items:invoke");
     await button(selected(page), a.catalog_1_2).click();
+    await button(
+      page.getByRole("dialog", { name: c.r4a2_discard_title }),
+      c.r4a2_discard_confirm,
+    ).click();
     expect((await rejecting).ok()).toBe(true);
     const archived = (
       await read(page, "/api/v2/elements/" + skill.applied_entity_id)

@@ -21,6 +21,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from .version import APP_VERSION
 from .db import connect, entity_json, log, now
 from .asset_kinds import canonical_kind
+from .provenance import anchor_workbook_rows
 
 router = APIRouter()
 from .storage import upload_path, stored_path, open_file, read_bytes
@@ -44,6 +45,8 @@ FIELDS = {
         "反例",
         "敏感级别",
         "关联规则资产",
+        "单位",
+        "粒度",
     ],
     "skill": [
         "技能编码",
@@ -189,6 +192,8 @@ def sheet_rows(workbook, kind):
         headers = []
         for index, row in enumerate(rows[:12]):
             aliases = {
+                "计量单位": "单位",
+                "统计粒度": "粒度",
                 "算法编码": "技能编码",
                 "算法类型": "技能类型",
                 "算法逻辑名称": "技能逻辑名称",
@@ -311,8 +316,15 @@ def build_asset(kind, record, material_id, material_title, chunk_id, batch):
                 ("反例", "反例"),
             ]
         )
+        measurement = {}
+        for header, field in (("单位", "unit"), ("粒度", "grain")):
+            value = text(v.get(header))
+            if value:
+                measurement[field] = value
+                content += f"\n{header}：{value}"
         payload = {
             **common,
+            **measurement,
             "category": text(v.get("二级分类")),
             "subcategory": text(v.get("三级分类")),
             "data_form": text(v.get("数据形态")),
@@ -418,6 +430,9 @@ def relation_id(source, target, typ, batch):
 
 
 def add_relation(conn, source, target, typ, label, batch, locator):
+    from .security.context import require_context
+
+    author = require_context()
     conn.execute(
         "INSERT INTO relations(id,source,target,type,label,status,payload) VALUES(?,?,?,?,?,?,?)",
         (
@@ -427,7 +442,16 @@ def add_relation(conn, source, target, typ, label, batch, locator):
             typ,
             label,
             "candidate",
-            jd({"asset_import_managed": True, "batch": batch, "source": locator, "semantics_verified": False}),
+            jd(
+                {
+                    "asset_import_managed": True,
+                    "batch": batch,
+                    "source": locator,
+                    "semantics_verified": False,
+                    "proposed_by": author.user_id,
+                    "proposed_name": author.username,
+                }
+            ),
         ),
     )
 
@@ -477,6 +501,28 @@ def refresh_import_links(conn, kind, assets, batch):
                 add_relation(
                     conn, asset["id"], law_id, "derived_from", "对应法规或制度原文", batch, p["source_locator"]
                 )
+    revised_sources = set()
+
+    def add_declared(source: str, target: str, typ: str, label: str, locator: str) -> None:
+        from .domains.reviews import record_relation_editor
+        from .kernel.elements import snapshot
+        from .skills import is_managed_skill
+        from .security.context import require_context
+
+        if source not in revised_sources:
+            row = entity_json(conn.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (source,)).fetchone())
+            if (
+                row["payload"].get("authority_spec")
+                or row["payload"].get("active_asset") in (False, 0)
+                or is_managed_skill(conn, row)
+            ):
+                return
+            snapshot(conn, row, "导入台账中登记的关联对象")
+            record_relation_editor(conn, row, require_context().user_id)
+            conn.execute("UPDATE entities SET version=version+1,updated_at=? WHERE id=?", (now(), source))
+            revised_sources.add(source)
+        add_relation(conn, source, target, typ, label, batch, locator)
+
     if kind == "rule":
         # Data and skill ledgers may declare rules that are imported later.
         # Rebuild those declared candidates in both import orders.
@@ -499,13 +545,11 @@ def refresh_import_links(conn, kind, assets, batch):
             for value in declared:
                 for rid in re.findall(r"R\.\d{2}\.\d{2}\.\d{3}\.T[1-5]", value):
                     if rid in current_rules:
-                        add_relation(
-                            conn,
+                        add_declared(
                             row["id"],
                             rid,
                             "references_rule",
                             "声明规则依据·待核语义",
-                            batch,
                             current_rules[rid]["payload"]["source_locator"],
                         )
     if kind == "data":
@@ -520,13 +564,11 @@ def refresh_import_links(conn, kind, assets, batch):
                 continue
             inputs = json.loads(row["payload"] or "{}").get("input_ids", [])
             for did in current.keys() & set(inputs):
-                add_relation(
-                    conn,
+                add_declared(
                     row["id"],
                     did,
                     "requires_data",
                     "声明数据依赖·待核语义",
-                    batch,
                     current[did]["payload"]["source_locator"],
                 )
         for row in conn.execute(
@@ -536,13 +578,11 @@ def refresh_import_links(conn, kind, assets, batch):
             declared = json.loads(row["payload"] or "{}").get("related_data", [])
             for value in declared:
                 for did in current.keys() & set(re.findall(r"D\.\d{2}\.\d{2}\.\d{3}", value)):
-                    add_relation(
-                        conn,
+                    add_declared(
                         row["id"],
                         did,
                         "references_data",
                         "分类级数据关联·待核",
-                        batch,
                         current[did]["payload"]["source_locator"],
                     )
     if kind == "skill":
@@ -554,13 +594,11 @@ def refresh_import_links(conn, kind, assets, batch):
             declared = json.loads(row["payload"] or "{}").get("related_skills", [])
             for value in declared:
                 for aid in current.keys() & set(re.findall(r"[AS]\.\d{2}\.\d{2}\.\d{3}", value)):
-                    add_relation(
-                        conn,
+                    add_declared(
                         row["id"],
                         aid,
                         "references_skill",
                         "分类级方法关联·待核",
-                        batch,
                         current[aid]["payload"]["source_locator"],
                     )
 
@@ -678,6 +716,12 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                     raise HTTPException(413, "文件超过30 MB，请按业务领域分批导入。")
                 hasher.update(chunk)
                 output.write(chunk)
+        from .api.v1.core import guard_generic_edit
+        from .kernel.gate_fields import record as record_field_sources
+        from .domains.reviews import record_editor
+        from .kernel.elements import snapshot, sync_after_write
+        from .security.context import require_context
+
         records = parse_workbook(path, kind)
         stamp = now()
         material_id = "MAT-" + batch
@@ -719,7 +763,10 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                 chunk_id = f"{material_id}::p{position:06d}"
                 asset = build_asset(kind, record, material_id, material_title, chunk_id, batch)
                 assets.append(asset)
-                content = asset["payload"].get("content") or asset["summary"]
+                # Preserve the actual source cells, including unit and grain where provided.
+                content = "\n".join(
+                    f"{header}：{text(value, True)}" for header, value in record["values"].items() if text(value)
+                )
                 conn.execute(
                     "INSERT INTO chunks(id,material_id,position,heading,content,locator,status) VALUES(?,?,?,?,?,?,?)",
                     (
@@ -732,19 +779,19 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                         "available",
                     ),
                 )
+            references = anchor_workbook_rows(conn, material_id)
+            for record, asset in zip(records, assets, strict=True):
+                ref = asset["payload"]["source_refs"][0]
+                ref.update(references[ref["chunk_id"]])
                 old_row = conn.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (asset["id"],)).fetchone()
                 old = entity_json(old_row)
                 if old:
-                    from .skills import guard_generic_entity
-
-                    guard_generic_entity(conn, old, asset)
+                    guard_generic_edit(conn, old, asset)
                     if old["kind"] != kind:
                         raise HTTPException(422, f"编码 {asset['id']} 已被{old['kind']}对象使用，未写入任何资产。")
-                    conn.execute(
-                        "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
-                        (asset["id"], old["version"], jd(old), stamp, f"Excel 台账同编号更新 · {batch}"),
-                    )
+                    snapshot(conn, old, f"Excel 台账同编号更新 · {batch}")
                     payload = {**old["payload"], **asset["payload"]}
+                    record_editor({**old, "payload": payload}, require_context().user_id, conn=conn)
                     conn.execute(
                         "UPDATE entities SET title=?,summary=?,domain=?,status=?,source_kind=?,payload=?,updated_at=?,version=version+1 WHERE id=?",
                         (
@@ -760,6 +807,7 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                     )
                     updated += 1
                 else:
+                    record_editor(asset, require_context().user_id)
                     conn.execute(
                         "INSERT INTO entities(id,kind,title,summary,domain,org_id,status,source_kind,payload,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                         (
@@ -778,6 +826,21 @@ def import_assets(kind: str, file: UploadFile = File(...)):
                         ),
                     )
                     created += 1
+                saved = entity_json(conn.execute("SELECT * FROM entities WHERE id=?", (asset["id"],)).fetchone())
+                sync_after_write(conn, saved)
+                if kind == "data":
+                    workbook_row = {
+                        "source": "system",
+                        "source_quote": ref["quote"],
+                        **{key: ref[key] for key in ("anchor_id", "source_version", "material_id")},
+                    }
+                    record_field_sources(
+                        conn,
+                        saved,
+                        {key: workbook_row for key in ("definition", "unit", "grain") if asset["payload"].get(key)},
+                    )
+                if not old:
+                    snapshot(conn, saved, "Excel 台账导入草稿")
                 add_relation(
                     conn,
                     asset["id"],

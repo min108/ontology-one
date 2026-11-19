@@ -10,7 +10,7 @@ import {
   postResponse,
   unique,
 } from "./r3-support.mjs";
-import { assertNoLeaks } from "./r3-structure.mjs";
+import { assertNoLeaks, checkStructure } from "./r3-structure.mjs";
 import {
   assertDialogActionsVisible,
   assertPublishedRepair,
@@ -63,7 +63,7 @@ async function oldAction(page, action, reason) {
   await button(modal, "确认" + action).click();
   return { response: await response, modal };
 }
-async function blockedToRepair(page, id) {
+async function blockedToRepair(page, id, inspect = false) {
   await page.goto("/assets/" + encodeURIComponent(id));
   const { response, modal } = await oldAction(
     page,
@@ -78,9 +78,14 @@ async function blockedToRepair(page, id) {
     .getByRole("link", { name: c.r4a1_legacy_repair, exact: true })
     .click();
   await expect(page).toHaveURL(/\/ontology\/elements\//);
-  await expect(
-    page.getByRole("region", { name: c.r4a1_legacy_repair_title }),
-  ).toBeVisible();
+  const panel = page.getByRole("region", { name: c.r4a1_legacy_repair_title });
+  await expect(panel).toBeVisible();
+  await expect(panel).toBeFocused();
+  await expect(panel.getByRole("heading")).toBeInViewport();
+  if (inspect) {
+    await screenshot(page, "r4a2-element-repair-landing");
+    await checkStructure(page, "A2 element repair");
+  }
 }
 async function repair(page, id) {
   const before = await detail(page, id);
@@ -201,10 +206,7 @@ async function publish(page, id) {
   await current
     .getByLabel(source.label + " · " + c.r4_gate_waiver, { exact: true })
     .fill(waiver);
-  await current
-    .locator("summary")
-    .filter({ hasText: c.r4a1_legacy_facts })
-    .click();
+  await expect(current.locator("[data-governance-facts]")).toBeVisible();
   await current.locator("[data-governance-facts]").scrollIntoViewIfNeeded();
   await screenshot(page, "r4a1-review-facts");
   await button(page, a.catalog_2_5).click();
@@ -227,7 +229,7 @@ test("R4-A.1 AB7: manual data application reaches independent review but missing
     reviewer = await login(browser, "reviewer");
   try {
     const created = await createOld(builder.page, "data");
-    await blockedToRepair(builder.page, created.entity.id);
+    await blockedToRepair(builder.page, created.entity.id, true);
     await expect(
       builder.page.locator('[data-waiver-application-code="QG2"]'),
     ).toHaveCount(0);
@@ -382,7 +384,17 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
     );
     const confirmed = await confirmOmissions(builder.page, proposal.id);
     const rule = confirmed.items.find(
-      (item) => item.after_data.kind === "rule" && item.gates?.ready_to_submit,
+      (item) =>
+        item.after_data.kind === "rule" &&
+        item.gates?.ready_to_submit &&
+        [
+          item.after_data.field_provenance.conditions,
+          item.after_data.field_provenance.exceptions,
+        ].some((fact) => fact?.origin === "source") &&
+        [
+          item.after_data.field_provenance.conditions,
+          item.after_data.field_provenance.exceptions,
+        ].some((fact) => fact?.origin === "bulk_confirmation"),
     );
     expect(
       rule,
@@ -411,10 +423,7 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
     await reviewer.page.goto("/govern/reviews");
     await reviewer.page.locator(`[data-review-item-id="${id}"]`).click();
     const current = reviewer.page.locator(`[data-review-id="${id}"]`);
-    await current
-      .locator("summary")
-      .filter({ hasText: c.r4a1_legacy_facts })
-      .click();
+    await expect(current.locator("[data-governance-facts]")).toBeVisible();
     const saved = await detail(reviewer.page, id);
     const fields = saved.gates.fields.filter(
       (field) =>
@@ -445,6 +454,7 @@ test("R4-A.1 AB10: reviewer sees actual rule facts and their sources, including 
       ),
     ).toBeVisible();
     expect(fields.some((field) => field.source === "source")).toBe(true);
+    expect(fields.some((field) => field.source === "system")).toBe(true);
     expect(fields.some((field) => field.source === "batch_confirmation")).toBe(
       true,
     );

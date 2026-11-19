@@ -135,12 +135,12 @@ def _prepare(conn: db.Connection, entity: dict, *, legacy: bool = False) -> dict
     return result
 
 
-def _preserve_review(old: dict, payload: dict, changes: dict) -> dict:
+def _preserve_review(conn: db.Connection, old: dict, payload: dict, changes: dict) -> dict:
     from backend.domains.reviews import preserve_review_identity
 
     result = {key: value for key, value in payload.items() if key != "r2_review"}
     if old["payload"].get("r2_review") or persisted_kind(old["kind"]).governed:
-        return preserve_review_identity(old, result, changes)
+        return preserve_review_identity(old, result, changes, conn=conn)
     return result
 
 
@@ -173,7 +173,9 @@ def snapshot(conn: db.Connection, entity: dict, reason: str) -> dict:
     return result
 
 
-def sync_after_write(conn: db.Connection, entity: dict, meta_updates: dict | None = None) -> dict:
+def sync_after_write(
+    conn: db.Connection, entity: dict, meta_updates: dict | None = None, *, content_changed: bool = True
+) -> dict:
     """Shared adoption/write hook; B-stage search indexing attaches here too."""
     from backend.graph import invalidate_graph_cache
     from backend.kernel.cards import cache_card
@@ -183,7 +185,8 @@ def sync_after_write(conn: db.Connection, entity: dict, meta_updates: dict | Non
         meta = sync_meta(conn, entity, meta_updates)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
-    sync_derived(conn, entity)
+    if content_changed:
+        sync_derived(conn, entity)
     cache_card(conn, entity)
     invalidate_graph_cache(require_context().tenant_id)
     return {**entity, "_meta": get_meta(conn, entity["id"]) or meta}
@@ -286,12 +289,10 @@ def update_draft(conn: db.Connection, old: dict, changes: dict) -> dict:
             entity["status"] = "draft"
     entity = _prepare(conn, entity, legacy=True)
     _confirm_sentence(old, entity["payload"], changes)
-    entity["payload"] = _preserve_review(old, entity["payload"], changes)
+    entity["payload"] = _preserve_review(conn, old, entity["payload"], changes)
     current_meta = get_meta(conn, old["id"]) or {}
     if entity["payload"].get("r2_review") and any(current_meta.get(key) != value for key, value in updates.items()):
-        record_editor(
-            entity, require_context().user_id, fresh_revision=old["status"] in {"published", "approved", "archived"}
-        )
+        record_editor({**old, "payload": entity["payload"]}, require_context().user_id, conn=conn)
     snapshot(conn, old, reason)
     entity.update(version=old["version"] + 1, updated_at=db.now())
     conn.execute(
@@ -324,7 +325,7 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
     if target not in STATUS_LABELS:
         raise HTTPException(400, "不支持此操作。")
     reason = _reason(reason, STATUS_LABELS[target])
-    from backend.domains.reviews import guard_marked_action, record_editor
+    from backend.domains.reviews import guard_marked_action, keep_release_boundary, record_editor
     from backend.kernel import gates
 
     actions = {"review": "submit", "approved": "approve", "published": "publish", "returned": "return"}
@@ -338,9 +339,9 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
     snapshot(conn, old, reason)
     entity = deepcopy(old)
     if target == "draft" and persisted_kind(old["kind"]).governed:
-        record_editor(
-            entity, require_context().user_id, fresh_revision=old["status"] in {"published", "approved", "archived"}
-        )
+        record_editor({**old, "payload": entity["payload"]}, require_context().user_id, conn=conn)
+    if persisted_kind(old["kind"]).governed:
+        keep_release_boundary(conn, entity, target)
     entity.update(status=target, version=old["version"] + 1, updated_at=db.now())
     conn.execute(
         "UPDATE entities SET status=?,payload=?,version=?,updated_at=? WHERE id=?",
@@ -352,7 +353,7 @@ def transition(conn: db.Connection, old: dict, target: str, reason: str, actor: 
             entity["id"],
         ),
     )
-    entity = sync_after_write(conn, entity)
+    entity = sync_after_write(conn, entity, content_changed=False)
     _enforce_identity_status(conn, entity)
     db.log(conn, entity["id"], STATUS_LABELS[target], reason, actor)
     return entity

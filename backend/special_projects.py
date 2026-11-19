@@ -824,6 +824,10 @@ async def review_candidate(pid: str, cid: str, request: Request):
                     )
                 if x["kind"] == "skill":
                     payload.update(logic=x["content"], maturity="业务核对逻辑设计草稿，尚未工程实现", executable=False)
+                from .domains.reviews import record_editor
+                from .security.context import require_context
+
+                record_editor({"payload": payload}, require_context().user_id)
                 asset = insert(
                     c, x["kind"], x["title"], x["summary"], payload, org_id=p["org_id"], source_kind=p["source_kind"]
                 )

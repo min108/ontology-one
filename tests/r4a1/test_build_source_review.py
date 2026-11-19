@@ -41,7 +41,7 @@ class SourceReviewMySQL(unittest.TestCase):
                 current = next(value for value in saved["items"] if value["id"] == item["id"])
                 self.assertEqual(current["after_data"], item["after_data"])
 
-    def synthetic_proposal(self, client: object, kind: str, text: str, fields: dict) -> dict:
+    def synthetic_proposal(self, client: object, kind: str, text: str, fields: dict, *, quote: str = "") -> dict:
         """Mock only the model boundary, then run the normal source/adoption services."""
         uploaded = client.post("/api/materials/upload", files={"file": ("来源核对.txt", text.encode(), "text/plain")})
         self.assertEqual(uploaded.status_code, 200, uploaded.text)
@@ -51,16 +51,16 @@ class SourceReviewMySQL(unittest.TestCase):
             material_id: str, chunks: list[dict], context: dict, *, diagnostics: dict
         ) -> tuple[list[dict], dict]:
             self.assertIsInstance(diagnostics, dict)
-            chunk = chunks[0]
+            chunk = next(part for part in chunks if quote in part["content"])
             title = "字段出处核对" + kind + text[:12]
             return [
                 {
                     "id": materials.candidate_id(material_id, kind, title, [chunk["id"]]),
                     "kind": kind,
                     "title": title,
-                    "content": chunk["content"],
+                    "content": quote or chunk["content"],
                     "source_chunk_ids": [chunk["id"]],
-                    "source_quotes": [{"chunk_id": chunk["id"], "quote": chunk["content"]}],
+                    "source_quotes": [{"chunk_id": chunk["id"], "quote": quote or chunk["content"]}],
                     "status": "pending",
                     "extraction_mode": "online",
                     "questions": [],
@@ -135,7 +135,7 @@ class SourceReviewMySQL(unittest.TestCase):
                 item = proposal["items"][0]
                 after = item["after_data"]
                 if after[key]:
-                    self.assertEqual(after["field_provenance"][key]["origin"], "source")
+                    self.assertEqual(after["field_provenance"][key]["origin"], "system")
                     self.assertIn(after["field_provenance"][key]["quote"], text)
                     self.assertIn(key, after["source_declared_fields"])
                 else:

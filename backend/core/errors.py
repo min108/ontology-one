@@ -163,8 +163,10 @@ class ApiError(Exception):
         )
 
 
-def from_http(status: int, message: str = "") -> ApiError:
+def from_http(status: int, detail: object = "") -> ApiError:
+    message = detail.get("message") if isinstance(detail, dict) else detail
     code = {
+        400: "VALIDATION_FAILED",
         401: "UNAUTHENTICATED",
         403: "PERMISSION_DENIED",
         404: "NOT_FOUND",
@@ -177,4 +179,6 @@ def from_http(status: int, message: str = "") -> ApiError:
         503: "RUNTIME_UNAVAILABLE",
         504: "QUERY_TIMEOUT",
     }.get(status, "INTERNAL_ERROR")
-    return ApiError(code, message if status < 500 else "", status_code=415 if status == 415 else None)
+    return ApiError(
+        code, message if status < 500 and isinstance(message, str) else "", status_code=415 if status == 415 else None
+    )

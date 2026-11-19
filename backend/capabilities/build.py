@@ -29,6 +29,11 @@ class ChangesetGet(StrictModel):
     changeset_id: str = Field(min_length=1, max_length=64)
 
 
+class RetainSource(ChangesetGet):
+    source_version: str = Field(min_length=1, max_length=191)
+    anchor_id: str = Field(min_length=1, max_length=191)
+
+
 class CandidatePatch(StrictModel):
     expected_version: int | None = Field(default=None, ge=1)
     title: str = Field(min_length=1, max_length=250)
@@ -53,9 +58,11 @@ class DecideItems(ChangesetGet):
     decision: Literal["accepted", "edited", "rejected", "pending"]
     edit: CandidatePatch | None = None
     only_ready: bool = False
+    expected_versions: dict[str, int] = Field(default_factory=dict, max_length=200)
 
 
 class ConfirmFacts(ChangesetGet):
+    valid_from_candidate_id: str | None = Field(default=None, min_length=1, max_length=191)
     valid_from: str | None = Field(default=None, max_length=10)
     confirm_no_exceptions_item_ids: list[str] = Field(default_factory=list, max_length=200)
     confirm_unconditional_item_ids: list[str] = Field(default_factory=list, max_length=200)
@@ -108,6 +115,7 @@ def decide_items(ctx: CapabilityContext, body: DecideItems) -> BuildResult:
             body.decision,
             body.edit.model_dump(exclude_unset=True) if body.edit else None,
             only_ready=body.only_ready,
+            expected_versions=body.expected_versions,
         )
     )
 
@@ -125,3 +133,8 @@ def apply_and_submit(ctx: CapabilityContext, body: ChangesetGet) -> BuildResult:
 @declaration("changeset.confirm_facts", "确认文件事实与缺项", ConfirmFacts, "build.edit")
 def confirm_facts(ctx: CapabilityContext, body: ConfirmFacts) -> BuildResult:
     return BuildResult(data=build.confirm_facts(body.changeset_id, body.model_dump(exclude_unset=True)))
+
+
+@declaration("changeset.retain_source", "按原文保留待核对条目", RetainSource, "build.edit")
+def retain_source(ctx: CapabilityContext, body: RetainSource) -> BuildResult:
+    return BuildResult(data=build.retain_source(body.changeset_id, body.anchor_id, body.source_version))

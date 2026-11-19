@@ -465,7 +465,7 @@ def create_asset(body: SaveRequest):
 
         eid, stamp = "R-AUTH-" + uuid.uuid4().hex[:12], now()
         payload = make_payload(spec)
-        record_editor({"payload": payload}, require_context().user_id, fresh_revision=True)
+        record_editor({"payload": payload}, require_context().user_id)
         c.execute(
             "INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (
@@ -511,7 +511,7 @@ def _save_draft(c, old, body, reason):
     previous = field_values(c, old, get_meta(c, old["id"]) or {})
     snapshot(c, old, reason)
     payload = make_payload(spec, old["payload"])
-    record_editor({"payload": payload}, require_context().user_id)
+    record_editor({**old, "payload": payload}, require_context().user_id, conn=c)
     c.execute(
         "UPDATE entities SET title=?,summary=?,domain=?,org_id=?,payload=?,version=version+1,updated_at=? WHERE id=?",
         (
