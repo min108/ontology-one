@@ -188,6 +188,7 @@ export async function registerAlias(builder, reviewer, rule) {
   const dialog = builder.getByRole("dialog", { name: c.r4b_alias_register });
   await dialog.getByRole("textbox", { name: c.r4b_alias_new }).fill(alias);
   await builder.screenshot({
+    animations: "disabled",
     path: resolve(evidence, "r4b-alias-entry-1366x768.png"),
   });
   const revising = postResponse(builder, "/element.start_revision:invoke");
@@ -226,6 +227,7 @@ export async function registerAlias(builder, reviewer, rule) {
     builder.getByText(c.r4b_aliases + " · " + alias, { exact: true }),
   ).toBeVisible();
   await builder.screenshot({
+    animations: "disabled",
     path: resolve(evidence, "r4b-alias-published-1366x768.png"),
   });
   return updated;

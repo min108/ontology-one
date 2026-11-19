@@ -227,6 +227,16 @@ test("R4-B BA7–BA10 S1–S12 search the reviewed original regulation, all entr
     );
     stage =
       "S5 register alias and independently republish unchanged official title";
+    await viewer.page.goto("/ontology/elements/" + rules.S5.id);
+    await expect(
+      viewer.page.getByRole("heading", { name: rules.S5.title, exact: true }),
+    ).toBeVisible();
+    await expect(
+      viewer.page.getByRole("button", {
+        name: c.r4b_alias_register,
+        exact: true,
+      }),
+    ).toHaveCount(0);
     rules.S5 = await registerAlias(builder.page, reviewer.page, rules.S5);
     assertRuleEvidence(rules.S5, original.S5, receipt.material_id, text);
     receipt.alias = {

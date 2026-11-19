@@ -55,6 +55,7 @@ export async function verifyMaterialPickers(page, materialId) {
   await expect(label).toHaveCount(1);
   await label.getByRole("checkbox").check();
   await page.screenshot({
+    animations: "disabled",
     path: resolve(evidence, "r4b-special-material-picker-1366x768.png"),
   });
   const submit = postResponse(page, base + "/materials");
@@ -84,6 +85,7 @@ export async function verifyMaterialPickers(page, materialId) {
   await expect(candidates).toHaveCount(1);
   await candidates.click();
   await page.screenshot({
+    animations: "disabled",
     path: resolve(evidence, "r4b-work-material-picker-1366x768.png"),
   });
   const linking = postResponse(page, "/api/work/" + project.id + "/objects");
@@ -101,7 +103,7 @@ export async function verifyMaterialPickers(page, materialId) {
   );
   expect(
     workspace.objects.filter(
-      (row) => row.id === materialId && row.role === "source_material",
+      (row) => row.target === materialId && row.role === "source_material",
     ),
   ).toHaveLength(1);
   return {

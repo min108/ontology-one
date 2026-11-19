@@ -51,6 +51,7 @@ export function ElementAliases({
   )
     return null;
   const published = ['published', 'approved'].includes(entity.status);
+  const actionLabel = published ? terms.actions.catalog_2_8 : terms.actions.catalog_2_0;
   const aliases = aliasesOf(entity);
   const next = value.trim();
   const duplicate = aliases.some((alias) => alias.trim().toLowerCase() === next.toLowerCase());
@@ -107,11 +108,11 @@ export function ElementAliases({
         onCancel={() => {
           if (!busy) setOpen(false);
         }}
-        okText={published ? terms.actions.catalog_2_8 : terms.actions.catalog_2_0}
+        okText={actionLabel}
         cancelText={terms.actions.cancel}
         onOk={() => void apply()}
         confirmLoading={busy}
-        okButtonProps={{ disabled: disabled || !next || duplicate }}
+        okButtonProps={{ 'aria-label': actionLabel, disabled: disabled || !next || duplicate }}
         cancelButtonProps={{ disabled: busy }}
       >
         {error && <Alert role="alert" type="error" title={error} />}
