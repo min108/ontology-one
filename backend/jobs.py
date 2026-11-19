@@ -437,6 +437,12 @@ async def _invoke(row):
                 operation = asyncio.to_thread(
                     run_snapshot, row["job_id"], row["entity_id"], json.loads(row["args_json"])
                 )
+            elif row["kind"] == "index_rebuild":
+                from .infra.search_job import run_rebuild
+
+                operation = asyncio.to_thread(
+                    run_rebuild, row["job_id"], row["entity_id"], json.loads(row["args_json"])
+                )
             elif row["kind"] == "recipe_run":
                 from .domains.build import run_recipe
 
@@ -497,7 +503,9 @@ async def run_one():
             "原提交者会话或授权已失效，任务停止。" if exc.status_code in (401, 403) else "任务未完成，可重试。",
         )
     except ApiError as exc:
-        if row["kind"] == "release_snapshot" and exc.status_code in {403, 404, 409, 422}:
+        if row["kind"] == "index_rebuild" and exc.status_code in {403, 404}:
+            _finish(row, "cancelled", "重建授权已失效，请由管理员重新发起。")
+        elif row["kind"] == "release_snapshot" and exc.status_code in {403, 404, 409, 422}:
             _finish(row, "cancelled", "本次审核已失效，请重新核对发布版本。")
         else:
             _finish(
@@ -551,6 +559,8 @@ def retry_job(job_id: str):
         raise HTTPException(404, "未找到该机构任务。")
     if row["kind"] == "release_snapshot":
         raise HTTPException(409, "请重新核对并审核发布版本。")
+    if row["kind"] == "index_rebuild":
+        raise HTTPException(409, "请由管理员重新发起本机构的检索索引重建。")
     if row["status"] in ACTIVE:
         return {"id": job_id, "status": row["status"], "already_queued": True}
     if row["status"] == "completed":

@@ -189,11 +189,19 @@ class IdentityContracts(unittest.TestCase):
         )
         entity["org_id"] = "historical-business-group"
         cursor = MagicMock()
-        cursor.fetchone.return_value = entity
+        cursor.fetchone.return_value = {"db_name": "control"}
+        tenant = cursor.connection.cursor.return_value
+        tenant.fetchone.return_value = entity
+        from pymysql.err import ProgrammingError
+
+        tenant.__enter__.return_value.execute.side_effect = ProgrammingError(1146, "pre-migration fixture")
         with use_context(principal(home_tenant_id="hq", tenant_id="dept-01", is_superadmin=True)):
             _snapshot_root(cursor, row, {"name": "Updated headquarters"}, "directory rename")
-        self.assertEqual(cursor.execute.call_args_list[0].args[1], ("hq",))
-        snapshot = json.loads(cursor.execute.call_args_list[1].args[1][2])
+        self.assertEqual(
+            [call.args for call in cursor.connection.select_db.call_args_list], [(row["db_name"],), ("control",)]
+        )
+        self.assertEqual(tenant.execute.call_args_list[0].args[1], ("hq",))
+        snapshot = json.loads(tenant.execute.call_args_list[1].args[1][2])
         self.assertEqual(snapshot["owner_tenant_id"], "hq")
         self.assertEqual(snapshot["owner_org_id"], "hq")
         self.assertEqual(snapshot["org_id"], entity["org_id"])

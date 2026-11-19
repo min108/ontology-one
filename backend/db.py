@@ -133,13 +133,45 @@ class Cursor:
 
 
 class Connection:
-    def __init__(self, raw, principal=None, readonly=False, release=None):
+    def __init__(self, raw, principal=None, readonly=False, release=None, *, project_search=False):
         self.raw = raw
         self.principal = principal
         self.readonly = readonly
         self._release = release
         self._closed = False
         self._dirty = False
+        self._project_search = project_search and not readonly
+        self._search_ready = None
+        self._search_locked = False
+        self._search_changes = None
+
+    def _search_gate(self, *, exclusive=False):
+        if not self._project_search or self._search_locked:
+            return
+        with self.raw.cursor() as cursor:
+            if self._search_ready is None:
+                # Explicit old-schema fixtures and offline migration prefixes have no index.
+                # A plain SELECT here could start a repeatable-read snapshot before the
+                # caller acquires its business row lock, breaking idempotent concurrent writes.
+                try:
+                    cursor.execute("SELECT doc_id FROM search_index WHERE 1=0 FOR SHARE")
+                except pymysql.err.ProgrammingError as error:
+                    if error.args[0] != 1146:
+                        raise
+                    self._search_ready = False
+                else:
+                    self._search_ready = True
+            if self._search_ready:
+                cursor.execute(
+                    "SELECT meta_key FROM workspace_meta WHERE meta_key='schema_version' "
+                    + ("FOR UPDATE" if exclusive else "FOR SHARE")
+                )
+                cursor.fetchone()
+            self._search_locked = True
+
+    def lock_search_rebuild(self):
+        """The worker takes the exclusive gate before inspecting its business receipt."""
+        self._search_gate(exclusive=True)
 
     def _guard(self, sql, params):
         command = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
@@ -151,6 +183,10 @@ class Connection:
 
                 raise HTTPException(403, "应用查询语句不受支持。")
         writes = command not in ("SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "SET", "BEGIN", "START")
+        if self._project_search and (
+            writes or (command == "SELECT" and re.search(r"\bFOR\s+(UPDATE|SHARE)\b", sql, re.I))
+        ):
+            self._search_gate()
         if writes:
             if self.readonly:
                 from fastapi import HTTPException
@@ -165,6 +201,12 @@ class Connection:
 
                 assert_execution_principal_current(self.principal, require_write=True)
             self._dirty = True
+            if self._search_ready:
+                from .infra.search_index import SearchChanges
+
+                if self._search_changes is None:
+                    self._search_changes = SearchChanges()
+                self._search_changes.observe(sql, tuple(params or ()))
         return tuple(params or ())
 
     def execute(self, sql, params=()):
@@ -189,7 +231,20 @@ class Connection:
         for statement in split_script(script):
             self.execute(statement)
 
+    def flush_search_changes(self):
+        changes = self._search_changes
+        if changes and (changes.full or changes.entities or changes.chunks):
+            from .infra.search_index import sync_changes
+
+            sync_changes(self, changes)
+            self._search_changes = None
+
     def commit(self):
+        try:
+            self.flush_search_changes()
+        except BaseException:
+            self.rollback()
+            raise
         if self._dirty and self.principal:
             from .jobs import assert_job_lease_current, assert_execution_principal_current
 
@@ -206,9 +261,14 @@ class Connection:
             if module and hasattr(module, "invalidate_graph_cache"):
                 module.invalidate_graph_cache(self.principal.tenant_id)
         self._dirty = False
+        self._search_changes = None
+        self._search_locked = False
 
     def rollback(self):
         self.raw.rollback()
+        self._dirty = False
+        self._search_changes = None
+        self._search_locked = False
 
     def begin(self):
         self.raw.begin()
@@ -484,7 +544,7 @@ def connect():
         if readonly:
             with raw.cursor() as cursor:
                 cursor.execute("SET SESSION TRANSACTION READ ONLY")
-        return Connection(raw, principal, readonly, release)
+        return Connection(raw, principal, readonly, release, project_search=True)
     except Exception:
         release(raw)
         raise

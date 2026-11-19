@@ -193,24 +193,31 @@ def _snapshot_root(cur: DictCursor, row: dict, changes: dict, reason: str) -> No
     # Both databases are on this server: one InnoDB transaction includes the
     # root snapshot, root update, directory update and append-only audit.
     database = migrations.database_name(row["db_name"])
-    cur.execute(f"SELECT * FROM `{database}`.entities WHERE id=%s FOR UPDATE", (row["id"],))
-    old = cur.fetchone()
-    if old is None:
-        raise HTTPException(409, "机构根节点不存在，请先离线检查工作区。")
-    snapshot = db.entity_json(old)
-    # The request may be in HQ while this root belongs to another database.
-    snapshot["owner_tenant_id"] = row["id"]
-    snapshot["owner_org_id"] = row["id"]
-    cur.execute(
-        f"INSERT INTO `{database}`.versions(entity_id,version,snapshot,created_at,reason) VALUES(%s,%s,%s,%s,%s)",
-        (old["id"], old["version"], json.dumps(snapshot, ensure_ascii=False), db.now(), reason),
-    )
-    cur.execute(
-        f"UPDATE `{database}`.entities SET title=%s,version=version+1,updated_at=%s WHERE id=%s",
-        (changes.get("name", row["name"]), db.now(), old["id"]),
-    )
-    if "name" in changes and changes["name"] != row["name"]:
-        cur.execute(
-            f"UPDATE `{database}`.ont_modules SET name=%s,updated_at=%s WHERE id='MOD-DEFAULT'",
-            (common_part_name(changes["name"]), db.now()),
+    cur.execute("SELECT DATABASE() AS db_name")
+    control = cur.fetchone()["db_name"]
+    raw = cur.connection
+    raw.select_db(database)
+    try:
+        tenant = db.Connection(raw, project_search=True)
+        old = tenant.execute("SELECT * FROM entities WHERE id=? FOR UPDATE", (row["id"],)).fetchone()
+        if old is None:
+            raise HTTPException(409, "机构根节点不存在，请先离线检查工作区。")
+        snapshot = db.entity_json(old)
+        snapshot["owner_tenant_id"] = row["id"]
+        snapshot["owner_org_id"] = row["id"]
+        tenant.execute(
+            "INSERT INTO versions(entity_id,version,snapshot,created_at,reason) VALUES(?,?,?,?,?)",
+            (old["id"], old["version"], json.dumps(snapshot, ensure_ascii=False), db.now(), reason),
         )
+        tenant.execute(
+            "UPDATE entities SET title=?,version=version+1,updated_at=? WHERE id=?",
+            (changes.get("name", row["name"]), db.now(), old["id"]),
+        )
+        if "name" in changes and changes["name"] != row["name"]:
+            tenant.execute(
+                "UPDATE ont_modules SET name=?,updated_at=? WHERE id='MOD-DEFAULT'",
+                (common_part_name(changes["name"]), db.now()),
+            )
+        tenant.flush_search_changes()
+    finally:
+        raw.select_db(control)

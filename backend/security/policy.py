@@ -266,6 +266,7 @@ V2_RULES = (
     ("GET", "/api/v2/system/metadata", ()),
     ("GET", "/api/v2/meta/kinds", ()),
     ("POST", "/api/v2/system/model:test", ("admin.model",)),
+    ("POST", "/api/v2/system/search-index:rebuild", ("admin.settings",)),
     ("GET", "/api/v2/system/backup", ("admin.settings",)),
     ("GET", "/api/v2/system/backups", ("admin.settings",)),
     ("GET", "/api/v2/system/release", ("admin.settings",)),
