@@ -13,6 +13,7 @@ from pymysql.cursors import DictCursor
 from backend import db
 from backend.api.v2.orgs import OrgManageInput
 from backend.infra import migrations
+from backend.infra.tenant_defaults import common_part_name
 from backend.security import store
 from backend.security.context import Principal
 
@@ -208,3 +209,8 @@ def _snapshot_root(cur: DictCursor, row: dict, changes: dict, reason: str) -> No
         f"UPDATE `{database}`.entities SET title=%s,version=version+1,updated_at=%s WHERE id=%s",
         (changes.get("name", row["name"]), db.now(), old["id"]),
     )
+    if "name" in changes and changes["name"] != row["name"]:
+        cur.execute(
+            f"UPDATE `{database}`.ont_modules SET name=%s,updated_at=%s WHERE id='MOD-DEFAULT'",
+            (common_part_name(changes["name"]), db.now()),
+        )
