@@ -1,4 +1,19 @@
-# R4-A.1 制度核对与旧资产修订演练（1.3.0）
+# R4 制度核对、旧资产修订与机构发布演练（1.3.0）
+
+## 公共部分的发布版本
+
+要素在机构内独立审核发布后即可使用。机构公共部分的发布版本保存某一时点的成员、关联和引用，供核对组成以及随后变更的范围。以下操作需要已登录的机构库、会话 CSRF 与当前工作区请求头。
+
+1. 机构管理员或已指定的建模师负责人，向 `POST /api/v2/capabilities/release.create_draft:invoke` 传入 `{"module_id":"MOD-DEFAULT"}`。按返回的条目、门禁、差异及建议版本号核对。首次版本是 `1.0.0`。
+2. 以返回的 `id` 作为 `release_id` 调用 `release.submit`。另一名有审核权的人员调用 `release.publish`。如要求后台冻结，在本次审核请求中加 `"background":true`，用返回的任务编号跟踪。审核会话失效时重新登录、核对并办理。
+3. 用 `GET /api/v2/releases/{release_id}` 读取实际快照、版本、审核人和清单哈希。只改文字、增加资产、归档资产后，可分别核对修订、次和主版本建议。撤回最新版本后再读 `GET /api/v2/modules/MOD-DEFAULT` 核对当前指针，并从历史版本读回原快照。
+
+在专用 MySQL 测试实例中，设置 `RUN_JOBS_MYSQL_TESTS=1` 和该实例的 `MYSQL_*` 连接参数后，可运行下列两组动作。演练使用独立机构数据，旧备份来自已验收的 0.7.0 版本。
+
+```sh
+.venv/bin/python -m unittest tests.migrations.test_r4b1 -v
+.venv/bin/python -m unittest tests.r4b.test_release_actions -v
+```
 
 沿用 R3 演练的隔离 Compose 环境与建设、审核、分析三个身份。启动入口为 `scripts/start_r2_demo.py`。本轮使用规划方提供的三份原文。测试回执注明实际渠道和模型。 [环境与账号](R3-DEMO.md) · [验收材料](r4a1-materials/README.md)
 

@@ -56,6 +56,8 @@ class AssemblyTests(unittest.TestCase):
             {"entities", "_create_entity", "edit", "_restore_entity", "relation_work_entry"},
         )
         self.assertEqual(set(CONTRACT["r4a1_functions"]), {"_confirm_relation"})
+        # These two older writes now register dependencies for a confirmed cross-scene reference.
+        self.assertEqual(set(CONTRACT["r4b1_functions"]), {"_create_entity", "_confirm_relation"})
         self.assertEqual(
             actual,
             {
@@ -63,6 +65,7 @@ class AssemblyTests(unittest.TestCase):
                 **CONTRACT["r2_functions"],
                 **CONTRACT["r4_functions"],
                 **CONTRACT["r4a1_functions"],
+                **CONTRACT["r4b1_functions"],
             },
         )
 
