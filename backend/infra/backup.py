@@ -23,6 +23,7 @@ from backend import db
 from backend.infra.recovery_schema import validate_schema
 from backend.maintenance import require_maintenance
 from backend.platform_io import atomic_write, ensure_private_directory, reject_reparse_points
+from backend.system import REBUILDABLE_TABLES
 
 FORMAT = "ontology-upgrade-backup-v1"
 
@@ -66,7 +67,9 @@ def prune_upgrade_backups(root: Path, control: str, keep: int = 3) -> None:
         shutil.rmtree(old)
 
 
-def snapshot_database(database: str, progress: Callable[[], None] | None = None) -> dict:
+def snapshot_database(
+    database: str, progress: Callable[[], None] | None = None, *, omit_rebuildable_rows: bool = False
+) -> dict:
     from backend.infra.migrations import database_name
 
     value = {"database": database_name(database), "tables": {}, "ddl": {}, "columns": {}, "triggers": {}, "hashes": {}}
@@ -75,7 +78,10 @@ def snapshot_database(database: str, progress: Callable[[], None] | None = None)
         names = [r[0] for r in conn.execute("SHOW TABLES")]
         for name in names:
             database_name(name)
-            rows = sorted([dict(row) for row in conn.execute(f"SELECT * FROM `{name}`")], key=canonical)
+            # Full archives carry the exact installation schema for derived tables, never their cached documents.
+            rows = []
+            if not (omit_rebuildable_rows and name in REBUILDABLE_TABLES):
+                rows = sorted([dict(row) for row in conn.execute(f"SELECT * FROM `{name}`")], key=canonical)
             value["tables"][name] = rows
             value["ddl"][name] = conn.execute(f"SHOW CREATE TABLE `{name}`").fetchone()[1]
             value["columns"][name] = [r[0] for r in conn.execute(f"SHOW COLUMNS FROM `{name}`")]
@@ -101,6 +107,8 @@ def _validate_snapshot(value: dict, expected_database: str, kind: str = "tenant"
         raise BackupError("备份数据库或表清单不一致。")
     validate_schema(value, kind)
     for table, rows in value["tables"].items():
+        if kind == "tenant" and table in REBUILDABLE_TABLES and rows:
+            raise BackupError("备份含可重建检索数据，须从机构原始业务记录恢复。")
         database_name(table)
         columns = value["columns"][table]
         for column in columns:
@@ -233,7 +241,7 @@ def create_upgrade_backup(tenants: list[dict], progress: Callable[[], None] | No
                     if uploads.exists() and any(uploads.iterdir()):
                         raise BackupError("未开通机构存在原件，请先核对存储，升级已停止。")
                 continue
-            value = snapshot_database(database, progress)
+            value = snapshot_database(database, progress, omit_rebuildable_rows=tenant_id is not None)
             atomic_write(staging / snapshot_name, (canonical(value) + "\n").encode())
             if tenant_id:
                 with closing(db._raw_connection(database)) as raw:
@@ -314,6 +322,10 @@ def restore_upgrade_backup(path: Path) -> dict:
                         conn.execute(f"ALTER TABLE `{table}` AUTO_INCREMENT={int(counter[1])}")
                 for statement in trusted["triggers"].values():
                     conn.execute(statement)
+                if entry["tenant_id"] is not None and "search_index" in trusted["ddl"]:
+                    from backend.infra.search_index import rebuild_index
+
+                    rebuild_index(conn)
                 conn.commit()
             conn.execute("SET FOREIGN_KEY_CHECKS=1")
         for tenant in catalog:
@@ -331,7 +343,7 @@ def restore_upgrade_backup(path: Path) -> dict:
                         ensure_private_directory(target.parent)
                         atomic_write(target, archive.read(member))
         for database, value in snapshots.items():
-            restored = snapshot_database(database)
+            restored = snapshot_database(database, omit_rebuildable_rows=database != control)
             _validate_snapshot(restored, database, "control" if database == control else "tenant")
             if set(restored["ddl"]) != set(value["ddl"]):
                 raise BackupError("恢复后结构与备份不一致，平台继续保持维护状态。")

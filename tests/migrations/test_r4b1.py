@@ -63,6 +63,15 @@ class InstitutionMigration(unittest.TestCase):
         migrations.run_migrations()
         return names
 
+    def v8_migrations(self) -> Path:
+        prefix = self.root / "r4b1-migrations"
+        shutil.copytree(migrations.ROOT / "control", prefix / "control")
+        (prefix / "tenant").mkdir()
+        for version in range(1, 6):
+            (path,) = (migrations.ROOT / "tenant").glob(f"{version:04d}_*.py")
+            shutil.copy2(path, prefix / "tenant" / path.name)
+        return prefix
+
     def principal(self, username: str = "fixture.admin") -> Principal:
         token = store.login(username, "SyntheticFixture9!", "127.0.0.1", "ba1")
         return store.authenticate_session(token, "ba1")[0]
@@ -137,7 +146,7 @@ class InstitutionMigration(unittest.TestCase):
         self.assertIsNone(row["current_release_id"])
         for table in ADDITIONS - {"ont_modules"}:
             self.assertEqual(snapshot["tables"][table], [])
-        self.assertEqual(migrations.migration_status("tenant", tenant["db_name"])["current"], 5)
+        self.assertEqual(migrations.migration_status("tenant", tenant["db_name"])["current"], 6)
         migrations.provision_tenant(ident)
         self.assertEqual(backup.snapshot_database(tenant["db_name"])["hashes"], snapshot["hashes"])
 
@@ -206,7 +215,9 @@ class InstitutionMigration(unittest.TestCase):
                         recovery_schema.validate_schema(snap, kind)
 
     def test_v8_rejects_each_missing_table_altered_columns_ddl_and_forged_history(self) -> None:
-        database = self.upgrade()["dept-01"]
+        prefix = self.v8_migrations()
+        with patch.object(migrations, "ROOT", prefix):
+            database = self.upgrade()["dept-01"]
         snapshot = backup.snapshot_database(database)
         self.assertEqual(
             recovery_schema.validate_schema(snapshot, "tenant"), recovery_schema.trusted_schema("tenant", 8)
@@ -264,7 +275,9 @@ class InstitutionMigration(unittest.TestCase):
             conn.rollback()
 
     def test_full_v8_backup_restores_all_four_populated_tables_and_current_release(self) -> None:
-        database = self.upgrade()["dept-01"]
+        prefix = self.v8_migrations()
+        with patch.object(migrations, "ROOT", prefix):
+            database = self.upgrade()["dept-01"]
         self.populate_storage_fixture(database)
         before = backup.snapshot_database(database)
         with runtime_guard(shared=False):
@@ -285,7 +298,9 @@ class InstitutionMigration(unittest.TestCase):
         after = backup.snapshot_database(database)
         self.assertEqual(after["hashes"], before["hashes"])
         self.assertEqual(after["columns"], before["columns"])
-        migrations.validate_runtime()
+        with patch.object(migrations, "ROOT", prefix):
+            migrations.validate_runtime()
+        self.assertEqual(migrations.migration_status("tenant", database)["pending"], ["0006_search_index"])
 
     def test_original_v070_portable_archive_restores_its_rows_originals_and_default_ownership(self) -> None:
         names = self.upgrade()
@@ -326,7 +341,9 @@ class InstitutionMigration(unittest.TestCase):
         self.assertEqual(migrations.run_migrations()["migrated"], [])
 
     def test_populated_portable_v8_restores_frozen_rows_and_editable_common_metadata(self) -> None:
-        names = self.upgrade()
+        prefix = self.v8_migrations()
+        with patch.object(migrations, "ROOT", prefix):
+            names = self.upgrade()
         self.populate_storage_fixture(names["dept-01"])
         before = backup.snapshot_database(names["dept-01"])
         path = self.root / "institution.backup"
@@ -359,7 +376,9 @@ class InstitutionMigration(unittest.TestCase):
         self.assertEqual(backup.snapshot_database(principal.database_name)["hashes"], before)
 
     def test_portable_v8_rejects_partial_ontology_tables_and_missing_or_duplicate_common(self) -> None:
-        names = self.upgrade()
+        prefix = self.v8_migrations()
+        with patch.object(migrations, "ROOT", prefix):
+            names = self.upgrade()
         assembled = self.root / "workspace.json"
         with closing(db._raw_connection(names["dept-01"])) as raw:
             system.export_snapshot(db.Connection(raw), assembled, "dept-01")

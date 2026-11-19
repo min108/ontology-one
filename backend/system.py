@@ -98,6 +98,8 @@ TABLE_CLASSIFICATION = dict.fromkeys(
     "export",
 )
 TABLE_CLASSIFICATION["schema_migrations"] = "deployment"
+TABLE_CLASSIFICATION["search_index"] = "rebuildable"
+REBUILDABLE_TABLES = frozenset(name for name, category in TABLE_CLASSIFICATION.items() if category == "rebuildable")
 EXPORTED_TABLES = frozenset(name for name, category in TABLE_CLASSIFICATION.items() if category == "export")
 
 

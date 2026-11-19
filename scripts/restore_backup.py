@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 
 from backend import db
 from backend.infra.tenant_defaults import common_part_name, initial_common_part
+from backend.system import REBUILDABLE_TABLES
 from backend.maintenance import runtime_guard, require_maintenance
 from backend.security import store
 from backend.security.context import use_context
@@ -79,10 +80,12 @@ def _parts(body):
     yield body[start:].strip()
 
 
-def schema_columns():
+def schema_columns(*, include_rebuildable: bool = False) -> dict:
     """Build the allowlist from executable application schema, never the archive."""
 
     class Collector:
+        schema_only = True
+
         def __init__(self):
             self.statements = list(db.SCHEMA)
 
@@ -121,12 +124,15 @@ def schema_columns():
     result = {}
     for sql in collector.statements:
         match = re.search(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_]+)\s*\((.*)\)\s*ENGINE", sql, re.I | re.S)
-        if not match:
+        if not match or (not include_rebuildable and match[1] in REBUILDABLE_TABLES):
             continue
         columns = []
         for definition in _parts(match[2]):
             name = definition.split(None, 1)[0].strip("`")
-            if name.upper() in {"PRIMARY", "UNIQUE", "KEY", "INDEX", "CONSTRAINT", "FOREIGN", "CHECK"} or "(" in name:
+            if (
+                name.upper() in {"PRIMARY", "UNIQUE", "KEY", "INDEX", "CONSTRAINT", "FOREIGN", "CHECK", "FULLTEXT"}
+                or "(" in name
+            ):
                 continue
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
                 raise RestoreError("应用表结构无法识别，恢复已停止。")
@@ -204,7 +210,7 @@ def validate_snapshot(snapshot, tenant_id, allowed=None):
     allowed = allowed or schema_columns()
     if not isinstance(tables, dict) or "entities" not in tables:
         raise RestoreError("备份缺少业务实体表。")
-    if set(tables) - allowed.keys():
+    if tables.keys() - allowed.keys() or tables.keys() & REBUILDABLE_TABLES:
         raise RestoreError("备份包含非业务白名单数据表，控制库和未知表不可导入。")
     for table, rows in tables.items():
         if not isinstance(rows, list):
@@ -262,11 +268,10 @@ def _empty_workspace(connection, tenant, allowed, *, lock=False):
             "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE'"
         )
     }
-    if existing - allowed.keys() - {"schema_migrations"}:
+    local_tables = {"schema_migrations"} | REBUILDABLE_TABLES
+    if existing - allowed.keys() - local_tables:
         raise RestoreError("目标库包含当前应用无法识别的表，拒绝恢复。")
-    for table in existing:
-        if table == "schema_migrations":
-            continue
+    for table in existing - local_tables:
         rows = connection.execute(f"SELECT * FROM `{table}`" + (" FOR UPDATE" if lock else "")).fetchall()
         if table == "entities":
             if any(
@@ -422,6 +427,10 @@ def restore_snapshot(snapshot, archive, principal, reason):
                         from backend.skills import demote_restored_skills
 
                         demote_restored_skills(connection)
+                    # Reconstruct documents only after all imports and skill demotions have completed.
+                    from backend.infra.search_index import rebuild_index
+
+                    rebuild_index(connection)
                     store.assert_principal_current(principal, require_write=True)
                     if uploads.exists():
                         uploads.rmdir()

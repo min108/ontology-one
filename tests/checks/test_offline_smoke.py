@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 from ops.offline.container_smoke import migrated_schema_inventory, require_migrated_schema
 
-TABLES = ("entity_meta", "ont_modules", "ont_module_deps", "ont_releases", "ont_release_items")
-EXPECTATIONS = (("control", 6, ("job_schedule_state",)), ("tenant", 5, TABLES))
+TABLES = ("entity_meta", "ont_modules", "ont_module_deps", "ont_releases", "ont_release_items", "search_index")
+EXPECTATIONS = (("control", 6, ("job_schedule_state",)), ("tenant", 6, TABLES))
 
 
 class OfflineSchemaTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class OfflineSchemaTests(unittest.TestCase):
 
     def test_pending_migration_cannot_certify_offline_install(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "migration"):
-            require_migrated_schema("tenant", {"current": 5, "pending": ["0006_future"], "tables": TABLES})
+            require_migrated_schema("tenant", {"current": 6, "pending": ["0007_future"], "tables": TABLES})
 
     def test_empty_directory_cannot_pass_without_tenant_checks(self) -> None:
         with (
@@ -46,8 +46,8 @@ class OfflineSchemaTests(unittest.TestCase):
         directory = [{"id": "first", "db_name": "first_db"}, {"id": "second", "db_name": "second_db"}]
         statuses = {
             "control_db": {"current": 6, "pending": [], "tables": ["job_schedule_state"]},
-            "first_db": {"current": 5, "pending": [], "tables": TABLES},
-            "second_db": {"current": 5, "pending": [], "tables": []},
+            "first_db": {"current": 6, "pending": [], "tables": TABLES},
+            "second_db": {"current": 6, "pending": [], "tables": []},
         }
         with (
             patch("backend.security.store._config", return_value={"database": "control_db"}),

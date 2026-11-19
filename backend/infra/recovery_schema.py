@@ -14,8 +14,8 @@ from pathlib import Path
 
 def trusted_schema(kind: str, version: int | None = None) -> dict:
     if version is None:
-        version = 8 if kind == "tenant" else 1
-    if version not in {1, 2, 3, 4, 5, 6, 7, 8}:
+        version = 9 if kind == "tenant" else 1
+    if version not in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
         raise ValueError("未知的受信恢复结构版本。")
     path = Path(__file__).resolve().parents[2] / "migrations" / "restore" / f"v{version}.json"
     registry = json.loads(path.read_text())
@@ -89,7 +89,7 @@ def schema_for_snapshot(value: dict, kind: str) -> dict:
             raise ValueError("备份迁移历史与已发布定义不一致。")
     supported = {
         "control": {0: 1, 1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 7},
-        "tenant": {0: 1, 1: 1, 2: 5, 3: 6, 4: 7, 5: 8},
+        "tenant": {0: 1, 1: 1, 2: 5, 3: 6, 4: 7, 5: 8, 6: 9},
     }
     version = supported[kind].get(len(versions))
     if version is None:

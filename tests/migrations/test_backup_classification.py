@@ -8,7 +8,9 @@ from scripts.restore_backup import schema_columns
 
 class BackupClassification(unittest.TestCase):
     def test_every_application_table_classified(self) -> None:
-        self.assertEqual(set(schema_columns()) | {"schema_migrations"}, set(system.TABLE_CLASSIFICATION))
+        self.assertEqual(
+            set(schema_columns(include_rebuildable=True)) | {"schema_migrations"}, set(system.TABLE_CLASSIFICATION)
+        )
 
     def test_migration_history_is_not_exported(self) -> None:
         self.assertNotIn("schema_migrations", system.EXPORTED_TABLES)
