@@ -305,11 +305,19 @@ test("R4-B BA7–BA10 S1–S12 search the reviewed original regulation, all entr
     receipt.before_rebuild = orderedDocuments(before);
     const general = (await topSearch(builder.page, "付款")).hits;
     assertChunkLimit(general);
+    const matchingChunks = chunks.filter((chunk) =>
+      chunk.content.includes("付款"),
+    );
+    expect(matchingChunks.length).toBeGreaterThan(2);
+    const rankedChunks = general.filter(
+      (hit) =>
+        hit.doc_type === "chunk" && hit.entity_id === receipt.material_id,
+    );
+    expect(rankedChunks).toHaveLength(2);
     receipt.chunks = {
       confirmed: chunks.length,
-      broader_query_results: general.filter(
-        (h) => h.doc_type === "chunk" && h.entity_id === receipt.material_id,
-      ).length,
+      matching_broader_query: matchingChunks.length,
+      returned_for_broader_query: rankedChunks.length,
     };
     stage =
       "S8, S9 and S10 insufficient evidence, one character and tenant isolation";

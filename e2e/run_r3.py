@@ -259,7 +259,8 @@ def main(round_name: str = "r3") -> int:
                         run_command(
                             [
                                 sys.executable,
-                                "scripts/drills/benchmark_r4b_search.py",
+                                "-m",
+                                "scripts.drills.benchmark_r4b_search",
                                 "--evidence",
                                 str(search_receipt),
                                 "--output",
