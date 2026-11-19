@@ -296,6 +296,9 @@ test("R4-B BA7–BA10 S1–S12 search the reviewed original regulation, all entr
               encodeURIComponent(hit.chunk_id),
           );
           expect(source.focus.quote).toContain(original.S6);
+          const highlighted = builder.page.locator("#material-anchor-focus");
+          await expect(highlighted).toBeVisible();
+          await expect(highlighted).toContainText(original.S6);
         }
       },
     );
